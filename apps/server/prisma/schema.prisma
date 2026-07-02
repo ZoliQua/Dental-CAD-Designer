@@ -1,0 +1,22 @@
+// Prisma schema for the DQ Dental CAD server.
+// Kept portable to PostgreSQL: no SQLite-only features (no @db.* SQLite-specific
+// attributes, no raw SQL, id defaults are generated client-side via Prisma's
+// `uuid()` function rather than a SQLite-only expression).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Case {
+  id            String   @id @default(uuid())
+  name          String
+  schemaVersion Int
+  documentJson  String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}

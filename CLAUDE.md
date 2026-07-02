@@ -38,6 +38,8 @@ packages/shared-types/     CaseDocument, Operation, QcReport
 
 Layer rule (lint-enforced): `ui → engine → kernel-workers → kernel`. `kernel` and `io` import nothing from upper layers and nothing from Three.js. Violating this is always wrong — fix the design, not the lint rule.
 
+**Import extension convention.** Packages loaded natively by the Node worker entry (`kernel`, `kernel-workers` — and `packages/io` once Phase 1 makes it worker-reachable) use literal `.ts` extensions in their own relative imports (`allowImportingTsExtensions` in `tsconfig.base.json`, paired with Node's native TS-stripping loader). Everywhere else uses `.js`-suffix ESM-style relative imports (the usual TS convention for compiled output). Why: Node's native loader resolves relative specifiers literally with no `.js` → `.ts` mapping, so a worker-loaded file importing `./foo.js` would fail to resolve when only `foo.ts` exists on disk.
+
 ## Hard invariants — never break these
 
 1. **Float64 in the kernel.** All coordinates, transforms, and math in `kernel/`, `io/`, `cad-pipeline/` use Float64. `Float32Array` may only appear in `engine/` render copies. Adding a `Float32Array` to the kernel is a bug even if tests pass.

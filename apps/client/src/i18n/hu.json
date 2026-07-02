@@ -1,0 +1,34 @@
+{
+  "app": {
+    "title": "DQ Dental CAD"
+  },
+  "header": {
+    "themeToggleToLight": "Váltás világos témára",
+    "themeToggleToDark": "Váltás sötét témára",
+    "languagePickerLabel": "Nyelv"
+  },
+  "language": {
+    "en": "English",
+    "hu": "Magyar",
+    "de": "Deutsch",
+    "es": "Español"
+  },
+  "sidebar": {
+    "sceneTreeTitle": "Jelenet",
+    "empty": "Még nincs objektum a jelenetben."
+  },
+  "statusBar": {
+    "engineReady": "Motor: kész",
+    "engineInitializing": "Motor: inicializálás…",
+    "workerSmokeTestPending": "Worker: teszt függőben",
+    "workerSmokeTestButton": "Worker teszt futtatása",
+    "workerSmokeTestRunning": "Worker: fut…",
+    "workerSmokeTestSuccess": "Worker: ✓ {{count}} háromszög",
+    "workerSmokeTestFailure": "Worker: ✗ sikertelen",
+    "manifoldSmokeTestPending": "Manifold: teszt folyamatban",
+    "manifoldSmokeTestButton": "Manifold teszt futtatása",
+    "manifoldSmokeTestRunning": "Manifold: fut…",
+    "manifoldSmokeTestSuccess": "Manifold: ✓ térfogat {{volume}}",
+    "manifoldSmokeTestFailure": "Manifold: ✗ sikertelen"
+  }
+}

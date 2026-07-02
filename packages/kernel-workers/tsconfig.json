@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    // This package's source runs in BOTH a browser Web Worker/main-thread
+    // context (worker-entry.browser.ts, pool.ts's browser spawn path) and a
+    // Node worker_threads context (worker-entry.node.ts, pool.ts's Node
+    // spawn path) — see pool.ts's isNodeRuntime() environment split. DOM
+    // lib gives us `Worker`, `URL`, `Transferable`, etc.; @types/node
+    // (auto-included since this tsconfig doesn't restrict "types") gives us
+    // `process`, `node:worker_threads`, etc. The two coexist without
+    // conflicting globals (verified empirically).
+    "lib": ["ES2022", "DOM"]
+    // (allowImportingTsExtensions lives in tsconfig.base.json, not here —
+    // see its comment: any package that transitively imports this one needs
+    // the flag too, in its own tsc invocation.)
+  },
+  "include": ["src"]
+}

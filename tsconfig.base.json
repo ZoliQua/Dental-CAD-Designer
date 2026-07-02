@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "verbatimModuleSyntax": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    // Needed globally (not just in packages/kernel-workers' own tsconfig)
+    // because any package that transitively imports kernel-workers pulls
+    // jobs.ts into its OWN tsc program, and jobs.ts imports transfer.ts
+    // with an explicit `.ts` extension — see packages/kernel-workers/
+    // tsconfig.json's comment for why.
+    "allowImportingTsExtensions": true
+  }
+}

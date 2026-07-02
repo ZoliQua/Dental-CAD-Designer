@@ -1,0 +1,26 @@
+{
+  "name": "@dqcad/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "postinstall": "prisma generate",
+    "predev": "test -f .env || cp .env.example .env",
+    "db:migrate": "DATABASE_URL=\"file:./dev.db\" npx prisma migrate deploy",
+    "dev": "npm run db:migrate && tsx watch --env-file=.env src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config ../../vitest.config.ts --project server"
+  },
+  "dependencies": {
+    "@dqcad/kernel": "*",
+    "@dqcad/shared-types": "*",
+    "@fastify/cors": "^11.3.0",
+    "@prisma/client": "^6.19.3",
+    "fastify": "^5.10.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "prisma": "^6.19.3",
+    "tsx": "^4.23.0"
+  }
+}

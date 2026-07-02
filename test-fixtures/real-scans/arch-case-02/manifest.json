@@ -1,0 +1,126 @@
+{
+  "caseId": "arch-case-02",
+  "alignmentMatrixConvention": "Row-major, row-vector convention (v_row * M = v_row_transformed): alignmentMatrix[r * 4 + c] is source tag \"_<r><c>\" (r,c in 0..3); translation lives in row 3 (indices 12, 13, 14).",
+  "alignmentMatrix": [
+    -1,
+    0,
+    0,
+    0,
+    0,
+    -1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    30,
+    0,
+    -22.5,
+    1
+  ],
+  "antagonistType": "DigitalImpressionScan",
+  "toothColor": "A1",
+  "meshes": {
+    "upperjaw": {
+      "stl": {
+        "sha256": "1173bc3287dbcfdd5100486345e492cde76508c21b4c25e1968aa61519b02a04",
+        "byteSize": 16984084,
+        "triangleCount": 339680,
+        "bbox": {
+          "min": [
+            -38.35009002685547,
+            -27.90654945373535,
+            -2.220219850540161
+          ],
+          "max": [
+            37.993289947509766,
+            33.65034103393555,
+            22.284189224243164
+          ]
+        }
+      },
+      "ply": {
+        "sha256": "0d381776b549dda151e040e45e41d7a63a5bb147c9e6b7db9e9611359eda4ab6",
+        "byteSize": 17022015,
+        "vertexCount": 171412,
+        "faceCount": 339680
+      }
+    },
+    "lowerjaw": {
+      "stl": {
+        "sha256": "ac66c8ac5f408241e0d620deaed5db9f24929cfbfea147c2de6d64979748e1e8",
+        "byteSize": 13749134,
+        "triangleCount": 274981,
+        "bbox": {
+          "min": [
+            -44.285709381103516,
+            -23.31635856628418,
+            -16.950300216674805
+          ],
+          "max": [
+            31.47439956665039,
+            43.43418884277344,
+            9.028399467468262
+          ]
+        }
+      },
+      "ply": {
+        "sha256": "ee19e42efe48e4d0760b355933d73f9e0bab687049f6484ddfba23200dd0fc8c",
+        "byteSize": 13800133,
+        "vertexCount": 139607,
+        "faceCount": 274981
+      }
+    },
+    "bite0": {
+      "stl": {
+        "sha256": "9fe1731b01f381d935c806806a0dfc5b9524a0ec98141d22fd63ebb480987bcf",
+        "byteSize": 5072084,
+        "triangleCount": 101440,
+        "bbox": {
+          "min": [
+            -30.547149658203125,
+            -32.05698776245117,
+            -14.605189323425293
+          ],
+          "max": [
+            0.36883997917175293,
+            -0.7015900015830994,
+            18.05902862548828
+          ]
+        }
+      },
+      "ply": {
+        "sha256": "e49ac0bfbe556d254eecd458bd55774dc3c29cede97804dacaa318d6eb1b144e",
+        "byteSize": 2567960,
+        "vertexCount": 52042,
+        "faceCount": 101440
+      }
+    },
+    "bite1": {
+      "stl": {
+        "sha256": "1be329a7acf9a662e266e639c9ae324e1bf33e56a6d498a1c50b98ff38c58758",
+        "byteSize": 3167434,
+        "triangleCount": 63347,
+        "bbox": {
+          "min": [
+            12.234099388122559,
+            -21.098539352416992,
+            -17.442060470581055
+          ],
+          "max": [
+            38.32999038696289,
+            2.518699884414673,
+            14.513269424438477
+          ]
+        }
+      },
+      "ply": {
+        "sha256": "ef31cb1100178b046834910a570da117f544089dd403ea4561e7bf48148bf742",
+        "byteSize": 1612070,
+        "vertexCount": 32847,
+        "faceCount": 63347
+      }
+    }
+  }
+}

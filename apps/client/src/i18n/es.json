@@ -1,0 +1,34 @@
+{
+  "app": {
+    "title": "DQ Dental CAD"
+  },
+  "header": {
+    "themeToggleToLight": "Cambiar a tema claro",
+    "themeToggleToDark": "Cambiar a tema oscuro",
+    "languagePickerLabel": "Idioma"
+  },
+  "language": {
+    "en": "English",
+    "hu": "Magyar",
+    "de": "Deutsch",
+    "es": "Español"
+  },
+  "sidebar": {
+    "sceneTreeTitle": "Escena",
+    "empty": "Todavía no hay objetos en la escena."
+  },
+  "statusBar": {
+    "engineReady": "Motor: listo",
+    "engineInitializing": "Motor: inicializando…",
+    "workerSmokeTestPending": "Worker: prueba pendiente",
+    "workerSmokeTestButton": "Ejecutar prueba de worker",
+    "workerSmokeTestRunning": "Worker: en ejecución…",
+    "workerSmokeTestSuccess": "Worker: ✓ {{count}} triángulos",
+    "workerSmokeTestFailure": "Worker: ✗ falló",
+    "manifoldSmokeTestPending": "Manifold: prueba pendiente",
+    "manifoldSmokeTestButton": "Ejecutar prueba de manifold",
+    "manifoldSmokeTestRunning": "Manifold: en ejecución…",
+    "manifoldSmokeTestSuccess": "Manifold: ✓ volumen {{volume}}",
+    "manifoldSmokeTestFailure": "Manifold: ✗ falló"
+  }
+}

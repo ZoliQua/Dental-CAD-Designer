@@ -1,0 +1,163 @@
+/* Dark/light theme via CSS custom properties, switched by a
+   data-theme attribute on <html> (see ui/App.tsx). Default is dark
+   (state/appStore.ts defaults theme to 'dark'). */
+:root {
+  color-scheme: dark light;
+}
+
+:root[data-theme='dark'] {
+  --color-bg: #1a1a1a;
+  --color-bg-elevated: #242424;
+  --color-border: #3a3a3a;
+  --color-text: #f2f2f2;
+  --color-text-muted: #a0a0a0;
+  --color-accent: #4da3ff;
+}
+
+:root[data-theme='light'] {
+  --color-bg: #f5f5f5;
+  --color-bg-elevated: #ffffff;
+  --color-border: #d8d8d8;
+  --color-text: #1a1a1a;
+  --color-text-muted: #5a5a5a;
+  --color-accent: #1a6fd1;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.app-shell {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100%;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 1rem;
+  background: var(--color-bg-elevated);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.app-header__title {
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.app-header__controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.language-picker {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.theme-toggle {
+  font-size: 0.85rem;
+  padding: 0.3rem 0.6rem;
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.theme-toggle:hover {
+  border-color: var(--color-accent);
+}
+
+.app-body {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  min-height: 0;
+}
+
+.sidebar {
+  border-right: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  padding: 0.75rem;
+  overflow-y: auto;
+}
+
+.sidebar__title {
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  margin: 0 0 0.5rem;
+}
+
+.sidebar__empty {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.viewport {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: var(--color-bg);
+}
+
+.status-bar {
+  display: flex;
+  gap: 1.5rem;
+  padding: 0.35rem 1rem;
+  background: var(--color-bg-elevated);
+  border-top: 1px solid var(--color-border);
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.status-bar__worker {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.status-bar__worker-button {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.status-bar__worker-button:hover:not(:disabled) {
+  border-color: var(--color-accent);
+}
+
+.status-bar__worker-button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}

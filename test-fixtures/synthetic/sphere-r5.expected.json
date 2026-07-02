@@ -1,0 +1,18 @@
+{
+  "analyticVolumeMm3": 523.5987755982989,
+  "analyticAreaMm2": 314.1592653589793,
+  "bbox": {
+    "min": [
+      -5,
+      -5,
+      -5
+    ],
+    "max": [
+      5,
+      5,
+      5
+    ]
+  },
+  "sha256": "a9d14045e87890998ba908183fb974dfdb624461dc891c71c2d174418efce114",
+  "meshVolumeToleranceFraction": 0.0017955736571969214
+}

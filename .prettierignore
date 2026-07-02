@@ -1,0 +1,8 @@
+node_modules/
+dist/
+build/
+coverage/
+playwright-report/
+test-results/
+.superpowers/
+package-lock.json

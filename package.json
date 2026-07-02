@@ -1,0 +1,40 @@
+{
+  "name": "dq-dental-cad",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=23.6"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n server,client -c blue,green \"npm:dev --workspace apps/server\" \"npm:dev --workspace apps/client\"",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit -p tsconfig.json && npm run typecheck --workspaces --if-present",
+    "test": "vitest run",
+    "test:kernel": "vitest run --project kernel",
+    "test:golden": "vitest run --project golden",
+    "test:e2e": "playwright test",
+    "fixtures:generate": "tsx scripts/generate-fixtures.ts"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.19.0",
+    "@playwright/test": "^1.61.1",
+    "@types/node": "^22.10.0",
+    "concurrently": "^10.0.3",
+    "eslint": "^9.19.0",
+    "eslint-import-resolver-typescript": "^4.4.5",
+    "eslint-plugin-boundaries": "^7.0.2",
+    "prettier": "^3.4.2",
+    "tsx": "^4.23.0",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.21.0",
+    "vitest": "^3.0.4"
+  }
+}

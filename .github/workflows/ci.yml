@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout (with Git LFS)
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        # Belt-and-suspenders: apps/server's own postinstall already runs
+        # `prisma generate`, but the client is a generated artifact that
+        # other workspaces' typecheck/test steps depend on, so don't rely
+        # on npm's workspace postinstall ordering here.
+        run: npx prisma generate --schema apps/server/prisma/schema.prisma
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Golden fixture tests
+        # Requires the real Git LFS content (checkout above uses lfs: true).
+        # If LFS content didn't come down as real binaries, these tests fail
+        # with an explicit "git lfs pull" message (test/golden/stl-reader.ts)
+        # rather than a confusing parse error.
+        run: npm run test:golden
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E smoke test
+        # playwright.config.ts's webServer boots `npm run dev` (client +
+        # server) itself, including the server's own DB migration step
+        # (apps/server/package.json's predev/dev scripts) — no separate
+        # migrate step needed here.
+        run: npm run test:e2e
+
+      - name: Upload Playwright report and test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
