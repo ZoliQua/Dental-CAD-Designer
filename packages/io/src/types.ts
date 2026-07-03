@@ -33,11 +33,16 @@ export interface RawTriangleSoup {
 }
 
 /**
- * The concrete format a parser detected/consumed. `'stl-binary' |
- * 'stl-ascii'` today; Task 2 (PLY) extends this union with
- * `'ply-binary' | 'ply-ascii'` variants.
+ * The concrete format a parser detected/consumed. STL only ever reports one
+ * endianness (its binary layout is little-endian-only per the de-facto
+ * spec — see stl/binary.ts), but PLY's binary format is explicitly
+ * endianness-tagged in its own header (`format binary_little_endian 1.0` vs
+ * `format binary_big_endian 1.0` — see ply/header.ts), so the PLY variants
+ * are split into `'ply-binary-le' | 'ply-binary-be'` rather than a single
+ * `'ply-binary'`, letting callers see which endianness a given file
+ * actually declared without re-deriving it themselves.
  */
-export type ParseFormat = 'stl-binary' | 'stl-ascii';
+export type ParseFormat = 'stl-binary' | 'stl-ascii' | 'ply-binary-le' | 'ply-binary-be' | 'ply-ascii';
 
 /** Non-fatal parse observations — malformed-but-recoverable input never
  * throws; it's recorded here instead (e.g. a non-zero STL attribute byte

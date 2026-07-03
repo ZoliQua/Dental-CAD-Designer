@@ -17,3 +17,23 @@ export {
   type ParseStlResult,
   type WriteStlBinaryOptions,
 } from './stl/index.ts';
+
+export {
+  parsePly,
+  writePlyBinaryLE,
+  sanitizePlyComment,
+  DEFAULT_PLY_COMMENT,
+  parsePlyHeader,
+  type WritablePlyMesh,
+  type WritePlyBinaryOptions,
+  type ParsePlyHeaderResult,
+  type PlyMesh,
+  type PlyHeader,
+  type PlyHeaderComment,
+  type PlyFormat,
+  type PlyElementSpec,
+  type PlyProperty,
+  type PlyScalarProperty,
+  type PlyListProperty,
+  type PlyScalarType,
+} from './ply/index.ts';
