@@ -5,12 +5,14 @@
 // — packages/io is node-worker-reachable starting Phase 1.
 
 export type { RawTriangleSoup, ParseFormat, ParseDiagnostics, ParseErrorContext } from './types.ts';
-export { IoParseError, TruncatedFileError, MalformedSyntaxError } from './types.ts';
+export { IoParseError, TruncatedFileError, MalformedSyntaxError, IoWriteRangeError } from './types.ts';
 
 export {
   parseStl,
   writeStlBinary,
   binaryStlByteLength,
+  assertWriteableTriangleCount,
+  STL_BINARY_MAX_TRIANGLE_COUNT,
   DEFAULT_STL_HEADER_TEXT,
   type ParseStlResult,
   type WriteStlBinaryOptions,

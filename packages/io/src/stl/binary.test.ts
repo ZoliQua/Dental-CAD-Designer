@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
+import { IoWriteRangeError } from '../types.ts';
 import type { RawTriangleSoup } from '../types.ts';
-import { DEFAULT_STL_HEADER_TEXT, binaryStlByteLength, writeStlBinary } from './binary.ts';
+import {
+  DEFAULT_STL_HEADER_TEXT,
+  STL_BINARY_MAX_TRIANGLE_COUNT,
+  assertWriteableTriangleCount,
+  binaryStlByteLength,
+  writeStlBinary,
+} from './binary.ts';
 import { parseStl } from './parse.ts';
 
 /** A single right triangle in the XY plane: v0=(0,0,0), v1=(1,0,0),
@@ -91,6 +98,41 @@ describe('writeStlBinary: normals', () => {
     const bytes = writeStlBinary(soup);
     const { soup: parsed } = parseStl(bytes);
     expect(Array.from(parsed.normals!)).toEqual([0, 0, 0]);
+  });
+});
+
+describe('assertWriteableTriangleCount / writeStlBinary: triangleCount guard', () => {
+  // These exercise the guard function directly rather than through
+  // `writeStlBinary` with a real over-limit `RawTriangleSoup` — allocating
+  // a `triangleCount * 9`-length Float64Array at `STL_BINARY_MAX_TRIANGLE_COUNT`
+  // (let alone beyond it) would try to allocate tens of gigabytes, which is
+  // impractical for a unit test.
+  it('accepts triangleCount 0 and STL_BINARY_MAX_TRIANGLE_COUNT without throwing', () => {
+    expect(() => assertWriteableTriangleCount(0)).not.toThrow();
+    expect(() => assertWriteableTriangleCount(STL_BINARY_MAX_TRIANGLE_COUNT)).not.toThrow();
+  });
+
+  it('throws IoWriteRangeError for a triangleCount past the uint32 field it must fit into', () => {
+    expect(() => assertWriteableTriangleCount(STL_BINARY_MAX_TRIANGLE_COUNT + 1)).toThrow(
+      IoWriteRangeError,
+    );
+  });
+
+  it('throws IoWriteRangeError for a negative or non-integer triangleCount', () => {
+    expect(() => assertWriteableTriangleCount(-1)).toThrow(IoWriteRangeError);
+    expect(() => assertWriteableTriangleCount(1.5)).toThrow(IoWriteRangeError);
+  });
+
+  it('writeStlBinary itself rejects an over-limit triangleCount before allocating', () => {
+    // A soup whose *declared* triangleCount exceeds the limit but whose
+    // backing arrays are tiny — the point is that the guard fires before
+    // any large allocation is attempted, not that the soup is realistic.
+    const soup: RawTriangleSoup = {
+      positions: new Float64Array(0),
+      normals: null,
+      triangleCount: STL_BINARY_MAX_TRIANGLE_COUNT + 1,
+    };
+    expect(() => writeStlBinary(soup)).toThrow(IoWriteRangeError);
   });
 });
 

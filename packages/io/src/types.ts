@@ -97,3 +97,17 @@ export class MalformedSyntaxError extends IoParseError {
     Object.setPrototypeOf(this, new.target.prototype);
   }
 }
+
+/** A *writer*-side counterpart to `IoParseError`: input to a writer (e.g.
+ * `writeStlBinary`'s `RawTriangleSoup`) that is structurally valid TS but
+ * out of range for the target file format's on-disk layout — e.g. more
+ * triangles than binary STL's uint32 triangle-count field at byte offset 80
+ * can represent. Not an `IoParseError` subclass since nothing was parsed;
+ * this fires while producing bytes, not consuming them. */
+export class IoWriteRangeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'IoWriteRangeError';
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}

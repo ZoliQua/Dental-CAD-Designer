@@ -124,6 +124,12 @@ describe('parseAsciiStl: error cases', () => {
 
   it('throws MalformedSyntaxError with a line number for a second "solid" block', () => {
     const text = `${ONE_TRIANGLE_ASCII}\nsolid second\nendsolid second\n`;
+    // ONE_TRIANGLE_ASCII is 9 content lines + a trailing blank line (10
+    // lines total, see its definition above); the extra leading `\n` here
+    // inserts one more blank line before "solid second" lands on line 11.
+    const expectedLine = text.split(/\r\n|\r|\n/).findIndex((line) => line.trim() === 'solid second') + 1;
+    expect(expectedLine).toBe(11);
+
     let thrown: unknown;
     try {
       parseAsciiStl(text);
@@ -132,6 +138,7 @@ describe('parseAsciiStl: error cases', () => {
     }
     expect(thrown).toBeInstanceOf(MalformedSyntaxError);
     expect((thrown as MalformedSyntaxError).message).toMatch(/second "solid" block/);
+    expect((thrown as MalformedSyntaxError).line).toBe(expectedLine);
   });
 
   it('throws MalformedSyntaxError when the file does not start with "solid"', () => {

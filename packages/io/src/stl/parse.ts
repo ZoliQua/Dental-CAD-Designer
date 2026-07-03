@@ -10,7 +10,7 @@
 // triangle count `N` declared at offset 80? That check is tried FIRST,
 // unconditionally, before any text-based ASCII sniffing.
 
-import { TruncatedFileError } from '../types.ts';
+import { IoParseError, TruncatedFileError } from '../types.ts';
 import type { ParseDiagnostics, RawTriangleSoup } from '../types.ts';
 import {
   STL_BINARY_HEADER_BYTES,
@@ -66,11 +66,41 @@ export function parseStl(bytes: Uint8Array): ParseStlResult {
       return { soup, diagnostics };
     }
 
-    if (expectedLength < bytes.byteLength && !looksLikeAsciiStl(bytes)) {
-      // Declared count leaves trailing bytes, but the content isn't
-      // ASCII-shaped either — tolerate it as binary with extra junk after
-      // the last triangle record (a real-world exporter quirk), per the
-      // brief's "tolerates trailing junk with warning".
+    if (expectedLength < bytes.byteLength) {
+      // Declared count leaves trailing bytes. This is ambiguous by itself:
+      // it's consistent both with a genuinely binary file that has extra
+      // junk after its last triangle record (a real-world exporter quirk),
+      // AND — since a binary header is legal to start with "solid ..." per
+      // the module doc — with that same junk-tolerant binary file merely
+      // *looking* ASCII-shaped at a glance.
+      //
+      // Do NOT gate the binary interpretation on `!looksLikeAsciiStl` (a
+      // leading-bytes-only sniff) — a genuinely binary file whose header
+      // starts with "solid" would then get misrouted straight into
+      // `parseAsciiStl` and throw, even though it's valid binary-with-junk.
+      // Instead, when the content also looks ASCII-shaped, let the ASCII
+      // grammar parser itself be the tie-breaker: it's a full validator, so
+      // a genuinely ASCII file (even one whose bytes 80..83 coincidentally
+      // decode to a small triangle count satisfying this length check)
+      // parses successfully and wins. A genuinely binary file only
+      // *resembles* ASCII in its header bytes — the rest is binary data
+      // that fails the ASCII grammar — so on that failure we fall back to
+      // the binary-with-junk-warning interpretation instead of surfacing a
+      // confusing ASCII syntax error.
+      if (looksLikeAsciiStl(bytes)) {
+        try {
+          const diagnostics: ParseDiagnostics = { warnings: [], format: 'stl-ascii' };
+          const text = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+          const soup = parseAsciiStl(text);
+          return { soup, diagnostics };
+        } catch (error) {
+          if (!(error instanceof IoParseError)) {
+            throw error;
+          }
+          // Fall through to the binary-with-junk-warning interpretation.
+        }
+      }
+
       const diagnostics: ParseDiagnostics = {
         warnings: [
           `${bytes.byteLength - expectedLength} trailing byte(s) after the last binary triangle record ` +

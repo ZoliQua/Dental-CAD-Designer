@@ -26,12 +26,37 @@
 // byte-length consistency: a binary file's total length must equal
 // `84 + triangleCount * 50` for the triangleCount declared at offset 80.
 
+import { IoWriteRangeError } from '../types.ts';
 import type { ParseDiagnostics, RawTriangleSoup } from '../types.ts';
 
 export const STL_BINARY_HEADER_BYTES = 80;
 export const STL_BINARY_COUNT_BYTES = 4;
 export const STL_BINARY_PREAMBLE_BYTES = STL_BINARY_HEADER_BYTES + STL_BINARY_COUNT_BYTES; // 84
 export const STL_BINARY_RECORD_BYTES = 50;
+
+/** The binary STL triangle count is a uint32 (see this file's module doc) —
+ * `writeStlBinary` cannot represent more triangles than that field can hold
+ * at byte offset 80, so `assertWriteableTriangleCount` rejects anything
+ * above this before the writer allocates its output buffer. */
+export const STL_BINARY_MAX_TRIANGLE_COUNT = 0xffffffff;
+
+/** Guards `writeStlBinary`'s `triangleCount` against the uint32 field it has
+ * to fit into at byte offset 80. Split out from `binaryStlByteLength` (and
+ * exported) so it can be unit-tested directly without allocating the
+ * multi-gigabyte buffer a real over-limit `RawTriangleSoup` would require. */
+export function assertWriteableTriangleCount(triangleCount: number): void {
+  if (!Number.isInteger(triangleCount) || triangleCount < 0) {
+    throw new IoWriteRangeError(
+      `triangleCount must be a non-negative integer, got ${triangleCount}`,
+    );
+  }
+  if (triangleCount > STL_BINARY_MAX_TRIANGLE_COUNT) {
+    throw new IoWriteRangeError(
+      `triangleCount (${triangleCount}) exceeds the binary STL format's uint32 triangle-count field ` +
+        `(max ${STL_BINARY_MAX_TRIANGLE_COUNT}) — this file cannot be represented as a binary STL`,
+    );
+  }
+}
 
 /** Binary-layout byte length for `triangleCount` triangles — the same
  * `84 + N * 50` formula used both to detect binary STL (parse.ts) and to
@@ -173,6 +198,7 @@ export function writeStlBinary(
   options: WriteStlBinaryOptions = {},
 ): Uint8Array {
   const { positions, normals, triangleCount } = soup;
+  assertWriteableTriangleCount(triangleCount);
   const useSourceNormals = options.useSourceNormals ?? false;
   const headerText = options.headerText ?? DEFAULT_STL_HEADER_TEXT;
 
