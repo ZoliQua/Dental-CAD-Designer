@@ -23,5 +23,7 @@ export {
   type ParseMeshFileResult,
   type StlSoupResult,
   type PlyMeshResult,
+  type IntakeMeshPayload,
+  type IntakeMeshResult,
 } from './jobs.js';
 export { meshBuffers, type MeshBuffersPayload, type MeshBuffersResult } from './transfer.js';
