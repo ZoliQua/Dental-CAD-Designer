@@ -37,7 +37,13 @@ import {
  * worker boundary, so calling them here is just a normal (possibly async)
  * function call as far as job code is concerned. */
 export interface JobContext {
-  /** Report fractional progress in [0, 1]. */
+  /** Report fractional progress in [0, 1]. Deliberately typed (and callable)
+   * as fire-and-forget — job code is never required to `await` this, and
+   * handlers like `longTask` below don't — but `runJob`'s dispatcher (see
+   * its doc comment) tracks every call's underlying delivery and flushes
+   * them before the job settles, so callers of `WorkerPool.run()` still get
+   * a strict progress-before-resolution ordering guarantee without job code
+   * having to know or care about it. */
   progress: (fraction: number) => void;
   /** Cooperative cancellation flag — see the module doc below for why this
    * is checked only between chunks rather than preemptively. */
@@ -402,6 +408,39 @@ function isTestOnlyJobName(name: string): name is typeof TEST_ONLY_CRASH_WORKER_
  * generic call signatures across the wire (verified: it collapses to the
  * union of possible results), so pool.ts's WorkerPool.run() narrows the
  * awaited result back to `JobResultMap[J]` with a single documented cast.
+ *
+ * ## Progress delivery ordering contract
+ *
+ * `onProgress`, when present, is `Comlink.proxy(callback)` (see pool.ts's
+ * `run()`) — invoking it from inside the worker is itself a full postMessage
+ * round trip to the caller's thread, over a **dedicated MessageChannel**
+ * that Comlink allocates just for this proxied callback, separate from the
+ * channel this very `runJob` call's own return value travels over. Separate
+ * channels have no cross-channel ordering guarantee: even though a job
+ * handler (e.g. `longTask` below) calls `ctx.progress(1)` before returning
+ * its result, nothing about postMessage semantics guarantees the caller's
+ * `onProgress` callback actually *runs* before the caller's `run()` promise
+ * resolves — under load (many workers/ports live at once), the result
+ * message can win that race, so a caller can observe its job resolve before
+ * ever seeing the final `fraction === 1` progress event (this is exactly
+ * what made pool.test.ts's longTask progress test flake under full-suite
+ * concurrency — see that test's own comment for the empirical repro).
+ *
+ * `runJob` closes that gap here, once, for every job — rather than requiring
+ * each handler to `await ctx.progress(...)` itself (which would also
+ * serialize progress delivery into the hot loop, the exact per-iteration
+ * cost `longTask`'s doc comment calls out as unacceptable): every call to
+ * the `ctx.progress` wrapped below records the underlying delivery promise,
+ * and this function `await`s all of them — in the `finally` below, so this
+ * covers both the success and thrown-error paths — before its own result
+ * (or rejection) is handed back to Comlink to send over the *other* channel.
+ * Because the worker only sends that response after every progress
+ * callback invocation has already completed (and been acknowledged) on the
+ * caller's thread, `WorkerPool.run()` callers get a real happens-before
+ * guarantee: by the time `run()`'s promise settles, `onProgress` has
+ * already been called for every progress event the job reported, in order,
+ * including the final one. See pool.ts's `RunJobOptions.onProgress` doc for
+ * the caller-facing statement of this guarantee.
  */
 export async function runJob<J extends JobName>(
   name: J,
@@ -421,11 +460,34 @@ export async function runJob<J extends JobName>(
   }
 
   const handler = registry[name];
+  const baseProgress = onProgress ?? noopContext.progress;
+  // Every delivery in flight, so it can be flushed before this job settles
+  // — see this function's "Progress delivery ordering contract" doc above.
+  // Individually `.catch()`ed so a failed/torn-down delivery (e.g. the pool
+  // was destroyed and the proxy's port is gone) can never turn into an
+  // unhandled rejection or block the job's own result — only *ordering* is
+  // this wrapper's job, not delivery guarantees for a pool that's going away
+  // anyway.
+  const pendingProgress: Promise<unknown>[] = [];
   const ctx: JobContext = {
-    progress: onProgress ?? noopContext.progress,
+    progress: (fraction) => {
+      let delivery: Promise<unknown>;
+      try {
+        delivery = Promise.resolve(baseProgress(fraction));
+      } catch (error) {
+        delivery = Promise.reject(error);
+      }
+      pendingProgress.push(delivery.catch(() => {}));
+    },
     cancelled: cancelled ?? noopContext.cancelled,
   };
-  const result = await handler(payload, ctx);
+
+  let result: JobResultMap[J];
+  try {
+    result = await handler(payload, ctx);
+  } finally {
+    await Promise.all(pendingProgress);
+  }
   // Move the result's typed-array buffers back to the caller instead of
   // structured-cloning them — mirrors meshBuffers() on the request side.
   return Comlink.transfer(result, transferablesOf(result));

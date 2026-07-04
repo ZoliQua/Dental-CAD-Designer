@@ -28,6 +28,27 @@ export interface RunJobOptions {
   /** Buffers to move (not copy) into the worker — see transfer.ts's
    * meshBuffers() for building this for mesh payloads. */
   transfer?: Transferable[];
+  /**
+   * Progress delivery ordering guarantee: every call the job makes to
+   * `ctx.progress(...)` (jobs.ts) is guaranteed to have already reached
+   * `onProgress` — i.e. this callback has actually run for it — by the time
+   * this `run()` call's returned promise settles (resolves OR rejects),
+   * including the job's final progress event, if any. Callers may safely
+   * assume "the last `onProgress` call observed before `run()` settles is
+   * the job's true final state" (e.g. a UI progress bar reading 100% exactly
+   * when its "done" handler fires) without racing the job's own resolution.
+   *
+   * This is enforced centrally by jobs.ts's `runJob` dispatcher (see its
+   * "Progress delivery ordering contract" doc comment), not by this pool
+   * itself — `onProgress` here is `Comlink.proxy()`-wrapped and handed
+   * straight to the worker, which invokes it over its own dedicated
+   * MessageChannel (a different channel than this call's result travels
+   * over); `runJob` is what awaits every such delivery before letting the
+   * job's own result/rejection go out. Without that, the two channels have
+   * no ordering relationship, and a caller could observe `run()` resolve
+   * before ever seeing the job's last progress event — see pool.test.ts's
+   * longTask progress test for the concrete, once-flaky symptom this fixes.
+   */
   onProgress?: (fraction: number) => void;
   /** Cooperative cancellation: aborting rejects the returned promise with
    * JobCancelledError. If the job is still queued (pool saturated), the

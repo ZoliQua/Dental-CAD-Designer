@@ -89,6 +89,23 @@ describe('WorkerPool — longTask progress', () => {
       { onProgress: (fraction) => fractions.push(fraction) },
     );
 
+    // Why this is deterministic (not a timing assumption): `onProgress` is
+    // Comlink-proxied and delivered over a MessageChannel separate from the
+    // one this `run()` call's own result travels over, so nothing about
+    // postMessage ordering alone would guarantee `fractions` already holds
+    // the final `1` by the time `run()` resolves above. What makes it
+    // deterministic is jobs.ts's `runJob` dispatcher explicitly awaiting
+    // every progress delivery (including this job's last one) before it
+    // lets its own result go out — see runJob's "Progress delivery ordering
+    // contract" doc comment and pool.ts's `RunJobOptions.onProgress` doc for
+    // the guarantee this asserts against. Before that fix, this exact
+    // assertion (`fractions.at(-1)` toBe 1) was observed to flake under
+    // full-suite concurrent load — reproduced empirically by running six
+    // `vitest run --project kernel-workers` processes concurrently, which
+    // surfaced `expected 0.95 to be 1` (the final progress event hadn't
+    // been delivered yet when `run()` resolved) — and passed on every
+    // re-run in isolation, consistent with a cross-channel delivery race
+    // rather than a logic bug in `longTask` itself.
     expect(result.sum).toBe((iterations * (iterations - 1)) / 2);
     expect(fractions.length).toBeGreaterThan(1);
     for (let i = 1; i < fractions.length; i += 1) {
