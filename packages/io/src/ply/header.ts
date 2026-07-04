@@ -52,7 +52,10 @@ import type {
   PlyProperty,
 } from './types.ts';
 
-const HEADER_SEARCH_LIMIT_BYTES = 1_048_576; // 1 MiB — see module doc point 5.
+// 1 MiB — see module doc point 5. Exported so stream.ts's chunked header
+// reader knows how much it may accumulate before a missing "end_header" is
+// a genuine error rather than "not enough of the header has arrived yet".
+export const HEADER_SEARCH_LIMIT_BYTES = 1_048_576;
 const END_HEADER_TOKEN = 'end_header';
 const SUPPORTED_VERSION = '1.0'; // the only version the PLY 1.0 spec defines.
 

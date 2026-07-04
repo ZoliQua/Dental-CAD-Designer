@@ -26,7 +26,7 @@
 // byte-length consistency: a binary file's total length must equal
 // `84 + triangleCount * 50` for the triangleCount declared at offset 80.
 
-import { IoWriteRangeError } from '../types.ts';
+import { IoWriteRangeError, MalformedSyntaxError } from '../types.ts';
 import type { ParseDiagnostics, RawTriangleSoup } from '../types.ts';
 
 export const STL_BINARY_HEADER_BYTES = 80;
@@ -66,6 +66,78 @@ export function binaryStlByteLength(triangleCount: number): number {
 }
 
 /**
+ * Decodes exactly one 50-byte binary STL triangle record (see this file's
+ * module doc for the on-disk layout) starting at `recordStart` in `view`,
+ * writing straight into the caller's preallocated `positions`/`normals`
+ * Float64Arrays at `triangleIndex`. Returns the record's raw "attribute
+ * byte count" field so callers can tally the non-zero-attribute-count
+ * diagnostic themselves (this function has no `ParseDiagnostics` to push
+ * into, and streaming callers need to distinguish "counted so far" from
+ * "final tally" anyway).
+ *
+ * This is the SHARED CORE both `parseBinaryStl` (below, whole-buffer) and
+ * stream.ts's `parseStlStream` (chunked) decode every triangle through —
+ * extracted specifically so the two entry points can never diverge in how
+ * they interpret the 50 record bytes (see stream.ts's module doc for why
+ * "no logic forks" between the in-memory and streaming paths matters).
+ */
+/** Reads one little-endian float32 at `offset` and rejects it if it isn't
+ * finite — IEEE-754 float32 can legally encode ±Infinity/NaN bit patterns,
+ * so a corrupted or adversarial binary STL can genuinely contain them; this
+ * parser refuses to propagate them into `positions`/`normals` silently
+ * (this package's "never return NaN/Infinity coordinates silently"
+ * invariant — found via this task's fuzz suite, see packages/io/fuzz/ and
+ * test-fixtures/fuzz-corpus/). `fieldLabel`/`triangleIndex` are only used
+ * to build the error message on the (rare) failure path. */
+function readFiniteFloat32(
+  view: DataView,
+  offset: number,
+  fieldLabel: string,
+  triangleIndex: number,
+): number {
+  const value = view.getFloat32(offset, true);
+  if (!Number.isFinite(value)) {
+    throw new MalformedSyntaxError(
+      `triangle ${triangleIndex}'s ${fieldLabel} is ${value} at byte offset ${offset} — binary STL ` +
+        'floats must be finite; this parser rejects NaN/Infinity bit patterns rather than propagating ' +
+        'them silently',
+      { byteOffset: offset },
+    );
+  }
+  return value;
+}
+
+export function decodeStlBinaryRecord(
+  view: DataView,
+  recordStart: number,
+  positions: Float64Array,
+  normals: Float64Array,
+  triangleIndex: number,
+): number {
+  const normalBase = triangleIndex * 3;
+  normals[normalBase] = readFiniteFloat32(view, recordStart, 'normal.x', triangleIndex);
+  normals[normalBase + 1] = readFiniteFloat32(view, recordStart + 4, 'normal.y', triangleIndex);
+  normals[normalBase + 2] = readFiniteFloat32(view, recordStart + 8, 'normal.z', triangleIndex);
+
+  const positionBase = triangleIndex * 9;
+  const AXIS_LABELS = ['x', 'y', 'z'] as const;
+  for (let v = 0; v < 3; v++) {
+    const vertexOffset = recordStart + 12 + v * 12;
+    const outBase = positionBase + v * 3;
+    for (let axis = 0; axis < 3; axis++) {
+      positions[outBase + axis] = readFiniteFloat32(
+        view,
+        vertexOffset + axis * 4,
+        `vertex${v}.${AXIS_LABELS[axis]}`,
+        triangleIndex,
+      );
+    }
+  }
+
+  return view.getUint16(recordStart + 48, true);
+}
+
+/**
  * Parses `bytes` as a binary STL, given that the caller (parse.ts) has
  * already established the declared triangle count fits the buffer length
  * (exactly, or with tolerated trailing junk). Reads straight into
@@ -86,22 +158,7 @@ export function parseBinaryStl(
 
   for (let i = 0; i < triangleCount; i++) {
     const recordStart = STL_BINARY_PREAMBLE_BYTES + i * STL_BINARY_RECORD_BYTES;
-
-    const normalBase = i * 3;
-    normals[normalBase] = view.getFloat32(recordStart, true);
-    normals[normalBase + 1] = view.getFloat32(recordStart + 4, true);
-    normals[normalBase + 2] = view.getFloat32(recordStart + 8, true);
-
-    const positionBase = i * 9;
-    for (let v = 0; v < 3; v++) {
-      const vertexOffset = recordStart + 12 + v * 12;
-      const outBase = positionBase + v * 3;
-      positions[outBase] = view.getFloat32(vertexOffset, true);
-      positions[outBase + 1] = view.getFloat32(vertexOffset + 4, true);
-      positions[outBase + 2] = view.getFloat32(vertexOffset + 8, true);
-    }
-
-    const attributeByteCount = view.getUint16(recordStart + 48, true);
+    const attributeByteCount = decodeStlBinaryRecord(view, recordStart, positions, normals, i);
     if (attributeByteCount !== 0) {
       trianglesWithNonzeroAttribute++;
     }

@@ -13,3 +13,8 @@ scans/
 playwright-report/
 test-results/
 coverage/
+# Generated, not committed — regenerated deterministically on demand (see
+# scripts/generate-large-fixture.ts). Perf-only fixtures too large for
+# normal Git/LFS history (the >100 MB fixture docs/plans/
+# phase-1-import-viewer.md's Global Constraints calls out explicitly).
+test-fixtures/generated/

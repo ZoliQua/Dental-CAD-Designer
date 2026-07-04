@@ -8,3 +8,4 @@ export {
   DEFAULT_STL_HEADER_TEXT,
   type WriteStlBinaryOptions,
 } from './binary.ts';
+export { parseStlStream, type ParseStlStreamOptions } from './stream.ts';

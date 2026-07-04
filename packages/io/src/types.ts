@@ -103,6 +103,26 @@ export class MalformedSyntaxError extends IoParseError {
   }
 }
 
+/**
+ * Thrown by `parseStlStream` / `parsePlyStream` (stl/stream.ts, ply/
+ * stream.ts) when the caller-supplied `AbortSignal` fires. Deliberately NOT
+ * an `IoParseError` subclass — cancellation isn't a statement about the
+ * bytes being malformed, so callers that specifically handle parse failures
+ * (`instanceof IoParseError`) shouldn't accidentally also catch this. This
+ * package stays independent of packages/kernel-workers (see the layer rule
+ * in CLAUDE.md — kernel-workers depends on io, never the reverse), so this
+ * is intentionally distinct from kernel-workers' `JobCancelledError`; the
+ * `parseMeshFile` worker job (kernel-workers/src/jobs.ts) translates
+ * between the two at that boundary.
+ */
+export class IoStreamCancelledError extends Error {
+  constructor(message = 'stream parse cancelled') {
+    super(message);
+    this.name = 'IoStreamCancelledError';
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
 /** A *writer*-side counterpart to `IoParseError`: input to a writer (e.g.
  * `writeStlBinary`'s `RawTriangleSoup`) that is structurally valid TS but
  * out of range for the target file format's on-disk layout — e.g. more

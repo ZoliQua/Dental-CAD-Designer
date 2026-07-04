@@ -43,6 +43,15 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      - name: Fuzz suite (packages/io parsers)
+        # Separate vitest project/config (vitest.fuzz.config.ts), excluded
+        # from `npm test` above — seeded, bounded run counts (see
+        # packages/io/fuzz/*.fuzz.test.ts for the exact seeds/counts), so
+        # this is fast and deterministic, not an open-ended fuzzer. Runs
+        # after the main unit tests per this task's brief ("add
+        # npm run test:fuzz (bounded run count) after unit tests").
+        run: npm run test:fuzz
+
       - name: Golden fixture tests
         # Requires the real Git LFS content (checkout above uses lfs: true).
         # If LFS content didn't come down as real binaries, these tests fail

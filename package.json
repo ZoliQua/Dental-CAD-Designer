@@ -20,8 +20,11 @@
     "test": "vitest run",
     "test:kernel": "vitest run --project kernel",
     "test:golden": "vitest run --project golden",
+    "test:fuzz": "vitest run --config vitest.fuzz.config.ts",
     "test:e2e": "playwright test",
-    "fixtures:generate": "tsx scripts/generate-fixtures.ts"
+    "test:perf-large": "npm run fixtures:generate-large && RUN_LARGE_FIXTURE=1 vitest run --project io src/stl/large-fixture.perf.test.ts",
+    "fixtures:generate": "tsx scripts/generate-fixtures.ts",
+    "fixtures:generate-large": "tsx scripts/generate-large-fixture.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.19.0",

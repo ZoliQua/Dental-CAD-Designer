@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { IoWriteRangeError } from '../types.ts';
+import { IoWriteRangeError, MalformedSyntaxError } from '../types.ts';
 import type { RawTriangleSoup } from '../types.ts';
 import {
   DEFAULT_STL_HEADER_TEXT,
@@ -152,3 +152,26 @@ describe('parseBinaryStl (via parseStl): attribute byte count', () => {
     expect(diagnostics.warnings.some((w) => w.includes('attribute byte'))).toBe(true);
   });
 });
+
+describe(
+  'parseBinaryStl (via parseStl): rejects non-finite (Infinity/NaN) float32 bit patterns (found by ' +
+    'this task\'s fuzz suite — IEEE-754 float32 can legally encode ±Infinity/NaN, and the pre-fix ' +
+    'reader stored whatever bit pattern it found without validating it)',
+  () => {
+    it('throws MalformedSyntaxError when a vertex coordinate decodes to +Infinity', () => {
+      const bytes = writeStlBinary(rightTriangleSoup());
+      const view = new DataView(bytes.buffer);
+      // Byte offset of vertex0.x within the (only) 50-byte record: 84
+      // (preamble) + 12 (skip the facet normal) = 96.
+      view.setFloat32(96, Infinity, true);
+      expect(() => parseStl(bytes)).toThrow(MalformedSyntaxError);
+    });
+
+    it('throws MalformedSyntaxError when a facet normal component decodes to NaN', () => {
+      const bytes = writeStlBinary(rightTriangleSoup());
+      const view = new DataView(bytes.buffer);
+      view.setFloat32(84, NaN, true); // facet normal.x, offset 84 (preamble) + 0
+      expect(() => parseStl(bytes)).toThrow(MalformedSyntaxError);
+    });
+  },
+);

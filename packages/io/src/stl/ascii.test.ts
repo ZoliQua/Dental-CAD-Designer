@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MalformedSyntaxError, TruncatedFileError } from '../types.ts';
-import { parseAsciiStl } from './ascii.ts';
+import { looksGrammaticalAsciiStlPrefix, parseAsciiStl } from './ascii.ts';
 
 const ONE_TRIANGLE_ASCII = [
   'solid test-solid',
@@ -162,5 +162,86 @@ describe('parseAsciiStl: error cases', () => {
       'endsolid bad',
     ].join('\n');
     expect(() => parseAsciiStl(text)).toThrow(MalformedSyntaxError);
+  });
+});
+
+describe(
+  'parseAsciiStl: rejects non-finite (Infinity/-Infinity) numeric tokens (found by this task\'s fuzz ' +
+    'suite — Number("Infinity")/Number("-Infinity") both parse successfully in JS and are not NaN, so ' +
+    'the pre-fix check silently stored ±Infinity coordinates)',
+  () => {
+    it('throws MalformedSyntaxError for an "Infinity" vertex coordinate', () => {
+      const text = [
+        'solid t',
+        'facet normal 0 0 1',
+        'outer loop',
+        'vertex Infinity 0 0',
+        'vertex 1 0 0',
+        'vertex 0 1 0',
+        'endloop',
+        'endfacet',
+        'endsolid t',
+      ].join('\n');
+      expect(() => parseAsciiStl(text)).toThrow(MalformedSyntaxError);
+    });
+
+    it('throws MalformedSyntaxError for a "-Infinity" facet normal component', () => {
+      const text = [
+        'solid t',
+        'facet normal 0 0 -Infinity',
+        'outer loop',
+        'vertex 0 0 0',
+        'vertex 1 0 0',
+        'vertex 0 1 0',
+        'endloop',
+        'endfacet',
+        'endsolid t',
+      ].join('\n');
+      expect(() => parseAsciiStl(text)).toThrow(MalformedSyntaxError);
+    });
+  },
+);
+
+describe('looksGrammaticalAsciiStlPrefix: bounded fail-fast check (carry-over review item A)', () => {
+  it('returns true for a genuine (small) ASCII STL', () => {
+    expect(looksGrammaticalAsciiStlPrefix(new TextEncoder().encode(ONE_TRIANGLE_ASCII))).toBe(true);
+  });
+
+  it(
+    'returns true (inconclusive) when the prefix bound cuts a genuinely-ASCII file mid-token, instead ' +
+      'of false-rejecting it — the possibly-cut-off trailing line is dropped before validating',
+    () => {
+      const bytes = new TextEncoder().encode(ONE_TRIANGLE_ASCII);
+      // Cut mid-way through a "vertex" line, well before the file's real
+      // end — `maxPrefixBytes` forces the bound rather than relying on
+      // ASCII_GRAMMAR_PREFIX_CHECK_BYTES's much larger default.
+      const cutPoint = ONE_TRIANGLE_ASCII.indexOf('vertex 1 0 0') + 6; // "vertex" without its args
+      expect(looksGrammaticalAsciiStlPrefix(bytes, cutPoint)).toBe(true);
+    },
+  );
+
+  it(
+    'returns false for content whose first line starts with "solid" but whose SECOND line is binary ' +
+      'garbage that cannot match any STL grammar production — the large-binary-file fast-fail case this ' +
+      'exists for (see parse.ts); a real binary file\'s triangle-record bytes reliably produce an early ' +
+      'non-grammatical "line" like this once split on incidental 0x0A/0x0D bytes',
+    () => {
+      const header = new TextEncoder().encode('solid this-is-actually-binary\n');
+      // Deterministic non-whitespace control bytes — `String.trim()` only
+      // strips whitespace/line-terminator code points, so this decodes to a
+      // non-blank "line" that matches none of the ASCII STL grammar's
+      // keyword regexes (nothing starts with "facet"/"endsolid").
+      const garbageLine = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
+      const bytes = new Uint8Array(header.byteLength + garbageLine.byteLength);
+      bytes.set(header, 0);
+      bytes.set(garbageLine, header.byteLength);
+
+      expect(looksGrammaticalAsciiStlPrefix(bytes)).toBe(false);
+    },
+  );
+
+  it('returns false for content that plainly does not start with "solid" grammar at all', () => {
+    const bytes = new TextEncoder().encode('not-a-keyword\nnot-a-keyword-either\n');
+    expect(looksGrammaticalAsciiStlPrefix(bytes)).toBe(false);
   });
 });

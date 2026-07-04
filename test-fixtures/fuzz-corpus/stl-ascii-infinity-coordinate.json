@@ -1,0 +1,8 @@
+{
+  "parser": "stl",
+  "expected": {
+    "kind": "throws",
+    "errorClassName": "MalformedSyntaxError"
+  },
+  "note": "Task 3 mutation-fuzz-motivated finding: Number(\"Infinity\") parses successfully in JS and is not NaN, so the pre-fix ASCII STL reader silently stored +Infinity as a vertex coordinate instead of rejecting it. Fixed in stl/ascii.ts parseFloatToken (Number.isNaN -> !Number.isFinite)."
+}

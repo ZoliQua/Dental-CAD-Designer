@@ -1,0 +1,8 @@
+{
+  "parser": "stl",
+  "expected": {
+    "kind": "throws",
+    "errorClassName": "MalformedSyntaxError"
+  },
+  "note": "Task 3 mutation-fuzz-motivated finding: a float32 bit pattern that decodes to +Infinity was read straight into positions[] without validation. Fixed in stl/binary.ts via the new readFiniteFloat32 helper used by decodeStlBinaryRecord."
+}

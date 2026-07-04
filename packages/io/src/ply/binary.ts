@@ -24,6 +24,7 @@
 import { IoWriteRangeError, TruncatedFileError, MalformedSyntaxError } from '../types.ts';
 import type { ParseDiagnostics } from '../types.ts';
 import { GrowableUint32Array } from './growable-uint32-array.ts';
+import { assertPlausibleElementCount } from './element-count-guard.ts';
 import { plyColorNormalizationDivisor, plyScalarByteSize, readPlyScalar, writePlyScalar } from './scalars.ts';
 import type { PlyScalarType } from './scalars.ts';
 import type { FacePlan, PlyPlan, VertexPlan } from './plan.ts';
@@ -32,7 +33,7 @@ import type { PlyElementSpec, PlyHeader, PlyMesh } from './types.ts';
 /** Mutable read cursor shared across the helper functions below — a plain
  * object (rather than a closure-captured `let`) so `requireBytes` and the
  * per-element readers can all advance the same position by reference. */
-interface ByteCursor {
+export interface ByteCursor {
   pos: number;
 }
 
@@ -82,6 +83,98 @@ function skipListField(
   cursor.pos += need;
 }
 
+/**
+ * Decodes exactly ONE vertex row (all of `element`'s properties, in header
+ * order) from `cursor.pos` onward, writing into `positions`/`normals`/
+ * `colors` at row index `v`. This is the SHARED CORE both `readVertexElement`
+ * (below, whole-buffer loop) and stream.ts's chunked reader decode every
+ * vertex row through — extracted specifically so the two entry points can
+ * never diverge in how they interpret a row's bytes (see stream.ts's module
+ * doc for why "no logic forks" between the in-memory and streaming paths
+ * matters). Throws (via `requireBytes`/`skipListField`) if `bytes` doesn't
+ * hold this row's full width — the streaming reader relies on exactly that
+ * to detect "need more chunk data" vs "genuine truncation" (see
+ * stream.ts's `readRowWithRetry`).
+ */
+export function readVertexRow(
+  bytes: Uint8Array,
+  view: DataView,
+  cursor: ByteCursor,
+  element: PlyElementSpec,
+  plan: VertexPlan,
+  littleEndian: boolean,
+  v: number,
+  positions: Float64Array,
+  normals: Float64Array | null,
+  colors: Float64Array | null,
+): void {
+  for (let p = 0; p < element.properties.length; p++) {
+    const prop = element.properties[p]!;
+    const role = plan.roleByPropertyIndex[p]!;
+    const context = `vertex[${v}].${prop.name}`;
+
+    if (prop.kind === 'list') {
+      // A list property on the vertex element is unusual but legal per
+      // spec (e.g. a per-vertex list of adjacent-face indices) — no role
+      // supports it, so it's always skipped.
+      skipListField(bytes, view, cursor, prop.countType, prop.itemType, littleEndian, context);
+      continue;
+    }
+
+    const fieldStart = cursor.pos;
+    const value = readScalarAdvance(bytes, view, cursor, prop.scalarType, littleEndian, context);
+    if (role === null) {
+      continue;
+    }
+    // Scoped to roles this parser actually STORES — deliberately NOT
+    // applied to skipped/unrecognized properties (see ascii.ts's identical
+    // scoping for the reasoning). Binary float32/float64 CAN legally
+    // encode ±Infinity/NaN bit patterns (unlike PLY's other six scalar
+    // types, which are integers and physically can't), so a corrupted or
+    // adversarial file can genuinely carry one straight into a stored
+    // coordinate/normal/color — this package's "never return NaN/Infinity
+    // coordinates silently" invariant (found via this task's fuzz suite,
+    // see packages/io/fuzz/ and test-fixtures/fuzz-corpus/).
+    if (!Number.isFinite(value)) {
+      throw new MalformedSyntaxError(
+        `${context} is ${value} — this parser rejects non-finite (NaN/Infinity) coordinate/normal/color ` +
+          'values rather than propagating them silently',
+        { byteOffset: fieldStart },
+      );
+    }
+    const base = v * 3;
+    switch (role) {
+      case 'x':
+        positions[base] = value;
+        break;
+      case 'y':
+        positions[base + 1] = value;
+        break;
+      case 'z':
+        positions[base + 2] = value;
+        break;
+      case 'nx':
+        normals![base] = value;
+        break;
+      case 'ny':
+        normals![base + 1] = value;
+        break;
+      case 'nz':
+        normals![base + 2] = value;
+        break;
+      case 'red':
+        colors![base] = value / plyColorNormalizationDivisor(prop.scalarType);
+        break;
+      case 'green':
+        colors![base + 1] = value / plyColorNormalizationDivisor(prop.scalarType);
+        break;
+      case 'blue':
+        colors![base + 2] = value / plyColorNormalizationDivisor(prop.scalarType);
+        break;
+    }
+  }
+}
+
 function readVertexElement(
   bytes: Uint8Array,
   view: DataView,
@@ -91,59 +184,13 @@ function readVertexElement(
   littleEndian: boolean,
 ): { positions: Float64Array; normals: Float64Array | null; colors: Float64Array | null } {
   const vertexCount = element.count;
+  assertPlausibleElementCount(element.name, vertexCount);
   const positions = new Float64Array(vertexCount * 3);
   const normals = plan.hasNormals ? new Float64Array(vertexCount * 3) : null;
   const colors = plan.hasColors ? new Float64Array(vertexCount * 3) : null;
 
   for (let v = 0; v < vertexCount; v++) {
-    for (let p = 0; p < element.properties.length; p++) {
-      const prop = element.properties[p]!;
-      const role = plan.roleByPropertyIndex[p]!;
-      const context = `vertex[${v}].${prop.name}`;
-
-      if (prop.kind === 'list') {
-        // A list property on the vertex element is unusual but legal per
-        // spec (e.g. a per-vertex list of adjacent-face indices) — no role
-        // supports it, so it's always skipped.
-        skipListField(bytes, view, cursor, prop.countType, prop.itemType, littleEndian, context);
-        continue;
-      }
-
-      const value = readScalarAdvance(bytes, view, cursor, prop.scalarType, littleEndian, context);
-      if (role === null) {
-        continue;
-      }
-      const base = v * 3;
-      switch (role) {
-        case 'x':
-          positions[base] = value;
-          break;
-        case 'y':
-          positions[base + 1] = value;
-          break;
-        case 'z':
-          positions[base + 2] = value;
-          break;
-        case 'nx':
-          normals![base] = value;
-          break;
-        case 'ny':
-          normals![base + 1] = value;
-          break;
-        case 'nz':
-          normals![base + 2] = value;
-          break;
-        case 'red':
-          colors![base] = value / plyColorNormalizationDivisor(prop.scalarType);
-          break;
-        case 'green':
-          colors![base + 1] = value / plyColorNormalizationDivisor(prop.scalarType);
-          break;
-        case 'blue':
-          colors![base + 2] = value / plyColorNormalizationDivisor(prop.scalarType);
-          break;
-      }
-    }
+    readVertexRow(bytes, view, cursor, element, plan, littleEndian, v, positions, normals, colors);
   }
 
   return { positions, normals, colors };
@@ -203,6 +250,68 @@ function readAndFanTriangulateFace(
   return n;
 }
 
+/**
+ * Decodes exactly ONE face row (all of `element`'s properties, in header
+ * order) from `cursor.pos` onward, fan-triangulating the vertex-index list
+ * property into `indices` and returning that face's raw vertex count (for
+ * the caller's quad/n-gon diagnostics tally). SHARED CORE — see
+ * `readVertexRow`'s doc comment; same rationale, same contract.
+ */
+export function readFaceRow(
+  bytes: Uint8Array,
+  view: DataView,
+  cursor: ByteCursor,
+  element: PlyElementSpec,
+  plan: FacePlan,
+  littleEndian: boolean,
+  f: number,
+  vertexCount: number,
+  indices: GrowableUint32Array,
+): number {
+  let n = 0;
+  for (let p = 0; p < element.properties.length; p++) {
+    const prop = element.properties[p]!;
+    if (p === plan.indicesPropertyIndex) {
+      // plan.ts only ever sets indicesPropertyIndex to a list property's
+      // index (see planFaceElement) — this narrows the union for TS.
+      if (prop.kind !== 'list') {
+        throw new MalformedSyntaxError(
+          `internal: face element's planned vertex-index property "${prop.name}" is not a list property`,
+        );
+      }
+      n = readAndFanTriangulateFace(
+        bytes,
+        view,
+        cursor,
+        prop.countType,
+        prop.itemType,
+        littleEndian,
+        f,
+        vertexCount,
+        indices,
+      );
+      continue;
+    }
+    // Any other property on the face row (e.g. a texcoord list, or a
+    // per-face scalar flag) — skipped via the same count-driven
+    // mechanic as skipListField, generalized to scalars too.
+    if (prop.kind === 'list') {
+      skipListField(
+        bytes,
+        view,
+        cursor,
+        prop.countType,
+        prop.itemType,
+        littleEndian,
+        `face[${f}].${prop.name}`,
+      );
+    } else {
+      readScalarAdvance(bytes, view, cursor, prop.scalarType, littleEndian, `face[${f}].${prop.name}`);
+    }
+  }
+  return n;
+}
+
 function readFaceElement(
   bytes: Uint8Array,
   view: DataView,
@@ -214,55 +323,17 @@ function readFaceElement(
   diagnostics: ParseDiagnostics,
 ): Uint32Array {
   const faceCount = element.count;
+  assertPlausibleElementCount(element.name, faceCount);
   const indices = new GrowableUint32Array(faceCount * 3);
   let quadCount = 0;
   let ngonCount = 0;
 
   for (let f = 0; f < faceCount; f++) {
-    for (let p = 0; p < element.properties.length; p++) {
-      const prop = element.properties[p]!;
-      if (p === plan.indicesPropertyIndex) {
-        // plan.ts only ever sets indicesPropertyIndex to a list property's
-        // index (see planFaceElement) — this narrows the union for TS.
-        if (prop.kind !== 'list') {
-          throw new MalformedSyntaxError(
-            `internal: face element's planned vertex-index property "${prop.name}" is not a list property`,
-          );
-        }
-        const n = readAndFanTriangulateFace(
-          bytes,
-          view,
-          cursor,
-          prop.countType,
-          prop.itemType,
-          littleEndian,
-          f,
-          vertexCount,
-          indices,
-        );
-        if (n === 4) {
-          quadCount++;
-        } else if (n > 4) {
-          ngonCount++;
-        }
-        continue;
-      }
-      // Any other property on the face row (e.g. a texcoord list, or a
-      // per-face scalar flag) — skipped via the same count-driven
-      // mechanic as skipListField, generalized to scalars too.
-      if (prop.kind === 'list') {
-        skipListField(
-          bytes,
-          view,
-          cursor,
-          prop.countType,
-          prop.itemType,
-          littleEndian,
-          `face[${f}].${prop.name}`,
-        );
-      } else {
-        readScalarAdvance(bytes, view, cursor, prop.scalarType, littleEndian, `face[${f}].${prop.name}`);
-      }
+    const n = readFaceRow(bytes, view, cursor, element, plan, littleEndian, f, vertexCount, indices);
+    if (n === 4) {
+      quadCount++;
+    } else if (n > 4) {
+      ngonCount++;
     }
   }
 
@@ -280,6 +351,28 @@ function readFaceElement(
   return indices.toArray();
 }
 
+/** Skips exactly ONE row of `element` (every property, discarding values)
+ * — SHARED CORE reused by both `skipElement` (whole-buffer loop) and
+ * stream.ts's chunked reader for elements this parser doesn't read into
+ * `PlyMesh` (anything other than the vertex/face elements). */
+export function skipRow(
+  bytes: Uint8Array,
+  view: DataView,
+  cursor: ByteCursor,
+  element: PlyElementSpec,
+  littleEndian: boolean,
+  r: number,
+): void {
+  for (const prop of element.properties) {
+    const context = `${element.name}[${r}].${prop.name}`;
+    if (prop.kind === 'list') {
+      skipListField(bytes, view, cursor, prop.countType, prop.itemType, littleEndian, context);
+    } else {
+      readScalarAdvance(bytes, view, cursor, prop.scalarType, littleEndian, context);
+    }
+  }
+}
+
 function skipElement(
   bytes: Uint8Array,
   view: DataView,
@@ -288,14 +381,7 @@ function skipElement(
   littleEndian: boolean,
 ): void {
   for (let r = 0; r < element.count; r++) {
-    for (const prop of element.properties) {
-      const context = `${element.name}[${r}].${prop.name}`;
-      if (prop.kind === 'list') {
-        skipListField(bytes, view, cursor, prop.countType, prop.itemType, littleEndian, context);
-      } else {
-        readScalarAdvance(bytes, view, cursor, prop.scalarType, littleEndian, context);
-      }
-    }
+    skipRow(bytes, view, cursor, element, littleEndian, r);
   }
 }
 

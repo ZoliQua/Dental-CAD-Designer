@@ -19,5 +19,9 @@ export {
   type LongTaskResult,
   type ManifoldSmokePayload,
   type ManifoldSmokeResult,
+  type ParseMeshFilePayload,
+  type ParseMeshFileResult,
+  type StlSoupResult,
+  type PlyMeshResult,
 } from './jobs.js';
 export { meshBuffers, type MeshBuffersPayload, type MeshBuffersResult } from './transfer.js';

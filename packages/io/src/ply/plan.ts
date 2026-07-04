@@ -66,6 +66,48 @@ function findElementIndex(header: PlyHeader, name: string): number {
   return header.elements.findIndex((e) => e.name === name);
 }
 
+/**
+ * Flags an element that declares the same property name more than once —
+ * a malformed-but-real-world exporter quirk, not something the PLY spec
+ * explicitly forbids in writing, but also not something a from-spec reader
+ * has any principled way to disambiguate: every downstream role lookup in
+ * this file (`planVertexElement`'s `candidateByName`, `planFaceElement`'s
+ * `vertex_indices` search) resolves purely by NAME, so two same-named
+ * properties on one element both resolve to the same role, and whichever
+ * occurrence a row reader (ascii.ts/binary.ts) decodes LAST silently
+ * overwrites the value(s) decoded from the earlier occurrence(s) of that
+ * name — every occurrence is still read (the reader must consume its bytes/
+ * tokens to stay positioned correctly for the rest of the row), only the
+ * last one's value survives into the output.
+ *
+ * Chosen as a WARNING, not a rejection: unlike a missing x/y/z or a missing
+ * vertex-index list property (planVertexElement/planFaceElement, both of
+ * which throw — the file is genuinely unreadable without them), a
+ * duplicated property name still has a well-defined, deterministic
+ * (header-order-driven, not data-dependent) reading — just a surprising
+ * one — so rejecting it outright would refuse to load real files that are
+ * otherwise perfectly readable over what is almost always a redundant or
+ * accidental exporter duplicate, not a corrupt file.
+ */
+function warnOnDuplicatePropertyNames(element: PlyElementSpec, diagnostics: ParseDiagnostics): void {
+  const countByName = new Map<string, number>();
+  for (const prop of element.properties) {
+    countByName.set(prop.name, (countByName.get(prop.name) ?? 0) + 1);
+  }
+  const duplicates = [...countByName.entries()].filter(([, count]) => count > 1);
+  if (duplicates.length === 0) {
+    return;
+  }
+  const summary = duplicates.map(([name, count]) => `"${name}" x${count}`).join(', ');
+  diagnostics.warnings.push(
+    `element "${element.name}": propert${duplicates.length === 1 ? 'y is' : 'ies are'} declared more ` +
+      `than once (${summary}) — for any duplicated name that resolves to a role this parser reads ` +
+      '(x/y/z, nx/ny/nz, red/green/blue, or the face vertex-index list), only the LAST occurrence in ' +
+      'header order is kept; values from earlier occurrence(s) of that name are read (to stay ' +
+      "correctly positioned within the row) but then overwritten and discarded.",
+  );
+}
+
 /** Resolves the vertex element's properties to roles, applying the
  * all-or-nothing rule for the (nx, ny, nz) and (red, green, blue) groups:
  * a group is only wired up if every one of its members is present as a
@@ -170,6 +212,14 @@ function faceExtraPropertyNames(element: PlyElementSpec, indicesPropertyIndex: n
  * has, and so the warning fires even for a 0-row element.
  */
 export function planPlyHeader(header: PlyHeader, diagnostics: ParseDiagnostics): PlyPlan {
+  // Checked for every element (vertex, face, and any skipped/unrecognized
+  // one) before the vertex/face-specific planning below — a duplicate is a
+  // property-list-shape problem, independent of whether this parser even
+  // reads that element's values.
+  for (const element of header.elements) {
+    warnOnDuplicatePropertyNames(element, diagnostics);
+  }
+
   const vertexIndex = findElementIndex(header, 'vertex');
   if (vertexIndex === -1) {
     throw new MalformedSyntaxError(

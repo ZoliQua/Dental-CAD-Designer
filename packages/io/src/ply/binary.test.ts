@@ -477,6 +477,42 @@ describe('writePlyBinaryLE: validation', () => {
   });
 });
 
+describe(
+  'parsePly (binary): rejects non-finite (Infinity/NaN) values in CONSUMED roles, but tolerates them ' +
+    'in unrecognized/skipped properties (found by this task\'s fuzz suite — see ply/ascii.test.ts\'s ' +
+    'identical regression for the ASCII-side finding; binary float32/float64 can legally encode ' +
+    '±Infinity/NaN bit patterns too)',
+  () => {
+    it('throws MalformedSyntaxError when a vertex x coordinate decodes to +Infinity', () => {
+      const header =
+        'ply\nformat binary_little_endian 1.0\nelement vertex 1\nproperty float x\nproperty float y\n' +
+        'property float z\nend_header\n';
+      const bytes = new BinaryPlyBuilder(true).f32(Infinity).f32(0).f32(0).toBytes(header);
+      expect(() => parsePly(bytes)).toThrow(MalformedSyntaxError);
+    });
+
+    it('throws MalformedSyntaxError when a normal component decodes to NaN (float64 property)', () => {
+      const header =
+        'ply\nformat binary_little_endian 1.0\nelement vertex 1\nproperty float64 x\n' +
+        'property float64 y\nproperty float64 z\nproperty float64 nx\nproperty float64 ny\n' +
+        'property float64 nz\nend_header\n';
+      const bytes = new BinaryPlyBuilder(true)
+        .f64(0).f64(0).f64(0).f64(NaN).f64(0).f64(1)
+        .toBytes(header);
+      expect(() => parsePly(bytes)).toThrow(MalformedSyntaxError);
+    });
+
+    it('tolerates +Infinity in an unrecognized (skipped) scalar property', () => {
+      const header =
+        'ply\nformat binary_little_endian 1.0\nelement vertex 1\nproperty float x\nproperty float y\n' +
+        'property float z\nproperty float confidence\nend_header\n';
+      const bytes = new BinaryPlyBuilder(true).f32(0).f32(0).f32(0).f32(Infinity).toBytes(header);
+      const mesh = parsePly(bytes);
+      expect(Array.from(mesh.positions)).toEqual([0, 0, 0]);
+    });
+  },
+);
+
 describe('sanitizePlyComment', () => {
   it('replaces embedded newlines with a space and trims', () => {
     expect(sanitizePlyComment('a\nb\r\nc')).toBe('a b  c');

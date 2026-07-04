@@ -5,21 +5,31 @@
 // — packages/io is node-worker-reachable starting Phase 1.
 
 export type { RawTriangleSoup, ParseFormat, ParseDiagnostics, ParseErrorContext } from './types.ts';
-export { IoParseError, TruncatedFileError, MalformedSyntaxError, IoWriteRangeError } from './types.ts';
+export {
+  IoParseError,
+  TruncatedFileError,
+  MalformedSyntaxError,
+  IoWriteRangeError,
+  IoStreamCancelledError,
+} from './types.ts';
+export { iterateInFixedChunks } from './stream/chunk-iterables.ts';
 
 export {
   parseStl,
+  parseStlStream,
   writeStlBinary,
   binaryStlByteLength,
   assertWriteableTriangleCount,
   STL_BINARY_MAX_TRIANGLE_COUNT,
   DEFAULT_STL_HEADER_TEXT,
   type ParseStlResult,
+  type ParseStlStreamOptions,
   type WriteStlBinaryOptions,
 } from './stl/index.ts';
 
 export {
   parsePly,
+  parsePlyStream,
   writePlyBinaryLE,
   sanitizePlyComment,
   DEFAULT_PLY_COMMENT,
@@ -27,6 +37,7 @@ export {
   type WritablePlyMesh,
   type WritePlyBinaryOptions,
   type ParsePlyHeaderResult,
+  type ParsePlyStreamOptions,
   type PlyMesh,
   type PlyHeader,
   type PlyHeaderComment,

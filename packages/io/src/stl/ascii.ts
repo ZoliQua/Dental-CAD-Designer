@@ -37,7 +37,7 @@ interface Line {
   readonly trimmed: string;
 }
 
-function splitLines(text: string): readonly Line[] {
+export function splitLines(text: string): readonly Line[] {
   return text.split(/\r\n|\r|\n/).map((raw, index) => ({ number: index + 1, trimmed: raw.trim() }));
 }
 
@@ -51,9 +51,19 @@ function nextMeaningfulIndex(lines: readonly Line[], from: number): number {
 
 function parseFloatToken(token: string, line: Line, fieldLabel: string): number {
   const value = Number(token);
-  if (token.length === 0 || Number.isNaN(value)) {
+  // `!Number.isFinite` (not just `Number.isNaN`) is deliberate: every
+  // numeric token in STL's ASCII grammar feeds directly into a stored
+  // coordinate/normal (there is no "unrecognized, skipped" concept in this
+  // format, unlike PLY's optional properties), so `Number("Infinity")` /
+  // `Number("-Infinity")` — both of which parse successfully in plain JS,
+  // and are NOT caught by `Number.isNaN` — must be rejected here too, not
+  // just literal "NaN"/empty/non-numeric tokens. Silently storing ±Infinity
+  // into `positions`/`normals` would violate this package's "never return
+  // NaN/Infinity coordinates silently" invariant (found via this task's
+  // fuzz suite — see packages/io/fuzz/ and test-fixtures/fuzz-corpus/).
+  if (token.length === 0 || !Number.isFinite(value)) {
     throw new MalformedSyntaxError(
-      `invalid ${fieldLabel} value "${token}" on line ${line.number}: expected a number`,
+      `invalid ${fieldLabel} value "${token}" on line ${line.number}: expected a finite number`,
       { line: line.number },
     );
   }
@@ -105,8 +115,13 @@ function parseVec3FromMatch(match: RegExpExecArray, line: Line, fieldLabel: stri
 
 /** Validates the full ASCII grammar and returns the triangle count.
  * `sink`, when given, is invoked once per triangle with its parsed
- * normal/vertices (see the module doc for why this is a two-pass design). */
-function walkAsciiStl(lines: readonly Line[], sink?: TriangleSink): number {
+ * normal/vertices (see the module doc for why this is a two-pass design).
+ * Exported (in addition to `parseAsciiStl`) so parse.ts's bounded prefix
+ * check (`looksGrammaticalAsciiStlPrefix` below) can reuse this exact
+ * grammar walk against a deliberately truncated line array — see that
+ * function's doc for why a `TruncatedFileError` from a bounded prefix is
+ * inconclusive rather than a real rejection. */
+export function walkAsciiStl(lines: readonly Line[], sink?: TriangleSink): number {
   const firstIndex = nextMeaningfulIndex(lines, 0);
   if (firstIndex >= lines.length) {
     throw new TruncatedFileError('empty ASCII STL: no "solid" line found', { line: 1 });
@@ -217,4 +232,69 @@ export function parseAsciiStl(text: string): RawTriangleSoup {
   });
 
   return { positions, normals, triangleCount };
+}
+
+/** How many leading bytes `looksGrammaticalAsciiStlPrefix` decodes and
+ * grammar-checks — generous enough to cover a real file's opening lines
+ * (header + several facets) many times over, small enough to bound the
+ * cost of the check itself for a multi-hundred-MB file. */
+export const ASCII_GRAMMAR_PREFIX_CHECK_BYTES = 64 * 1024; // 64 KiB
+
+/**
+ * Bounded, fail-fast ASCII-grammar sanity check used by parse.ts before it
+ * commits to a FULL `TextDecoder.decode` + `parseAsciiStl` attempt on an
+ * ambiguous (length-consistent-with-both-binary-and-ASCII) file — see
+ * parse.ts's module doc. Without this, a large binary STL whose 80-byte
+ * header happens to start with "solid" (legal per the format — see
+ * binary.ts's module doc) pays a full decode + two-pass grammar walk of the
+ * ENTIRE file before that attempt predictably fails and falls back to the
+ * binary interpretation; for a >100 MB file that's a real, avoidable cost
+ * on every load.
+ *
+ * Only decodes/walks the first `maxPrefixBytes` bytes (default
+ * `ASCII_GRAMMAR_PREFIX_CHECK_BYTES`) — a real binary file's bytes
+ * essentially always diverge from the ASCII grammar within the first few
+ * KB (float-encoded geometry data forms "lines", split on incidental 0x0A/
+ * 0x0D bytes, that essentially never happen to also read as valid "facet
+ * normal ..." / "vertex ..." tokens), so this bounds the check's cost
+ * independent of file size while still reliably rejecting non-ASCII
+ * content early.
+ *
+ * If the prefix was truncated mid-file (`maxPrefixBytes < bytes.byteLength`),
+ * the LAST decoded line is dropped before validating — it may be a real
+ * line cut off mid-token by the byte bound, and validating a partial token
+ * would produce a false rejection of genuinely-ASCII content. Whatever
+ * remains is walked with the exact same grammar (`walkAsciiStl`, in its
+ * counting/no-sink mode) used by the real parse:
+ *   - a `TruncatedFileError` (ran out of the lines we deliberately gave it)
+ *     is INCONCLUSIVE by construction — this function only ever saw a
+ *     slice, so "ran out" proves nothing about the rest of the file —  and
+ *     returns `true` (proceed to the real, unbounded attempt).
+ *   - a `MalformedSyntaxError` (content that doesn't match the grammar at
+ *     all, within bytes we were confident were complete lines) is a
+ *     DEFINITIVE rejection and returns `false`.
+ */
+export function looksGrammaticalAsciiStlPrefix(
+  bytes: Uint8Array,
+  maxPrefixBytes: number = ASCII_GRAMMAR_PREFIX_CHECK_BYTES,
+): boolean {
+  const limit = Math.min(bytes.byteLength, maxPrefixBytes);
+  const truncatedMidFile = limit < bytes.byteLength;
+  const prefixText = new TextDecoder('utf-8', { fatal: false }).decode(bytes.subarray(0, limit));
+  let lines = splitLines(prefixText);
+  if (truncatedMidFile && lines.length > 0) {
+    lines = lines.slice(0, -1); // drop the possibly-cut-off trailing partial line
+  }
+  try {
+    walkAsciiStl(lines);
+    return true;
+  } catch (error) {
+    if (error instanceof TruncatedFileError) {
+      return true;
+    }
+    if (error instanceof MalformedSyntaxError) {
+      return false;
+    }
+    throw error;
+  }
 }

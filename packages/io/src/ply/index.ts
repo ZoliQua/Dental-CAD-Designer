@@ -8,6 +8,7 @@ export {
   type WritePlyBinaryOptions,
 } from './binary.ts';
 export { parsePlyHeader, type ParsePlyHeaderResult } from './header.ts';
+export { parsePlyStream, type ParsePlyStreamOptions } from './stream.ts';
 export type {
   PlyMesh,
   PlyHeader,

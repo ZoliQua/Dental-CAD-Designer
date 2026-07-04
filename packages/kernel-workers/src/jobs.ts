@@ -19,6 +19,17 @@ import { transferablesOf } from './transfer.ts';
 // is an allowed dependency direction (see eslint.config.js's boundaries
 // policy).
 import { union, volume, type IndexedMesh } from '@dqcad/kernel';
+// kernel-workers -> io is also an allowed dependency direction (see
+// eslint.config.js's boundaries policy) — packages/io became
+// node-worker-reachable starting Phase 1 (see its own module docs' "Import
+// extension convention" note) specifically so a job like `parseMeshFile`
+// below could run STL/PLY parsing off the main/UI thread.
+import {
+  iterateInFixedChunks,
+  parsePlyStream,
+  parseStlStream,
+  type ParseFormat,
+} from '@dqcad/io';
 
 /** Context passed to a job handler for progress reporting and cooperative
  * cancellation. Both members are plain functions on the worker side; the
@@ -81,16 +92,154 @@ export interface ManifoldSmokeResult {
   expected: number;
 }
 
+/**
+ * `parseMeshFile`: parses an STL or PLY file's raw bytes off the UI thread,
+ * via packages/io's CHUNKED streaming parsers (`parseStlStream`/
+ * `parsePlyStream`) rather than their whole-buffer `parseStl`/`parsePly`
+ * entry points — so this job actually exercises the streaming, O(chunk)-
+ * scanning-memory core (Task 3's chunked-parsing requirement), not just
+ * "the parser, running in a worker".
+ *
+ * The payload still arrives as ONE transferable `Uint8Array` (matching
+ * this file's existing `echoMesh`/`meshBuffers` convention, and how a
+ * caller that already read a whole file into memory — e.g. via a
+ * browser `File.arrayBuffer()`, or this package's own perf test reading a
+ * fixture off disk — naturally has the bytes) rather than the caller
+ * itself producing a chunk-by-chunk stream across the Comlink boundary
+ * (which would mean one Comlink round trip per chunk — far more
+ * expensive than the single structured-clone-avoiding transfer this does
+ * instead). Inside the worker, `chunkStream()` below RE-SLICES that single
+ * buffer into `chunkBytes`-sized pieces and feeds THOSE to
+ * `parseStlStream`/`parsePlyStream` as a real `AsyncIterable<Uint8Array>`
+ * — so peak ADDITIONAL memory during parsing is still bounded to O(chunk),
+ * and progress/cancellation are checked at real chunk boundaries, exactly
+ * as they would be for a genuine multi-message stream. This is a
+ * deliberate, documented transport-vs-parsing-memory distinction: the
+ * payload transport is O(file) (one buffer in, one buffer out — the same
+ * as every other job in this registry), but the PARSING itself never
+ * holds more than one buffer's worth of scratch state beyond the input/
+ * output buffers already present.
+ */
+export interface ParseMeshFilePayload {
+  format: 'stl' | 'ply';
+  bytes: Uint8Array;
+  /** Re-chunking size fed to the streaming core — defaults to 1 MiB (see
+   * `DEFAULT_CHUNK_BYTES` below), matching stl/stream.ts's own internal
+   * binary batch size. */
+  chunkBytes?: number;
+}
+
+/** STL's `parseStlStream` always yields an unindexed triangle soup (see
+ * packages/io's `RawTriangleSoup` doc) — `indices`/`vertexCount`/
+ * `faceCount` have no meaning for this format, so this is a distinct
+ * result shape from `PlyMeshResult` rather than a lossy shared one. */
+export interface StlSoupResult {
+  kind: 'stl-soup';
+  positions: Float64Array;
+  normals: Float64Array | null;
+  triangleCount: number;
+  format: ParseFormat;
+  warnings: readonly string[];
+}
+
+/** PLY's `parsePlyStream` always yields an indexed mesh (see packages/io's
+ * `PlyMesh` doc) — `indices` is always present (possibly empty, for a
+ * point-cloud PLY with no face element). */
+export interface PlyMeshResult {
+  kind: 'ply-mesh';
+  positions: Float64Array;
+  normals: Float64Array | null;
+  colors: Float64Array | null;
+  indices: Uint32Array;
+  vertexCount: number;
+  faceCount: number;
+  format: ParseFormat;
+  warnings: readonly string[];
+}
+
+export type ParseMeshFileResult = StlSoupResult | PlyMeshResult;
+
+const DEFAULT_CHUNK_BYTES = 1 << 20; // 1 MiB — see ParseMeshFilePayload's doc.
+
+/** Re-slices `bytes` into `chunkBytes`-sized `AsyncIterable<Uint8Array>`
+ * chunks (zero-copy `subarray` views — see packages/io's
+ * `iterateInFixedChunks`), checking `ctx.cancelled()` once per chunk (this
+ * job's "between chunks" cancellation granularity). On cancellation this
+ * THROWS `JobCancelledError` (rather than merely ending the iteration) —
+ * `parseStlStream`/`parsePlyStream` (packages/io) just `await` on pulling
+ * their next chunk internally, so a rejection here propagates straight out
+ * as the streaming call's own rejection, WITH THE RIGHT ERROR TYPE already
+ * (`JobCancelledError`, recognized by name in pool.ts's
+ * `isJobCancelledError`) — deliberately not routed through packages/io's
+ * own `AbortSignal`/`IoStreamCancelledError` mechanism, which exists for io
+ * callers that have no kernel-workers `JobCancelledError` to reach for (io
+ * has no dependency on kernel-workers — see the layer rule in CLAUDE.md).
+ */
+async function* chunkStream(
+  bytes: Uint8Array,
+  chunkBytes: number,
+  ctx: JobContext,
+): AsyncGenerator<Uint8Array, void, void> {
+  for await (const chunk of iterateInFixedChunks(bytes, Math.max(1, chunkBytes))) {
+    if (await ctx.cancelled()) {
+      throw new JobCancelledError();
+    }
+    yield chunk;
+  }
+}
+
+const parseMeshFile: JobHandler<'parseMeshFile'> = async (payload, ctx) => {
+  if (!(payload.bytes instanceof Uint8Array)) {
+    throw new TypeError('parseMeshFile: bytes must be a Uint8Array');
+  }
+  const chunkBytes = payload.chunkBytes ?? DEFAULT_CHUNK_BYTES;
+  const chunks = chunkStream(payload.bytes, chunkBytes, ctx);
+
+  if (payload.format === 'stl') {
+    const { soup, diagnostics } = await parseStlStream(chunks, payload.bytes.byteLength, {
+      onProgress: ctx.progress,
+    });
+    const result: StlSoupResult = {
+      kind: 'stl-soup',
+      positions: soup.positions,
+      normals: soup.normals,
+      triangleCount: soup.triangleCount,
+      format: diagnostics.format,
+      warnings: diagnostics.warnings,
+    };
+    return result;
+  }
+
+  const mesh = await parsePlyStream(chunks, {
+    totalBytes: payload.bytes.byteLength,
+    onProgress: ctx.progress,
+  });
+  const result: PlyMeshResult = {
+    kind: 'ply-mesh',
+    positions: mesh.positions,
+    normals: mesh.normals,
+    colors: mesh.colors,
+    indices: mesh.indices,
+    vertexCount: mesh.vertexCount,
+    faceCount: mesh.faceCount,
+    format: mesh.diagnostics.format,
+    warnings: mesh.diagnostics.warnings,
+  };
+  return result;
+};
+
 export interface JobPayloadMap {
   echoMesh: EchoMeshPayload;
   longTask: LongTaskPayload;
   manifoldSmoke: ManifoldSmokePayload;
+  parseMeshFile: ParseMeshFilePayload;
 }
 
 export interface JobResultMap {
   echoMesh: EchoMeshResult;
   longTask: LongTaskResult;
   manifoldSmoke: ManifoldSmokeResult;
+  parseMeshFile: ParseMeshFileResult;
 }
 
 export type JobName = keyof JobPayloadMap;
@@ -196,7 +345,12 @@ const manifoldSmoke: JobHandler<'manifoldSmoke'> = async () => {
   return { volume: unionVolume, expected: MANIFOLD_SMOKE_EXPECTED_VOLUME };
 };
 
-const registry: { [J in JobName]: JobHandler<J> } = { echoMesh, longTask, manifoldSmoke };
+const registry: { [J in JobName]: JobHandler<J> } = {
+  echoMesh,
+  longTask,
+  manifoldSmoke,
+  parseMeshFile,
+};
 
 const noopContext: JobContext = {
   progress: () => {},
