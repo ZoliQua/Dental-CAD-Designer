@@ -232,18 +232,44 @@ describe('importMeshFile — cancellation', () => {
     expect(useCaseStore.getState().document.history).toHaveLength(0);
   });
 
-  it('cancelling while awaiting unit confirmation resolves as cancelled without applying a rescale', async () => {
+  it('cancelling while the unit-confirmation dialog is SHOWING clears it immediately and resolves as cancelled', async () => {
     const bytes = twoTriangleStlBytes(6); // triggers confirmation
     const runPromise = importMeshFile(stlSource('f7', 'tiny.stl', bytes));
 
     await vi_waitFor(() => useImportStore.getState().pendingUnitConfirmation !== null);
     cancelImport('f7');
-    resolveUnitConfirmation('f7', 'apply-factor'); // user answers after cancel — must not matter
+    // The dialog is dismissed by the abort itself — no user answer needed.
+    expect(useImportStore.getState().pendingUnitConfirmation).toBeNull();
+    resolveUnitConfirmation('f7', 'apply-factor'); // stale answer after cancel — must be a no-op
     const outcome = await runPromise;
 
     expect(outcome.status).toBe('cancelled');
     expect(useImportStore.getState().files.f7!.phase).toBe('cancelled');
     expect(useCaseStore.getState().document.history).toHaveLength(0);
+  });
+
+  it('cancelling an import whose confirmation is QUEUED behind another dialog never shows its stale dialog', async () => {
+    const bytesA = twoTriangleStlBytes(6);
+    const bytesB = twoTriangleStlBytes(5);
+    const runA = importMeshFile(stlSource('f8', 'tiny-a.stl', bytesA));
+    await vi_waitFor(() => useImportStore.getState().pendingUnitConfirmation?.fileId === 'f8');
+    // B reaches its own confirmation point while A's dialog is showing, so
+    // B's request parks in the queue behind A's.
+    const runB = importMeshFile(stlSource('f9', 'tiny-b.stl', bytesB));
+    await vi_waitFor(() => useImportStore.getState().files.f9?.phase === 'awaiting-unit-confirmation');
+
+    cancelImport('f9'); // cancel B while it is QUEUED (A's dialog still up)
+    resolveUnitConfirmation('f8', 'keep-mm'); // now answer A
+
+    const [outcomeA, outcomeB] = await Promise.all([runA, runB]);
+    expect(outcomeA.status).toBe('done');
+    expect(outcomeB.status).toBe('cancelled');
+    // B's dialog must never have appeared: the only pending confirmation
+    // ever observed was A's, and after A's answer nothing is pending.
+    expect(useImportStore.getState().pendingUnitConfirmation).toBeNull();
+    expect(useImportStore.getState().files.f9!.phase).toBe('cancelled');
+    // Only A's import was journaled.
+    expect(useCaseStore.getState().document.history.map((op) => op.name)).toEqual(['import-mesh']);
   });
 });
 

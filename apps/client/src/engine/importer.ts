@@ -153,21 +153,51 @@ const activeControllers = new Map<string, AbortController>();
  */
 let confirmationQueue: Promise<void> = Promise.resolve();
 
-function requestUnitConfirmation(request: PendingUnitConfirmation): Promise<UnitConfirmationChoice> {
-  const resultPromise = new Promise<UnitConfirmationChoice>((resolve) => {
+/**
+ * Abort-aware in both queue positions (this matters — WITHOUT it, a
+ * cancelled import whose confirmation is still queued behind another
+ * file's dialog would surface a stale dialog later AND block the queue
+ * until the user answered a question about a dead import):
+ *  - aborted while QUEUED: when its turn arrives the request is skipped
+ *    entirely (never shown), the turn is released to the next waiter, and
+ *    the caller gets 'cancelled'.
+ *  - aborted while SHOWING: the dialog is cleared immediately (no user
+ *    answer required), the turn is released, and the caller gets
+ *    'cancelled'.
+ * Note this only ever cancels the QUESTION — a rescale still happens only
+ * on an explicit 'apply-factor' answer, never by default (CLAUDE.md
+ * invariant 5).
+ */
+function requestUnitConfirmation(
+  request: PendingUnitConfirmation,
+  signal: AbortSignal,
+): Promise<UnitConfirmationChoice | 'cancelled'> {
+  return new Promise<UnitConfirmationChoice | 'cancelled'>((resolve) => {
     const runWhenTurnArrives = confirmationQueue.then(
       () =>
         new Promise<void>((releaseTurn) => {
-          pendingResolvers.set(request.fileId, (choice) => {
+          if (signal.aborted) {
+            releaseTurn();
+            resolve('cancelled');
+            return;
+          }
+          const settle = (choice: UnitConfirmationChoice | 'cancelled'): void => {
+            signal.removeEventListener('abort', onAbort);
+            pendingResolvers.delete(request.fileId);
             releaseTurn();
             resolve(choice);
-          });
+          };
+          const onAbort = (): void => {
+            useImportStore.getState().setPendingUnitConfirmation(null);
+            settle('cancelled');
+          };
+          signal.addEventListener('abort', onAbort, { once: true });
+          pendingResolvers.set(request.fileId, settle);
           useImportStore.getState().setPendingUnitConfirmation(request);
         }),
     );
     confirmationQueue = runWhenTurnArrives;
   });
-  return resultPromise;
 }
 
 const pendingResolvers = new Map<string, (choice: UnitConfirmationChoice) => void>();
@@ -248,14 +278,17 @@ export async function importMeshFile(input: ImportSource): Promise<ImportOutcome
     const suggestion = suggestUnitRescale(computeBboxMm(positions));
     if (suggestion) {
       setPhase(input.id, 'awaiting-unit-confirmation', 0);
-      const choice = await requestUnitConfirmation({
-        fileId: input.id,
-        fileName: displayName,
-        maxExtentMm: suggestion.maxExtentMm,
-        suspectedUnit: suggestion.suspectedUnit,
-        suggestedFactor: suggestion.factor,
-      });
-      if (controller.signal.aborted) {
+      const choice = await requestUnitConfirmation(
+        {
+          fileId: input.id,
+          fileName: displayName,
+          maxExtentMm: suggestion.maxExtentMm,
+          suspectedUnit: suggestion.suspectedUnit,
+          suggestedFactor: suggestion.factor,
+        },
+        controller.signal,
+      );
+      if (choice === 'cancelled' || controller.signal.aborted) {
         throw new JobCancelledError('import cancelled while awaiting unit confirmation');
       }
       if (choice === 'apply-factor') {
