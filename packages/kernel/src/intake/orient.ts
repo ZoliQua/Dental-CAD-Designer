@@ -5,6 +5,10 @@
 // "outside", then — for closed components — picks the global sign (all
 // triangles flipped, or none) that makes the enclosed volume positive
 // (CCW-from-outside, matching boolean/manifold.ts's winding convention).
+// That sign decision is resolved per-island by TOTAL signed volume (see
+// `signedVolumeOf` and its call site below) — it is never a literal
+// per-triangle vote; a single island-wide sign flips (or doesn't) every
+// triangle in that island together.
 //
 // ## The subtle part: non-manifold real scans
 //

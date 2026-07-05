@@ -106,3 +106,41 @@ describe('weldVertices — epsilon boundary behavior', () => {
     expect(() => weldVertices(soup, -1)).toThrow(RangeError);
   });
 });
+
+describe('weldVertices — leader clustering (non-transitive merging)', () => {
+  it('a chain a~b, b~c, a NOT~c (0.8*epsilon spacing) welds to 2 vertices, not 1', () => {
+    // Three collinear points, scanned in order a, b, c, spaced 0.8*epsilon
+    // apart along X: |a-b| = |b-c| = 0.8*epsilon (each pairwise WITHIN
+    // epsilon), but |a-c| = 1.6*epsilon (pairwise BEYOND epsilon). A naive
+    // transitive-closure reading of "a~b and b~c" would expect one merged
+    // vertex; weldVertices's actual leader-clustering semantics (see
+    // weld.ts's module doc) merge b into LEADER a's cluster (a is scanned
+    // first), then check c against a — not against b's raw position, which
+    // was never stored — so a NOT~c correctly keeps c as its own vertex.
+    const epsilon = 1e-3;
+    const step = 0.8 * epsilon;
+    const a: [number, number, number] = [0, 0, 0];
+    const b: [number, number, number] = [step, 0, 0];
+    const c: [number, number, number] = [2 * step, 0, 0];
+    expect(Math.hypot(...(b.map((v, i) => v - a[i]!) as [number, number, number]))).toBeLessThanOrEqual(epsilon);
+    expect(Math.hypot(...(c.map((v, i) => v - b[i]!) as [number, number, number]))).toBeLessThanOrEqual(epsilon);
+    expect(Math.hypot(...(c.map((v, i) => v - a[i]!) as [number, number, number]))).toBeGreaterThan(epsilon);
+
+    const soup: TriangleSoup = {
+      positions: new Float64Array([...a, ...b, ...c]),
+      normals: null,
+      triangleCount: 1,
+    };
+    const mesh = weldVertices(soup, epsilon);
+
+    // 2 distinct welded vertices, not 3 (b merged) and not 1 (c did not).
+    expect(mesh.positions).toHaveLength(2 * 3);
+    // Welded vertex 0 is exactly a's raw position — no centroid drift from
+    // b having merged into it.
+    expect(Array.from(mesh.positions.subarray(0, 3))).toEqual(a);
+    // Welded vertex 1 is c's own position (its own cluster).
+    expect(Array.from(mesh.positions.subarray(3, 6))).toEqual(c);
+    // a and b both map to welded vertex 0; c maps to welded vertex 1.
+    expect(Array.from(mesh.indices)).toEqual([0, 0, 1]);
+  });
+});

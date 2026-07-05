@@ -63,6 +63,25 @@ function hashCell(ix: number, iy: number, iz: number): number {
  * Re-running this function on the same input always produces byte-identical
  * output.
  *
+ * **Merge semantics: leader clustering, NOT transitive chaining, NO centroid
+ * drift.** A welded vertex's stored position is fixed the instant it is
+ * created — it is exactly the raw position of whichever raw vertex first
+ * produced it (its cluster's "leader") — and is never averaged, nudged, or
+ * otherwise moved as later raw vertices merge into it. A later raw vertex
+ * `v` merges into an existing welded vertex `w` iff `|v - leaderPosition(w)|
+ * <= epsilon`, i.e. the distance check is ALWAYS against that one fixed
+ * leader position, never against any other raw vertex that has already
+ * merged into `w`. Consequently the "is within epsilon of" relation this
+ * function realizes is NOT transitively closed over raw vertices: given raw
+ * vertices a, b, c scanned in that order with `|a-b| <= epsilon`,
+ * `|b-c| <= epsilon`, but `|a-c| > epsilon`, the result is 2 welded
+ * vertices, not 1 — b merges into a's cluster (a is the leader), but when c
+ * is then checked it is compared against a (still the only stored position
+ * for that cluster, since b contributed no position of its own), and
+ * `a`≁`c` fails the check, so c starts a new cluster. See
+ * weld.test.ts's "leader clustering (non-transitive merging)" tests for a
+ * worked example.
+ *
  * **Buffer ownership**: `soup.positions` is only ever read, never mutated,
  * and never aliased into the result — `weldVertices` BORROWS its input and
  * always returns brand-new, disjoint `Float64Array`/`Uint32Array` buffers

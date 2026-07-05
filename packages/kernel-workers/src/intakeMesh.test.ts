@@ -9,6 +9,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { writeStlBinary } from '@dqcad/io';
 import { JobCancelledError, WorkerPool } from './pool.js';
+import type { IntakeMeshPayload } from './jobs.js';
 
 const pools: WorkerPool[] = [];
 
@@ -103,6 +104,27 @@ describe('WorkerPool — intakeMesh: indexed payload', () => {
     expect(result.stats.watertight).toBe(true);
     expect(result.stats.signedVolumeMm3).toBeCloseTo(1, 12);
   });
+
+  it('reports the same [0.25, 0.5, 0.75, 1] progress sequence as the soup case, even with the weld stage skipped', async () => {
+    // jobs.ts's INTAKE_STAGE_FRACTIONS doc: "When the weld stage is skipped
+    // (indexed input) progress starts at the same first checkpoint anyway
+    // ... keeping the fraction sequence identical for both input kinds so UI
+    // progress bars behave the same regardless of source format." This test
+    // pins that documented uniform-4-fraction sequence for the indexed-input
+    // case specifically (the soup case is already covered above).
+    const pool = createPool({ size: 1 });
+    const positions = new Float64Array(CUBE_CORNERS.flat());
+    const indices = Uint32Array.from(CUBE_TRIANGLES.flat());
+    const fractions: number[] = [];
+
+    await pool.run(
+      'intakeMesh',
+      { kind: 'indexed', positions, indices },
+      { onProgress: (f) => fractions.push(f) },
+    );
+
+    expect(fractions).toEqual([0.25, 0.5, 0.75, 1]);
+  });
 });
 
 describe('WorkerPool — intakeMesh: progress + cancellation', () => {
@@ -152,6 +174,21 @@ describe('WorkerPool — intakeMesh: progress + cancellation', () => {
         positions: cubeSoupPositions(),
         indices: new Uint32Array(3),
       });
+    } catch (error) {
+      thrown = error;
+    }
+    expect((thrown as Error)?.name).toBe('TypeError');
+  });
+
+  it('rejects a payload whose kind is neither "soup" nor "indexed"', async () => {
+    const pool = createPool({ size: 1 });
+    // Deliberately past the typed payload surface (only 'soup' | 'indexed'
+    // are valid `kind`s) — same cast-past-the-type convention pool.test.ts
+    // uses for its worker-crash test's job name.
+    const invalidPayload = { kind: 'bogus', positions: cubeSoupPositions() } as unknown as IntakeMeshPayload;
+    let thrown: unknown;
+    try {
+      await pool.run('intakeMesh', invalidPayload);
     } catch (error) {
       thrown = error;
     }

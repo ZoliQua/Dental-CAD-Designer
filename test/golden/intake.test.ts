@@ -37,6 +37,7 @@ const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
 const syntheticDir = join(repoRoot, 'test-fixtures', 'synthetic');
 const intakeGoldenDir = join(repoRoot, 'test-fixtures', 'intake');
 const upperjawStlPath = join(repoRoot, 'test-fixtures', 'real-scans', 'arch-case-01', 'arch-case-01-upperjaw.stl');
+const arch01ManifestPath = join(repoRoot, 'test-fixtures', 'real-scans', 'arch-case-01', 'manifest.json');
 
 interface SyntheticSidecar {
   analyticVolumeMm3: number;
@@ -180,5 +181,23 @@ describe('intake — real fixture (arch-case-01 upperjaw STL)', () => {
   it('is deterministic: a second full run is hash-identical (double-run determinism)', () => {
     const second = intakeStlFixture(upperjawStlPath);
     expect(hashIntakeResult(second)).toBe(resultHash);
+  });
+
+  // Regression-protects the "126,377" cross-validation called out in
+  // .superpowers/sdd/p1-task-4-report.md ("Cross-validation found for
+  // free"): the scan's own manifest records the PLY sidecar's vertexCount
+  // (the scanner's own shared-vertex form of the SAME mesh) independently
+  // of anything this repo's weld step computes. Asserting the weld step's
+  // `after.vertexCount` against that manifest value — rather than just the
+  // committed golden snapshot — means a future weld regression that changes
+  // the vertex count (and gets "fixed" by regenerating the golden snapshot)
+  // still gets caught here, against a fixture-provenance number nothing in
+  // this codebase can accidentally update in lockstep.
+  it("matches the scan manifest's independently-recorded PLY vertexCount (weld step's after.vertexCount)", () => {
+    const manifest = JSON.parse(readFileSync(arch01ManifestPath, 'utf8')) as {
+      meshes: { upperjaw: { ply: { vertexCount: number } } };
+    };
+    const weldStep = result.report.steps.find((s) => s.step === 'weld')!;
+    expect(weldStep.after.vertexCount).toBe(manifest.meshes.upperjaw.ply.vertexCount);
   });
 });

@@ -436,6 +436,9 @@ const intakeMesh: JobHandler<'intakeMesh'> = async (payload, ctx) => {
   if (!(payload.positions instanceof Float64Array)) {
     throw new TypeError('intakeMesh: positions must be a Float64Array (kernel Float64 rule)');
   }
+  if (payload.kind !== 'soup' && payload.kind !== 'indexed') {
+    throw new TypeError(`intakeMesh: kind must be "soup" or "indexed", got ${JSON.stringify(payload.kind)}`);
+  }
 
   const checkpoint = async (stage: number): Promise<void> => {
     if (await ctx.cancelled()) {
