@@ -15,7 +15,13 @@ const SMOKE_TEST_TRIANGLE_COUNT = 1000;
 
 let pool: WorkerPool | null = null;
 
-function getPool(): WorkerPool {
+/**
+ * The single shared WorkerPool for the whole client — smoke tests below and
+ * engine/importer.ts (parseMeshFile/intakeMesh/rescaleMesh jobs) all reuse
+ * this one instance rather than each spinning up their own pool of
+ * (expensive to spawn) workers.
+ */
+export function getPool(): WorkerPool {
   pool ??= new WorkerPool();
   return pool;
 }

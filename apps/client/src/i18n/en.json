@@ -15,7 +15,10 @@
   },
   "sidebar": {
     "sceneTreeTitle": "Scene",
-    "empty": "No objects in the scene yet."
+    "empty": "No objects in the scene yet.",
+    "visibilityToggle": "Toggle visibility",
+    "opacityLabel": "Opacity",
+    "removeButton": "Remove"
   },
   "statusBar": {
     "engineReady": "Engine: ready",
@@ -30,5 +33,56 @@
     "manifoldSmokeTestRunning": "Manifold: running…",
     "manifoldSmokeTestSuccess": "Manifold: ✓ volume {{volume}}",
     "manifoldSmokeTestFailure": "Manifold: ✗ failed"
+  },
+  "import": {
+    "dropzoneTitle": "Drag & drop STL or PLY files here",
+    "dropzoneHint": "or",
+    "browseButton": "Browse files…",
+    "dropOverlayTitle": "Drop to import",
+    "cancelButton": "Cancel",
+    "phase": {
+      "reading": "Reading file…",
+      "parsing": "Parsing…",
+      "awaitingUnitConfirmation": "Waiting for unit confirmation…",
+      "rescaling": "Rescaling…",
+      "intake": "Processing mesh…",
+      "registering": "Registering…",
+      "done": "Done",
+      "cancelled": "Cancelled",
+      "error": "Error"
+    },
+    "errorLabel": "Error: {{message}}",
+    "stats": {
+      "watertight": "Watertight",
+      "manifold": "Manifold edges",
+      "components": "Components",
+      "bbox": "Bounding box (mm)",
+      "area": "Surface area (mm²)",
+      "volume": "Volume (mm³)",
+      "degenerate": "Degenerate triangles",
+      "boundaryEdges": "Boundary edges",
+      "yes": "Yes",
+      "no": "No",
+      "notApplicable": "n/a"
+    },
+    "warningsTitle": "Warnings",
+    "roleLabel": "Add to scene as",
+    "rolePlaceholder": "Choose role…",
+    "addedToScene": "Added to scene"
+  },
+  "role": {
+    "upperJaw": "Upper jaw",
+    "lowerJaw": "Lower jaw",
+    "prepDie": "Prep / die",
+    "antagonist": "Antagonist",
+    "situ": "Situ",
+    "gingiva": "Gingiva"
+  },
+  "unitConfirm": {
+    "title": "Confirm scan units",
+    "messageCm": "\"{{fileName}}\" looks unusually small (largest extent {{extent}} mm) — it may actually be in centimeters, not millimeters. Multiply all coordinates by {{factor}}?",
+    "messageUm": "\"{{fileName}}\" looks unusually large (largest extent {{extent}} mm) — it may actually be in micrometers, not millimeters. Multiply all coordinates by {{factor}}?",
+    "keepMm": "Keep as-is (mm)",
+    "applyFactor": "Apply ×{{factor}}"
   }
 }

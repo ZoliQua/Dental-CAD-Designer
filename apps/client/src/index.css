@@ -161,3 +161,241 @@ body {
   cursor: default;
   opacity: 0.6;
 }
+
+/* Import panel — drag & drop, picker, per-file progress, intake summary. */
+.import-panel {
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.import-panel__controls {
+  display: flex;
+}
+
+.import-panel__browse-button {
+  width: 100%;
+  font-size: 0.8rem;
+  padding: 0.5rem;
+  background: transparent;
+  color: var(--color-text);
+  border: 1px dashed var(--color-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.import-panel__browse-button:hover {
+  border-color: var(--color-accent);
+}
+
+.import-panel__file-input {
+  display: none;
+}
+
+.import-panel__file-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.import-panel__file-row {
+  font-size: 0.78rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 0.4rem 0.5rem;
+}
+
+.import-panel__file-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.import-panel__file-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.import-panel__file-phase {
+  color: var(--color-text-muted);
+}
+
+.import-panel__cancel-button {
+  font-size: 0.7rem;
+  padding: 0.1rem 0.4rem;
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.import-panel__progress {
+  width: 100%;
+  margin-top: 0.3rem;
+}
+
+.import-panel__error {
+  color: #e05555;
+  margin: 0.3rem 0 0;
+}
+
+.import-summary {
+  margin-top: 0.4rem;
+}
+
+.import-summary__stats {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.1rem 0.5rem;
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+}
+
+.import-summary__stats dt {
+  font-weight: 600;
+}
+
+.import-summary__stats dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.import-summary__role {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-top: 0.4rem;
+  font-size: 0.75rem;
+}
+
+.import-summary__added {
+  display: inline-block;
+  margin-top: 0.3rem;
+  color: var(--color-accent);
+  font-size: 0.72rem;
+}
+
+.import-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  pointer-events: none;
+}
+
+.import-overlay__message {
+  font-size: 1.4rem;
+  color: #fff;
+  border: 3px dashed var(--color-accent);
+  border-radius: 12px;
+  padding: 2rem 3rem;
+}
+
+.unit-confirm-dialog__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.unit-confirm-dialog {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 1.25rem;
+  max-width: 26rem;
+}
+
+.unit-confirm-dialog__title {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.unit-confirm-dialog__message {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.unit-confirm-dialog__actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.unit-confirm-dialog__actions button {
+  flex: 1;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.8rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.unit-confirm-dialog__actions button:hover {
+  border-color: var(--color-accent);
+}
+
+/* Scene tree */
+.scene-tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.scene-tree__row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  gap: 0.25rem 0.4rem;
+  font-size: 0.78rem;
+}
+
+.scene-tree__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scene-tree__role {
+  color: var(--color-text-muted);
+  font-size: 0.7rem;
+}
+
+.scene-tree__opacity {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+.scene-tree__remove {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  color: var(--color-text);
+  cursor: pointer;
+  line-height: 1;
+  width: 1.4rem;
+  height: 1.4rem;
+}
+
+.scene-tree__remove:hover {
+  border-color: var(--color-accent);
+}

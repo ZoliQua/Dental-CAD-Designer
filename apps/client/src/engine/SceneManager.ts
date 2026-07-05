@@ -9,8 +9,40 @@
 //
 // NO React imports here — this class is framework-agnostic and is mounted
 // imperatively by ui/Viewport.tsx via useRef + useEffect.
-import { Color, GridHelper, HemisphereLight, PerspectiveCamera, Scene, WebGLRenderer } from 'three';
+import {
+  BufferAttribute,
+  BufferGeometry,
+  Color,
+  DoubleSide,
+  GridHelper,
+  Group,
+  HemisphereLight,
+  Mesh,
+  MeshStandardMaterial,
+  PerspectiveCamera,
+  Scene,
+  WebGLRenderer,
+} from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+
+/**
+ * Minimal "mesh visible in scene" wiring for Task 5 (client import flow) —
+ * just enough for a manual import check to show something in the viewport.
+ * Task 6 (the real viewer) owns proper materials/shading/LOD/selection;
+ * `setRenderNodes` below intentionally does the simplest possible thing
+ * (dispose everything, rebuild from scratch on every call) rather than
+ * diffing — fine for Phase 1's few-mesh, infrequent-update case.
+ */
+export interface RenderNode {
+  id: string;
+  /** Float32, already re-centered at the case bbox centroid — see
+   * engine/meshStore.ts's module doc. SceneManager never re-centers or
+   * otherwise transforms these; it only renders them as given. */
+  positions: Float32Array;
+  indices: Uint32Array;
+  visible: boolean;
+  opacity: number;
+}
 
 const CAMERA_FOV_DEGREES = 50;
 const CAMERA_NEAR_MM = 0.1;
@@ -28,6 +60,7 @@ export class SceneManager {
   private readonly camera: PerspectiveCamera;
   private readonly controls: OrbitControls;
   private readonly resizeObserver: ResizeObserver;
+  private readonly meshGroup: Group;
   private animationFrameId: number | null = null;
   private disposed = false;
 
@@ -52,12 +85,55 @@ export class SceneManager {
     this.scene.add(new HemisphereLight(0xffffff, 0x3a3a3a, 1.4));
     this.scene.add(new GridHelper(GRID_SIZE_MM, GRID_DIVISIONS, 0x666666, 0x333333));
 
+    this.meshGroup = new Group();
+    this.scene.add(this.meshGroup);
+
     this.resizeObserver = new ResizeObserver(() => this.handleResize());
     this.resizeObserver.observe(this.container);
     this.handleResize();
 
     this.animate = this.animate.bind(this);
     this.animationFrameId = requestAnimationFrame(this.animate);
+  }
+
+  /**
+   * Rebuilds the mesh group from `nodes` — called by ui/Viewport.tsx
+   * whenever the case document (SceneNode list) or a mesh's render buffers
+   * change. Disposes every previous geometry/material first (Three.js GPU
+   * resources are not garbage-collected automatically).
+   */
+  setRenderNodes(nodes: readonly RenderNode[]): void {
+    this.clearMeshGroup();
+    for (const node of nodes) {
+      if (!node.visible) continue;
+      const geometry = new BufferGeometry();
+      geometry.setAttribute('position', new BufferAttribute(node.positions, 3));
+      geometry.setIndex(new BufferAttribute(node.indices, 1));
+      geometry.computeVertexNormals();
+      const material = new MeshStandardMaterial({
+        color: 0xd8d0c0,
+        transparent: node.opacity < 1,
+        opacity: node.opacity,
+        side: DoubleSide,
+      });
+      const mesh = new Mesh(geometry, material);
+      mesh.name = node.id;
+      this.meshGroup.add(mesh);
+    }
+  }
+
+  private clearMeshGroup(): void {
+    for (const child of [...this.meshGroup.children]) {
+      if (child instanceof Mesh) {
+        child.geometry.dispose();
+        if (Array.isArray(child.material)) {
+          child.material.forEach((material) => material.dispose());
+        } else {
+          child.material.dispose();
+        }
+      }
+      this.meshGroup.remove(child);
+    }
   }
 
   private handleResize(): void {
@@ -88,6 +164,7 @@ export class SceneManager {
       cancelAnimationFrame(this.animationFrameId);
       this.animationFrameId = null;
     }
+    this.clearMeshGroup();
     this.resizeObserver.disconnect();
     this.controls.dispose();
     this.renderer.dispose();

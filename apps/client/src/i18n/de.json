@@ -15,7 +15,10 @@
   },
   "sidebar": {
     "sceneTreeTitle": "Szene",
-    "empty": "Noch keine Objekte in der Szene."
+    "empty": "Noch keine Objekte in der Szene.",
+    "visibilityToggle": "Sichtbarkeit umschalten",
+    "opacityLabel": "Deckkraft",
+    "removeButton": "Entfernen"
   },
   "statusBar": {
     "engineReady": "Engine: bereit",
@@ -30,5 +33,56 @@
     "manifoldSmokeTestRunning": "Manifold: läuft…",
     "manifoldSmokeTestSuccess": "Manifold: ✓ Volumen {{volume}}",
     "manifoldSmokeTestFailure": "Manifold: ✗ fehlgeschlagen"
+  },
+  "import": {
+    "dropzoneTitle": "STL- oder PLY-Dateien hierher ziehen",
+    "dropzoneHint": "oder",
+    "browseButton": "Dateien durchsuchen…",
+    "dropOverlayTitle": "Zum Importieren loslassen",
+    "cancelButton": "Abbrechen",
+    "phase": {
+      "reading": "Datei wird gelesen…",
+      "parsing": "Wird analysiert…",
+      "awaitingUnitConfirmation": "Warten auf Einheitenbestätigung…",
+      "rescaling": "Wird skaliert…",
+      "intake": "Netz wird verarbeitet…",
+      "registering": "Wird registriert…",
+      "done": "Fertig",
+      "cancelled": "Abgebrochen",
+      "error": "Fehler"
+    },
+    "errorLabel": "Fehler: {{message}}",
+    "stats": {
+      "watertight": "Wasserdicht",
+      "manifold": "Mannigfaltige Kanten",
+      "components": "Komponenten",
+      "bbox": "Begrenzungsrahmen (mm)",
+      "area": "Oberfläche (mm²)",
+      "volume": "Volumen (mm³)",
+      "degenerate": "Entartete Dreiecke",
+      "boundaryEdges": "Randkanten",
+      "yes": "Ja",
+      "no": "Nein",
+      "notApplicable": "n/a"
+    },
+    "warningsTitle": "Warnungen",
+    "roleLabel": "Zur Szene hinzufügen als",
+    "rolePlaceholder": "Rolle wählen…",
+    "addedToScene": "Zur Szene hinzugefügt"
+  },
+  "role": {
+    "upperJaw": "Oberkiefer",
+    "lowerJaw": "Unterkiefer",
+    "prepDie": "Präparation / Stumpfmodell",
+    "antagonist": "Antagonist",
+    "situ": "Situ",
+    "gingiva": "Gingiva"
+  },
+  "unitConfirm": {
+    "title": "Einheiten des Scans bestätigen",
+    "messageCm": "\"{{fileName}}\" wirkt ungewöhnlich klein (größte Ausdehnung {{extent}} mm) — die Datei liegt möglicherweise tatsächlich in Zentimetern statt Millimetern vor. Alle Koordinaten mit {{factor}} multiplizieren?",
+    "messageUm": "\"{{fileName}}\" wirkt ungewöhnlich groß (größte Ausdehnung {{extent}} mm) — die Datei liegt möglicherweise tatsächlich in Mikrometern statt Millimetern vor. Alle Koordinaten mit {{factor}} multiplizieren?",
+    "keepMm": "So belassen (mm)",
+    "applyFactor": "×{{factor}} anwenden"
   }
 }

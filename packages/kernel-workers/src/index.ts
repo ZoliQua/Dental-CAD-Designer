@@ -10,6 +10,7 @@ export {
   type RunJobOptions,
 } from './pool.js';
 export {
+  KERNEL_VERSION,
   type JobName,
   type JobPayloadMap,
   type JobResultMap,
@@ -25,5 +26,14 @@ export {
   type PlyMeshResult,
   type IntakeMeshPayload,
   type IntakeMeshResult,
+  type RescaleMeshPayload,
+  type RescaleMeshResult,
 } from './jobs.js';
 export { meshBuffers, type MeshBuffersPayload, type MeshBuffersResult } from './transfer.js';
+// MeshStats/IntakeReport/Bbox: re-exported here (rather than only living on
+// IntakeMeshResult's field types) so apps/client/src/engine — which cannot
+// depend on @dqcad/kernel directly (boundaries policy: engine ->
+// kernel-workers|state|shared-types) — can name these types explicitly
+// (e.g. an `EngineMeshRecord.stats: MeshStats` field in engine/meshStore.ts)
+// without a `IntakeMeshResult['stats']` indexing workaround.
+export type { MeshStats, IntakeReport, IntakeStepReport, IntakeStepCounts, Bbox } from '@dqcad/kernel';

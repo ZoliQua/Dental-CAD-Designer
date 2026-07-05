@@ -15,7 +15,10 @@
   },
   "sidebar": {
     "sceneTreeTitle": "Escena",
-    "empty": "Todavía no hay objetos en la escena."
+    "empty": "Todavía no hay objetos en la escena.",
+    "visibilityToggle": "Alternar visibilidad",
+    "opacityLabel": "Opacidad",
+    "removeButton": "Eliminar"
   },
   "statusBar": {
     "engineReady": "Motor: listo",
@@ -30,5 +33,56 @@
     "manifoldSmokeTestRunning": "Manifold: en ejecución…",
     "manifoldSmokeTestSuccess": "Manifold: ✓ volumen {{volume}}",
     "manifoldSmokeTestFailure": "Manifold: ✗ falló"
+  },
+  "import": {
+    "dropzoneTitle": "Arrastra y suelta archivos STL o PLY aquí",
+    "dropzoneHint": "o",
+    "browseButton": "Examinar archivos…",
+    "dropOverlayTitle": "Suelta para importar",
+    "cancelButton": "Cancelar",
+    "phase": {
+      "reading": "Leyendo archivo…",
+      "parsing": "Analizando…",
+      "awaitingUnitConfirmation": "Esperando confirmación de unidades…",
+      "rescaling": "Reescalando…",
+      "intake": "Procesando malla…",
+      "registering": "Registrando…",
+      "done": "Listo",
+      "cancelled": "Cancelado",
+      "error": "Error"
+    },
+    "errorLabel": "Error: {{message}}",
+    "stats": {
+      "watertight": "Estanco",
+      "manifold": "Bordes variedad",
+      "components": "Componentes",
+      "bbox": "Caja delimitadora (mm)",
+      "area": "Área de superficie (mm²)",
+      "volume": "Volumen (mm³)",
+      "degenerate": "Triángulos degenerados",
+      "boundaryEdges": "Bordes de contorno",
+      "yes": "Sí",
+      "no": "No",
+      "notApplicable": "n/d"
+    },
+    "warningsTitle": "Advertencias",
+    "roleLabel": "Añadir a la escena como",
+    "rolePlaceholder": "Elegir rol…",
+    "addedToScene": "Añadido a la escena"
+  },
+  "role": {
+    "upperJaw": "Maxilar superior",
+    "lowerJaw": "Maxilar inferior",
+    "prepDie": "Preparación / muñón",
+    "antagonist": "Antagonista",
+    "situ": "In situ",
+    "gingiva": "Encía"
+  },
+  "unitConfirm": {
+    "title": "Confirmar unidades del escaneo",
+    "messageCm": "\"{{fileName}}\" parece inusualmente pequeño (extensión máxima {{extent}} mm) — podría estar en centímetros en lugar de milímetros. ¿Multiplicar todas las coordenadas por {{factor}}?",
+    "messageUm": "\"{{fileName}}\" parece inusualmente grande (extensión máxima {{extent}} mm) — podría estar en micrómetros en lugar de milímetros. ¿Multiplicar todas las coordenadas por {{factor}}?",
+    "keepMm": "Mantener como está (mm)",
+    "applyFactor": "Aplicar ×{{factor}}"
   }
 }

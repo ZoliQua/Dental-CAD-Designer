@@ -28,11 +28,19 @@ import {
   countsOf,
   makeStepReport,
   MESH_WELD_EPSILON_MM,
+  KERNEL_VERSION,
   type IndexedMesh,
   type IntakeReport,
   type IntakeStepReport,
   type MeshStats,
 } from '@dqcad/kernel';
+
+// Re-exported (via index.ts) so apps/client/src/engine — which may depend on
+// kernel-workers but NOT directly on kernel (see eslint.config.js's
+// boundaries policy: engine -> kernel-workers|state|shared-types) — can
+// stamp journal `Operation.kernelVersion` (shared-types) without importing
+// `@dqcad/kernel` itself.
+export { KERNEL_VERSION };
 // kernel-workers -> io is also an allowed dependency direction (see
 // eslint.config.js's boundaries policy) — packages/io became
 // node-worker-reachable starting Phase 1 (see its own module docs' "Import
@@ -297,12 +305,47 @@ const parseMeshFile: JobHandler<'parseMeshFile'> = async (payload, ctx) => {
   return result;
 };
 
+/**
+ * `rescaleMesh`: multiplies every coordinate in `positions` by `factor` — the
+ * worker-side half of the client's unit-mistake correction flow (see
+ * apps/client/src/engine/units.ts's bbox heuristic and importer.ts's
+ * confirmation-gated call site). Deliberately format-agnostic: `positions`
+ * may be either a flat 9-per-triangle soup (STL) or a 3-per-vertex indexed
+ * buffer (PLY) — a uniform scalar rescale is the same flat per-coordinate
+ * multiply either way, so this job never needs `indices` at all. Runs in
+ * Float64 throughout (kernel Float64 rule) and is the ONLY place a mesh's
+ * coordinates change due to a unit mistake — CLAUDE.md's "no silent data
+ * mutation" rule is enforced by the CALLER (importer.ts always resolves an
+ * explicit user confirmation, journaled as an `Operation` named
+ * `unit-rescale`, before ever invoking this job); this job itself performs
+ * no confirmation or journaling — it is a pure, mechanical scale.
+ */
+export interface RescaleMeshPayload {
+  /** Float64: kernel Float64 rule. Mutated IN PLACE and returned (this
+   * buffer was transferred into the worker, so the worker is its sole
+   * owner — see runJob's transfer contract) rather than copied into a
+   * fresh array, since a rescale is a lossless, purely multiplicative
+   * per-element transform with no shape change. */
+  positions: Float64Array;
+  /** Must be finite and > 0 — see units.ts's CM_TO_MM_FACTOR /
+   * UM_TO_MM_FACTOR for the two factors the client's heuristic ever
+   * suggests; this job itself has no opinion on which factors are
+   * "reasonable" (that judgment lives entirely in units.ts + the mandatory
+   * user confirmation dialog). */
+  factor: number;
+}
+
+export interface RescaleMeshResult {
+  positions: Float64Array;
+}
+
 export interface JobPayloadMap {
   echoMesh: EchoMeshPayload;
   longTask: LongTaskPayload;
   manifoldSmoke: ManifoldSmokePayload;
   parseMeshFile: ParseMeshFilePayload;
   intakeMesh: IntakeMeshPayload;
+  rescaleMesh: RescaleMeshPayload;
 }
 
 export interface JobResultMap {
@@ -311,6 +354,7 @@ export interface JobResultMap {
   manifoldSmoke: ManifoldSmokeResult;
   parseMeshFile: ParseMeshFileResult;
   intakeMesh: IntakeMeshResult;
+  rescaleMesh: RescaleMeshResult;
 }
 
 export type JobName = keyof JobPayloadMap;
@@ -504,12 +548,49 @@ const intakeMesh: JobHandler<'intakeMesh'> = async (payload, ctx) => {
   return result;
 };
 
+// Chunk size (element count, not bytes) for rescaleMesh's progress/
+// cancellation checkpoints — same "checked only between chunks" cooperative
+// pattern as longTask/chunkStream above, sized so a ~250k-triangle arch scan
+// (750k position components) reports a handful of checkpoints rather than
+// one giant uninterruptible pass.
+const RESCALE_PROGRESS_CHUNK_ELEMENTS = 200_000;
+
+const rescaleMesh: JobHandler<'rescaleMesh'> = async (payload, ctx) => {
+  if (!(payload.positions instanceof Float64Array)) {
+    throw new TypeError('rescaleMesh: positions must be a Float64Array (kernel Float64 rule)');
+  }
+  if (!Number.isFinite(payload.factor) || payload.factor <= 0) {
+    throw new TypeError(`rescaleMesh: factor must be a finite positive number, got ${payload.factor}`);
+  }
+
+  const { positions, factor } = payload;
+  const total = positions.length;
+  if (total === 0) {
+    ctx.progress(1);
+    return { positions };
+  }
+
+  const chunkSize = Math.max(1, Math.min(RESCALE_PROGRESS_CHUNK_ELEMENTS, total));
+  for (let i = 0; i < total; i += 1) {
+    positions[i] = positions[i]! * factor;
+    const atChunkBoundary = i % chunkSize === chunkSize - 1 || i === total - 1;
+    if (atChunkBoundary) {
+      if (await ctx.cancelled()) {
+        throw new JobCancelledError();
+      }
+      ctx.progress((i + 1) / total);
+    }
+  }
+  return { positions };
+};
+
 const registry: { [J in JobName]: JobHandler<J> } = {
   echoMesh,
   longTask,
   manifoldSmoke,
   parseMeshFile,
   intakeMesh,
+  rescaleMesh,
 };
 
 const noopContext: JobContext = {

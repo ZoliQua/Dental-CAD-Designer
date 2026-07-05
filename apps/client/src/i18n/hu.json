@@ -15,7 +15,10 @@
   },
   "sidebar": {
     "sceneTreeTitle": "Jelenet",
-    "empty": "Még nincs objektum a jelenetben."
+    "empty": "Még nincs objektum a jelenetben.",
+    "visibilityToggle": "Láthatóság be/ki",
+    "opacityLabel": "Átlátszatlanság",
+    "removeButton": "Eltávolítás"
   },
   "statusBar": {
     "engineReady": "Motor: kész",
@@ -30,5 +33,56 @@
     "manifoldSmokeTestRunning": "Manifold: fut…",
     "manifoldSmokeTestSuccess": "Manifold: ✓ térfogat {{volume}}",
     "manifoldSmokeTestFailure": "Manifold: ✗ sikertelen"
+  },
+  "import": {
+    "dropzoneTitle": "Húzza ide az STL vagy PLY fájlokat",
+    "dropzoneHint": "vagy",
+    "browseButton": "Fájlok tallózása…",
+    "dropOverlayTitle": "Engedje el az importáláshoz",
+    "cancelButton": "Mégse",
+    "phase": {
+      "reading": "Fájl beolvasása…",
+      "parsing": "Feldolgozás…",
+      "awaitingUnitConfirmation": "Mértékegység megerősítésére vár…",
+      "rescaling": "Átméretezés…",
+      "intake": "Háló feldolgozása…",
+      "registering": "Regisztrálás…",
+      "done": "Kész",
+      "cancelled": "Megszakítva",
+      "error": "Hiba"
+    },
+    "errorLabel": "Hiba: {{message}}",
+    "stats": {
+      "watertight": "Vízhatlan",
+      "manifold": "Sokaság élek",
+      "components": "Komponensek",
+      "bbox": "Határoló doboz (mm)",
+      "area": "Felszín (mm²)",
+      "volume": "Térfogat (mm³)",
+      "degenerate": "Elfajult háromszögek",
+      "boundaryEdges": "Határélek",
+      "yes": "Igen",
+      "no": "Nem",
+      "notApplicable": "n/a"
+    },
+    "warningsTitle": "Figyelmeztetések",
+    "roleLabel": "Hozzáadás a jelenethez mint",
+    "rolePlaceholder": "Válasszon szerepet…",
+    "addedToScene": "Hozzáadva a jelenethez"
+  },
+  "role": {
+    "upperJaw": "Felső állcsont",
+    "lowerJaw": "Alsó állcsont",
+    "prepDie": "Csonk / munkamodell",
+    "antagonist": "Antagonista",
+    "situ": "Situ",
+    "gingiva": "Íny"
+  },
+  "unitConfirm": {
+    "title": "Mértékegység megerősítése",
+    "messageCm": "\"{{fileName}}\" szokatlanul kicsinek tűnik (legnagyobb kiterjedés {{extent}} mm) — lehet, hogy valójában centiméterben van, nem milliméterben. Szorozzuk az összes koordinátát {{factor}}-szel?",
+    "messageUm": "\"{{fileName}}\" szokatlanul nagynak tűnik (legnagyobb kiterjedés {{extent}} mm) — lehet, hogy valójában mikrométerben van, nem milliméterben. Szorozzuk az összes koordinátát {{factor}}-szel?",
+    "keepMm": "Marad mm-ben",
+    "applyFactor": "Alkalmazás ×{{factor}}"
   }
 }
