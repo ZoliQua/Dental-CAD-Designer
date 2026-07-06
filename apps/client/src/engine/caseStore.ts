@@ -39,9 +39,38 @@ export interface RegisterImportedMeshInput extends RegisterMeshInput {
 class CaseStoreEngine {
   readonly meshStore = new MeshStore();
   private document: CaseDocument = createEmptyCaseDocument();
+  /** Click-picked SceneNode id — see state/caseStore.ts's `selectedNodeId`
+   * doc for why this lives outside CaseDocument. */
+  private selectedNodeId: string | null = null;
 
   getDocument(): CaseDocument {
     return this.document;
+  }
+
+  getSelectedNodeId(): string | null {
+    return this.selectedNodeId;
+  }
+
+  /** Sets (or clears, via `null`) the selected SceneNode — driven by
+   * SceneManager's click-pick raycast (routed through ui/Viewport.tsx's
+   * `onSelect` callback) or, later, by other selection sources (e.g. a
+   * scene-tree row click). A `nodeId` that no longer exists in the scene is
+   * accepted as given (defensive no-op from the caller's point of view) —
+   * `removeSceneNode` below is what actually keeps this from going stale in
+   * the common case. */
+  setSelectedNodeId(nodeId: string | null): void {
+    if (this.selectedNodeId === nodeId) {
+      return;
+    }
+    this.selectedNodeId = nodeId;
+    this.publishSelection();
+  }
+
+  /** Float64 mm world-space offset currently subtracted from every mesh's
+   * render copy (meshStore.ts's `getWorldOffset`) — for converting a
+   * render-frame pick/measurement back to true case coordinates. */
+  getRenderWorldOffset(): readonly [number, number, number] {
+    return this.meshStore.getWorldOffset();
   }
 
   getMeshRecord(contentHash: string): EngineMeshRecord | undefined {
@@ -123,6 +152,13 @@ class CaseStoreEngine {
       }
     }
 
+    // A removed node can no longer be the selection — leaving it set would
+    // let a stale id reach SceneManager/measurements.
+    if (this.selectedNodeId === nodeId) {
+      this.selectedNodeId = null;
+      this.publishSelection();
+    }
+
     this.publish();
   }
 
@@ -161,6 +197,7 @@ class CaseStoreEngine {
         indices: record.renderIndices,
         visible: node.visible,
         opacity: node.opacity,
+        role: node.role,
       });
     }
     return nodes;
@@ -170,12 +207,18 @@ class CaseStoreEngine {
     useCaseStore.getState().setDocument(this.document);
   }
 
+  private publishSelection(): void {
+    useCaseStore.getState().setSelectedNodeId(this.selectedNodeId);
+  }
+
   /** TEST-ONLY: resets to a fresh empty document + mesh registry so tests
    * don't leak state through this module-level singleton across files. */
   resetForTests(): void {
     this.document = createEmptyCaseDocument();
     this.meshStore.clear();
+    this.selectedNodeId = null;
     this.publish();
+    this.publishSelection();
   }
 }
 

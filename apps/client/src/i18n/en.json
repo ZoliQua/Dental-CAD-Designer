@@ -78,6 +78,31 @@
     "situ": "Situ",
     "gingiva": "Gingiva"
   },
+  "viewer": {
+    "view": {
+      "groupLabel": "Standard views",
+      "front": "Front",
+      "buccal": "Buccal",
+      "lingual": "Lingual",
+      "mesial": "Mesial",
+      "distal": "Distal",
+      "occlusal": "Occlusal"
+    },
+    "projection": {
+      "perspective": "Perspective",
+      "orthographic": "Orthographic"
+    },
+    "shading": {
+      "label": "Shading",
+      "clinical": "Clinical",
+      "matcap": "Matcap"
+    },
+    "wireframe": {
+      "toggle": "Wireframe"
+    },
+    "frameAll": "Frame all",
+    "frameSelection": "Frame selection"
+  },
   "unitConfirm": {
     "title": "Confirm scan units",
     "messageCm": "\"{{fileName}}\" looks unusually small (largest extent {{extent}} mm) — it may actually be in centimeters, not millimeters. Multiply all coordinates by {{factor}}?",

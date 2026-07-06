@@ -78,6 +78,31 @@
     "situ": "Situ",
     "gingiva": "Íny"
   },
+  "viewer": {
+    "view": {
+      "groupLabel": "Standard nézetek",
+      "front": "Elölnézet",
+      "buccal": "Bukkális",
+      "lingual": "Linguális",
+      "mesial": "Mesiális",
+      "distal": "Disztális",
+      "occlusal": "Okkluzális"
+    },
+    "projection": {
+      "perspective": "Perspektivikus",
+      "orthographic": "Ortografikus"
+    },
+    "shading": {
+      "label": "Árnyalás",
+      "clinical": "Klinikai",
+      "matcap": "Matcap"
+    },
+    "wireframe": {
+      "toggle": "Drótváz"
+    },
+    "frameAll": "Minden a képbe",
+    "frameSelection": "Kijelölés a képbe"
+  },
   "unitConfirm": {
     "title": "Mértékegység megerősítése",
     "messageCm": "\"{{fileName}}\" szokatlanul kicsinek tűnik (legnagyobb kiterjedés {{extent}} mm) — lehet, hogy valójában centiméterben van, nem milliméterben. Szorozzuk az összes koordinátát {{factor}}-szel?",

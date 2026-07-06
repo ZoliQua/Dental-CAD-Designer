@@ -29,10 +29,21 @@ export function createEmptyCaseDocument(): CaseDocument {
 
 interface CaseStoreState {
   document: CaseDocument;
+  /** The currently click-picked SceneNode id (engine/caseStore.ts's
+   * `setSelectedNodeId`), or `null` when nothing is selected. Deliberately
+   * NOT a field on `CaseDocument` — selection is ephemeral viewer UI state,
+   * not part of the persisted/exported case (Task 11), so it gets its own
+   * slice here rather than polluting the document schema. Consumed by
+   * ui/Viewport.tsx (round-trips into SceneManager's highlight) and, from
+   * Task 7 on, by the measurement tools. */
+  selectedNodeId: string | null;
   setDocument: (document: CaseDocument) => void;
+  setSelectedNodeId: (selectedNodeId: string | null) => void;
 }
 
 export const useCaseStore = create<CaseStoreState>((set) => ({
   document: createEmptyCaseDocument(),
+  selectedNodeId: null,
   setDocument: (document) => set({ document }),
+  setSelectedNodeId: (selectedNodeId) => set({ selectedNodeId }),
 }));

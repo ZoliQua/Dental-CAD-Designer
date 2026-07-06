@@ -8,6 +8,8 @@
 // separation intact even though both are within the `engine` boundary
 // (see eslint.config.js's `boundaries/dependencies`, which would permit
 // either direction — this is a design choice, not a lint requirement).
+import type { MeshRole } from '@dqcad/shared-types';
+
 export interface RenderNode {
   id: string;
   /** Float32, already re-centered at the case bbox centroid — see
@@ -17,4 +19,10 @@ export interface RenderNode {
   indices: Uint32Array;
   visible: boolean;
   opacity: number;
+  /** Carried through from SceneNode.role — SceneManager's jaw-aware standard
+   * views (engine/standardViews.ts) need to know which jaws are present in
+   * the scene; this avoids SceneManager importing engine/caseStore.ts just
+   * to read that one field (see this module's top doc on why the type lives
+   * here, dependency-free, rather than in either producer/consumer file). */
+  role: MeshRole;
 }

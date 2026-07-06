@@ -127,6 +127,66 @@ body {
   background: var(--color-bg);
 }
 
+.viewer-toolbar {
+  position: absolute;
+  top: 0.6rem;
+  left: 0.6rem;
+  right: 0.6rem;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+
+.viewer-toolbar__group {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem;
+  background: color-mix(in srgb, var(--color-bg-elevated) 85%, transparent);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  pointer-events: auto;
+}
+
+.viewer-toolbar__button {
+  font-size: 0.75rem;
+  padding: 0.3rem 0.55rem;
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.viewer-toolbar__button:hover:not(:disabled) {
+  border-color: var(--color-accent);
+}
+
+.viewer-toolbar__button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.viewer-toolbar__select {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.4rem;
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+}
+
+.viewer-toolbar__checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  color: var(--color-text);
+  padding: 0 0.3rem;
+}
+
 .status-bar {
   display: flex;
   gap: 1.5rem;

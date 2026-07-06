@@ -69,6 +69,15 @@ export interface RegisterMeshInput {
 /** Bounded, content-addressed mesh registry — see this module's doc comment. */
 export class MeshStore {
   private readonly records = new Map<string, EngineMeshRecord>();
+  /** Float64 mm world-space offset (the union-bbox centroid) currently
+   * subtracted from every record's Float64 `positions` to produce its
+   * Float32 `renderPositions` — i.e. `positions[i] - worldOffset ===
+   * renderPositions[i]` (up to Float32 rounding). Exposed via
+   * `getWorldOffset()` so a future coordinate readout (Task 7 measurements
+   * picking a point in the re-centered render frame) can add this back to
+   * report the true case/world mm coordinate. Recomputed every
+   * `recenterAll()` call; `[0, 0, 0]` when the registry is empty. */
+  private worldOffset: readonly [number, number, number] = [0, 0, 0];
 
   has(contentHash: string): boolean {
     return this.records.has(contentHash);
@@ -121,6 +130,13 @@ export class MeshStore {
    * nothing left to recenter). */
   clear(): void {
     this.records.clear();
+    this.worldOffset = [0, 0, 0];
+  }
+
+  /** Float64 mm world-space offset currently subtracted from every record's
+   * render copy — see the field doc above. */
+  getWorldOffset(): readonly [number, number, number] {
+    return this.worldOffset;
   }
 
   /** Union bbox centroid (Float64 mm) across every registered mesh's
@@ -128,6 +144,7 @@ export class MeshStore {
   private recenterAll(): void {
     const records = [...this.records.values()];
     if (records.length === 0) {
+      this.worldOffset = [0, 0, 0];
       return;
     }
     let minX = Infinity;
@@ -148,6 +165,7 @@ export class MeshStore {
     const centroidX = (minX + maxX) / 2;
     const centroidY = (minY + maxY) / 2;
     const centroidZ = (minZ + maxZ) / 2;
+    this.worldOffset = [centroidX, centroidY, centroidZ];
 
     for (const record of records) {
       const vertexCount = record.positions.length / 3;

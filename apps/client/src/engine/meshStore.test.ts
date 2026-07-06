@@ -111,6 +111,51 @@ describe('MeshStore.register', () => {
   });
 });
 
+describe('MeshStore.getWorldOffset', () => {
+  it('is [0, 0, 0] for an empty store', () => {
+    const store = new MeshStore();
+    expect(store.getWorldOffset()).toEqual([0, 0, 0]);
+  });
+
+  it('tracks the union bbox centroid exactly, matching renderPositions bookkeeping', () => {
+    const store = new MeshStore();
+    store.register(
+      makeInput({
+        contentHash: 'hash-a',
+        positions: new Float64Array([0, 0, 0]),
+        indices: new Uint32Array([0, 0, 0]),
+        stats: statsForBbox([0, 0, 0], [0, 0, 0]),
+      }),
+    );
+    store.register(
+      makeInput({
+        contentHash: 'hash-b',
+        positions: new Float64Array([10, 4, -6]),
+        indices: new Uint32Array([0, 0, 0]),
+        stats: statsForBbox([10, 4, -6], [10, 4, -6]),
+      }),
+    );
+    // Union bbox [0,0,0]-[10,4,-6] -> centroid (5, 2, -3).
+    expect(store.getWorldOffset()).toEqual([5, 2, -3]);
+
+    // Bookkeeping is exact: positions - worldOffset === renderPositions
+    // (Float32 rounding aside, these values are exactly representable).
+    const [offsetX, offsetY, offsetZ] = store.getWorldOffset();
+    const a = store.get('hash-a')!;
+    const b = store.get('hash-b')!;
+    expect(Array.from(a.renderPositions)).toEqual([0 - offsetX, 0 - offsetY, 0 - offsetZ]);
+    expect(Array.from(b.renderPositions)).toEqual([10 - offsetX, 4 - offsetY, -6 - offsetZ]);
+  });
+
+  it('resets to [0, 0, 0] once the last record is removed', () => {
+    const store = new MeshStore();
+    store.register(makeInput({ contentHash: 'hash-a', stats: statsForBbox([2, 2, 2], [2, 2, 2]) }));
+    expect(store.getWorldOffset()).toEqual([2, 2, 2]);
+    store.remove('hash-a');
+    expect(store.getWorldOffset()).toEqual([0, 0, 0]);
+  });
+});
+
 describe('MeshStore.remove', () => {
   it('removes a record and recenters the remaining ones', () => {
     const store = new MeshStore();

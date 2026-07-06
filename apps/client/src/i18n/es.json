@@ -78,6 +78,31 @@
     "situ": "In situ",
     "gingiva": "Encía"
   },
+  "viewer": {
+    "view": {
+      "groupLabel": "Vistas estándar",
+      "front": "Frontal",
+      "buccal": "Bucal",
+      "lingual": "Lingual",
+      "mesial": "Mesial",
+      "distal": "Distal",
+      "occlusal": "Oclusal"
+    },
+    "projection": {
+      "perspective": "Perspectiva",
+      "orthographic": "Ortográfica"
+    },
+    "shading": {
+      "label": "Sombreado",
+      "clinical": "Clínico",
+      "matcap": "Matcap"
+    },
+    "wireframe": {
+      "toggle": "Malla de alambre"
+    },
+    "frameAll": "Encuadrar todo",
+    "frameSelection": "Encuadrar selección"
+  },
   "unitConfirm": {
     "title": "Confirmar unidades del escaneo",
     "messageCm": "\"{{fileName}}\" parece inusualmente pequeño (extensión máxima {{extent}} mm) — podría estar en centímetros en lugar de milímetros. ¿Multiplicar todas las coordenadas por {{factor}}?",

@@ -209,7 +209,7 @@ describe('caseStore scene node management', () => {
     expect(renderNode!.positions.length).toBeGreaterThan(0);
   });
 
-  it('getRenderNodes resolves each SceneNode against its mesh record', () => {
+  it('getRenderNodes resolves each SceneNode against its mesh record, including its role', () => {
     registerMesh('hash-a');
     const node = caseStore.addSceneNode('hash-a', 'upperJaw');
     const renderNodes = caseStore.getRenderNodes();
@@ -218,5 +218,68 @@ describe('caseStore scene node management', () => {
     expect(renderNodes[0]!.positions).toBeInstanceOf(Float32Array);
     expect(renderNodes[0]!.visible).toBe(true);
     expect(renderNodes[0]!.opacity).toBe(1);
+    expect(renderNodes[0]!.role).toBe('upperJaw');
+  });
+
+  it('getRenderWorldOffset mirrors meshStore.getWorldOffset', () => {
+    registerMesh('hash-a');
+    caseStore.addSceneNode('hash-a', 'upperJaw');
+    expect(caseStore.getRenderWorldOffset()).toEqual(caseStore.meshStore.getWorldOffset());
+  });
+});
+
+describe('caseStore selection', () => {
+  function registerMesh(contentHash: string): void {
+    caseStore.registerImportedMesh({
+      contentHash,
+      name: 'scan.stl',
+      format: 'stl',
+      positions: new Float64Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+      indices: new Uint32Array([0, 1, 2]),
+      stats: statsForBbox([0, 0, 0], [1, 1, 0]),
+      report: EMPTY_REPORT,
+      operations: [importOp(contentHash)],
+    });
+  }
+
+  it('starts with no selection', () => {
+    expect(caseStore.getSelectedNodeId()).toBeNull();
+    expect(useCaseStore.getState().selectedNodeId).toBeNull();
+  });
+
+  it('setSelectedNodeId publishes the id to state/caseStore.ts', () => {
+    registerMesh('hash-a');
+    const node = caseStore.addSceneNode('hash-a', 'upperJaw');
+    caseStore.setSelectedNodeId(node.id);
+    expect(caseStore.getSelectedNodeId()).toBe(node.id);
+    expect(useCaseStore.getState().selectedNodeId).toBe(node.id);
+  });
+
+  it('setSelectedNodeId(null) clears the selection', () => {
+    registerMesh('hash-a');
+    const node = caseStore.addSceneNode('hash-a', 'upperJaw');
+    caseStore.setSelectedNodeId(node.id);
+    caseStore.setSelectedNodeId(null);
+    expect(caseStore.getSelectedNodeId()).toBeNull();
+    expect(useCaseStore.getState().selectedNodeId).toBeNull();
+  });
+
+  it('removeSceneNode clears the selection if the removed node was selected', () => {
+    registerMesh('hash-a');
+    const node = caseStore.addSceneNode('hash-a', 'upperJaw');
+    caseStore.setSelectedNodeId(node.id);
+    caseStore.removeSceneNode(node.id);
+    expect(caseStore.getSelectedNodeId()).toBeNull();
+    expect(useCaseStore.getState().selectedNodeId).toBeNull();
+  });
+
+  it('removeSceneNode leaves an unrelated selection untouched', () => {
+    registerMesh('hash-a');
+    registerMesh('hash-b');
+    const nodeA = caseStore.addSceneNode('hash-a', 'upperJaw');
+    const nodeB = caseStore.addSceneNode('hash-b', 'lowerJaw');
+    caseStore.setSelectedNodeId(nodeB.id);
+    caseStore.removeSceneNode(nodeA.id);
+    expect(caseStore.getSelectedNodeId()).toBe(nodeB.id);
   });
 });
