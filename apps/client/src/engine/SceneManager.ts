@@ -35,6 +35,20 @@
 // sphere) camera distance each frame, which combined with `renderOrder`
 // ordering opaque-before-transparent gives a correct-looking result for
 // Phase 1's few-mesh scenes.
+//
+// The wireframe overlay (a `LineSegments` child of each mesh) is its own
+// object in Three's render list — being a scene-graph CHILD does not imply
+// "draws after its parent." Its `LineBasicMaterial` is always
+// `transparent: true` (see `createEntry`), so it always lands in the
+// transparent queue; the base mesh only joins that queue when its own
+// opacity < 1. When both share the transparent queue, ties in `renderOrder`
+// fall through to Three's back-to-front distance sort, which for a mesh and
+// its zero-thickness wireframe overlay is essentially a coin flip — so the
+// wireframe must be given a strictly higher `renderOrder` than its mesh to
+// guarantee it paints on top. `transparentRenderOrders` below is the single
+// source of truth for that invariant (also see its own doc for why it's set
+// unconditionally, even at opacity 1 where it's numerically true but
+// render-inconsequential).
 import {
   Box3,
   BufferAttribute,
@@ -107,20 +121,24 @@ const CLICK_DRAG_THRESHOLD_PX = 5;
 
 const SELECTION_HIGHLIGHT_COLOR = new Color(0x4da3ff); // matches index.css's --color-accent (dark theme)
 const SELECTION_HIGHLIGHT_MIX = 0.55;
-const WIREFRAME_COLOR: ColorRepresentation = 0x2b2b2b;
 
 interface ThemeColors {
   background: ColorRepresentation;
   gridMain: ColorRepresentation;
   gridSub: ColorRepresentation;
+  /** Wireframe-overlay line color — like the grid colors below, this needs
+   * a per-theme value rather than one fixed hex: a dark near-black line
+   * (right for the light theme's near-white background) is nearly invisible
+   * against the dark theme's near-black background, and vice versa. */
+  wireframe: ColorRepresentation;
 }
 
 // Mirrors src/index.css's --color-bg for each theme — kept in sync by hand
 // since SceneManager renders via WebGL, not CSS; if index.css's palette
 // changes, update here too (see setTheme's doc).
 const THEME_COLORS: Record<Theme, ThemeColors> = {
-  dark: { background: 0x1a1a1a, gridMain: 0x666666, gridSub: 0x333333 },
-  light: { background: 0xf5f5f5, gridMain: 0x999999, gridSub: 0xcfcfcf },
+  dark: { background: 0x1a1a1a, gridMain: 0x666666, gridSub: 0x333333, wireframe: 0x999999 },
+  light: { background: 0xf5f5f5, gridMain: 0x999999, gridSub: 0xcfcfcf, wireframe: 0x2b2b2b },
 };
 
 interface MeshEntry {
@@ -181,6 +199,31 @@ function disposeObject3DTree(root: Object3D): void {
   });
 }
 
+/**
+ * The mesh/wireframe-overlay `renderOrder` pair for a given opacity — see
+ * the module doc's "Transparent render order" section for why the
+ * wireframe MUST outrank its mesh. Factored out as a pure, exported
+ * function (rather than left inline in `applyOpacity`) specifically so it's
+ * unit-testable without a real `WebGLRenderer`/`HTMLElement`/`ResizeObserver`
+ * — `SceneManager` itself can't be constructed under vitest's `node`
+ * environment (no DOM, no canvas), but this invariant is just arithmetic on
+ * plain numbers and deserves direct coverage.
+ *
+ * The invariant (`wireframeRenderOrder > meshRenderOrder`) is set
+ * unconditionally for every opacity, not only `< 1`. At `opacity === 1` the
+ * mesh's material is opaque (`transparent = false`) and so renders in
+ * Three's separate OPAQUE queue, which always fully drains before the
+ * TRANSPARENT queue the wireframe is always in — meaning the ordering is
+ * numerically true but render-inconsequential there (the wireframe already
+ * paints on top via the queue split alone). Keeping the invariant
+ * unconditional avoids a transient "wrong" pairing during an opacity
+ * transition and keeps this function simple to reason about and test.
+ */
+export function transparentRenderOrders(opacity: number): { meshRenderOrder: number; wireframeRenderOrder: number } {
+  const meshRenderOrder = opacity < 1 ? 1 : 0;
+  return { meshRenderOrder, wireframeRenderOrder: meshRenderOrder + 1 };
+}
+
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   if (target.isContentEditable) return true;
@@ -204,6 +247,13 @@ export class SceneManager {
   private disposed = false;
 
   private readonly meshEntries = new Map<string, MeshEntry>();
+  /** Every currently-live node's role, collected in `syncRenderNodes`
+   * unconditionally of `node.visible` — deliberately NOT visibility-filtered,
+   * unlike `computeBoundingSphere`/`frameAll`/`frameSelection`'s
+   * `{ visibleOnly: true }` framing math. `resolveJawContext` (used by
+   * `setStandardView`) reads this: hiding the upper jaw shouldn't flip a
+   * mixed-arch case's occlusal convention back to lower-jaw-only, since the
+   * hidden mesh is still logically part of the case. */
   private currentRoles: MeshRole[] = [];
   private selectedNodeId: string | null = null;
 
@@ -290,10 +340,11 @@ export class SceneManager {
   // Theme
   // ---------------------------------------------------------------------
 
-  /** Applies a dark/light theme to the background clear color and the grid
-   * — called by ui/Viewport.tsx whenever state/appStore.ts's `theme`
-   * changes (mirroring the CSS-custom-property-driven UI theme, since the
-   * WebGL canvas can't just inherit a CSS variable). */
+  /** Applies a dark/light theme to the background clear color, the grid,
+   * and every live mesh entry's wireframe-overlay line color — called by
+   * ui/Viewport.tsx whenever state/appStore.ts's `theme` changes (mirroring
+   * the CSS-custom-property-driven UI theme, since the WebGL canvas can't
+   * just inherit a CSS variable). */
   setTheme(theme: Theme): void {
     if (theme === this.theme) return;
     this.theme = theme;
@@ -302,6 +353,10 @@ export class SceneManager {
     disposeObject3DTree(this.grid);
     this.grid = this.buildGrid();
     this.scene.add(this.grid);
+    const wireframeColor = THEME_COLORS[theme].wireframe;
+    for (const entry of this.meshEntries.values()) {
+      entry.wireframeMaterial.color.set(wireframeColor);
+    }
   }
 
   // ---------------------------------------------------------------------
@@ -368,13 +423,22 @@ export class SceneManager {
 
     const wireframeGeometry = new WireframeGeometry(geometry);
     const wireframeMaterial = new LineBasicMaterial({
-      color: WIREFRAME_COLOR,
+      color: THEME_COLORS[this.theme].wireframe,
       transparent: true,
       opacity: 0.5,
       depthWrite: false,
     });
     const wireframeMesh = new LineSegments(wireframeGeometry, wireframeMaterial);
     wireframeMesh.visible = this.wireframeEnabled && node.visible;
+    // Initialize both to the same invariant `applyOpacity` maintains from
+    // then on (see `transparentRenderOrders`'s doc) — `syncRenderNodes`
+    // always calls `applyOpacity` immediately after `createEntry`, so this
+    // is belt-and-suspenders rather than load-bearing today, but it means
+    // a freshly-created entry is never transiently in a state where the
+    // invariant doesn't hold.
+    const initialRenderOrders = transparentRenderOrders(node.opacity);
+    mesh.renderOrder = initialRenderOrders.meshRenderOrder;
+    wireframeMesh.renderOrder = initialRenderOrders.wireframeRenderOrder;
     mesh.add(wireframeMesh);
 
     return {
@@ -434,7 +498,9 @@ export class SceneManager {
     const isTransparent = opacity < 1;
     entry.material.transparent = isTransparent;
     entry.material.depthWrite = !isTransparent;
-    entry.mesh.renderOrder = isTransparent ? 1 : 0;
+    const { meshRenderOrder, wireframeRenderOrder } = transparentRenderOrders(opacity);
+    entry.mesh.renderOrder = meshRenderOrder;
+    entry.wireframeMesh.renderOrder = wireframeRenderOrder;
   }
 
   private disposeEntry(entry: MeshEntry): void {
@@ -586,10 +652,23 @@ export class SceneManager {
       this.orthoHalfHeightMm = Math.max(distance * Math.tan(halfFovRad), MIN_FRAME_RADIUS_MM);
       const orthoDistance = this.orthoHalfHeightMm * ORTHO_CAMERA_DISTANCE_FACTOR;
       newCamera.position.copy(target).addScaledVector(direction, orthoDistance);
+      // Same near/far formula `applyFraming`'s ortho branch uses (there,
+      // `padded` — here, the just-recomputed `orthoHalfHeightMm` plays the
+      // same role) — without this, a toggle-to-ortho that happens before
+      // any `frameAll`/`frameSelection`/`setStandardView` call ever ran
+      // would leave the orthographic camera at its wide constructor-default
+      // near/far (0.1mm/5000mm) instead of one fit to the actual current
+      // framing, same "no prior framing edge case" this task's brief calls out.
+      newCamera.near = 0.01;
+      newCamera.far = orthoDistance + this.orthoHalfHeightMm * 4;
     } else {
       const halfFovRad = MathUtils.degToRad(this.perspectiveCamera.fov) / 2;
       const perspectiveDistance = Math.max(this.orthoHalfHeightMm / Math.tan(halfFovRad), MIN_FRAME_RADIUS_MM);
       newCamera.position.copy(target).addScaledVector(direction, perspectiveDistance);
+      // Mirrors `applyFraming`'s perspective branch, with `orthoHalfHeightMm`
+      // (the last-known framed half-extent) standing in for `padded`.
+      newCamera.near = Math.max(0.01, perspectiveDistance - this.orthoHalfHeightMm * 4);
+      newCamera.far = perspectiveDistance + this.orthoHalfHeightMm * 4;
     }
 
     this.controls.object = newCamera;
