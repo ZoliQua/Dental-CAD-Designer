@@ -24,6 +24,7 @@ import {
   WebGLRenderer,
 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import type { RenderNode } from './renderNode';
 
 /**
  * Minimal "mesh visible in scene" wiring for Task 5 (client import flow) —
@@ -31,18 +32,15 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
  * Task 6 (the real viewer) owns proper materials/shading/LOD/selection;
  * `setRenderNodes` below intentionally does the simplest possible thing
  * (dispose everything, rebuild from scratch on every call) rather than
- * diffing — fine for Phase 1's few-mesh, infrequent-update case.
+ * diffing — fine for Phase 1's few-mesh, infrequent-update case. This also
+ * means GPU-side geometry/material disposal for a removed SceneNode (see
+ * caseStore.removeSceneNode) needs no extra wiring here: the next publish
+ * after a removal calls this with the node already absent, and
+ * `clearMeshGroup()` below unconditionally disposes every previous mesh
+ * before rebuilding — so a removed node's GPU resources are freed on the
+ * very next render sync, same as any other document change.
  */
-export interface RenderNode {
-  id: string;
-  /** Float32, already re-centered at the case bbox centroid — see
-   * engine/meshStore.ts's module doc. SceneManager never re-centers or
-   * otherwise transforms these; it only renders them as given. */
-  positions: Float32Array;
-  indices: Uint32Array;
-  visible: boolean;
-  opacity: number;
-}
+export type { RenderNode };
 
 const CAMERA_FOV_DEGREES = 50;
 const CAMERA_NEAR_MM = 0.1;

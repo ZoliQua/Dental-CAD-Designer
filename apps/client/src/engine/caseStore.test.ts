@@ -162,6 +162,53 @@ describe('caseStore scene node management', () => {
     expect(useCaseStore.getState().document.scene).toHaveLength(0);
   });
 
+  it('removeSceneNode releases the mesh from meshStore when it was the last node referencing it', () => {
+    registerMesh('hash-a');
+    const node = caseStore.addSceneNode('hash-a', 'upperJaw');
+    expect(caseStore.meshStore.has('hash-a')).toBe(true);
+
+    caseStore.removeSceneNode(node.id);
+
+    expect(caseStore.meshStore.has('hash-a')).toBe(false);
+    expect(caseStore.meshStore.get('hash-a')).toBeUndefined();
+    // The MeshAsset itself is journal/history metadata, not a live buffer —
+    // it stays in document.meshes even after the buffers are released.
+    expect(useCaseStore.getState().document.meshes.some((m) => m.contentHash === 'hash-a')).toBe(true);
+  });
+
+  it('removeSceneNode does NOT release the mesh while another node still references it', () => {
+    registerMesh('hash-a');
+    const nodeA = caseStore.addSceneNode('hash-a', 'upperJaw');
+    const nodeB = caseStore.addSceneNode('hash-a', 'antagonist');
+
+    caseStore.removeSceneNode(nodeA.id);
+
+    expect(caseStore.meshStore.has('hash-a')).toBe(true);
+    expect(useCaseStore.getState().document.scene).toHaveLength(1);
+    expect(useCaseStore.getState().document.scene[0]!.id).toBe(nodeB.id);
+  });
+
+  it('re-importing the same content hash after removal works and yields fresh, usable buffers', () => {
+    registerMesh('hash-a');
+    const firstNode = caseStore.addSceneNode('hash-a', 'upperJaw');
+    caseStore.removeSceneNode(firstNode.id);
+    expect(caseStore.meshStore.has('hash-a')).toBe(false);
+
+    // Re-import: registerImportedMesh -> meshStore.register must NOT return
+    // a stale/deleted record just because document.meshes still lists the
+    // MeshAsset — it should see the registry has no live record and store a
+    // fresh one.
+    registerMesh('hash-a');
+    expect(caseStore.meshStore.has('hash-a')).toBe(true);
+
+    const secondNode = caseStore.addSceneNode('hash-a', 'upperJaw');
+    const renderNodes = caseStore.getRenderNodes();
+    const renderNode = renderNodes.find((n) => n.id === secondNode.id);
+    expect(renderNode).toBeDefined();
+    expect(renderNode!.positions).toBeInstanceOf(Float32Array);
+    expect(renderNode!.positions.length).toBeGreaterThan(0);
+  });
+
   it('getRenderNodes resolves each SceneNode against its mesh record', () => {
     registerMesh('hash-a');
     const node = caseStore.addSceneNode('hash-a', 'upperJaw');

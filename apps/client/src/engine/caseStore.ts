@@ -15,6 +15,7 @@
 import type { CaseDocument, MeshAsset, MeshRole, Operation, SceneNode } from '@dqcad/shared-types';
 import { createEmptyCaseDocument, useCaseStore } from '../state/caseStore';
 import { MeshStore, type EngineMeshRecord, type RegisterMeshInput } from './meshStore';
+import type { RenderNode } from './renderNode';
 
 /** Identity 4x4 (column-major, per SceneNode's doc) — every newly imported
  * mesh is placed at the scan's own coordinate frame; Task 6+ (alignment/
@@ -23,13 +24,7 @@ const IDENTITY_TRANSFORM_4X4: readonly number[] = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0,
 
 const DEFAULT_OPACITY = 1;
 
-export interface RenderNode {
-  id: string;
-  positions: Float32Array;
-  indices: Uint32Array;
-  visible: boolean;
-  opacity: number;
-}
+export type { RenderNode };
 
 /** Input for registerImportedMesh: the already-computed final mesh (from
  * intakeMesh, and possibly rescaleMesh — see importer.ts) plus the journal
@@ -101,11 +96,33 @@ class CaseStoreEngine {
     return node;
   }
 
+  /**
+   * Drops `nodeId` from the scene and, if that was the LAST remaining
+   * SceneNode referencing its meshId (contentHash), releases that mesh's
+   * Float64 master + Float32 render buffers from `meshStore` too — see this
+   * module's top-of-file doc for why this matters (large scans otherwise
+   * stay resident for the whole session even after being removed from the
+   * tree). Reference-counted over the scene array rather than tracked with
+   * a separate counter so it can never drift from the actual document
+   * state. A mesh referenced by another SceneNode (e.g. the same scan used
+   * as both `situ` and `antagonist`, per addSceneNode's doc) is correctly
+   * left alone. The MeshAsset entry in `document.meshes` is intentionally
+   * NOT removed — it's case history/journal metadata, not a live buffer,
+   * and `getRenderNodes()` already tolerates a SceneNode (or a future
+   * re-add) whose mesh record is momentarily absent.
+   */
   removeSceneNode(nodeId: string): void {
-    this.document = {
-      ...this.document,
-      scene: this.document.scene.filter((node) => node.id !== nodeId),
-    };
+    const removedNode = this.document.scene.find((node) => node.id === nodeId);
+    const remainingScene = this.document.scene.filter((node) => node.id !== nodeId);
+    this.document = { ...this.document, scene: remainingScene };
+
+    if (removedNode) {
+      const stillReferenced = remainingScene.some((node) => node.meshId === removedNode.meshId);
+      if (!stillReferenced) {
+        this.meshStore.remove(removedNode.meshId);
+      }
+    }
+
     this.publish();
   }
 
