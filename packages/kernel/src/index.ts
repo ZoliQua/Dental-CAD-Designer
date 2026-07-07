@@ -66,3 +66,22 @@ export {
   type TriangleClosestPoint,
   type RayTriangleHit,
 } from './bvh/index.ts';
+
+export {
+  removeComponents,
+  splitNonManifoldEdges,
+  fillSmallHoles,
+  DEFAULT_MAX_BOUNDARY_EDGES,
+  type ComponentInfo,
+  type FillSmallHolesOptions,
+  type FillSmallHolesReport,
+  type FillSmallHolesResult,
+  type RemoveComponentsReport,
+  type RemoveComponentsResult,
+  type RemoveComponentsSelector,
+  type RepairCounts,
+  type SkippedHole,
+  type SkippedHoleReason,
+  type SplitNonManifoldEdgesReport,
+  type SplitNonManifoldEdgesResult,
+} from './repair/index.ts';

@@ -20,6 +20,7 @@ import type {
   Operation,
   SceneNode,
 } from '@dqcad/shared-types';
+import type { MeshStats } from '@dqcad/kernel-workers';
 import { createEmptyCaseDocument, useCaseStore } from '../state/caseStore';
 import { MeshStore, type EngineMeshRecord, type RegisterMeshInput } from './meshStore';
 import type { RenderNode } from './renderNode';
@@ -42,6 +43,23 @@ export interface RegisterImportedMeshInput extends RegisterMeshInput {
    * the user confirmed a rescale), then always exactly one `import-mesh`
    * Operation — see importer.ts. */
   operations: readonly Operation[];
+}
+
+/** Input for `applyRepair` — see engine/repair.ts for how this is built (a
+ * repair's kernel-worker job result, already computed for preview, plus the
+ * journal `Operation` the UI's explicit "Apply" click authorizes appending). */
+export interface ApplyRepairInput {
+  /** contentHash of the mesh this repair was computed FROM — every SceneNode
+   * currently referencing it gets repointed to `operation.outputHashes[0]`. */
+  previousContentHash: string;
+  positions: Float64Array;
+  indices: Uint32Array;
+  stats: MeshStats;
+  /** Journal entry — `outputHashes[0]` is REQUIRED and becomes the new
+   * mesh's `MeshAsset.contentHash`/`EngineMeshRecord.contentHash` (see
+   * @dqcad/shared-types' `Operation` doc: `outputHashes` is the
+   * reproducibility identity of an operation's result). */
+  operation: Operation;
 }
 
 class CaseStoreEngine {
@@ -156,16 +174,7 @@ class CaseStoreEngine {
     this.document = { ...this.document, scene: remainingScene };
 
     if (removedNode) {
-      const stillReferenced = remainingScene.some((node) => node.meshId === removedNode.meshId);
-      if (!stillReferenced) {
-        this.meshStore.remove(removedNode.meshId);
-        // Same "last reference gone" trigger as the Float64/Float32 buffer
-        // release just above — a mesh with no remaining SceneNode also has
-        // no reason to keep a worker-side BVH resident for the rest of the
-        // session (Task 7's brief: "Worker BVH cache: memory-conscious
-        // (releaseBvh wired to mesh removal)").
-        releaseBvhForMesh(removedNode.meshId);
-      }
+      this.releaseMeshIfUnreferenced(removedNode.meshId);
     }
 
     // A removed node can no longer be the selection — leaving it set would
@@ -243,6 +252,89 @@ class CaseStoreEngine {
       measurements: this.document.measurements.filter((measurement) => measurement.id !== id),
     };
     this.publish();
+  }
+
+  /** Releases `contentHash`'s Float64/Float32 buffers (`meshStore.remove`)
+   * and worker-side BVH (`releaseBvhForMesh`) iff no SceneNode in the
+   * CURRENT `this.document.scene` still references it — the shared "last
+   * reference gone" check used by both `removeSceneNode` and `applyRepair`
+   * (call this AFTER updating `this.document.scene`, never before). */
+  private releaseMeshIfUnreferenced(contentHash: string): void {
+    const stillReferenced = this.document.scene.some((node) => node.meshId === contentHash);
+    if (!stillReferenced) {
+      this.meshStore.remove(contentHash);
+      // Same "last reference gone" trigger as the Float64/Float32 buffer
+      // release just above — a mesh with no remaining SceneNode also has no
+      // reason to keep a worker-side BVH resident for the rest of the
+      // session (Task 7's brief: "Worker BVH cache: memory-conscious
+      // (releaseBvh wired to mesh removal)").
+      releaseBvhForMesh(contentHash);
+    }
+  }
+
+  /**
+   * Commits a user-approved repair (Task 8): registers the ALREADY-COMPUTED
+   * result mesh (`input.positions`/`input.indices` — see
+   * engine/repair.ts's preview/apply split, which computes these before
+   * this method is ever called) under `input.operation.outputHashes[0]`,
+   * repoints every SceneNode that referenced the PRE-repair mesh
+   * (`input.previousContentHash`) to the new one (the "result mesh replaces
+   * the scene mesh" requirement — render copies are refreshed as a side
+   * effect of `MeshStore.register`'s `recenterAll()`), appends
+   * `input.operation` to the journal, and releases the pre-repair mesh's
+   * buffers/BVH if nothing references it anymore (same reference-counted
+   * lifecycle `removeSceneNode` uses — see `releaseMeshIfUnreferenced`).
+   *
+   * Idempotent by content hash for the MeshAsset list (same dedup rule as
+   * `registerImportedMesh`) — but, like `registerImportedMesh`, the journal
+   * `Operation` is always appended: a repair is a real, journal-worthy event
+   * even on the rare chance its output happens to hash-collide with an
+   * already-known mesh.
+   */
+  applyRepair(input: ApplyRepairInput): EngineMeshRecord {
+    const previous = this.meshStore.get(input.previousContentHash);
+    if (!previous) {
+      throw new Error(`applyRepair: no mesh registered for contentHash ${input.previousContentHash}`);
+    }
+    const outputHash = input.operation.outputHashes[0];
+    if (!outputHash) {
+      throw new Error('applyRepair: operation.outputHashes must carry the repaired mesh contentHash');
+    }
+
+    const record = this.meshStore.register({
+      contentHash: outputHash,
+      name: previous.name,
+      format: previous.format,
+      positions: input.positions,
+      indices: input.indices,
+      stats: input.stats,
+      // Repair doesn't re-run intake — carry over the ORIGINAL mesh's intake
+      // report unchanged (still meaningful provenance/warnings display, see
+      // ImportPanel.tsx's MeshSummary) rather than fabricating a hollow one.
+      report: previous.report,
+    });
+
+    const alreadyKnownAsset = this.document.meshes.some((mesh) => mesh.contentHash === outputHash);
+    const asset: MeshAsset = {
+      id: outputHash,
+      contentHash: outputHash,
+      name: previous.name,
+      unit: 'mm',
+      triangleCount: input.indices.length / 3,
+    };
+
+    this.document = {
+      ...this.document,
+      meshes: alreadyKnownAsset ? this.document.meshes : [...this.document.meshes, asset],
+      scene: this.document.scene.map((node) =>
+        node.meshId === input.previousContentHash ? { ...node, meshId: outputHash } : node,
+      ),
+      history: [...this.document.history, input.operation],
+    };
+
+    this.releaseMeshIfUnreferenced(input.previousContentHash);
+    this.publish();
+    return record;
   }
 
   private publish(): void {

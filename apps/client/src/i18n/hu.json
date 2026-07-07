@@ -126,5 +126,35 @@
     "messageUm": "\"{{fileName}}\" szokatlanul nagynak tűnik (legnagyobb kiterjedés {{extent}} mm) — lehet, hogy valójában mikrométerben van, nem milliméterben. Szorozzuk az összes koordinátát {{factor}}-szel?",
     "keepMm": "Marad mm-ben",
     "applyFactor": "Alkalmazás ×{{factor}}"
+  },
+  "repair": {
+    "panelTitle": "Javítás",
+    "previewLoading": "Előnézet számítása…",
+    "previewError": "Javítási előnézet sikertelen: {{message}}",
+    "applyButton": "Alkalmaz",
+    "applying": "Alkalmazás…",
+    "applied": "Alkalmazva",
+    "stats": {
+      "before": "Előtte",
+      "after": "Utána"
+    },
+    "removeComponents": {
+      "title": "Kis komponensek eltávolítása",
+      "description": "Csak a legnagyobb összefüggő darabot tartja meg, eltávolítva a kisebb, eltévedt töredékeket.",
+      "summary": "{{total}} komponensből {{removed}} eltávolítva",
+      "noneToRemove": "Nincs mit eltávolítani — minden komponens megmaradna."
+    },
+    "splitNonManifoldEdges": {
+      "title": "Nem sokaság élek szétválasztása",
+      "description": "Megkettőzi a csúcsokat a 2-nél több háromszög által megosztott éleken, hogy minden él legfeljebb 2 háromszöghöz tartozzon.",
+      "summary": "{{count}} csúcs megkettőzve {{edges}} nem sokaság élen"
+    },
+    "fillSmallHoles": {
+      "title": "Kis lyukak kitöltése",
+      "description": "Sima (nem görbület-folytonos) folttal zárja le a kis határhurkokat. A nagyobb lyukakat elutasítja, nem tölti ki.",
+      "summary": "{{found}} lyukból {{filled}} kitöltve",
+      "skippedSummary": "{{count}} lyuk elutasítva (túl nagy a biztonságos kitöltéshez)",
+      "noneToFill": "Nem található lyuk."
+    }
   }
 }

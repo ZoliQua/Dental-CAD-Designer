@@ -32,12 +32,20 @@ import {
   buildBvh,
   closestPoint,
   raycast,
+  removeComponents,
+  splitNonManifoldEdges,
+  fillSmallHoles,
   type IndexedMesh,
   type IntakeReport,
   type IntakeStepReport,
   type MeshStats,
   type Bvh,
   type Vec3,
+  type RemoveComponentsSelector,
+  type RemoveComponentsReport,
+  type SplitNonManifoldEdgesReport,
+  type FillSmallHolesOptions,
+  type FillSmallHolesReport,
 } from '@dqcad/kernel';
 
 // Re-exported (via index.ts) so apps/client/src/engine — which may depend on
@@ -555,6 +563,114 @@ const raycastMesh: JobHandler<'raycastMesh'> = async (payload) => {
   };
 };
 
+// ---------------------------------------------------------------------------
+// Repair jobs: repairRemoveComponents / repairSplitNonManifoldEdges /
+// repairFillSmallHoles (Task 8).
+//
+// Each wraps ONE of @dqcad/kernel's pure repair/ functions (see
+// packages/kernel/src/repair/*.ts's module docs for the algorithms) plus a
+// before/after `analyzeMesh` call, so the caller (apps/client's repair
+// preview panel) gets full `MeshStats` (watertight, manifoldEdges,
+// boundaryEdgeCount, ...) on both sides without a separate round trip — the
+// SAME "stats alongside the operation-specific report" split
+// `IntakeMeshResult` uses for intake.
+//
+// Cancellation/progress granularity: unlike `intakeMesh` (4 real
+// between-stage yield points), each repair kernel function here is ONE
+// synchronous, non-yielding call — there is nothing to check cancellation
+// BETWEEN internally, so (mirroring `buildBvh`'s job above) this offers a
+// single checkpoint before starting, then reports 0 -> 1. Acceptable for
+// Phase 1: repair operates on already-loaded, already-intake'd meshes (never
+// bigger than the scan itself), and every repair function here is at most a
+// small constant factor more expensive than intake's own analyzeMesh pass.
+// ---------------------------------------------------------------------------
+
+export interface RepairRemoveComponentsPayload {
+  positions: Float64Array;
+  indices: Uint32Array;
+  selector: RemoveComponentsSelector;
+}
+
+export interface RepairRemoveComponentsResult {
+  positions: Float64Array;
+  indices: Uint32Array;
+  report: RemoveComponentsReport;
+  statsBefore: MeshStats;
+  statsAfter: MeshStats;
+}
+
+export interface RepairSplitNonManifoldEdgesPayload {
+  positions: Float64Array;
+  indices: Uint32Array;
+}
+
+export interface RepairSplitNonManifoldEdgesResult {
+  positions: Float64Array;
+  indices: Uint32Array;
+  report: SplitNonManifoldEdgesReport;
+  statsBefore: MeshStats;
+  statsAfter: MeshStats;
+}
+
+export interface RepairFillSmallHolesPayload {
+  positions: Float64Array;
+  indices: Uint32Array;
+  options?: FillSmallHolesOptions;
+}
+
+export interface RepairFillSmallHolesResult {
+  positions: Float64Array;
+  indices: Uint32Array;
+  report: FillSmallHolesReport;
+  statsBefore: MeshStats;
+  statsAfter: MeshStats;
+}
+
+function requireMeshPayload(positions: unknown, indices: unknown, jobName: string): void {
+  if (!(positions instanceof Float64Array)) {
+    throw new TypeError(`${jobName}: positions must be a Float64Array (kernel Float64 rule)`);
+  }
+  if (!(indices instanceof Uint32Array)) {
+    throw new TypeError(`${jobName}: indices must be a Uint32Array`);
+  }
+}
+
+const repairRemoveComponents: JobHandler<'repairRemoveComponents'> = async (payload, ctx) => {
+  requireMeshPayload(payload.positions, payload.indices, 'repairRemoveComponents');
+  if (await ctx.cancelled()) throw new JobCancelledError();
+  ctx.progress(0);
+  const mesh: IndexedMesh = { positions: payload.positions, indices: payload.indices };
+  const statsBefore = analyzeMesh(mesh);
+  const { mesh: resultMesh, report } = removeComponents(mesh, payload.selector);
+  const statsAfter = analyzeMesh(resultMesh);
+  ctx.progress(1);
+  return { positions: resultMesh.positions, indices: resultMesh.indices, report, statsBefore, statsAfter };
+};
+
+const repairSplitNonManifoldEdges: JobHandler<'repairSplitNonManifoldEdges'> = async (payload, ctx) => {
+  requireMeshPayload(payload.positions, payload.indices, 'repairSplitNonManifoldEdges');
+  if (await ctx.cancelled()) throw new JobCancelledError();
+  ctx.progress(0);
+  const mesh: IndexedMesh = { positions: payload.positions, indices: payload.indices };
+  const statsBefore = analyzeMesh(mesh);
+  const { mesh: resultMesh, report } = splitNonManifoldEdges(mesh);
+  const statsAfter = analyzeMesh(resultMesh);
+  ctx.progress(1);
+  return { positions: resultMesh.positions, indices: resultMesh.indices, report, statsBefore, statsAfter };
+};
+
+const repairFillSmallHoles: JobHandler<'repairFillSmallHoles'> = async (payload, ctx) => {
+  requireMeshPayload(payload.positions, payload.indices, 'repairFillSmallHoles');
+  if (await ctx.cancelled()) throw new JobCancelledError();
+  ctx.progress(0);
+  const mesh: IndexedMesh = { positions: payload.positions, indices: payload.indices };
+  const statsBefore = analyzeMesh(mesh);
+  const { mesh: resultMesh, report } = fillSmallHoles(mesh, payload.options);
+  const statsAfter = analyzeMesh(resultMesh);
+  ctx.progress(1);
+  return { positions: resultMesh.positions, indices: resultMesh.indices, report, statsBefore, statsAfter };
+};
+
 export interface JobPayloadMap {
   echoMesh: EchoMeshPayload;
   longTask: LongTaskPayload;
@@ -566,6 +682,9 @@ export interface JobPayloadMap {
   releaseBvh: ReleaseBvhPayload;
   measurePointToSurface: MeasurePointToSurfacePayload;
   raycastMesh: RaycastMeshPayload;
+  repairRemoveComponents: RepairRemoveComponentsPayload;
+  repairSplitNonManifoldEdges: RepairSplitNonManifoldEdgesPayload;
+  repairFillSmallHoles: RepairFillSmallHolesPayload;
 }
 
 export interface JobResultMap {
@@ -579,6 +698,9 @@ export interface JobResultMap {
   releaseBvh: ReleaseBvhResult;
   measurePointToSurface: MeasurePointToSurfaceResult;
   raycastMesh: RaycastMeshResult;
+  repairRemoveComponents: RepairRemoveComponentsResult;
+  repairSplitNonManifoldEdges: RepairSplitNonManifoldEdgesResult;
+  repairFillSmallHoles: RepairFillSmallHolesResult;
 }
 
 export type JobName = keyof JobPayloadMap;
@@ -877,6 +999,9 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   releaseBvh,
   measurePointToSurface,
   raycastMesh,
+  repairRemoveComponents,
+  repairSplitNonManifoldEdges,
+  repairFillSmallHoles,
 };
 
 const noopContext: JobContext = {

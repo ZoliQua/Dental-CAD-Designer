@@ -460,6 +460,102 @@ body {
   border-color: var(--color-accent);
 }
 
+.scene-tree__repair {
+  grid-column: 1 / -1;
+}
+
+/* Repair panel (Task 8) — per-scene-node, appears under a scene-tree row
+   when that mesh's current stats show an issue. */
+.repair-panel {
+  margin-top: 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.repair-panel__title {
+  margin: 0;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-text-muted);
+}
+
+.repair-card {
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.72rem;
+}
+
+.repair-card__title {
+  margin: 0 0 0.15rem;
+  font-size: 0.76rem;
+}
+
+.repair-card__description {
+  margin: 0 0 0.3rem;
+  color: var(--color-text-muted);
+}
+
+.repair-card__status {
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.repair-card__error {
+  color: #e05555;
+  margin: 0;
+}
+
+.repair-card__applied {
+  color: var(--color-accent);
+  margin: 0;
+}
+
+.repair-card__summary {
+  margin: 0 0 0.3rem;
+}
+
+.repair-card__summary--muted {
+  color: var(--color-text-muted);
+}
+
+.repair-card__stats {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 0.35rem;
+  color: var(--color-text-muted);
+}
+
+.repair-card__stats th,
+.repair-card__stats td {
+  text-align: left;
+  padding: 0.05rem 0.3rem 0.05rem 0;
+  font-weight: normal;
+}
+
+.repair-card__apply-button {
+  font-size: 0.72rem;
+  padding: 0.25rem 0.6rem;
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-accent);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.repair-card__apply-button:hover:not(:disabled) {
+  background: var(--color-accent);
+  color: var(--color-bg);
+}
+
+.repair-card__apply-button:disabled {
+  cursor: default;
+  opacity: 0.5;
+  border-color: var(--color-border);
+}
+
 /* Measurement toolbar (Viewport overlay — same floating-panel style as
    .viewer-toolbar, positioned below it) */
 .measure-toolbar {

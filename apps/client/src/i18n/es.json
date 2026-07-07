@@ -126,5 +126,35 @@
     "messageUm": "\"{{fileName}}\" parece inusualmente grande (extensión máxima {{extent}} mm) — podría estar en micrómetros en lugar de milímetros. ¿Multiplicar todas las coordenadas por {{factor}}?",
     "keepMm": "Mantener como está (mm)",
     "applyFactor": "Aplicar ×{{factor}}"
+  },
+  "repair": {
+    "panelTitle": "Reparación",
+    "previewLoading": "Calculando vista previa…",
+    "previewError": "Error en la vista previa de reparación: {{message}}",
+    "applyButton": "Aplicar",
+    "applying": "Aplicando…",
+    "applied": "Aplicado",
+    "stats": {
+      "before": "Antes",
+      "after": "Después"
+    },
+    "removeComponents": {
+      "title": "Eliminar componentes pequeños",
+      "description": "Conserva solo la pieza conectada más grande, eliminando fragmentos sueltos más pequeños.",
+      "summary": "Elimina {{removed}} de {{total}} componente(s)",
+      "noneToRemove": "Nada que eliminar — se conservarían todos los componentes."
+    },
+    "splitNonManifoldEdges": {
+      "title": "Separar bordes no variedad",
+      "description": "Duplica los vértices en bordes compartidos por más de 2 triángulos para que cada borde tenga como máximo 2.",
+      "summary": "Duplica {{count}} vértice(s) en {{edges}} borde(s) no variedad"
+    },
+    "fillSmallHoles": {
+      "title": "Rellenar agujeros pequeños",
+      "description": "Cierra bucles de contorno pequeños con un parche suave (no continuo en curvatura). Los agujeros más grandes se rechazan, no se rellenan.",
+      "summary": "Rellena {{filled}} de {{found}} agujero(s)",
+      "skippedSummary": "{{count}} agujero(s) rechazado(s) (demasiado grande para rellenar con seguridad)",
+      "noneToFill": "No se encontraron agujeros."
+    }
   }
 }

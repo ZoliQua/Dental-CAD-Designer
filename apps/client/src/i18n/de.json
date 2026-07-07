@@ -126,5 +126,35 @@
     "messageUm": "\"{{fileName}}\" wirkt ungewöhnlich groß (größte Ausdehnung {{extent}} mm) — die Datei liegt möglicherweise tatsächlich in Mikrometern statt Millimetern vor. Alle Koordinaten mit {{factor}} multiplizieren?",
     "keepMm": "So belassen (mm)",
     "applyFactor": "×{{factor}} anwenden"
+  },
+  "repair": {
+    "panelTitle": "Reparatur",
+    "previewLoading": "Vorschau wird berechnet…",
+    "previewError": "Reparaturvorschau fehlgeschlagen: {{message}}",
+    "applyButton": "Anwenden",
+    "applying": "Wird angewendet…",
+    "applied": "Angewendet",
+    "stats": {
+      "before": "Vorher",
+      "after": "Nachher"
+    },
+    "removeComponents": {
+      "title": "Kleine Komponenten entfernen",
+      "description": "Behält nur das größte zusammenhängende Stück und entfernt kleinere Streufragmente.",
+      "summary": "Entfernt {{removed}} von {{total}} Komponente(n)",
+      "noneToRemove": "Nichts zu entfernen — jede Komponente würde behalten werden."
+    },
+    "splitNonManifoldEdges": {
+      "title": "Nicht-mannigfaltige Kanten trennen",
+      "description": "Verdoppelt Eckpunkte an Kanten, die von mehr als 2 Dreiecken geteilt werden, sodass jede Kante höchstens 2 hat.",
+      "summary": "Verdoppelt {{count}} Eckpunkt(e) an {{edges}} nicht-mannigfaltigen Kante(n)"
+    },
+    "fillSmallHoles": {
+      "title": "Kleine Löcher schließen",
+      "description": "Schließt kleine Randschleifen mit einem glatten (nicht krümmungsstetigen) Flicken. Größere Löcher werden abgelehnt, nicht gefüllt.",
+      "summary": "Füllt {{filled}} von {{found}} Loch/Löchern",
+      "skippedSummary": "{{count}} Loch/Löcher abgelehnt (zu groß für ein sicheres Füllen)",
+      "noneToFill": "Keine Löcher gefunden."
+    }
   }
 }

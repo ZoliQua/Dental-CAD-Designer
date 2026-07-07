@@ -228,6 +228,141 @@ describe('caseStore scene node management', () => {
   });
 });
 
+describe('caseStore.applyRepair', () => {
+  function registerMesh(contentHash: string): void {
+    caseStore.registerImportedMesh({
+      contentHash,
+      name: 'scan.stl',
+      format: 'stl',
+      positions: new Float64Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+      indices: new Uint32Array([0, 1, 2]),
+      stats: statsForBbox([0, 0, 0], [1, 1, 0]),
+      report: EMPTY_REPORT,
+      operations: [importOp(contentHash)],
+    });
+  }
+
+  function repairOp(inputHash: string, outputHash: string): Operation {
+    return {
+      id: 'op-repair',
+      name: 'repair-remove-components',
+      params: { selector: { mode: 'minTriangles', minTriangles: 2 } },
+      inputHashes: [inputHash],
+      outputHashes: [outputHash],
+      kernelVersion: '0.0.0',
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  it('registers the repaired mesh, repoints the SceneNode, and appends the journal Operation', () => {
+    registerMesh('hash-a');
+    const node = caseStore.addSceneNode('hash-a', 'upperJaw');
+
+    const repairedPositions = new Float64Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
+    const repairedIndices = new Uint32Array([0, 1, 2]);
+    const record = caseStore.applyRepair({
+      previousContentHash: 'hash-a',
+      positions: repairedPositions,
+      indices: repairedIndices,
+      stats: statsForBbox([0, 0, 0], [1, 1, 0]),
+      operation: repairOp('hash-a', 'hash-a-repaired'),
+    });
+
+    expect(record.contentHash).toBe('hash-a-repaired');
+    const doc = useCaseStore.getState().document;
+    expect(doc.scene.find((n) => n.id === node.id)!.meshId).toBe('hash-a-repaired');
+    expect(doc.history.at(-1)!.name).toBe('repair-remove-components');
+    expect(doc.history.at(-1)!.inputHashes).toEqual(['hash-a']);
+    expect(doc.history.at(-1)!.outputHashes).toEqual(['hash-a-repaired']);
+    expect(doc.meshes.some((m) => m.contentHash === 'hash-a-repaired')).toBe(true);
+  });
+
+  it('releases the pre-repair mesh buffers/BVH once no SceneNode references it anymore', () => {
+    registerMesh('hash-a');
+    caseStore.addSceneNode('hash-a', 'upperJaw');
+    expect(caseStore.meshStore.has('hash-a')).toBe(true);
+
+    caseStore.applyRepair({
+      previousContentHash: 'hash-a',
+      positions: new Float64Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+      indices: new Uint32Array([0, 1, 2]),
+      stats: statsForBbox([0, 0, 0], [1, 1, 0]),
+      operation: repairOp('hash-a', 'hash-a-repaired'),
+    });
+
+    expect(caseStore.meshStore.has('hash-a')).toBe(false);
+    expect(caseStore.meshStore.has('hash-a-repaired')).toBe(true);
+  });
+
+  it('repoints EVERY SceneNode referencing the pre-repair mesh, not just the first', () => {
+    registerMesh('hash-a');
+    const nodeA = caseStore.addSceneNode('hash-a', 'upperJaw');
+    const nodeB = caseStore.addSceneNode('hash-a', 'antagonist');
+
+    caseStore.applyRepair({
+      previousContentHash: 'hash-a',
+      positions: new Float64Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+      indices: new Uint32Array([0, 1, 2]),
+      stats: statsForBbox([0, 0, 0], [1, 1, 0]),
+      operation: repairOp('hash-a', 'hash-a-repaired'),
+    });
+
+    const doc = useCaseStore.getState().document;
+    expect(doc.scene.find((n) => n.id === nodeA.id)!.meshId).toBe('hash-a-repaired');
+    expect(doc.scene.find((n) => n.id === nodeB.id)!.meshId).toBe('hash-a-repaired');
+    // Both references moved to the new hash — the old one is now fully
+    // unreferenced and gets released (same "last reference gone" rule
+    // removeSceneNode uses, just reaching zero in one call here instead of
+    // incrementally).
+    expect(caseStore.meshStore.has('hash-a')).toBe(false);
+  });
+
+  it('leaves an UNRELATED SceneNode (different mesh) untouched', () => {
+    registerMesh('hash-a');
+    registerMesh('hash-b');
+    caseStore.addSceneNode('hash-a', 'upperJaw');
+    const nodeB = caseStore.addSceneNode('hash-b', 'lowerJaw');
+
+    caseStore.applyRepair({
+      previousContentHash: 'hash-a',
+      positions: new Float64Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+      indices: new Uint32Array([0, 1, 2]),
+      stats: statsForBbox([0, 0, 0], [1, 1, 0]),
+      operation: repairOp('hash-a', 'hash-a-repaired'),
+    });
+
+    const doc = useCaseStore.getState().document;
+    expect(doc.scene.find((n) => n.id === nodeB.id)!.meshId).toBe('hash-b');
+    expect(caseStore.meshStore.has('hash-b')).toBe(true);
+  });
+
+  it('throws if previousContentHash has no registered mesh', () => {
+    expect(() =>
+      caseStore.applyRepair({
+        previousContentHash: 'nonexistent',
+        positions: new Float64Array(0),
+        indices: new Uint32Array(0),
+        stats: statsForBbox([0, 0, 0], [0, 0, 0]),
+        operation: repairOp('nonexistent', 'new-hash'),
+      }),
+    ).toThrow();
+  });
+
+  it('throws if the operation carries no outputHashes[0]', () => {
+    registerMesh('hash-a');
+    const badOp: Operation = { ...repairOp('hash-a', 'unused'), outputHashes: [] };
+    expect(() =>
+      caseStore.applyRepair({
+        previousContentHash: 'hash-a',
+        positions: new Float64Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+        indices: new Uint32Array([0, 1, 2]),
+        stats: statsForBbox([0, 0, 0], [1, 1, 0]),
+        operation: badOp,
+      }),
+    ).toThrow();
+  });
+});
+
 describe('caseStore selection', () => {
   function registerMesh(contentHash: string): void {
     caseStore.registerImportedMesh({

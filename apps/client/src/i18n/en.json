@@ -126,5 +126,35 @@
     "messageUm": "\"{{fileName}}\" looks unusually large (largest extent {{extent}} mm) — it may actually be in micrometers, not millimeters. Multiply all coordinates by {{factor}}?",
     "keepMm": "Keep as-is (mm)",
     "applyFactor": "Apply ×{{factor}}"
+  },
+  "repair": {
+    "panelTitle": "Repair",
+    "previewLoading": "Computing preview…",
+    "previewError": "Repair preview failed: {{message}}",
+    "applyButton": "Apply",
+    "applying": "Applying…",
+    "applied": "Applied",
+    "stats": {
+      "before": "Before",
+      "after": "After"
+    },
+    "removeComponents": {
+      "title": "Remove small components",
+      "description": "Keeps only the largest connected piece, dropping smaller stray fragments.",
+      "summary": "Removes {{removed}} of {{total}} component(s)",
+      "noneToRemove": "Nothing to remove — every component would be kept."
+    },
+    "splitNonManifoldEdges": {
+      "title": "Split non-manifold edges",
+      "description": "Duplicates vertices on edges shared by more than 2 triangles so every edge has at most 2.",
+      "summary": "Duplicates {{count}} vertex/vertices across {{edges}} non-manifold edge(s)"
+    },
+    "fillSmallHoles": {
+      "title": "Fill small holes",
+      "description": "Closes small boundary loops with a smooth (not curvature-continuous) patch. Larger holes are refused, not filled.",
+      "summary": "Fills {{filled}} of {{found}} hole(s)",
+      "skippedSummary": "{{count}} hole(s) refused (too large to fill safely)",
+      "noneToFill": "No holes found."
+    }
   }
 }

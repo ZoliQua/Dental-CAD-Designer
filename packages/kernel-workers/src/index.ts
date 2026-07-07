@@ -37,6 +37,12 @@ export {
   type MeasurePointToSurfaceResult,
   type RaycastMeshPayload,
   type RaycastMeshResult,
+  type RepairRemoveComponentsPayload,
+  type RepairRemoveComponentsResult,
+  type RepairSplitNonManifoldEdgesPayload,
+  type RepairSplitNonManifoldEdgesResult,
+  type RepairFillSmallHolesPayload,
+  type RepairFillSmallHolesResult,
 } from './jobs.js';
 export { meshBuffers, type MeshBuffersPayload, type MeshBuffersResult } from './transfer.js';
 // MeshStats/IntakeReport/Bbox: re-exported here (rather than only living on
@@ -51,4 +57,14 @@ export type {
   IntakeStepReport,
   IntakeStepCounts,
   Bbox,
+  ComponentInfo,
+  RemoveComponentsReport,
+  RemoveComponentsSelector,
+  RepairCounts,
+  SplitNonManifoldEdgesReport,
+  FillSmallHolesOptions,
+  FillSmallHolesReport,
+  SkippedHole,
+  SkippedHoleReason,
 } from '@dqcad/kernel';
+export { DEFAULT_MAX_BOUNDARY_EDGES } from '@dqcad/kernel';

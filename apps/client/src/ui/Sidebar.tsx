@@ -9,6 +9,7 @@ import type { MeshAsset, SceneNode } from '@dqcad/shared-types';
 import { caseStore } from '../engine/caseStore';
 import { ImportPanel } from './ImportPanel';
 import { MeasurementPanel } from './MeasurementPanel';
+import { RepairPanel } from './RepairPanel';
 import { useCaseStore } from '../state/caseStore';
 
 export function Sidebar() {
@@ -82,6 +83,9 @@ function SceneTreeRow({ node, meshName }: { node: SceneNode; meshName: string })
       >
         ×
       </button>
+      <div className="scene-tree__repair">
+        <RepairPanel meshId={node.meshId} />
+      </div>
     </li>
   );
 }
