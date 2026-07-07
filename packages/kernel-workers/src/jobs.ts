@@ -29,10 +29,15 @@ import {
   makeStepReport,
   MESH_WELD_EPSILON_MM,
   KERNEL_VERSION,
+  buildBvh,
+  closestPoint,
+  raycast,
   type IndexedMesh,
   type IntakeReport,
   type IntakeStepReport,
   type MeshStats,
+  type Bvh,
+  type Vec3,
 } from '@dqcad/kernel';
 
 // Re-exported (via index.ts) so apps/client/src/engine — which may depend on
@@ -46,12 +51,7 @@ export { KERNEL_VERSION };
 // node-worker-reachable starting Phase 1 (see its own module docs' "Import
 // extension convention" note) specifically so a job like `parseMeshFile`
 // below could run STL/PLY parsing off the main/UI thread.
-import {
-  iterateInFixedChunks,
-  parsePlyStream,
-  parseStlStream,
-  type ParseFormat,
-} from '@dqcad/io';
+import { iterateInFixedChunks, parsePlyStream, parseStlStream, type ParseFormat } from '@dqcad/io';
 
 /** Context passed to a job handler for progress reporting and cooperative
  * cancellation. Both members are plain functions on the worker side; the
@@ -339,6 +339,222 @@ export interface RescaleMeshResult {
   positions: Float64Array;
 }
 
+// ---------------------------------------------------------------------------
+// BVH jobs: buildBvh / releaseBvh / measurePointToSurface / raycastMesh.
+//
+// ## Per-worker BVH cache (Task 7's brief: "cache per mesh contentHash in
+// worker memory")
+//
+// `bvhCache` below is a MODULE-LEVEL `Map`, exactly like manifold.ts's
+// `manifoldPromise` memoization (packages/kernel/src/boolean/manifold.ts) —
+// state that lives for the lifetime of THIS worker thread, not shared across
+// the pool. A `WorkerPool` (pool.ts) round-robins jobs across up to
+// `hardwareConcurrency - 1` workers with no per-job worker affinity, so a
+// `buildBvh` call and a LATER `measurePointToSurface`/`raycastMesh` call for
+// the SAME contentHash are not guaranteed to land on the same worker (and
+// therefore the same cache) unless the caller pins them to a single-worker
+// pool. apps/client/src/engine/workers.ts does exactly that (a dedicated
+// `size: 1` "measurement pool", separate from the general geometry pool) —
+// see its module doc — which is what makes "build once, query many times
+// against the SAME cached Bvh" actually hold in practice; this cache itself
+// has no opinion on how many workers exist, it just does the right thing
+// (rebuild-on-miss) either way.
+//
+// `measurePointToSurface`/`raycastMesh` do NOT accept the mesh buffers as
+// part of their payload — only `contentHash` plus the query itself (a point,
+// or a ray). This keeps repeated single-pick payloads small (no re-sending
+// a quarter-million-triangle mesh on every mouse click) at the cost of
+// requiring `buildBvh` to have already cached that mesh THIS worker — a
+// cache miss throws `BvhNotCachedError` (see below) rather than silently
+// falling back to some other mesh source, since this job registry has no
+// other way to obtain mesh geometry (jobs.ts has no filesystem/network
+// access, and reaching back into the caller's meshStore would defeat the
+// whole point of running in a worker).
+// ---------------------------------------------------------------------------
+
+/** Thrown by measurePointToSurface/raycastMesh when `contentHash` has no
+ * cached BVH on THIS worker — see the cache doc above for why that can
+ * legitimately happen (never built yet on this worker, or released). Named
+ * (not just a plain Error) so pool.ts-style callers can recognize it the
+ * same way `JobCancelledError` is recognized by `.name` after crossing the
+ * Comlink boundary (Comlink reconstructs thrown errors as plain `Error`
+ * instances with the original `name`/`message` preserved, not as this exact
+ * subclass). */
+export class BvhNotCachedError extends Error {
+  constructor(contentHash: string) {
+    super(`No BVH cached for contentHash ${contentHash} on this worker — call buildBvh first`);
+    this.name = 'BvhNotCachedError';
+  }
+}
+
+interface CachedBvh {
+  mesh: IndexedMesh;
+  bvh: Bvh;
+}
+
+/** Per-worker cache — see this section's module doc. */
+const bvhCache = new Map<string, CachedBvh>();
+
+export interface BuildBvhPayload {
+  contentHash: string;
+  /** Float64 master mesh buffers — kernel Float64 rule. The caller should
+   * pass a PRIVATE copy in the transfer list (e.g. `positions.slice()`),
+   * never the mesh's live master buffer: transferring detaches the
+   * original ArrayBuffer, and the caller (apps/client's meshStore) needs
+   * its master copy to keep living for rendering/other measurements for the
+   * mesh's whole session lifetime — see engine/workers.ts's
+   * `ensureBvhBuilt` for the call-site convention this assumes. */
+  positions: Float64Array;
+  indices: Uint32Array;
+}
+
+export interface BuildBvhResult {
+  contentHash: string;
+  triangleCount: number;
+  /** Total BVH node count — surfaced only for diagnostics/tests, not
+   * consumed by any production call site. */
+  nodeCount: number;
+}
+
+const buildBvhJob: JobHandler<'buildBvh'> = async (payload, ctx) => {
+  if (!(payload.positions instanceof Float64Array)) {
+    throw new TypeError('buildBvh: positions must be a Float64Array (kernel Float64 rule)');
+  }
+  if (!(payload.indices instanceof Uint32Array)) {
+    throw new TypeError('buildBvh: indices must be a Uint32Array');
+  }
+  if (await ctx.cancelled()) {
+    // Mid-build cancellation is out of scope for Phase 1 — see kernel's
+    // buildBvh.ts BuildBvhOptions.onProgress doc for why a bounded,
+    // seconds-scale synchronous build doesn't need it. This is the one
+    // cancellation checkpoint this job offers: before doing any work at all.
+    throw new JobCancelledError();
+  }
+  ctx.progress(0);
+  const mesh: IndexedMesh = { positions: payload.positions, indices: payload.indices };
+  const bvh = buildBvh(mesh, {
+    onProgress: (done, total) => ctx.progress(total > 0 ? done / total : 1),
+  });
+  bvhCache.set(payload.contentHash, { mesh, bvh });
+  return {
+    contentHash: payload.contentHash,
+    triangleCount: bvh.triangleCount,
+    nodeCount: bvh.nodeLeft.length,
+  };
+};
+
+export interface ReleaseBvhPayload {
+  contentHash: string;
+}
+
+export interface ReleaseBvhResult {
+  /** Whether a cached BVH for `contentHash` actually existed on this worker
+   * to release — `false` is not an error (e.g. releasing a mesh this
+   * particular worker never happened to build, in a multi-worker pool). */
+  released: boolean;
+}
+
+const releaseBvh: JobHandler<'releaseBvh'> = async (payload) => {
+  const released = bvhCache.delete(payload.contentHash);
+  return { released };
+};
+
+/** Shared shape for a single Float64 mm point/vector crossing the Comlink
+ * boundary as a plain (structured-cloned) tuple — no typed array/transfer
+ * needed for 3 numbers. */
+type Vec3Payload = readonly [number, number, number];
+
+export interface MeasurePointToSurfacePayload {
+  contentHash: string;
+  /** Float64 mm world coordinates — the query point (e.g. a point already
+   * picked on mesh A, per this task's brief's point-to-surface tool). */
+  point: Vec3Payload;
+}
+
+export interface MeasurePointToSurfaceResult {
+  /** Closest point ON the cached mesh's surface, Float64 mm world
+   * coordinates. */
+  point: Vec3Payload;
+  /** Euclidean distance from `payload.point` to `point`, mm. */
+  distance: number;
+  triangleIndex: number;
+  barycentric: Vec3Payload;
+}
+
+function requireCachedBvh(contentHash: string): CachedBvh {
+  const cached = bvhCache.get(contentHash);
+  if (!cached) {
+    throw new BvhNotCachedError(contentHash);
+  }
+  return cached;
+}
+
+/**
+ * `measurePointToSurface`: exact Float64 closest-point-on-surface distance
+ * from `payload.point` to the mesh cached under `payload.contentHash` (see
+ * `buildBvh` above — must have been called for this contentHash on THIS
+ * worker first). This is the point-to-surface measurement tool's worker
+ * half (apps/client/src/engine/ToolManager.ts) — the authoritative distance
+ * is always computed here, in Float64 against the kernel BVH, never derived
+ * from a Three.js/Float32 render-copy raycast (see this task's brief: "the
+ * render-copy raycast may be used only to find the candidate mesh/screen ray
+ * cheaply; the authoritative point comes from the worker").
+ */
+const measurePointToSurface: JobHandler<'measurePointToSurface'> = async (payload) => {
+  const { mesh, bvh } = requireCachedBvh(payload.contentHash);
+  const result = closestPoint(mesh, bvh, payload.point as Vec3);
+  return {
+    point: result.point,
+    distance: result.distance,
+    triangleIndex: result.triangleIndex,
+    barycentric: result.barycentric,
+  };
+};
+
+export interface RaycastMeshPayload {
+  contentHash: string;
+  /** Float64 mm world-space ray origin. */
+  origin: Vec3Payload;
+  /** Ray direction — need not be normalized (kernel `raycast` normalizes
+   * internally; see packages/kernel/src/bvh/raycast.ts). */
+  direction: Vec3Payload;
+}
+
+export type RaycastMeshResult =
+  | {
+      hit: true;
+      point: Vec3Payload;
+      distance: number;
+      triangleIndex: number;
+      barycentric: Vec3Payload;
+    }
+  | { hit: false };
+
+/**
+ * `raycastMesh`: exact Float64 nearest ray-surface intersection against the
+ * mesh cached under `payload.contentHash` (see `buildBvh` above). This is
+ * the authoritative pick used by the point-to-point/angle measurement
+ * tools: a Three.js raycast against the Float32 render copy (engine/
+ * SceneManager.ts) only ever picks WHICH mesh/screen ray to query — the
+ * exact Float64 world-space pick point always comes from here (this task's
+ * brief's "critical correctness point" — see this module's BVH-job section
+ * doc above).
+ */
+const raycastMesh: JobHandler<'raycastMesh'> = async (payload) => {
+  const { mesh, bvh } = requireCachedBvh(payload.contentHash);
+  const hit = raycast(mesh, bvh, payload.origin as Vec3, payload.direction as Vec3);
+  if (!hit) {
+    return { hit: false };
+  }
+  return {
+    hit: true,
+    point: hit.point,
+    distance: hit.distance,
+    triangleIndex: hit.triangleIndex,
+    barycentric: hit.barycentric,
+  };
+};
+
 export interface JobPayloadMap {
   echoMesh: EchoMeshPayload;
   longTask: LongTaskPayload;
@@ -346,6 +562,10 @@ export interface JobPayloadMap {
   parseMeshFile: ParseMeshFilePayload;
   intakeMesh: IntakeMeshPayload;
   rescaleMesh: RescaleMeshPayload;
+  buildBvh: BuildBvhPayload;
+  releaseBvh: ReleaseBvhPayload;
+  measurePointToSurface: MeasurePointToSurfacePayload;
+  raycastMesh: RaycastMeshPayload;
 }
 
 export interface JobResultMap {
@@ -355,6 +575,10 @@ export interface JobResultMap {
   parseMeshFile: ParseMeshFileResult;
   intakeMesh: IntakeMeshResult;
   rescaleMesh: RescaleMeshResult;
+  buildBvh: BuildBvhResult;
+  releaseBvh: ReleaseBvhResult;
+  measurePointToSurface: MeasurePointToSurfaceResult;
+  raycastMesh: RaycastMeshResult;
 }
 
 export type JobName = keyof JobPayloadMap;
@@ -428,16 +652,68 @@ const longTask: JobHandler<'longTask'> = async (payload, ctx) => {
 // or inward-facing winding).
 function unitCubeMesh(offsetX: number): IndexedMesh {
   const positions = new Float64Array([
-    offsetX, 0, 0, offsetX + 1, 0, 0, offsetX + 1, 1, 0, offsetX, 1, 0,
-    offsetX, 0, 1, offsetX + 1, 0, 1, offsetX + 1, 1, 1, offsetX, 1, 1,
+    offsetX,
+    0,
+    0,
+    offsetX + 1,
+    0,
+    0,
+    offsetX + 1,
+    1,
+    0,
+    offsetX,
+    1,
+    0,
+    offsetX,
+    0,
+    1,
+    offsetX + 1,
+    0,
+    1,
+    offsetX + 1,
+    1,
+    1,
+    offsetX,
+    1,
+    1,
   ]);
   const indices = new Uint32Array([
-    0, 2, 1, 0, 3, 2, // bottom (-z)
-    4, 5, 6, 4, 6, 7, // top (+z)
-    0, 1, 5, 0, 5, 4, // front (-y)
-    1, 2, 6, 1, 6, 5, // right (+x)
-    2, 3, 7, 2, 7, 6, // back (+y)
-    0, 4, 7, 0, 7, 3, // left (-x)
+    0,
+    2,
+    1,
+    0,
+    3,
+    2, // bottom (-z)
+    4,
+    5,
+    6,
+    4,
+    6,
+    7, // top (+z)
+    0,
+    1,
+    5,
+    0,
+    5,
+    4, // front (-y)
+    1,
+    2,
+    6,
+    1,
+    6,
+    5, // right (+x)
+    2,
+    3,
+    7,
+    2,
+    7,
+    6, // back (+y)
+    0,
+    4,
+    7,
+    0,
+    7,
+    3, // left (-x)
   ]);
   return { positions, indices };
 }
@@ -481,7 +757,9 @@ const intakeMesh: JobHandler<'intakeMesh'> = async (payload, ctx) => {
     throw new TypeError('intakeMesh: positions must be a Float64Array (kernel Float64 rule)');
   }
   if (payload.kind !== 'soup' && payload.kind !== 'indexed') {
-    throw new TypeError(`intakeMesh: kind must be "soup" or "indexed", got ${JSON.stringify(payload.kind)}`);
+    throw new TypeError(
+      `intakeMesh: kind must be "soup" or "indexed", got ${JSON.stringify(payload.kind)}`,
+    );
   }
 
   const checkpoint = async (stage: number): Promise<void> => {
@@ -498,7 +776,9 @@ const intakeMesh: JobHandler<'intakeMesh'> = async (payload, ctx) => {
       throw new TypeError('intakeMesh: indices must be omitted for kind "soup"');
     }
     if (payload.positions.length % 9 !== 0) {
-      throw new TypeError('intakeMesh: soup positions length must be a multiple of 9 (9 values per triangle)');
+      throw new TypeError(
+        'intakeMesh: soup positions length must be a multiple of 9 (9 values per triangle)',
+      );
     }
     const triangleCount = payload.positions.length / 9;
     const soup = { positions: payload.positions, normals: null, triangleCount };
@@ -560,7 +840,9 @@ const rescaleMesh: JobHandler<'rescaleMesh'> = async (payload, ctx) => {
     throw new TypeError('rescaleMesh: positions must be a Float64Array (kernel Float64 rule)');
   }
   if (!Number.isFinite(payload.factor) || payload.factor <= 0) {
-    throw new TypeError(`rescaleMesh: factor must be a finite positive number, got ${payload.factor}`);
+    throw new TypeError(
+      `rescaleMesh: factor must be a finite positive number, got ${payload.factor}`,
+    );
   }
 
   const { positions, factor } = payload;
@@ -591,6 +873,10 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   parseMeshFile,
   intakeMesh,
   rescaleMesh,
+  buildBvh: buildBvhJob,
+  releaseBvh,
+  measurePointToSurface,
+  raycastMesh,
 };
 
 const noopContext: JobContext = {

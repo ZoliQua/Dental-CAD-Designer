@@ -103,6 +103,23 @@
     "frameAll": "Frame all",
     "frameSelection": "Frame selection"
   },
+  "measure": {
+    "toolGroupLabel": "Measure",
+    "pointToPoint": "Point to point",
+    "pointToSurface": "Point to surface",
+    "angle": "Angle",
+    "cancelButton": "Cancel",
+    "instruction": "Pick {{picked}} of {{required}} points",
+    "panelTitle": "Measurements",
+    "empty": "No measurements yet.",
+    "deleteButton": "Delete",
+    "kind": {
+      "pointToPoint": "Point to point",
+      "pointToSurface": "Point to surface",
+      "angle": "Angle"
+    },
+    "angleValue": "{{degrees}}°"
+  },
   "unitConfirm": {
     "title": "Confirm scan units",
     "messageCm": "\"{{fileName}}\" looks unusually small (largest extent {{extent}} mm) — it may actually be in centimeters, not millimeters. Multiply all coordinates by {{factor}}?",

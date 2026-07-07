@@ -28,6 +28,15 @@ export {
   type IntakeMeshResult,
   type RescaleMeshPayload,
   type RescaleMeshResult,
+  BvhNotCachedError,
+  type BuildBvhPayload,
+  type BuildBvhResult,
+  type ReleaseBvhPayload,
+  type ReleaseBvhResult,
+  type MeasurePointToSurfacePayload,
+  type MeasurePointToSurfaceResult,
+  type RaycastMeshPayload,
+  type RaycastMeshResult,
 } from './jobs.js';
 export { meshBuffers, type MeshBuffersPayload, type MeshBuffersResult } from './transfer.js';
 // MeshStats/IntakeReport/Bbox: re-exported here (rather than only living on
@@ -36,4 +45,10 @@ export { meshBuffers, type MeshBuffersPayload, type MeshBuffersResult } from './
 // kernel-workers|state|shared-types) — can name these types explicitly
 // (e.g. an `EngineMeshRecord.stats: MeshStats` field in engine/meshStore.ts)
 // without a `IntakeMeshResult['stats']` indexing workaround.
-export type { MeshStats, IntakeReport, IntakeStepReport, IntakeStepCounts, Bbox } from '@dqcad/kernel';
+export type {
+  MeshStats,
+  IntakeReport,
+  IntakeStepReport,
+  IntakeStepCounts,
+  Bbox,
+} from '@dqcad/kernel';

@@ -55,6 +55,7 @@ import {
   BufferGeometry,
   Color,
   type ColorRepresentation,
+  Float32BufferAttribute,
   GridHelper,
   Group,
   LineBasicMaterial,
@@ -66,6 +67,8 @@ import {
   type Object3D,
   OrthographicCamera,
   PerspectiveCamera,
+  Points,
+  PointsMaterial,
   Raycaster,
   Scene,
   Sphere,
@@ -76,7 +79,7 @@ import {
   WireframeGeometry,
 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import type { MeshRole } from '@dqcad/shared-types';
+import type { MeasurementKind, MeshRole } from '@dqcad/shared-types';
 import type { RenderNode } from './renderNode';
 import {
   resolveJawContext,
@@ -90,11 +93,47 @@ import {
   createShadingMaterial,
   type ShadingPreset,
 } from './shading';
-import { DEFAULT_VIEWER_BINDINGS, toOrbitControlsMouseMap, type ViewerBindings } from './viewerBindings';
+import {
+  DEFAULT_VIEWER_BINDINGS,
+  toOrbitControlsMouseMap,
+  type ViewerBindings,
+} from './viewerBindings';
 
 export type { RenderNode };
 export type CameraProjection = 'perspective' | 'orthographic';
 export type Theme = 'dark' | 'light';
+
+/** 'select': the existing click-pick-a-SceneNode behavior (`onSelect`).
+ * 'measure': a measurement tool (engine/ToolManager.ts) is active — clicks
+ * report a candidate mesh + world-space ray via `onMeasurePick` INSTEAD of
+ * selecting a node (see `SceneManagerOptions.onMeasurePick`'s doc for why a
+ * ray, not a point). */
+export type InteractionMode = 'select' | 'measure';
+
+/** What a measurement-mode click reports — SceneManager's Float32 render-
+ * copy raycast only ever picks the candidate mesh/ray CHEAPLY; the
+ * authoritative Float64 pick point is always computed afterwards by
+ * ToolManager.ts via a worker job (this task's brief's central correctness
+ * requirement — see ToolManager.ts's module doc). `rayOrigin`/`rayDirection`
+ * are in THIS SceneManager's render frame (Float32-safe, re-centered at the
+ * case bbox centroid — meshStore.ts's `getWorldOffset()`) — the caller
+ * (ui/Viewport.tsx) is responsible for adding that offset back before
+ * handing the ray to ToolManager, exactly as it already does for
+ * `RenderNode`/mesh positions. */
+export interface MeasurePickCandidate {
+  nodeId: string;
+  rayOrigin: readonly [number, number, number];
+  rayDirection: readonly [number, number, number];
+}
+
+/** Render-frame (already offset by the caller — see `MeasurePickCandidate`'s
+ * doc) points for one measurement's overlay — `points.length` is 2 for
+ * `pointToPoint`/`pointToSurface`, 3 for `angle` (vertex = `points[1]`). */
+export interface MeasurementRenderData {
+  id: string;
+  kind: MeasurementKind;
+  points: ReadonlyArray<readonly [number, number, number]>;
+}
 
 const CAMERA_FOV_DEGREES = 50;
 const CAMERA_NEAR_MM = 0.1;
@@ -121,6 +160,20 @@ const CLICK_DRAG_THRESHOLD_PX = 5;
 
 const SELECTION_HIGHLIGHT_COLOR = new Color(0x4da3ff); // matches index.css's --color-accent (dark theme)
 const SELECTION_HIGHLIGHT_MIX = 0.55;
+
+// Measurement overlay: a warm, high-contrast color distinct from both theme
+// backgrounds and the selection highlight (a saturated amber reads clearly
+// against the near-black/near-white viewer backgrounds — see THEME_COLORS —
+// and against the blue selection tint). `depthTest: false` on both the line
+// and point materials (see `createMeasurementEntry`) makes the overlay
+// always render on top of mesh geometry, like a HUD — the same reasoning a
+// measurement tool in any CAD viewer follows: a pick you can't see through
+// the mesh isn't useful mid-measurement.
+const MEASUREMENT_COLOR = new Color(0xffb020);
+const MEASUREMENT_POINT_SIZE_PX = 8;
+/** Higher than every mesh/wireframe renderOrder (see `transparentRenderOrders`
+ * — its highest value is 2) so the measurement overlay always paints last. */
+const MEASUREMENT_RENDER_ORDER = 10;
 
 interface ThemeColors {
   background: ColorRepresentation;
@@ -161,6 +214,18 @@ interface MeshEntry {
   opacity: number;
 }
 
+/** One measurement's overlay geometry — see `syncMeasurements`'s doc for
+ * why this is fully rebuilt each sync rather than incrementally diffed like
+ * `MeshEntry`. */
+interface MeasurementEntry {
+  line: LineSegments;
+  lineGeometry: BufferGeometry;
+  lineMaterial: LineBasicMaterial;
+  points: Points;
+  pointsGeometry: BufferGeometry;
+  pointsMaterial: PointsMaterial;
+}
+
 export interface SceneManagerOptions {
   /** Called with the click-picked SceneNode id (or `null` on an empty-space
    * click / deselect) — see this file's module doc: SceneManager never talks
@@ -170,6 +235,12 @@ export interface SceneManagerOptions {
    * same pattern the document/render-node sync already uses. Without this
    * callback wired, clicks still raycast but nothing becomes highlighted. */
   onSelect?: (nodeId: string | null) => void;
+  /** Called instead of `onSelect` while `interactionMode === 'measure'` (see
+   * `setInteractionMode`) — see `MeasurePickCandidate`'s doc. Only fires on
+   * an actual mesh hit (a measurement-mode click on empty space is simply
+   * ignored, unlike a `select`-mode click, which reports `null` to clear
+   * the selection — there's nothing analogous to "deselect" mid-measurement). */
+  onMeasurePick?: (pick: MeasurePickCandidate) => void;
   initialTheme?: Theme;
   initialProjection?: CameraProjection;
   initialShadingPreset?: ShadingPreset;
@@ -219,7 +290,10 @@ function disposeObject3DTree(root: Object3D): void {
  * unconditional avoids a transient "wrong" pairing during an opacity
  * transition and keeps this function simple to reason about and test.
  */
-export function transparentRenderOrders(opacity: number): { meshRenderOrder: number; wireframeRenderOrder: number } {
+export function transparentRenderOrders(opacity: number): {
+  meshRenderOrder: number;
+  wireframeRenderOrder: number;
+} {
   const meshRenderOrder = opacity < 1 ? 1 : 0;
   return { meshRenderOrder, wireframeRenderOrder: meshRenderOrder + 1 };
 }
@@ -239,6 +313,7 @@ export class SceneManager {
   private readonly controls: OrbitControls;
   private readonly resizeObserver: ResizeObserver;
   private readonly meshGroup: Group;
+  private readonly measurementGroup: Group;
   private readonly raycaster = new Raycaster();
   private readonly matcapTexture: Texture;
   private grid: GridHelper;
@@ -256,6 +331,8 @@ export class SceneManager {
    * hidden mesh is still logically part of the case. */
   private currentRoles: MeshRole[] = [];
   private selectedNodeId: string | null = null;
+  private readonly measurementEntries = new Map<string, MeasurementEntry>();
+  private interactionMode: InteractionMode = 'select';
 
   private projectionMode: CameraProjection;
   private shadingPreset: ShadingPreset;
@@ -265,11 +342,13 @@ export class SceneManager {
   private orthoHalfHeightMm = DEFAULT_EMPTY_FRAME_RADIUS_MM * FRAME_PADDING;
 
   private readonly onSelect: ((nodeId: string | null) => void) | undefined;
+  private readonly onMeasurePick: ((pick: MeasurePickCandidate) => void) | undefined;
   private pointerDownClientPos: { x: number; y: number } | null = null;
 
   constructor(container: HTMLElement, options: SceneManagerOptions = {}) {
     this.container = container;
     this.onSelect = options.onSelect;
+    this.onMeasurePick = options.onMeasurePick;
     this.theme = options.initialTheme ?? 'dark';
     this.projectionMode = options.initialProjection ?? 'perspective';
     this.shadingPreset = options.initialShadingPreset ?? 'clinical';
@@ -278,7 +357,12 @@ export class SceneManager {
     this.scene = new Scene();
     this.scene.background = new Color(THEME_COLORS[this.theme].background);
 
-    this.perspectiveCamera = new PerspectiveCamera(CAMERA_FOV_DEGREES, 1, CAMERA_NEAR_MM, CAMERA_FAR_MM);
+    this.perspectiveCamera = new PerspectiveCamera(
+      CAMERA_FOV_DEGREES,
+      1,
+      CAMERA_NEAR_MM,
+      CAMERA_FAR_MM,
+    );
     this.orthographicCamera = new OrthographicCamera(-1, 1, 1, -1, CAMERA_NEAR_MM, CAMERA_FAR_MM);
 
     this.renderer = new WebGLRenderer({ antialias: true });
@@ -287,7 +371,9 @@ export class SceneManager {
 
     this.controls = new OrbitControls(this.activeCamera, this.renderer.domElement);
     this.controls.enableDamping = true;
-    this.controls.mouseButtons = toOrbitControlsMouseMap(options.initialViewerBindings ?? DEFAULT_VIEWER_BINDINGS);
+    this.controls.mouseButtons = toOrbitControlsMouseMap(
+      options.initialViewerBindings ?? DEFAULT_VIEWER_BINDINGS,
+    );
 
     const { hemisphere, directional } = createClinicalLights();
     this.scene.add(hemisphere, directional);
@@ -299,6 +385,9 @@ export class SceneManager {
 
     this.meshGroup = new Group();
     this.scene.add(this.meshGroup);
+
+    this.measurementGroup = new Group();
+    this.scene.add(this.measurementGroup);
 
     this.resizeObserver = new ResizeObserver(() => this.handleResize());
     this.resizeObserver.observe(this.container);
@@ -573,10 +662,121 @@ export class SceneManager {
 
   private applyHighlight(entry: MeshEntry, selected: boolean): void {
     if (selected) {
-      entry.material.color.copy(entry.baseColor).lerp(SELECTION_HIGHLIGHT_COLOR, SELECTION_HIGHLIGHT_MIX);
+      entry.material.color
+        .copy(entry.baseColor)
+        .lerp(SELECTION_HIGHLIGHT_COLOR, SELECTION_HIGHLIGHT_MIX);
     } else {
       entry.material.color.copy(entry.baseColor);
     }
+  }
+
+  // ---------------------------------------------------------------------
+  // Measurement (Task 7)
+  // ---------------------------------------------------------------------
+
+  /** Switches between ordinary click-to-select and measurement-pick clicks
+   * — see `InteractionMode`'s doc. ui/Viewport.tsx drives this from
+   * state/toolStore.ts's `activeTool` (non-null -> 'measure'), the same
+   * "state says what, engine applies it" direction as `setProjection`/
+   * `setShadingPreset`. */
+  setInteractionMode(mode: InteractionMode): void {
+    this.interactionMode = mode;
+  }
+
+  getInteractionMode(): InteractionMode {
+    return this.interactionMode;
+  }
+
+  /**
+   * Rebuilds the measurement overlay (lines connecting each measurement's
+   * points, plus point markers) from `measurements`. Deliberately a FULL
+   * rebuild every call, unlike `syncRenderNodes`'s incremental diff — a
+   * measurement's points never change after it's created (no in-place
+   * editing in this task's scope) and the measurement COUNT is always small
+   * (a handful of user-placed annotations, not per-vertex mesh data), so the
+   * incremental-diff complexity `syncRenderNodes` needs to avoid re-
+   * uploading a quarter-million-vertex buffer every case-document change
+   * has no payoff here.
+   *
+   * No text/numbers are ever drawn here (this task's brief: "screen-space
+   * HTML overlay, no geometry text") — only lines/points. The numeric
+   * label for each measurement is rendered by ui/MeasurementOverlay.tsx as
+   * an absolutely-positioned HTML element, using `projectToScreen` below to
+   * find where to put it.
+   */
+  syncMeasurements(measurements: readonly MeasurementRenderData[]): void {
+    for (const entry of this.measurementEntries.values()) {
+      this.measurementGroup.remove(entry.line, entry.points);
+      entry.lineGeometry.dispose();
+      entry.lineMaterial.dispose();
+      entry.pointsGeometry.dispose();
+      entry.pointsMaterial.dispose();
+    }
+    this.measurementEntries.clear();
+
+    for (const measurement of measurements) {
+      this.measurementEntries.set(measurement.id, this.createMeasurementEntry(measurement));
+    }
+  }
+
+  private createMeasurementEntry(measurement: MeasurementRenderData): MeasurementEntry {
+    // `angle`'s 3 points are drawn as two segments meeting at the vertex
+    // (points[1]) rather than one polyline through all three, so
+    // LineSegments (pairs of endpoints) works uniformly for every
+    // measurement kind without a separate LineLoop/Line code path.
+    const segments =
+      measurement.kind === 'angle' && measurement.points.length === 3
+        ? [
+            measurement.points[1]!,
+            measurement.points[0]!,
+            measurement.points[1]!,
+            measurement.points[2]!,
+          ]
+        : [measurement.points[0]!, measurement.points[1]!];
+
+    const lineGeometry = new BufferGeometry();
+    lineGeometry.setAttribute('position', new Float32BufferAttribute(segments.flat(), 3));
+    const lineMaterial = new LineBasicMaterial({ color: MEASUREMENT_COLOR, depthTest: false });
+    const line = new LineSegments(lineGeometry, lineMaterial);
+    line.renderOrder = MEASUREMENT_RENDER_ORDER;
+
+    const pointsGeometry = new BufferGeometry();
+    pointsGeometry.setAttribute(
+      'position',
+      new Float32BufferAttribute(measurement.points.flat(), 3),
+    );
+    const pointsMaterial = new PointsMaterial({
+      color: MEASUREMENT_COLOR,
+      size: MEASUREMENT_POINT_SIZE_PX,
+      sizeAttenuation: false,
+      depthTest: false,
+    });
+    const points = new Points(pointsGeometry, pointsMaterial);
+    points.renderOrder = MEASUREMENT_RENDER_ORDER;
+
+    this.measurementGroup.add(line, points);
+    return { line, lineGeometry, lineMaterial, points, pointsGeometry, pointsMaterial };
+  }
+
+  /**
+   * Projects a render-frame (Float32-safe, re-centered — same frame as
+   * `MeasurementRenderData.points`) world point to CSS pixel coordinates
+   * within the viewport container, for ui/MeasurementOverlay.tsx's
+   * absolutely-positioned HTML labels. Returns `null` if the container has
+   * no current size (matches `handleResize`'s own guard) or the point
+   * projects outside the camera's near/far range (behind the camera, or
+   * beyond the far plane) — the caller hides that label rather than
+   * pinning it to a meaningless position.
+   */
+  projectToScreen(point: readonly [number, number, number]): { xPx: number; yPx: number } | null {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+    const projected = new Vector3(point[0], point[1], point[2]).project(this.activeCamera);
+    if (projected.z < -1 || projected.z > 1) return null; // outside the near/far clip range
+    return {
+      xPx: ((projected.x + 1) / 2) * rect.width,
+      yPx: ((1 - projected.y) / 2) * rect.height,
+    };
   }
 
   private handlePointerDown = (event: PointerEvent): void => {
@@ -603,9 +803,28 @@ export class SceneManager {
       -(((clientY - rect.top) / rect.height) * 2 - 1),
     );
     this.raycaster.setFromCamera(ndc, this.activeCamera);
-    const pickableMeshes = [...this.meshEntries.values()].filter((entry) => entry.visible).map((entry) => entry.mesh);
+    const pickableMeshes = [...this.meshEntries.values()]
+      .filter((entry) => entry.visible)
+      .map((entry) => entry.mesh);
     const hits = this.raycaster.intersectObjects(pickableMeshes, false);
     const hitId = hits.length > 0 ? hits[0]!.object.name : null;
+
+    if (this.interactionMode === 'measure') {
+      // Measurement mode has no "click empty space to deselect" analogue —
+      // a miss is simply ignored (see `SceneManagerOptions.onMeasurePick`'s
+      // doc). The reported ray is `this.raycaster.ray`'s own origin/direction
+      // (already exactly what `setFromCamera` computed for this click, in
+      // THIS SceneManager's render frame) — no separate re-derivation needed.
+      if (hitId) {
+        const { origin, direction } = this.raycaster.ray;
+        this.onMeasurePick?.({
+          nodeId: hitId,
+          rayOrigin: [origin.x, origin.y, origin.z],
+          rayDirection: [direction.x, direction.y, direction.z],
+        });
+      }
+      return;
+    }
     this.onSelect?.(hitId);
   }
 
@@ -663,7 +882,10 @@ export class SceneManager {
       newCamera.far = orthoDistance + this.orthoHalfHeightMm * 4;
     } else {
       const halfFovRad = MathUtils.degToRad(this.perspectiveCamera.fov) / 2;
-      const perspectiveDistance = Math.max(this.orthoHalfHeightMm / Math.tan(halfFovRad), MIN_FRAME_RADIUS_MM);
+      const perspectiveDistance = Math.max(
+        this.orthoHalfHeightMm / Math.tan(halfFovRad),
+        MIN_FRAME_RADIUS_MM,
+      );
       newCamera.position.copy(target).addScaledVector(direction, perspectiveDistance);
       // Mirrors `applyFraming`'s perspective branch, with `orthoHalfHeightMm`
       // (the last-known framed half-extent) standing in for `padded`.
@@ -730,7 +952,9 @@ export class SceneManager {
     return direction.normalize();
   }
 
-  private computeBoundingSphere(opts: { visibleOnly: boolean }): { center: Vector3; radius: number } | null {
+  private computeBoundingSphere(opts: {
+    visibleOnly: boolean;
+  }): { center: Vector3; radius: number } | null {
     const box = new Box3();
     let any = false;
     for (const entry of this.meshEntries.values()) {

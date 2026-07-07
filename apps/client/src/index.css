@@ -459,3 +459,148 @@ body {
 .scene-tree__remove:hover {
   border-color: var(--color-accent);
 }
+
+/* Measurement toolbar (Viewport overlay — same floating-panel style as
+   .viewer-toolbar, positioned below it) */
+.measure-toolbar {
+  position: absolute;
+  top: 3.2rem;
+  left: 0.6rem;
+  right: 0.6rem;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  pointer-events: none;
+}
+
+.measure-toolbar__group {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem;
+  background: color-mix(in srgb, var(--color-bg-elevated) 85%, transparent);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  pointer-events: auto;
+}
+
+.measure-toolbar__button,
+.measure-toolbar__cancel {
+  font-size: 0.75rem;
+  padding: 0.3rem 0.55rem;
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.measure-toolbar__button:hover,
+.measure-toolbar__cancel:hover {
+  border-color: var(--color-accent);
+}
+
+.measure-toolbar__button[aria-pressed='true'] {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.measure-toolbar__hint,
+.measure-toolbar__error {
+  margin: 0;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--color-bg-elevated) 85%, transparent);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  pointer-events: none;
+}
+
+.measure-toolbar__error {
+  color: #e05252;
+}
+
+/* Measurement HTML overlay labels (screen-space, no 3D geometry text —
+   see SceneManager.ts's syncMeasurements doc). */
+.measurement-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  pointer-events: none;
+}
+
+.measurement-overlay__label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-size: 0.72rem;
+  white-space: nowrap;
+  padding: 0.1rem 0.35rem;
+  background: color-mix(in srgb, var(--color-bg-elevated) 80%, transparent);
+  border: 1px solid var(--color-accent);
+  border-radius: 3px;
+  color: var(--color-text);
+}
+
+/* Measurement results panel (Sidebar) */
+.measurement-panel {
+  border-top: 1px solid var(--color-border);
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+}
+
+.measurement-panel__title {
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  margin: 0 0 0.5rem;
+}
+
+.measurement-panel__empty {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.measurement-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.measurement-list__row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+}
+
+.measurement-list__kind {
+  color: var(--color-text-muted);
+  flex: 1;
+}
+
+.measurement-list__value {
+  font-variant-numeric: tabular-nums;
+}
+
+.measurement-list__remove {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  color: var(--color-text);
+  cursor: pointer;
+  line-height: 1;
+  width: 1.4rem;
+  height: 1.4rem;
+}
+
+.measurement-list__remove:hover {
+  border-color: var(--color-accent);
+}

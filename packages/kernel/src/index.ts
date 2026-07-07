@@ -46,3 +46,23 @@ export {
   type MeshStats,
   type TriangleSoup,
 } from './intake/index.ts';
+
+export {
+  buildBvh,
+  DEFAULT_MAX_LEAF_TRIANGLES,
+  closestPoint,
+  closestPointBatch,
+  raycast,
+  closestPointOnTriangle,
+  rayTriangleIntersect,
+  distanceSquared,
+  RAY_PARALLEL_EPSILON,
+  BARYCENTRIC_EPSILON,
+  type BuildBvhOptions,
+  type Bvh,
+  type ClosestPointResult,
+  type RaycastHit,
+  type Vec3,
+  type TriangleClosestPoint,
+  type RayTriangleHit,
+} from './bvh/index.ts';

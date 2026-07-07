@@ -103,6 +103,23 @@
     "frameAll": "Alles einpassen",
     "frameSelection": "Auswahl einpassen"
   },
+  "measure": {
+    "toolGroupLabel": "Messen",
+    "pointToPoint": "Punkt zu Punkt",
+    "pointToSurface": "Punkt zu Fläche",
+    "angle": "Winkel",
+    "cancelButton": "Abbrechen",
+    "instruction": "{{picked}} von {{required}} Punkten wählen",
+    "panelTitle": "Messungen",
+    "empty": "Noch keine Messungen.",
+    "deleteButton": "Löschen",
+    "kind": {
+      "pointToPoint": "Punkt zu Punkt",
+      "pointToSurface": "Punkt zu Fläche",
+      "angle": "Winkel"
+    },
+    "angleValue": "{{degrees}}°"
+  },
   "unitConfirm": {
     "title": "Einheiten des Scans bestätigen",
     "messageCm": "\"{{fileName}}\" wirkt ungewöhnlich klein (größte Ausdehnung {{extent}} mm) — die Datei liegt möglicherweise tatsächlich in Zentimetern statt Millimetern vor. Alle Koordinaten mit {{factor}} multiplizieren?",

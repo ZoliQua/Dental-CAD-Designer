@@ -103,6 +103,23 @@
     "frameAll": "Encuadrar todo",
     "frameSelection": "Encuadrar selección"
   },
+  "measure": {
+    "toolGroupLabel": "Medir",
+    "pointToPoint": "Punto a punto",
+    "pointToSurface": "Punto a superficie",
+    "angle": "Ángulo",
+    "cancelButton": "Cancelar",
+    "instruction": "Elige {{picked}} de {{required}} puntos",
+    "panelTitle": "Mediciones",
+    "empty": "Todavía no hay mediciones.",
+    "deleteButton": "Eliminar",
+    "kind": {
+      "pointToPoint": "Punto a punto",
+      "pointToSurface": "Punto a superficie",
+      "angle": "Ángulo"
+    },
+    "angleValue": "{{degrees}}°"
+  },
   "unitConfirm": {
     "title": "Confirmar unidades del escaneo",
     "messageCm": "\"{{fileName}}\" parece inusualmente pequeño (extensión máxima {{extent}} mm) — podría estar en centímetros en lugar de milímetros. ¿Multiplicar todas las coordenadas por {{factor}}?",

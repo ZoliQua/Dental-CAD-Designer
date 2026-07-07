@@ -22,6 +22,7 @@ export function createEmptyCaseDocument(): CaseDocument {
     meshes: [],
     scene: [],
     restorations: [],
+    measurements: [],
     history: [],
     settings: { materialProfileId: '', profileVersion: '' },
   };

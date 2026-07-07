@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import type { MeshAsset, SceneNode } from '@dqcad/shared-types';
 import { caseStore } from '../engine/caseStore';
 import { ImportPanel } from './ImportPanel';
+import { MeasurementPanel } from './MeasurementPanel';
 import { useCaseStore } from '../state/caseStore';
 
 export function Sidebar() {
@@ -23,10 +24,15 @@ export function Sidebar() {
       ) : (
         <ul className="scene-tree">
           {document.scene.map((node) => (
-            <SceneTreeRow key={node.id} node={node} meshName={findMeshName(document.meshes, node.meshId)} />
+            <SceneTreeRow
+              key={node.id}
+              node={node}
+              meshName={findMeshName(document.meshes, node.meshId)}
+            />
           ))}
         </ul>
       )}
+      <MeasurementPanel />
     </aside>
   );
 }
@@ -68,7 +74,12 @@ function SceneTreeRow({ node, meshName }: { node: SceneNode; meshName: string })
         title={t('sidebar.opacityLabel')}
         aria-label={t('sidebar.opacityLabel')}
       />
-      <button type="button" className="scene-tree__remove" onClick={handleRemove} aria-label={t('sidebar.removeButton')}>
+      <button
+        type="button"
+        className="scene-tree__remove"
+        onClick={handleRemove}
+        aria-label={t('sidebar.removeButton')}
+      >
         ×
       </button>
     </li>

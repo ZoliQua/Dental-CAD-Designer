@@ -3,12 +3,31 @@
 // No Three.js imports here; all render objects live in src/engine/.
 import { useEffect, useRef } from 'react';
 import { caseStore } from '../engine/caseStore';
-import { SceneManager } from '../engine/SceneManager';
+import { toMeasurementRenderData, toWorldRay } from '../engine/measurementFrame';
+import { SceneManager, type MeasurePickCandidate } from '../engine/SceneManager';
+import { toolManager } from '../engine/ToolManager';
 import { registerActiveSceneManager } from '../engine/viewerController';
 import { useAppStore } from '../state/appStore';
 import { useCaseStore } from '../state/caseStore';
+import { useToolStore } from '../state/toolStore';
 import { useViewerStore } from '../state/viewerStore';
+import { MeasureToolbar } from './MeasureToolbar';
+import { MeasurementOverlay } from './MeasurementOverlay';
 import { ViewerToolbar } from './ViewerToolbar';
+
+/** SceneManager's own `onMeasurePick` reports a ray in ITS render frame
+ * (Float32-safe, re-centered — see SceneManager.ts's `MeasurePickCandidate`
+ * doc); ToolManager.ts always re-casts against the Float64 WORLD-frame mesh
+ * (this task's brief's central correctness requirement), so every pick is
+ * converted back to world coordinates here, at the one place that bridges
+ * the two (mirroring how `syncRenderNodes`'s render nodes and this same
+ * conversion, in the other direction, both live in engine/meshStore.ts's
+ * `getWorldOffset()`). */
+function handleMeasurePick(pick: MeasurePickCandidate): void {
+  const worldOffset = caseStore.getRenderWorldOffset();
+  const worldRay = toWorldRay(pick, worldOffset);
+  void toolManager.handlePick({ nodeId: pick.nodeId, ...worldRay });
+}
 
 export function Viewport() {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -24,6 +43,7 @@ export function Viewport() {
   const projection = useViewerStore((state) => state.projection);
   const shadingPreset = useViewerStore((state) => state.shadingPreset);
   const wireframeEnabled = useViewerStore((state) => state.wireframeEnabled);
+  const activeMeasurementTool = useToolStore((state) => state.activeTool);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -37,6 +57,7 @@ export function Viewport() {
     // asked for" round trip as the render-node/theme/selection sync).
     const sceneManager = new SceneManager(container, {
       onSelect: (nodeId) => caseStore.setSelectedNodeId(nodeId),
+      onMeasurePick: handleMeasurePick,
       initialTheme: useAppStore.getState().theme,
       initialProjection: useViewerStore.getState().projection,
       initialShadingPreset: useViewerStore.getState().shadingPreset,
@@ -59,6 +80,20 @@ export function Viewport() {
   }, [document]);
 
   useEffect(() => {
+    // Same trigger as the render-node sync above: a measurement's points
+    // are stored in world coordinates (caseStore.getRenderWorldOffset()'s
+    // frame), and the world offset itself only ever changes alongside a
+    // `document` publish (meshStore's recenterAll runs inside
+    // register/remove, which always publish immediately after — see
+    // meshStore.ts's module doc) — so re-deriving render-frame points off
+    // `document` here can never observe a stale offset.
+    const worldOffset = caseStore.getRenderWorldOffset();
+    sceneManagerRef.current?.syncMeasurements(
+      toMeasurementRenderData(document.measurements, worldOffset),
+    );
+  }, [document]);
+
+  useEffect(() => {
     sceneManagerRef.current?.setTheme(theme);
   }, [theme]);
 
@@ -78,9 +113,15 @@ export function Viewport() {
     sceneManagerRef.current?.setWireframeEnabled(wireframeEnabled);
   }, [wireframeEnabled]);
 
+  useEffect(() => {
+    sceneManagerRef.current?.setInteractionMode(activeMeasurementTool ? 'measure' : 'select');
+  }, [activeMeasurementTool]);
+
   return (
     <div className="viewport" ref={containerRef}>
       <ViewerToolbar />
+      <MeasureToolbar />
+      <MeasurementOverlay />
     </div>
   );
 }

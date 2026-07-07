@@ -103,6 +103,23 @@
     "frameAll": "Minden a képbe",
     "frameSelection": "Kijelölés a képbe"
   },
+  "measure": {
+    "toolGroupLabel": "Mérés",
+    "pointToPoint": "Pont-pont",
+    "pointToSurface": "Pont-felület",
+    "angle": "Szög",
+    "cancelButton": "Mégse",
+    "instruction": "Válasszon {{picked}}/{{required}} pontot",
+    "panelTitle": "Mérések",
+    "empty": "Még nincs mérés.",
+    "deleteButton": "Törlés",
+    "kind": {
+      "pointToPoint": "Pont-pont",
+      "pointToSurface": "Pont-felület",
+      "angle": "Szög"
+    },
+    "angleValue": "{{degrees}}°"
+  },
   "unitConfirm": {
     "title": "Mértékegység megerősítése",
     "messageCm": "\"{{fileName}}\" szokatlanul kicsinek tűnik (legnagyobb kiterjedés {{extent}} mm) — lehet, hogy valójában centiméterben van, nem milliméterben. Szorozzuk az összes koordinátát {{factor}}-szel?",

@@ -12,10 +12,18 @@
 // Task 11 (see docs/plans/phase-1-import-viewer.md). Geometry buffers are
 // NOT part of CaseDocument; they live in `meshStore` (engine/meshStore.ts),
 // keyed by the same contentHash a CaseDocument MeshAsset carries.
-import type { CaseDocument, MeshAsset, MeshRole, Operation, SceneNode } from '@dqcad/shared-types';
+import type {
+  CaseDocument,
+  Measurement,
+  MeshAsset,
+  MeshRole,
+  Operation,
+  SceneNode,
+} from '@dqcad/shared-types';
 import { createEmptyCaseDocument, useCaseStore } from '../state/caseStore';
 import { MeshStore, type EngineMeshRecord, type RegisterMeshInput } from './meshStore';
 import type { RenderNode } from './renderNode';
+import { releaseBvhForMesh } from './workers';
 
 /** Identity 4x4 (column-major, per SceneNode's doc) — every newly imported
  * mesh is placed at the scan's own coordinate frame; Task 6+ (alignment/
@@ -88,7 +96,9 @@ class CaseStoreEngine {
   registerImportedMesh(input: RegisterImportedMeshInput): EngineMeshRecord {
     const record = this.meshStore.register(input);
 
-    const alreadyKnownAsset = this.document.meshes.some((mesh) => mesh.contentHash === input.contentHash);
+    const alreadyKnownAsset = this.document.meshes.some(
+      (mesh) => mesh.contentHash === input.contentHash,
+    );
     const asset: MeshAsset = {
       id: input.contentHash,
       contentHash: input.contentHash,
@@ -149,6 +159,12 @@ class CaseStoreEngine {
       const stillReferenced = remainingScene.some((node) => node.meshId === removedNode.meshId);
       if (!stillReferenced) {
         this.meshStore.remove(removedNode.meshId);
+        // Same "last reference gone" trigger as the Float64/Float32 buffer
+        // release just above — a mesh with no remaining SceneNode also has
+        // no reason to keep a worker-side BVH resident for the rest of the
+        // session (Task 7's brief: "Worker BVH cache: memory-conscious
+        // (releaseBvh wired to mesh removal)").
+        releaseBvhForMesh(removedNode.meshId);
       }
     }
 
@@ -174,7 +190,9 @@ class CaseStoreEngine {
     const clamped = Math.min(1, Math.max(0, opacity));
     this.document = {
       ...this.document,
-      scene: this.document.scene.map((node) => (node.id === nodeId ? { ...node, opacity: clamped } : node)),
+      scene: this.document.scene.map((node) =>
+        node.id === nodeId ? { ...node, opacity: clamped } : node,
+      ),
     };
     this.publish();
   }
@@ -201,6 +219,30 @@ class CaseStoreEngine {
       });
     }
     return nodes;
+  }
+
+  /** Appends a completed measurement (point-to-point/point-to-surface/angle
+   * — see ToolManager.ts) to the case document. Not journaled as an
+   * `Operation` — see `Measurement`'s doc in @dqcad/shared-types for why
+   * (measurements don't mutate mesh geometry, so CLAUDE.md invariant 5's
+   * journaling requirement doesn't apply to them). */
+  addMeasurement(measurement: Measurement): void {
+    this.document = {
+      ...this.document,
+      measurements: [...this.document.measurements, measurement],
+    };
+    this.publish();
+  }
+
+  /** Deletes a measurement by id — a no-op (not an error) if `id` is
+   * already gone, mirroring `resolveUnitConfirmation`'s tolerant style for
+   * a UI action that could legitimately race a re-render. */
+  removeMeasurement(id: string): void {
+    this.document = {
+      ...this.document,
+      measurements: this.document.measurements.filter((measurement) => measurement.id !== id),
+    };
+    this.publish();
   }
 
   private publish(): void {
