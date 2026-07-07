@@ -10,6 +10,9 @@ describe('formatMm', () => {
     [0.999, '0.999 mm (999 µm)'],
     [1, '1.000 mm'], // exactly the sub-mm/mm boundary — no µm parenthetical
     [1.0004, '1.000 mm'],
+    [0.9995, '1.000 mm'], // rounds UP to 1.000 mm at 3 decimals — must NOT show "(1000 µm)"
+    [-0.9995, '-1.000 mm'], // mirror of the above on the negative side
+    [0.9994, '0.999 mm (999 µm)'], // just below the rounding crossover — µm parenthetical still shown
     [0, '0.000 mm (0 µm)'],
     [-0.5, '-0.500 mm (-500 µm)'],
     [NaN, '—'],

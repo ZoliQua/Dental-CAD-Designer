@@ -6,7 +6,7 @@
 import { useTranslation } from 'react-i18next';
 import type { Measurement } from '@dqcad/shared-types';
 import { caseStore } from '../engine/caseStore';
-import { formatMm } from '../engine/formatMm';
+import { formatMeasurementValueText } from '../engine/measurementValueText';
 import { useCaseStore } from '../state/caseStore';
 
 export function MeasurementPanel() {
@@ -31,10 +31,9 @@ export function MeasurementPanel() {
 
 function MeasurementRow({ measurement }: { measurement: Measurement }) {
   const { t } = useTranslation();
-  const valueText =
-    measurement.kind === 'angle'
-      ? t('measure.angleValue', { degrees: measurement.value.toFixed(1) })
-      : formatMm(measurement.value);
+  const valueText = formatMeasurementValueText(measurement, (degreesValue) =>
+    t('measure.angleValue', { degrees: degreesValue.toFixed(1) }),
+  );
 
   return (
     <li className="measurement-list__row" data-testid="measurement-row">

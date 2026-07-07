@@ -9,8 +9,8 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { caseStore } from '../engine/caseStore';
-import { formatMm } from '../engine/formatMm';
 import { toMeasurementRenderData } from '../engine/measurementFrame';
+import { formatMeasurementValueText } from '../engine/measurementValueText';
 import { getActiveSceneManager } from '../engine/viewerController';
 import { useCaseStore } from '../state/caseStore';
 
@@ -55,10 +55,9 @@ export function MeasurementOverlay() {
         if (!anchor) continue;
         const projected = sceneManager.projectToScreen(anchor);
         if (!projected) continue;
-        const text =
-          measurement.kind === 'angle'
-            ? t('measure.angleValue', { degrees: measurement.value.toFixed(1) })
-            : formatMm(measurement.value);
+        const text = formatMeasurementValueText(measurement, (degreesValue) =>
+          t('measure.angleValue', { degrees: degreesValue.toFixed(1) }),
+        );
         next.push({ id: measurement.id, xPx: projected.xPx, yPx: projected.yPx, text });
       }
       setLabels(next);
