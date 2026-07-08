@@ -700,3 +700,175 @@ body {
 .measurement-list__remove:hover {
   border-color: var(--color-accent);
 }
+
+/* Surface-distance heatmap panel (Task 9, Sidebar) */
+.surface-distance-panel {
+  border-top: 1px solid var(--color-border);
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.surface-distance-panel__title {
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.surface-distance-panel__empty {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.surface-distance-panel__selectors {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.surface-distance-panel__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+}
+
+.surface-distance-panel__field select,
+.surface-distance-panel__field input {
+  font-size: 0.78rem;
+  color: var(--color-text);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  padding: 0.2rem 0.3rem;
+}
+
+.surface-distance-panel__checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--color-text);
+}
+
+.surface-distance-panel__run-button {
+  font-size: 0.78rem;
+  padding: 0.3rem 0.6rem;
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-accent);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.surface-distance-panel__run-button:hover:not(:disabled) {
+  background: var(--color-accent);
+  color: var(--color-bg);
+}
+
+.surface-distance-panel__run-button:disabled {
+  cursor: default;
+  opacity: 0.5;
+  border-color: var(--color-border);
+}
+
+.surface-distance-panel__progress {
+  width: 100%;
+  height: 0.4rem;
+  border-radius: 2px;
+  background: var(--color-border);
+  overflow: hidden;
+}
+
+.surface-distance-panel__progress-bar {
+  height: 100%;
+  background: var(--color-accent);
+  transition: width 0.15s ease-out;
+}
+
+.surface-distance-panel__error {
+  color: #e05555;
+  font-size: 0.78rem;
+  margin: 0;
+}
+
+.surface-distance-panel__result {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.surface-distance-panel__stats {
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.surface-distance-panel__stats th {
+  text-align: left;
+  font-weight: normal;
+  color: var(--color-text-muted);
+  padding: 0.05rem 0.6rem 0.05rem 0;
+}
+
+.surface-distance-panel__stats td {
+  font-variant-numeric: tabular-nums;
+}
+
+.surface-distance-panel__range-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.surface-distance-panel__range-controls button {
+  font-size: 0.72rem;
+  padding: 0.25rem 0.5rem;
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.surface-distance-panel__range-controls button:hover:not(:disabled) {
+  border-color: var(--color-accent);
+}
+
+.surface-distance-panel__range-controls button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.heatmap-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.heatmap-legend__title {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+}
+
+.heatmap-legend__bar {
+  height: 0.6rem;
+  border-radius: 2px;
+  border: 1px solid var(--color-border);
+}
+
+.heatmap-legend__ticks {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.68rem;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}

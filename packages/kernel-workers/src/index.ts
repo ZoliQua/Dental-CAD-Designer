@@ -37,6 +37,8 @@ export {
   type MeasurePointToSurfaceResult,
   type RaycastMeshPayload,
   type RaycastMeshResult,
+  type DistanceHeatmapPayload,
+  type DistanceHeatmapResult,
   type RepairRemoveComponentsPayload,
   type RepairRemoveComponentsResult,
   type RepairSplitNonManifoldEdgesPayload,

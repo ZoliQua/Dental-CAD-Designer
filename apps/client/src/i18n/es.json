@@ -120,6 +120,27 @@
     },
     "angleValue": "{{degrees}}°"
   },
+  "heatmap": {
+    "panelTitle": "Distancia entre superficies",
+    "needsTwoMeshes": "Añade al menos dos mallas a la escena para comparar superficies.",
+    "meshALabel": "Malla A",
+    "meshBLabel": "Malla B",
+    "selectPlaceholder": "Elige una malla…",
+    "signedLabel": "Con signo (dentro −, fuera +)",
+    "runButton": "Ejecutar",
+    "running": "Calculando…",
+    "errorLabel": "Error en la distancia entre superficies: {{message}}",
+    "statsMin": "Mín",
+    "statsMax": "Máx",
+    "statsMean": "Media",
+    "statsRms": "RMS",
+    "showToggle": "Mostrar mapa de calor",
+    "legendTitle": "Leyenda (µm)",
+    "rangeMinLabel": "Mín (µm)",
+    "rangeMaxLabel": "Máx (µm)",
+    "rangeManual": "Aplicar rango",
+    "rangeAuto": "Rango automático"
+  },
   "unitConfirm": {
     "title": "Confirmar unidades del escaneo",
     "messageCm": "\"{{fileName}}\" parece inusualmente pequeño (extensión máxima {{extent}} mm) — podría estar en centímetros en lugar de milímetros. ¿Multiplicar todas las coordenadas por {{factor}}?",

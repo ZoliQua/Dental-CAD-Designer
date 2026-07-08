@@ -120,6 +120,27 @@
     },
     "angleValue": "{{degrees}}°"
   },
+  "heatmap": {
+    "panelTitle": "Oberflächenabstand",
+    "needsTwoMeshes": "Fügen Sie der Szene mindestens zwei Netze hinzu, um Oberflächen zu vergleichen.",
+    "meshALabel": "Netz A",
+    "meshBLabel": "Netz B",
+    "selectPlaceholder": "Netz wählen…",
+    "signedLabel": "Vorzeichenbehaftet (innen −, außen +)",
+    "runButton": "Ausführen",
+    "running": "Wird berechnet…",
+    "errorLabel": "Oberflächenabstand fehlgeschlagen: {{message}}",
+    "statsMin": "Min",
+    "statsMax": "Max",
+    "statsMean": "Mittelwert",
+    "statsRms": "RMS",
+    "showToggle": "Heatmap anzeigen",
+    "legendTitle": "Legende (µm)",
+    "rangeMinLabel": "Min (µm)",
+    "rangeMaxLabel": "Max (µm)",
+    "rangeManual": "Bereich anwenden",
+    "rangeAuto": "Automatischer Bereich"
+  },
   "unitConfirm": {
     "title": "Einheiten des Scans bestätigen",
     "messageCm": "\"{{fileName}}\" wirkt ungewöhnlich klein (größte Ausdehnung {{extent}} mm) — die Datei liegt möglicherweise tatsächlich in Zentimetern statt Millimetern vor. Alle Koordinaten mit {{factor}} multiplizieren?",

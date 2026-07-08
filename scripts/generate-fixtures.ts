@@ -21,6 +21,16 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+// Used ONLY for a generation-time sanity check on the heatmap fixture pairs
+// below (see `checkHeatmapFixtureTolerance`) — the same "catch a gross
+// geometry bug before it ever reaches a checked-in fixture" role
+// `meshVolume`'s check plays for the volume fixtures. @dqcad/kernel's BVH
+// (Task 7) is real production code, already a workspace dependency, and is
+// exactly the machinery the actual acceptance test (distanceHeatmap.test.ts)
+// exercises against the checked-in STL bytes — reusing it here (rather than
+// a second, hand-rolled distance routine) means this sanity check can never
+// disagree with the kernel's own notion of "closest point on the mesh".
+import { buildBvh, closestPoint, type IndexedMesh } from '@dqcad/kernel';
 
 // ---------------------------------------------------------------------------
 // Minimal Float64 vector geometry (deliberately tiny and self-contained —
@@ -350,6 +360,47 @@ export function buildStandinPrepDie(): Mesh {
   return { vertices, faces };
 }
 
+/** Flat rectangular grid mesh in the XY plane at a fixed Z, spanning
+ * [-halfWidthX, halfWidthX] x [-halfWidthY, halfWidthY], tessellated into
+ * `segmentsX * segmentsY` quads (2 triangles each) — used only by Task 9's
+ * plane-pair heatmap fixture (see `HEATMAP_FIXTURE_PAIRS` below), where the
+ * convex-solid `orientOutward` helper doesn't apply (an open plane has no
+ * "interior" reference point). Winding is fixed directly so both triangles
+ * of every quad share a consistent +Z-facing normal — arbitrary but fixed,
+ * and irrelevant to closestPoint queries (BVH nearest-point search doesn't
+ * care about winding), only cosmetic for the exported STL's per-facet
+ * normal field. */
+export function buildPlane(
+  halfWidthX: number,
+  halfWidthY: number,
+  segmentsX: number,
+  segmentsY: number,
+  z: number,
+): Mesh {
+  const rowLength = segmentsY + 1;
+  const indexAt = (i: number, j: number): number => i * rowLength + j;
+  const vertices: Vec3[] = [];
+  for (let i = 0; i <= segmentsX; i++) {
+    const x = -halfWidthX + (2 * halfWidthX * i) / segmentsX;
+    for (let j = 0; j <= segmentsY; j++) {
+      const y = -halfWidthY + (2 * halfWidthY * j) / segmentsY;
+      vertices.push([x, y, z]);
+    }
+  }
+  const faces: Face[] = [];
+  for (let i = 0; i < segmentsX; i++) {
+    for (let j = 0; j < segmentsY; j++) {
+      const a = indexAt(i, j);
+      const b = indexAt(i + 1, j);
+      const c = indexAt(i + 1, j + 1);
+      const d = indexAt(i, j + 1);
+      faces.push({ a, b, c });
+      faces.push({ a, b: c, c: d });
+    }
+  }
+  return { vertices, faces };
+}
+
 // ---------------------------------------------------------------------------
 // Binary STL writer — script-local test tooling. Real STL/PLY parsers and
 // writers land in packages/io starting Phase 1; production code must not
@@ -548,6 +599,185 @@ function buildSyntheticFixtures(): readonly SyntheticFixture[] {
 
 export const SYNTHETIC_FIXTURES: readonly SyntheticFixture[] = buildSyntheticFixtures();
 
+// ---------------------------------------------------------------------------
+// Heatmap fixture pairs (Task 9) — two known-offset mesh pairs for the
+// distance-heatmap's phase-acceptance test ("reports the analytic offset
+// within ±1 µm"). Unlike SYNTHETIC_FIXTURES above (one closed solid each,
+// checked against an analytic VOLUME), each entry here is a PAIR of meshes
+// checked against an analytic per-vertex SURFACE-DISTANCE offset — a
+// different sidecar shape, so these are generated/written separately (see
+// `generateHeatmapFixtures` below) rather than folded into
+// `SYNTHETIC_FIXTURES`/`writeFixtureFiles`.
+//
+// ## offset-pair-inner / offset-pair-outer: icospheres r=5 and r=5.05
+//
+// Naively "two spheres 0.05 mm apart" sounds exact, but a triangulated
+// (flat-faceted) sphere is NOT the smooth analytic sphere: the true
+// per-vertex closest-point-ON-THE-MESH distance from an inner-sphere vertex
+// to the outer mesh is slightly LESS than the radial gap, because the outer
+// mesh's flat facets sag inward (toward the inner sphere) between its
+// vertices. Getting the two meshes' vertices in exact RADIAL correspondence
+// (so the "obvious" candidate closest point is a real vertex, not some
+// unrelated point) is necessary but not sufficient for a tight bound — this
+// section derives and then empirically verifies the resulting error.
+//
+// ### Radial correspondence
+//
+// `buildIcosphere(radius, subdivisions)` (above) only applies `radius` as a
+// final uniform scale of a shared unit-sphere vertex set (built once by
+// `buildIcosahedronBase` + `subdivideIcosphere`, both radius-independent).
+// Calling it with the SAME `subdivisions` for both radii therefore
+// guarantees vertex[i] of the outer mesh is EXACTLY `outer/inner` times
+// vertex[i] of the inner mesh — i.e. every inner vertex has a corresponding
+// outer vertex on the exact same ray from the origin, `radius` mm further
+// out. The straight-line (chord) distance between that pair is exactly
+// `outerRadius - innerRadius` (both being scalar multiples of the same unit
+// vector) — no tessellation error at all for THAT specific point pair.
+//
+// ### Why the true mesh-to-mesh distance is still slightly less
+//
+// The outer mesh's SURFACE near that corresponding vertex V' is not just
+// V' — it's a fan of flat triangles through V' and its neighbors (also on
+// the r_outer sphere). Set up local coordinates at V' with the z axis along
+// the outward radial direction. Each flat facet through V' is (to leading
+// order) the plane z = a*x + b*y for some small tilt coefficients a, b —
+// no constant term, since V' itself (at local (0,0,0)) is exactly on every
+// facet that touches it. A neighboring vertex at true tangential distance
+// rho ≈ r_outer * alpha (alpha = the tessellation's edge central angle at
+// this subdivision depth) sits at local z ≈ -rho^2 / (2 r_outer) (the
+// standard spherical sagitta, since it too lies exactly ON the sphere).
+// Solving z = a*x + b*y for a, b against that O(rho, rho^2) data gives
+// a, b = O(rho / r_outer) = O(alpha) — a small but non-zero tilt.
+//
+// The inner-sphere query point V sits at local (0, 0, -g) where
+// g = r_outer - r_inner is the radial gap (0.05 mm here). Distance from V
+// to the (infinite) facet plane z = a*x + b*y (normal (a, b, -1)) is
+// `g / sqrt(a^2 + b^2 + 1) ≈ g * (1 - (a^2+b^2)/2)` for small a, b — i.e. a
+// deficit of order `g * alpha^2` below the naive vertex-only distance `g`.
+// Since alpha halves each subdivision (each pass roughly bisects every
+// triangle edge — see `icosphereToleranceFraction`'s doc for the same
+// halving argument, used there for a different quantity), this deficit
+// shrinks by ~4x per subdivision level.
+//
+// ### Empirical verification (this is what actually sizes the fixture)
+//
+// Rather than trust the O(g alpha^2) order-of-magnitude estimate above for
+// a ±1 µm acceptance bound, the exact per-vertex worst case was computed
+// directly with this project's own kernel (buildBvh + closestPoint — the
+// SAME machinery the shipped distanceHeatmap job uses) at increasing
+// subdivision depths:
+//
+//   subdivision 2 (162 vertices):    max |distance - 0.05mm| ≈ 0.888 µm
+//   subdivision 3 (642 vertices):    max |distance - 0.05mm| ≈ 0.226 µm
+//   subdivision 4 (2562 vertices):   max |distance - 0.05mm| ≈ 0.057 µm  <- chosen
+//   subdivision 5 (10242 vertices):  max |distance - 0.05mm| ≈ 0.014 µm
+//
+// (~4x shrink per level, confirming the alpha^2 scaling above). Subdivision
+// 4 is chosen: max deviation ≈ 0.057 µm is a ~17x margin under the ±1 µm
+// acceptance bound (and a healthy margin under the tighter 0.1 µm
+// `OFFSET_PAIR_TOLERANCE_MM` this fixture's own sidecar/tests assert),
+// while keeping the fixture the same size class as `sphere-r5` (also
+// subdivision 4, ~2.6k vertices, ~256 KB binary STL). See
+// packages/kernel-workers/src/distanceHeatmap.test.ts for the acceptance
+// assertion itself and its measured value on the checked-in fixture.
+const OFFSET_PAIR_SUBDIVISIONS = 4;
+const OFFSET_PAIR_INNER_RADIUS_MM = 5;
+const OFFSET_PAIR_OUTER_RADIUS_MM = 5.05;
+// Written as its own literal, not `OUTER - INNER` — 5.05 itself isn't
+// exactly representable in Float64, so that subtraction lands a few ULPs
+// off 0.05 (noise at the 1e-14 mm scale, i.e. utterly below even this
+// fixture's own tolerance, but needless jitter in the sidecar/tests below).
+const OFFSET_PAIR_GAP_MM = 0.05; // 50 µm
+/** Generation-time sanity bound (checked below, at fixture-write time) —
+ * deliberately tighter than the ±1 µm phase-acceptance bound the actual
+ * test asserts (see this section's doc), so a future change that erodes
+ * the margin trips here long before it could ever threaten acceptance. */
+const OFFSET_PAIR_TOLERANCE_MM = 0.0001; // 0.1 µm
+
+// ## plane-pair-a / plane-pair-b: flat planes, exactly 17 µm apart
+//
+// Unlike a sphere, a FLAT mesh has zero tessellation error against its own
+// analytic shape (a plane) — every mesh vertex, and every point on every
+// facet, already lies exactly on the plane z = const, no matter how coarse
+// the tessellation. So the only thing this pair needs is: (a) plane B must
+// be flat, at exactly `PLANE_PAIR_OFFSET_MM` above plane A, and (b) plane B
+// must extend strictly beyond plane A's footprint by a comfortable margin,
+// so the true closest point on B from ANY vertex of A is always the
+// straight-down perpendicular foot (interior to some facet of B), never a
+// boundary edge/vertex of B (which would read as a longer, non-perpendicular
+// distance). Plane A spans [-5, 5]mm on each axis; plane B spans [-7, 7]mm —
+// a 2 mm margin, vastly more than needed for exactness at this scale. This
+// pair is the "strict" ±1 µm case: the only error source is IEEE Float64
+// rounding (~1e-12 mm), nothing tessellation-related.
+const PLANE_PAIR_OFFSET_MM = 0.017; // 17 µm
+const PLANE_PAIR_A_HALF_WIDTH_MM = 5;
+const PLANE_PAIR_B_HALF_WIDTH_MM = 7;
+const PLANE_PAIR_A_SEGMENTS = 8;
+const PLANE_PAIR_B_SEGMENTS = 10;
+const PLANE_PAIR_TOLERANCE_MM = 1e-9;
+
+export interface HeatmapFixturePair {
+  /** Shared basename for this pair's combined sidecar JSON
+   * (`${pairName}.expected.json`), distinct from `nameA`/`nameB` (each
+   * mesh's own `.stl` basename). */
+  readonly pairName: string;
+  readonly nameA: string;
+  readonly nameB: string;
+  readonly meshA: Mesh;
+  readonly meshB: Mesh;
+  /** Analytic closest-point-on-B distance every vertex of A should report,
+   * in mm. */
+  readonly analyticOffsetMm: number;
+  /** Documented, derived (see this section's module doc) upper bound on
+   * `|measured - analyticOffsetMm|` across every vertex of A, in mm —
+   * checked at generation time below, and asserted (independently, against
+   * the checked-in STL bytes) by
+   * packages/kernel-workers/src/distanceHeatmap.test.ts. */
+  readonly toleranceMm: number;
+}
+
+function buildHeatmapFixturePairs(): readonly HeatmapFixturePair[] {
+  const offsetInner = buildIcosphere(OFFSET_PAIR_INNER_RADIUS_MM, OFFSET_PAIR_SUBDIVISIONS);
+  const offsetOuter = buildIcosphere(OFFSET_PAIR_OUTER_RADIUS_MM, OFFSET_PAIR_SUBDIVISIONS);
+  const planeA = buildPlane(
+    PLANE_PAIR_A_HALF_WIDTH_MM,
+    PLANE_PAIR_A_HALF_WIDTH_MM,
+    PLANE_PAIR_A_SEGMENTS,
+    PLANE_PAIR_A_SEGMENTS,
+    0,
+  );
+  const planeB = buildPlane(
+    PLANE_PAIR_B_HALF_WIDTH_MM,
+    PLANE_PAIR_B_HALF_WIDTH_MM,
+    PLANE_PAIR_B_SEGMENTS,
+    PLANE_PAIR_B_SEGMENTS,
+    PLANE_PAIR_OFFSET_MM,
+  );
+
+  return [
+    {
+      pairName: 'offset-pair',
+      nameA: 'offset-pair-inner',
+      nameB: 'offset-pair-outer',
+      meshA: offsetInner,
+      meshB: offsetOuter,
+      analyticOffsetMm: OFFSET_PAIR_GAP_MM,
+      toleranceMm: OFFSET_PAIR_TOLERANCE_MM,
+    },
+    {
+      pairName: 'plane-pair',
+      nameA: 'plane-pair-a',
+      nameB: 'plane-pair-b',
+      meshA: planeA,
+      meshB: planeB,
+      analyticOffsetMm: PLANE_PAIR_OFFSET_MM,
+      toleranceMm: PLANE_PAIR_TOLERANCE_MM,
+    },
+  ];
+}
+
+export const HEATMAP_FIXTURE_PAIRS: readonly HeatmapFixturePair[] = buildHeatmapFixturePairs();
+
 const STANDIN_README_TEXT = `# Stand-in prep-die scan
 
 \`standin-prep-die.stl\` is a **procedural, synthetic** truncated cone with a
@@ -618,6 +848,93 @@ export function generateSyntheticFixtures(outDir: string): readonly string[] {
   return written;
 }
 
+function toIndexedMesh(mesh: Mesh): IndexedMesh {
+  const positions = new Float64Array(mesh.vertices.length * 3);
+  mesh.vertices.forEach((v, i) => {
+    positions[i * 3] = v[0];
+    positions[i * 3 + 1] = v[1];
+    positions[i * 3 + 2] = v[2];
+  });
+  const indices = new Uint32Array(mesh.faces.length * 3);
+  mesh.faces.forEach((f, i) => {
+    indices[i * 3] = f.a;
+    indices[i * 3 + 1] = f.b;
+    indices[i * 3 + 2] = f.c;
+  });
+  return { positions, indices };
+}
+
+/** Generation-time sanity check for a `HeatmapFixturePair` (not a test —
+ * same role as `writeFixtureFiles`'s volume check above): computes, via the
+ * real kernel BVH, the exact closest-point-on-B distance for EVERY vertex of
+ * A, and throws if the worst-case deviation from `pair.analyticOffsetMm`
+ * exceeds `pair.toleranceMm` — catches a wrong radius/offset/subdivision
+ * parameter before it ever reaches a checked-in fixture. Returns the
+ * measured worst-case deviation (mm) so it can be recorded for humans
+ * regenerating fixtures (printed by this script's CLI entry point below).
+ */
+function checkHeatmapFixtureTolerance(pair: HeatmapFixturePair): number {
+  const meshA = toIndexedMesh(pair.meshA);
+  const meshB = toIndexedMesh(pair.meshB);
+  const bvhB = buildBvh(meshB);
+
+  let maxDeviationMm = 0;
+  const vertexCount = meshA.positions.length / 3;
+  for (let v = 0; v < vertexCount; v++) {
+    const p: [number, number, number] = [
+      meshA.positions[v * 3]!,
+      meshA.positions[v * 3 + 1]!,
+      meshA.positions[v * 3 + 2]!,
+    ];
+    const result = closestPoint(meshB, bvhB, p);
+    const deviation = Math.abs(result.distance - pair.analyticOffsetMm);
+    if (deviation > maxDeviationMm) {
+      maxDeviationMm = deviation;
+    }
+  }
+
+  if (maxDeviationMm > pair.toleranceMm) {
+    throw new Error(
+      `${pair.pairName}: worst-case vertex-to-mesh distance deviates from the analytic offset ` +
+        `${pair.analyticOffsetMm}mm by ${(maxDeviationMm * 1000).toFixed(4)}µm, exceeding the ` +
+        `documented tolerance ${(pair.toleranceMm * 1000).toFixed(4)}µm. This indicates a bug in ` +
+        `the fixture parameters (radii/offset/subdivision), not normal tessellation error — see ` +
+        `HEATMAP_FIXTURE_PAIRS's doc comment for the expected-error derivation.`,
+    );
+  }
+  return maxDeviationMm;
+}
+
+function writeHeatmapFixturePair(outDir: string, pair: HeatmapFixturePair): readonly string[] {
+  checkHeatmapFixtureTolerance(pair);
+
+  const stlBufferA = writeBinaryStl(pair.meshA);
+  const stlBufferB = writeBinaryStl(pair.meshB);
+  const sidecar = {
+    analyticOffsetMm: pair.analyticOffsetMm,
+    toleranceMm: pair.toleranceMm,
+    a: { file: `${pair.nameA}.stl`, sha256: sha256Hex(stlBufferA), bbox: computeBoundingBox(pair.meshA) },
+    b: { file: `${pair.nameB}.stl`, sha256: sha256Hex(stlBufferB), bbox: computeBoundingBox(pair.meshB) },
+  };
+
+  const stlPathA = join(outDir, `${pair.nameA}.stl`);
+  const stlPathB = join(outDir, `${pair.nameB}.stl`);
+  const jsonPath = join(outDir, `${pair.pairName}.expected.json`);
+  writeFileSync(stlPathA, stlBufferA);
+  writeFileSync(stlPathB, stlBufferB);
+  writeFileSync(jsonPath, `${JSON.stringify(sidecar, null, 2)}\n`, 'utf8');
+  return [stlPathA, stlPathB, jsonPath];
+}
+
+export function generateHeatmapFixtures(outDir: string): readonly string[] {
+  mkdirSync(outDir, { recursive: true });
+  const written: string[] = [];
+  for (const pair of HEATMAP_FIXTURE_PAIRS) {
+    written.push(...writeHeatmapFixturePair(outDir, pair));
+  }
+  return written;
+}
+
 export function generateStandinScan(outDir: string): readonly string[] {
   mkdirSync(outDir, { recursive: true });
   const stlPath = join(outDir, 'standin-prep-die.stl');
@@ -630,6 +947,7 @@ export function generateStandinScan(outDir: string): readonly string[] {
 export function generateAll(rootOutDir: string): readonly string[] {
   return [
     ...generateSyntheticFixtures(join(rootOutDir, 'synthetic')),
+    ...generateHeatmapFixtures(join(rootOutDir, 'synthetic')),
     ...generateStandinScan(join(rootOutDir, 'standin-scans')),
   ];
 }

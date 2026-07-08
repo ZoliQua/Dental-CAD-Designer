@@ -25,4 +25,14 @@ export interface RenderNode {
    * to read that one field (see this module's top doc on why the type lives
    * here, dependency-free, rather than in either producer/consumer file). */
   role: MeshRole;
+  /** Optional per-vertex RGB color override (Task 9's surface-distance
+   * heatmap — see engine/colormap.ts's `distancesToVertexColors`), Float32,
+   * length `positions.length` (one RGB triple per vertex, same indexing as
+   * `positions`). `undefined`/absent means "no heatmap active for this
+   * node" — SceneManager renders the mesh's ordinary material color, same
+   * as before Task 9. Producers (ui/Viewport.tsx, via
+   * engine/heatmap.ts's `getActiveOverlay()`) are responsible for supplying
+   * a buffer sized to match `positions` exactly; SceneManager does not
+   * re-validate the length. */
+  colors?: Float32Array;
 }

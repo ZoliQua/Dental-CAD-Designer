@@ -212,6 +212,12 @@ interface MeshEntry {
   indicesRef: Uint32Array;
   visible: boolean;
   opacity: number;
+  /** Whether this entry's geometry currently carries a `color`
+   * BufferAttribute (Task 9's heatmap overlay — see `applyColors`) — tracked
+   * so `applyColors` only flips `material.vertexColors` (which forces a
+   * shader recompile via `needsUpdate`) on an actual on/off TRANSITION,
+   * not on every sync while a heatmap stays active. */
+  hasColors: boolean;
 }
 
 /** One measurement's overlay geometry — see `syncMeasurements`'s doc for
@@ -484,6 +490,7 @@ export class SceneManager {
       entry.visible = node.visible;
       entry.mesh.visible = node.visible;
       this.applyOpacity(entry, node.opacity);
+      this.applyColors(entry, node);
       entry.wireframeMesh.visible = this.wireframeEnabled && node.visible;
       if (this.selectedNodeId === node.id) {
         this.applyHighlight(entry, true);
@@ -542,6 +549,7 @@ export class SceneManager {
       indicesRef: node.indices,
       visible: node.visible,
       opacity: node.opacity,
+      hasColors: false,
     };
   }
 
@@ -592,6 +600,35 @@ export class SceneManager {
     entry.wireframeMesh.renderOrder = wireframeRenderOrder;
   }
 
+  /**
+   * Applies (or clears) `node.colors` (Task 9's surface-distance heatmap —
+   * see renderNode.ts's `RenderNode.colors` doc) as a `color`
+   * BufferAttribute on `entry`'s geometry, toggling
+   * `material.vertexColors` on an actual on/off transition only (see
+   * `MeshEntry.hasColors`'s doc — flipping that flag forces a shader
+   * recompile via `needsUpdate`, which is unnecessary work to repeat every
+   * sync while a heatmap stays active/inactive). The attribute itself IS
+   * always re-set while `node.colors` is present (cheap — mirrors
+   * `updateEntryGeometry`'s unconditional position-attribute update — and
+   * correctly picks up a fresh heatmap run's new colors without needing its
+   * own separate "did the buffer change" identity check).
+   */
+  private applyColors(entry: MeshEntry, node: RenderNode): void {
+    if (node.colors) {
+      entry.geometry.setAttribute('color', new BufferAttribute(node.colors, 3));
+      if (!entry.hasColors) {
+        entry.material.vertexColors = true;
+        entry.material.needsUpdate = true;
+        entry.hasColors = true;
+      }
+    } else if (entry.hasColors) {
+      entry.geometry.deleteAttribute('color');
+      entry.material.vertexColors = false;
+      entry.material.needsUpdate = true;
+      entry.hasColors = false;
+    }
+  }
+
   private disposeEntry(entry: MeshEntry): void {
     entry.geometry.dispose();
     entry.material.dispose();
@@ -616,6 +653,12 @@ export class SceneManager {
     for (const entry of this.meshEntries.values()) {
       const oldMaterial = entry.material;
       const newMaterial = createShadingMaterial(preset, this.matcapTexture);
+      // A freshly-created material always defaults to `vertexColors: false`
+      // — carry over whether THIS entry currently has a heatmap `color`
+      // attribute applied (see `applyColors`'s doc), so switching shading
+      // presets mid-heatmap doesn't silently drop the overlay back to the
+      // material's flat base color.
+      newMaterial.vertexColors = entry.hasColors;
       entry.material = newMaterial;
       entry.baseColor = newMaterial.color.clone();
       entry.mesh.material = newMaterial;

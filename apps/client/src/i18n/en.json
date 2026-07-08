@@ -120,6 +120,27 @@
     },
     "angleValue": "{{degrees}}°"
   },
+  "heatmap": {
+    "panelTitle": "Surface distance",
+    "needsTwoMeshes": "Add at least two meshes to the scene to compare surfaces.",
+    "meshALabel": "Mesh A",
+    "meshBLabel": "Mesh B",
+    "selectPlaceholder": "Choose mesh…",
+    "signedLabel": "Signed (inside −, outside +)",
+    "runButton": "Run",
+    "running": "Computing…",
+    "errorLabel": "Surface distance failed: {{message}}",
+    "statsMin": "Min",
+    "statsMax": "Max",
+    "statsMean": "Mean",
+    "statsRms": "RMS",
+    "showToggle": "Show heatmap",
+    "legendTitle": "Legend (µm)",
+    "rangeMinLabel": "Min (µm)",
+    "rangeMaxLabel": "Max (µm)",
+    "rangeManual": "Apply range",
+    "rangeAuto": "Auto range"
+  },
   "unitConfirm": {
     "title": "Confirm scan units",
     "messageCm": "\"{{fileName}}\" looks unusually small (largest extent {{extent}} mm) — it may actually be in centimeters, not millimeters. Multiply all coordinates by {{factor}}?",

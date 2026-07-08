@@ -120,6 +120,27 @@
     },
     "angleValue": "{{degrees}}°"
   },
+  "heatmap": {
+    "panelTitle": "Felületi távolság",
+    "needsTwoMeshes": "Adjon a jelenethez legalább két hálót a felületek összehasonlításához.",
+    "meshALabel": "A háló",
+    "meshBLabel": "B háló",
+    "selectPlaceholder": "Válasszon hálót…",
+    "signedLabel": "Előjeles (belül −, kívül +)",
+    "runButton": "Futtatás",
+    "running": "Számítás…",
+    "errorLabel": "A felületi távolság számítása sikertelen: {{message}}",
+    "statsMin": "Min",
+    "statsMax": "Max",
+    "statsMean": "Átlag",
+    "statsRms": "RMS",
+    "showToggle": "Hőtérkép megjelenítése",
+    "legendTitle": "Jelmagyarázat (µm)",
+    "rangeMinLabel": "Min (µm)",
+    "rangeMaxLabel": "Max (µm)",
+    "rangeManual": "Tartomány alkalmazása",
+    "rangeAuto": "Automatikus tartomány"
+  },
   "unitConfirm": {
     "title": "Mértékegység megerősítése",
     "messageCm": "\"{{fileName}}\" szokatlanul kicsinek tűnik (legnagyobb kiterjedés {{extent}} mm) — lehet, hogy valójában centiméterben van, nem milliméterben. Szorozzuk az összes koordinátát {{factor}}-szel?",

@@ -3,17 +3,34 @@
 // No Three.js imports here; all render objects live in src/engine/.
 import { useEffect, useRef } from 'react';
 import { caseStore } from '../engine/caseStore';
+import { heatmapEngine } from '../engine/heatmap';
 import { toMeasurementRenderData, toWorldRay } from '../engine/measurementFrame';
+import type { RenderNode } from '../engine/renderNode';
 import { SceneManager, type MeasurePickCandidate } from '../engine/SceneManager';
 import { toolManager } from '../engine/ToolManager';
 import { registerActiveSceneManager } from '../engine/viewerController';
 import { useAppStore } from '../state/appStore';
 import { useCaseStore } from '../state/caseStore';
+import { useHeatmapStore } from '../state/heatmapStore';
 import { useToolStore } from '../state/toolStore';
 import { useViewerStore } from '../state/viewerStore';
 import { MeasureToolbar } from './MeasureToolbar';
 import { MeasurementOverlay } from './MeasurementOverlay';
 import { ViewerToolbar } from './ViewerToolbar';
+
+/** `caseStore.getRenderNodes()`'s output, with the active heatmap overlay's
+ * colors (if any — see engine/heatmap.ts's `getActiveOverlay`) merged onto
+ * its matching source node. Kept HERE (not inside engine/caseStore.ts)
+ * specifically to avoid a caseStore.ts <-> heatmap.ts import cycle — see
+ * heatmap.ts's module doc for the full reasoning. */
+function buildRenderNodes(): RenderNode[] {
+  const nodes = caseStore.getRenderNodes();
+  const overlay = heatmapEngine.getActiveOverlay();
+  if (!overlay) {
+    return nodes;
+  }
+  return nodes.map((node) => (node.id === overlay.nodeId ? { ...node, colors: overlay.colors } : node));
+}
 
 /** SceneManager's own `onMeasurePick` reports a ray in ITS render frame
  * (Float32-safe, re-centered — see SceneManager.ts's `MeasurePickCandidate`
@@ -44,6 +61,9 @@ export function Viewport() {
   const shadingPreset = useViewerStore((state) => state.shadingPreset);
   const wireframeEnabled = useViewerStore((state) => state.wireframeEnabled);
   const activeMeasurementTool = useToolStore((state) => state.activeTool);
+  const heatmapVisible = useHeatmapStore((state) => state.visible);
+  const heatmapStatus = useHeatmapStore((state) => state.status);
+  const heatmapRange = useHeatmapStore((state) => state.range);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -76,8 +96,13 @@ export function Viewport() {
   }, [setEngineReady]);
 
   useEffect(() => {
-    sceneManagerRef.current?.syncRenderNodes(caseStore.getRenderNodes());
-  }, [document]);
+    // Re-syncs whenever the case document changes OR the active heatmap's
+    // visibility/colors change (`heatmapStatus`/`heatmapRange` both change
+    // whenever a run completes or its display range is adjusted — see
+    // buildRenderNodes' doc for why the overlay itself isn't part of
+    // `document`/`useCaseStore`).
+    sceneManagerRef.current?.syncRenderNodes(buildRenderNodes());
+  }, [document, heatmapVisible, heatmapStatus, heatmapRange]);
 
   useEffect(() => {
     // Same trigger as the render-node sync above: a measurement's points

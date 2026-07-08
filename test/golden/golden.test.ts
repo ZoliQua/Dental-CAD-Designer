@@ -20,7 +20,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { generateAll, SYNTHETIC_FIXTURES } from '../../scripts/generate-fixtures.ts';
+import { generateAll, HEATMAP_FIXTURE_PAIRS, SYNTHETIC_FIXTURES } from '../../scripts/generate-fixtures.ts';
 import { assertNotLfsPointer, parseBinaryStl } from './stl-reader.ts';
 
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
@@ -62,6 +62,31 @@ describe('golden fixtures: determinism (fresh regeneration matches checked-in by
 
       const checkedInJson = readFileSync(join(syntheticDir, `${name}.expected.json`), 'utf8');
       const regeneratedJson = readFileSync(join(tempDir, 'synthetic', `${name}.expected.json`), 'utf8');
+      expect(regeneratedJson).toBe(checkedInJson);
+    },
+  );
+
+  // Task 9 heatmap fixture pairs (offset-pair-*, plane-pair-*) — separate
+  // from SYNTHETIC_FIXTURES's loop above since each entry here is a PAIR of
+  // STL files sharing one combined sidecar (`${pairName}.expected.json`),
+  // not one STL + one sidecar (see scripts/generate-fixtures.ts's
+  // `HeatmapFixturePair` doc). Same determinism check either way: a fresh
+  // regeneration into `tempDir` must be byte-identical to the checked-in
+  // fixture.
+  it.each(HEATMAP_FIXTURE_PAIRS.map((pair) => pair.pairName))(
+    '%s: both STL files and the combined sidecar are byte-identical to a fresh regeneration',
+    (pairName) => {
+      const pair = HEATMAP_FIXTURE_PAIRS.find((p) => p.pairName === pairName);
+      if (!pair) throw new Error(`unreachable: ${pairName} not in HEATMAP_FIXTURE_PAIRS`);
+
+      for (const name of [pair.nameA, pair.nameB]) {
+        const checkedInStl = readChecked(syntheticDir, `${name}.stl`);
+        const regeneratedStl = readFileSync(join(tempDir, 'synthetic', `${name}.stl`));
+        expect(sha256(regeneratedStl)).toBe(sha256(checkedInStl));
+      }
+
+      const checkedInJson = readFileSync(join(syntheticDir, `${pairName}.expected.json`), 'utf8');
+      const regeneratedJson = readFileSync(join(tempDir, 'synthetic', `${pairName}.expected.json`), 'utf8');
       expect(regeneratedJson).toBe(checkedInJson);
     },
   );
