@@ -134,6 +134,7 @@
     "applyButton": "Alkalmaz",
     "applying": "Alkalmazás…",
     "applied": "Alkalmazva",
+    "measurementsCleared": "{{count}} mérés eltávolítva — a javított felületre hivatkoztak",
     "stats": {
       "before": "Előtte",
       "after": "Utána"

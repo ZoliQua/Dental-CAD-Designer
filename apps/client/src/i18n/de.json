@@ -134,6 +134,7 @@
     "applyButton": "Anwenden",
     "applying": "Wird angewendet…",
     "applied": "Angewendet",
+    "measurementsCleared": "{{count}} Messung(en) entfernt — sie bezogen sich auf die reparierte Oberfläche",
     "stats": {
       "before": "Vorher",
       "after": "Nachher"

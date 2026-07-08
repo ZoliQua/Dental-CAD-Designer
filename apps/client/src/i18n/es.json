@@ -134,6 +134,7 @@
     "applyButton": "Aplicar",
     "applying": "Aplicando…",
     "applied": "Aplicado",
+    "measurementsCleared": "Se eliminaron {{count}} medición(es) — hacían referencia a la superficie reparada",
     "stats": {
       "before": "Antes",
       "after": "Después"

@@ -65,11 +65,22 @@ type CardState<P> =
   | { status: 'loading' }
   | { status: 'ready'; preview: P }
   | { status: 'applying'; preview: P }
-  | { status: 'applied' }
+  | { status: 'applied'; measurementsCleared: number }
   | { status: 'error'; message: string };
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** Reads `measurementsCleared` back off the journal entry `applyRepairPreview`
+ * just appended (`caseStore.applyRepair` merges it into the SAME Operation's
+ * `params` — see that method's doc) so each card's "Applied" state can
+ * surface the "N measurement(s) removed" note without `applyRepairPreview`
+ * having to change its `EngineMeshRecord` return shape. */
+function measurementsClearedFromLastOperation(): number {
+  const lastOperation = caseStore.getDocument().history.at(-1);
+  const count = lastOperation?.params.measurementsCleared;
+  return typeof count === 'number' ? count : 0;
 }
 
 function RepairStatsTable({ before, after }: { before: MeshStats; after: MeshStats }) {
@@ -145,7 +156,7 @@ function RemoveComponentsCard({ meshId }: { meshId: string }) {
     setState({ status: 'applying', preview });
     try {
       await applyRepairPreview(preview);
-      setState({ status: 'applied' });
+      setState({ status: 'applied', measurementsCleared: measurementsClearedFromLastOperation() });
     } catch (error) {
       setState({ status: 'error', message: errorMessage(error) });
     }
@@ -201,7 +212,7 @@ function SplitNonManifoldEdgesCard({ meshId }: { meshId: string }) {
     setState({ status: 'applying', preview });
     try {
       await applyRepairPreview(preview);
-      setState({ status: 'applied' });
+      setState({ status: 'applied', measurementsCleared: measurementsClearedFromLastOperation() });
     } catch (error) {
       setState({ status: 'error', message: errorMessage(error) });
     }
@@ -255,7 +266,7 @@ function FillSmallHolesCard({ meshId }: { meshId: string }) {
     setState({ status: 'applying', preview });
     try {
       await applyRepairPreview(preview);
-      setState({ status: 'applied' });
+      setState({ status: 'applied', measurementsCleared: measurementsClearedFromLastOperation() });
     } catch (error) {
       setState({ status: 'error', message: errorMessage(error) });
     }
@@ -322,7 +333,16 @@ function RepairCardShell<P extends { statsBefore: MeshStats; statsAfter: MeshSta
       {state.status === 'error' && (
         <p className="repair-card__error">{t('repair.previewError', { message: state.message })}</p>
       )}
-      {state.status === 'applied' && <p className="repair-card__applied">{t('repair.applied')}</p>}
+      {state.status === 'applied' && (
+        <>
+          <p className="repair-card__applied">{t('repair.applied')}</p>
+          {state.measurementsCleared > 0 && (
+            <p className="repair-card__applied-note" data-testid={`${testId}-measurements-cleared`}>
+              {t('repair.measurementsCleared', { count: state.measurementsCleared })}
+            </p>
+          )}
+        </>
+      )}
       {(state.status === 'ready' || state.status === 'applying') && (
         <>
           {typeof summary === 'string' ? <p className="repair-card__summary">{summary}</p> : summary}

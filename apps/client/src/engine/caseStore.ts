@@ -290,6 +290,22 @@ class CaseStoreEngine {
    * `Operation` is always appended: a repair is a real, journal-worthy event
    * even on the rare chance its output happens to hash-collide with an
    * already-known mesh.
+   *
+   * ALSO removes every `Measurement` that has any `MeasurementPoint`
+   * referencing a SceneNode being repointed here. Rationale (this project's
+   * "a silently wrong value is worse than no value" principle): a
+   * measurement's points are frozen world-space snapshots taken against the
+   * mesh that was live at pick time — once that node's `meshId` moves to the
+   * repaired mesh, those snapshots describe a surface that no longer exists,
+   * but the UI would keep displaying the old mm/degree value as if it still
+   * applied to the CURRENT (repaired) surface. That's not a crash, it's
+   * quietly-wrong clinical data. Keeping the stale measurement around "just
+   * in case" is not a safe default here — re-measuring on the new surface is
+   * a few clicks, whereas a silently-stale distance/angle could go
+   * unnoticed into a restoration decision. So: clear, don't try to
+   * re-project. The removal is recorded on the SAME journal `Operation`
+   * (`measurementsCleared` / `clearedMeasurementIds` in `params`, see below)
+   * so the journal remains a complete account of what a repair did.
    */
   applyRepair(input: ApplyRepairInput): EngineMeshRecord {
     const previous = this.meshStore.get(input.previousContentHash);
@@ -323,13 +339,46 @@ class CaseStoreEngine {
       triangleCount: input.indices.length / 3,
     };
 
+    // Every SceneNode about to be repointed away from `previousContentHash`
+    // (computed against the PRE-update scene) — any Measurement anchored to
+    // one of these nodes is about to go stale (see this method's doc above).
+    const repointedNodeIds = new Set(
+      this.document.scene
+        .filter((node) => node.meshId === input.previousContentHash)
+        .map((node) => node.id),
+    );
+    const clearedMeasurements = this.document.measurements.filter((measurement) =>
+      measurement.points.some((point) => repointedNodeIds.has(point.nodeId)),
+    );
+    const remainingMeasurements =
+      clearedMeasurements.length === 0
+        ? this.document.measurements
+        : this.document.measurements.filter((measurement) => !clearedMeasurements.includes(measurement));
+
+    // `measurementsCleared` is always present (even 0) so a journal reader
+    // can always find it without checking for its existence first; the id
+    // list is omitted (not an empty array) when there's nothing to list —
+    // consistent with `repair.ts#paramsFor`'s existing style of collapsing
+    // trivial/empty detail into a bare count (e.g. `loopsSkipped: length`).
+    const operation: Operation = {
+      ...input.operation,
+      params: {
+        ...input.operation.params,
+        measurementsCleared: clearedMeasurements.length,
+        ...(clearedMeasurements.length > 0
+          ? { clearedMeasurementIds: clearedMeasurements.map((measurement) => measurement.id) }
+          : {}),
+      },
+    };
+
     this.document = {
       ...this.document,
       meshes: alreadyKnownAsset ? this.document.meshes : [...this.document.meshes, asset],
       scene: this.document.scene.map((node) =>
         node.meshId === input.previousContentHash ? { ...node, meshId: outputHash } : node,
       ),
-      history: [...this.document.history, input.operation],
+      measurements: remainingMeasurements,
+      history: [...this.document.history, operation],
     };
 
     this.releaseMeshIfUnreferenced(input.previousContentHash);

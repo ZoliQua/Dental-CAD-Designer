@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { IntakeReport, MeshStats } from '@dqcad/kernel-workers';
-import type { Operation } from '@dqcad/shared-types';
+import type { Measurement, Operation } from '@dqcad/shared-types';
 import { useCaseStore } from '../state/caseStore';
 import { caseStore } from './caseStore';
 
@@ -254,6 +254,19 @@ describe('caseStore.applyRepair', () => {
     };
   }
 
+  function measurementOnNode(id: string, nodeId: string): Measurement {
+    return {
+      id,
+      kind: 'pointToPoint',
+      points: [
+        { nodeId, position: [0, 0, 0] },
+        { nodeId, position: [1, 0, 0] },
+      ],
+      value: 1,
+      createdAt: new Date().toISOString(),
+    };
+  }
+
   it('registers the repaired mesh, repoints the SceneNode, and appends the journal Operation', () => {
     registerMesh('hash-a');
     const node = caseStore.addSceneNode('hash-a', 'upperJaw');
@@ -360,6 +373,55 @@ describe('caseStore.applyRepair', () => {
         operation: badOp,
       }),
     ).toThrow();
+  });
+
+  // A repaired mesh's SceneNode keeps its id but gets a NEW meshId — any
+  // Measurement whose points reference that node were snapshotted against
+  // the PRE-repair surface, so they'd silently display a stale value against
+  // the repaired mesh if left in place (this project's "a silently wrong
+  // value is worse than no value" principle — see applyRepair's doc).
+  it('removes every measurement anchored to a repointed node, keeps unrelated ones, and records the removal on the journal Operation', () => {
+    registerMesh('hash-a');
+    registerMesh('hash-b');
+    const nodeA = caseStore.addSceneNode('hash-a', 'upperJaw');
+    const nodeB = caseStore.addSceneNode('hash-b', 'lowerJaw');
+
+    caseStore.addMeasurement(measurementOnNode('m-1', nodeA.id));
+    caseStore.addMeasurement(measurementOnNode('m-2', nodeA.id));
+    const kept = measurementOnNode('m-3', nodeB.id);
+    caseStore.addMeasurement(kept);
+
+    caseStore.applyRepair({
+      previousContentHash: 'hash-a',
+      positions: new Float64Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+      indices: new Uint32Array([0, 1, 2]),
+      stats: statsForBbox([0, 0, 0], [1, 1, 0]),
+      operation: repairOp('hash-a', 'hash-a-repaired'),
+    });
+
+    const doc = useCaseStore.getState().document;
+    expect(doc.measurements).toEqual([kept]);
+
+    const op = doc.history.at(-1)!;
+    expect(op.params.measurementsCleared).toBe(2);
+    expect(op.params.clearedMeasurementIds).toEqual(['m-1', 'm-2']);
+  });
+
+  it('records measurementsCleared: 0 (and omits clearedMeasurementIds) when a repair touches no measurements — no journal noise', () => {
+    registerMesh('hash-a');
+    caseStore.addSceneNode('hash-a', 'upperJaw');
+
+    caseStore.applyRepair({
+      previousContentHash: 'hash-a',
+      positions: new Float64Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+      indices: new Uint32Array([0, 1, 2]),
+      stats: statsForBbox([0, 0, 0], [1, 1, 0]),
+      operation: repairOp('hash-a', 'hash-a-repaired'),
+    });
+
+    const op = useCaseStore.getState().document.history.at(-1)!;
+    expect(op.params.measurementsCleared).toBe(0);
+    expect('clearedMeasurementIds' in op.params).toBe(false);
   });
 });
 
