@@ -141,6 +141,27 @@
     "rangeManual": "Aplicar rango",
     "rangeAuto": "Rango automático"
   },
+  "section": {
+    "panelTitle": "Sección transversal",
+    "needsMesh": "Añada una malla a la escena para obtener una sección transversal.",
+    "enableToggle": "Activar herramienta de sección",
+    "axisGroupLabel": "Preajuste de eje",
+    "axis": {
+      "x": "X",
+      "y": "Y",
+      "z": "Z",
+      "custom": "Personalizado"
+    },
+    "offsetLabel": "Posición a lo largo de la normal",
+    "yawLabel": "Guiñada",
+    "pitchLabel": "Cabeceo",
+    "showCapToggle": "Mostrar tapa rellena",
+    "clipToggle": "Recortar malla en el plano",
+    "running": "Calculando…",
+    "errorLabel": "La sección falló: {{message}}",
+    "pointCount": "{{count}} punto(s) de contorno",
+    "exportSvgButton": "Descargar SVG"
+  },
   "unitConfirm": {
     "title": "Confirmar unidades del escaneo",
     "messageCm": "\"{{fileName}}\" parece inusualmente pequeño (extensión máxima {{extent}} mm) — podría estar en centímetros en lugar de milímetros. ¿Multiplicar todas las coordenadas por {{factor}}?",

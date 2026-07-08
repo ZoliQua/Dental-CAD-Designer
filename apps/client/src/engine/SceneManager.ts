@@ -55,6 +55,7 @@ import {
   BufferGeometry,
   Color,
   type ColorRepresentation,
+  DoubleSide,
   Float32BufferAttribute,
   GridHelper,
   Group,
@@ -62,11 +63,13 @@ import {
   LineSegments,
   MathUtils,
   Mesh,
+  MeshBasicMaterial,
   type MeshMatcapMaterial,
   type MeshStandardMaterial,
   type Object3D,
   OrthographicCamera,
   PerspectiveCamera,
+  Plane,
   Points,
   PointsMaterial,
   Raycaster,
@@ -135,6 +138,34 @@ export interface MeasurementRenderData {
   points: ReadonlyArray<readonly [number, number, number]>;
 }
 
+/** One cross-section outline polyline (Task 10) — render-frame (already
+ * offset by the caller, same convention as `RenderNode.positions` /
+ * `MeasurementRenderData.points`) flat Float32 xyz. `closed` mirrors
+ * `@dqcad/kernel`'s `SectionPolyline.closed` (last point NOT repeated). */
+export interface SectionOutlinePolyline {
+  points: Float32Array;
+  closed: boolean;
+}
+
+/** One cross-section filled-cap mesh (Task 10) — render-frame Float32
+ * positions, already offset by the caller. Display-only (see
+ * `@dqcad/kernel`'s `sectionCap` doc for its precision bound). */
+export interface SectionCapEntry {
+  positions: Float32Array;
+  indices: Uint32Array;
+}
+
+/** A world-space cutting plane already converted to THIS SceneManager's
+ * render frame — see `setSectionClipPlane`'s doc for the exact
+ * world-to-render conversion (accounting for `RenderNode`s' worldOffset
+ * re-centering) that the caller (engine/section.ts) is responsible for. */
+export interface RenderFrameClipPlane {
+  normal: readonly [number, number, number];
+  /** Three.js `Plane` convention: a render-frame point `r` lies on the
+   * plane iff `normal . r + constant === 0`. */
+  constant: number;
+}
+
 const CAMERA_FOV_DEGREES = 50;
 const CAMERA_NEAR_MM = 0.1;
 const CAMERA_FAR_MM = 5000;
@@ -174,6 +205,16 @@ const MEASUREMENT_POINT_SIZE_PX = 8;
 /** Higher than every mesh/wireframe renderOrder (see `transparentRenderOrders`
  * — its highest value is 2) so the measurement overlay always paints last. */
 const MEASUREMENT_RENDER_ORDER = 10;
+
+// Cross-section overlay (Task 10): a cyan-green outline, distinct from both
+// the measurement overlay's amber and the selection highlight's blue, with
+// `depthTest: false` (same "always on top, like a HUD" reasoning as the
+// measurement overlay above) so the outline stays visible even when the
+// clip-plane hasn't (yet, or isn't) hidden the mesh in front of it.
+const SECTION_OUTLINE_COLOR = new Color(0x2ee6a6);
+const SECTION_OUTLINE_RENDER_ORDER = 9;
+const SECTION_CAP_COLOR = new Color(0x2ee6a6);
+const SECTION_CAP_OPACITY = 0.55;
 
 interface ThemeColors {
   background: ColorRepresentation;
@@ -320,6 +361,7 @@ export class SceneManager {
   private readonly resizeObserver: ResizeObserver;
   private readonly meshGroup: Group;
   private readonly measurementGroup: Group;
+  private readonly sectionGroup: Group;
   private readonly raycaster = new Raycaster();
   private readonly matcapTexture: Texture;
   private grid: GridHelper;
@@ -339,6 +381,19 @@ export class SceneManager {
   private selectedNodeId: string | null = null;
   private readonly measurementEntries = new Map<string, MeasurementEntry>();
   private interactionMode: InteractionMode = 'select';
+
+  /** Cross-section overlay (Task 10) child objects — rebuilt wholesale on
+   * every `syncSectionOverlay` call, same "full rebuild, not incrementally
+   * diffed" reasoning as `measurementEntries` (see `syncMeasurements`'s
+   * doc): section results change at most once per plane adjustment, never
+   * per-frame, and are small relative to mesh geometry. */
+  private sectionOutlineObjects: LineSegments[] = [];
+  private sectionCapObjects: Mesh[] = [];
+  /** Currently applied clip plane (Three.js render frame) — `null` when the
+   * section tool's clip toggle is off. Applied to every mesh entry's
+   * material (see `applyClipPlane`) so it stays correct across
+   * create/recreate (new entries, shading-preset material swaps). */
+  private activeClipPlane: Plane | null = null;
 
   private projectionMode: CameraProjection;
   private shadingPreset: ShadingPreset;
@@ -373,6 +428,11 @@ export class SceneManager {
 
     this.renderer = new WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // Always on: an empty `material.clippingPlanes` array (the default,
+    // whenever no section clip is active — see `applyClipPlane`) costs
+    // nothing to evaluate, so there's no reason to toggle this per section
+    // tool state (Task 10).
+    this.renderer.localClippingEnabled = true;
     this.container.appendChild(this.renderer.domElement);
 
     this.controls = new OrbitControls(this.activeCamera, this.renderer.domElement);
@@ -394,6 +454,9 @@ export class SceneManager {
 
     this.measurementGroup = new Group();
     this.scene.add(this.measurementGroup);
+
+    this.sectionGroup = new Group();
+    this.scene.add(this.sectionGroup);
 
     this.resizeObserver = new ResizeObserver(() => this.handleResize());
     this.resizeObserver.observe(this.container);
@@ -537,7 +600,7 @@ export class SceneManager {
     wireframeMesh.renderOrder = initialRenderOrders.wireframeRenderOrder;
     mesh.add(wireframeMesh);
 
-    return {
+    const entry: MeshEntry = {
       id: node.id,
       mesh,
       geometry,
@@ -551,6 +614,21 @@ export class SceneManager {
       opacity: node.opacity,
       hasColors: false,
     };
+    this.applyClipPlane(entry);
+    return entry;
+  }
+
+  /** Applies (or clears) `this.activeClipPlane` on one entry's materials —
+   * called from `createEntry` (so a freshly-created/re-synced entry always
+   * reflects whatever clip plane is currently active) and from
+   * `setSectionClipPlane` (to update every EXISTING entry when the plane
+   * itself changes). Applied to both the mesh material and the wireframe
+   * overlay's material so toggling wireframe on mid-section doesn't reveal
+   * geometry the clip plane is meant to hide. */
+  private applyClipPlane(entry: MeshEntry): void {
+    const planes = this.activeClipPlane ? [this.activeClipPlane] : [];
+    entry.material.clippingPlanes = planes;
+    entry.wireframeMaterial.clippingPlanes = planes;
   }
 
   /**
@@ -663,6 +741,7 @@ export class SceneManager {
       entry.baseColor = newMaterial.color.clone();
       entry.mesh.material = newMaterial;
       this.applyOpacity(entry, entry.opacity);
+      this.applyClipPlane(entry);
       if (this.selectedNodeId === entry.id) {
         this.applyHighlight(entry, true);
       }
@@ -820,6 +899,95 @@ export class SceneManager {
       xPx: ((projected.x + 1) / 2) * rect.width,
       yPx: ((1 - projected.y) / 2) * rect.height,
     };
+  }
+
+  // ---------------------------------------------------------------------
+  // Cross-section (Task 10)
+  // ---------------------------------------------------------------------
+
+  /**
+   * Applies (or clears, via `null`) a THREE.js clip plane to every current
+   * (and future — see `applyClipPlane`) mesh entry. `plane` must already be
+   * in THIS SceneManager's RENDER frame (see `RenderFrameClipPlane`'s doc)
+   * — engine/section.ts's `getClipPlane()` is responsible for that
+   * world-to-render conversion (accounting for `RenderNode`s' worldOffset
+   * re-centering); this method does no coordinate conversion of its own,
+   * mirroring every other "engine computes, SceneManager just renders what
+   * it's given" boundary in this class (e.g. `syncRenderNodes`).
+   *
+   * A single global plane, applied to every mesh — see engine/section.ts's
+   * module doc for why this task's cross-section tool cuts the WHOLE case,
+   * not a per-mesh selection (YAGNI: no multi-plane, no per-mesh clip
+   * selection this phase).
+   */
+  setSectionClipPlane(plane: RenderFrameClipPlane | null): void {
+    this.activeClipPlane = plane ? new Plane(new Vector3(...plane.normal), plane.constant) : null;
+    for (const entry of this.meshEntries.values()) {
+      this.applyClipPlane(entry);
+    }
+  }
+
+  /**
+   * Rebuilds the cross-section overlay: `outline` polylines as line
+   * segments (see `SECTION_OUTLINE_COLOR`) and, when present, `caps` as
+   * semi-transparent double-sided filled meshes (see `SECTION_CAP_COLOR`/
+   * `SECTION_CAP_OPACITY` — `DoubleSide` because manifold-3d's cap
+   * triangulation winding isn't guaranteed to face the camera consistently
+   * for an arbitrary cutting plane, and a single-sided fill would then
+   * appear to flicker in and out as the camera orbits). Full rebuild every
+   * call, same "small result, changes at most once per plane adjustment"
+   * reasoning as `syncMeasurements`.
+   */
+  syncSectionOverlay(outline: readonly SectionOutlinePolyline[], caps: readonly SectionCapEntry[]): void {
+    for (const line of this.sectionOutlineObjects) {
+      this.sectionGroup.remove(line);
+      line.geometry.dispose();
+      (line.material as LineBasicMaterial).dispose();
+    }
+    this.sectionOutlineObjects = [];
+    for (const cap of this.sectionCapObjects) {
+      this.sectionGroup.remove(cap);
+      cap.geometry.dispose();
+      (cap.material as MeshBasicMaterial).dispose();
+    }
+    this.sectionCapObjects = [];
+
+    for (const polyline of outline) {
+      const pointCount = polyline.points.length / 3;
+      if (pointCount < 2) continue;
+      const segmentCount = polyline.closed ? pointCount : pointCount - 1;
+      const segmentPositions = new Float32Array(segmentCount * 2 * 3);
+      for (let i = 0; i < segmentCount; i++) {
+        const next = (i + 1) % pointCount;
+        segmentPositions.set(polyline.points.subarray(i * 3, i * 3 + 3), i * 6);
+        segmentPositions.set(polyline.points.subarray(next * 3, next * 3 + 3), i * 6 + 3);
+      }
+      const geometry = new BufferGeometry();
+      geometry.setAttribute('position', new BufferAttribute(segmentPositions, 3));
+      const material = new LineBasicMaterial({ color: SECTION_OUTLINE_COLOR, depthTest: false });
+      const line = new LineSegments(geometry, material);
+      line.renderOrder = SECTION_OUTLINE_RENDER_ORDER;
+      this.sectionGroup.add(line);
+      this.sectionOutlineObjects.push(line);
+    }
+
+    for (const cap of caps) {
+      const geometry = new BufferGeometry();
+      geometry.setAttribute('position', new BufferAttribute(cap.positions, 3));
+      geometry.setIndex(new BufferAttribute(cap.indices, 1));
+      geometry.computeVertexNormals();
+      const material = new MeshBasicMaterial({
+        color: SECTION_CAP_COLOR,
+        transparent: true,
+        opacity: SECTION_CAP_OPACITY,
+        side: DoubleSide,
+        depthWrite: false,
+      });
+      const mesh = new Mesh(geometry, material);
+      mesh.renderOrder = SECTION_OUTLINE_RENDER_ORDER - 1; // cap under the outline, still above ordinary meshes
+      this.sectionGroup.add(mesh);
+      this.sectionCapObjects.push(mesh);
+    }
   }
 
   private handlePointerDown = (event: PointerEvent): void => {

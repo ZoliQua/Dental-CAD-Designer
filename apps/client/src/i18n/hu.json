@@ -141,6 +141,27 @@
     "rangeManual": "Tartomány alkalmazása",
     "rangeAuto": "Automatikus tartomány"
   },
+  "section": {
+    "panelTitle": "Keresztmetszet",
+    "needsMesh": "Adjon hálót a jelenethez a keresztmetszet elkészítéséhez.",
+    "enableToggle": "Keresztmetszet eszköz bekapcsolása",
+    "axisGroupLabel": "Tengely preset",
+    "axis": {
+      "x": "X",
+      "y": "Y",
+      "z": "Z",
+      "custom": "Egyéni"
+    },
+    "offsetLabel": "Pozíció a normális mentén",
+    "yawLabel": "Elfordulás (yaw)",
+    "pitchLabel": "Dőlés (pitch)",
+    "showCapToggle": "Kitöltött fedél megjelenítése",
+    "clipToggle": "Háló vágása a síknál",
+    "running": "Számítás…",
+    "errorLabel": "A keresztmetszet sikertelen: {{message}}",
+    "pointCount": "{{count}} körvonalpont",
+    "exportSvgButton": "SVG letöltése"
+  },
   "unitConfirm": {
     "title": "Mértékegység megerősítése",
     "messageCm": "\"{{fileName}}\" szokatlanul kicsinek tűnik (legnagyobb kiterjedés {{extent}} mm) — lehet, hogy valójában centiméterben van, nem milliméterben. Szorozzuk az összes koordinátát {{factor}}-szel?",

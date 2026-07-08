@@ -17,6 +17,7 @@ export {
   intersect,
   volume,
   surfaceArea,
+  sectionCap,
   NonManifoldInputError,
 } from './boolean/manifold.ts';
 
@@ -85,3 +86,20 @@ export {
   type SplitNonManifoldEdgesReport,
   type SplitNonManifoldEdgesResult,
 } from './repair/index.ts';
+
+export {
+  DegeneratePlaneError,
+  normalizePlane,
+  projectToPlaneXY,
+  signedDistance,
+  ON_PLANE_EPSILON_MM,
+  sectionMesh,
+  projectPolylinesToPlaneXY,
+  sectionToSvg,
+  type Plane,
+  type PlaneBasis,
+  type SectionMeshResult,
+  type SectionPolyline,
+  type SectionSvgPolyline,
+  type SectionToSvgOptions,
+} from './section/index.ts';

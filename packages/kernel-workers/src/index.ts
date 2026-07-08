@@ -45,6 +45,8 @@ export {
   type RepairSplitNonManifoldEdgesResult,
   type RepairFillSmallHolesPayload,
   type RepairFillSmallHolesResult,
+  type SectionMeshPayload,
+  type SectionMeshResult,
 } from './jobs.js';
 export { meshBuffers, type MeshBuffersPayload, type MeshBuffersResult } from './transfer.js';
 // MeshStats/IntakeReport/Bbox: re-exported here (rather than only living on
@@ -68,5 +70,15 @@ export type {
   FillSmallHolesReport,
   SkippedHole,
   SkippedHoleReason,
+  SectionSvgPolyline,
+  SectionToSvgOptions,
 } from '@dqcad/kernel';
 export { DEFAULT_MAX_BOUNDARY_EDGES } from '@dqcad/kernel';
+// `sectionToSvg` (Task 10): a pure, dependency-free function (see kernel's
+// section/svg.ts's module doc) re-exported here so apps/client/src/engine —
+// which cannot import `@dqcad/kernel` directly — can render an SVG export
+// on the main thread without a worker round trip (it's cheap synchronous
+// string building over an already-small polyline array, not geometry
+// compute), the same "re-export what engine legitimately needs" precedent
+// as the type-only re-exports above.
+export { sectionToSvg } from '@dqcad/kernel';

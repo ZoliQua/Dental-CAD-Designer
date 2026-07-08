@@ -6,12 +6,14 @@ import { caseStore } from '../engine/caseStore';
 import { heatmapEngine } from '../engine/heatmap';
 import { toMeasurementRenderData, toWorldRay } from '../engine/measurementFrame';
 import type { RenderNode } from '../engine/renderNode';
+import { sectionEngine } from '../engine/section';
 import { SceneManager, type MeasurePickCandidate } from '../engine/SceneManager';
 import { toolManager } from '../engine/ToolManager';
 import { registerActiveSceneManager } from '../engine/viewerController';
 import { useAppStore } from '../state/appStore';
 import { useCaseStore } from '../state/caseStore';
 import { useHeatmapStore } from '../state/heatmapStore';
+import { useSectionStore } from '../state/sectionStore';
 import { useToolStore } from '../state/toolStore';
 import { useViewerStore } from '../state/viewerStore';
 import { MeasureToolbar } from './MeasureToolbar';
@@ -64,6 +66,10 @@ export function Viewport() {
   const heatmapVisible = useHeatmapStore((state) => state.visible);
   const heatmapStatus = useHeatmapStore((state) => state.status);
   const heatmapRange = useHeatmapStore((state) => state.range);
+  const sectionEnabled = useSectionStore((state) => state.enabled);
+  const sectionStatus = useSectionStore((state) => state.status);
+  const sectionClipEnabled = useSectionStore((state) => state.clipEnabled);
+  const sectionPlane = useSectionStore((state) => state.plane);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -117,6 +123,21 @@ export function Viewport() {
       toMeasurementRenderData(document.measurements, worldOffset),
     );
   }, [document]);
+
+  useEffect(() => {
+    // Re-syncs the cross-section outline/cap overlay AND the clip plane
+    // whenever the section tool's result/toggles change OR the document
+    // changes (a mesh add/remove/visibility change can shift the scene
+    // bbox center the plane's axis presets/offset are measured from, and
+    // engine/section.ts's own recompute() already re-derives the plane from
+    // scratch on every relevant change — this effect just re-reads
+    // whatever it last computed). `sectionEngine.getOutline()`/`getCaps()`/
+    // `getClipPlane()` return the CURRENT (possibly still-stale-during-a-
+    // run, but never wrong) private buffers — same "read fresh inside the
+    // effect" pattern as `buildRenderNodes`'s heatmap overlay above.
+    sceneManagerRef.current?.syncSectionOverlay(sectionEngine.getOutline(), sectionEngine.getCaps());
+    sceneManagerRef.current?.setSectionClipPlane(sectionEngine.getClipPlane());
+  }, [document, sectionEnabled, sectionStatus, sectionClipEnabled, sectionPlane]);
 
   useEffect(() => {
     sceneManagerRef.current?.setTheme(theme);

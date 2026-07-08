@@ -141,6 +141,27 @@
     "rangeManual": "Apply range",
     "rangeAuto": "Auto range"
   },
+  "section": {
+    "panelTitle": "Cross-section",
+    "needsMesh": "Add a mesh to the scene to take a cross-section.",
+    "enableToggle": "Enable section tool",
+    "axisGroupLabel": "Axis preset",
+    "axis": {
+      "x": "X",
+      "y": "Y",
+      "z": "Z",
+      "custom": "Custom"
+    },
+    "offsetLabel": "Position along normal",
+    "yawLabel": "Yaw",
+    "pitchLabel": "Pitch",
+    "showCapToggle": "Show filled cap",
+    "clipToggle": "Clip mesh at plane",
+    "running": "Computing…",
+    "errorLabel": "Section failed: {{message}}",
+    "pointCount": "{{count}} outline point(s)",
+    "exportSvgButton": "Download SVG"
+  },
   "unitConfirm": {
     "title": "Confirm scan units",
     "messageCm": "\"{{fileName}}\" looks unusually small (largest extent {{extent}} mm) — it may actually be in centimeters, not millimeters. Multiply all coordinates by {{factor}}?",

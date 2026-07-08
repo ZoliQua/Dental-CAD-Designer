@@ -141,6 +141,27 @@
     "rangeManual": "Bereich anwenden",
     "rangeAuto": "Automatischer Bereich"
   },
+  "section": {
+    "panelTitle": "Querschnitt",
+    "needsMesh": "Fügen Sie ein Netz zur Szene hinzu, um einen Querschnitt zu erstellen.",
+    "enableToggle": "Querschnitt-Werkzeug aktivieren",
+    "axisGroupLabel": "Achsen-Voreinstellung",
+    "axis": {
+      "x": "X",
+      "y": "Y",
+      "z": "Z",
+      "custom": "Benutzerdefiniert"
+    },
+    "offsetLabel": "Position entlang der Normalen",
+    "yawLabel": "Gieren (Yaw)",
+    "pitchLabel": "Neigen (Pitch)",
+    "showCapToggle": "Gefüllte Kappe anzeigen",
+    "clipToggle": "Netz an der Ebene beschneiden",
+    "running": "Berechnung…",
+    "errorLabel": "Querschnitt fehlgeschlagen: {{message}}",
+    "pointCount": "{{count}} Umrisspunkt(e)",
+    "exportSvgButton": "SVG herunterladen"
+  },
   "unitConfirm": {
     "title": "Einheiten des Scans bestätigen",
     "messageCm": "\"{{fileName}}\" wirkt ungewöhnlich klein (größte Ausdehnung {{extent}} mm) — die Datei liegt möglicherweise tatsächlich in Zentimetern statt Millimetern vor. Alle Koordinaten mit {{factor}} multiplizieren?",

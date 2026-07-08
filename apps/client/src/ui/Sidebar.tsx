@@ -10,6 +10,7 @@ import { caseStore } from '../engine/caseStore';
 import { ImportPanel } from './ImportPanel';
 import { MeasurementPanel } from './MeasurementPanel';
 import { RepairPanel } from './RepairPanel';
+import { SectionPanel } from './SectionPanel';
 import { SurfaceDistancePanel } from './SurfaceDistancePanel';
 import { useCaseStore } from '../state/caseStore';
 
@@ -36,6 +37,7 @@ export function Sidebar() {
       )}
       <MeasurementPanel />
       <SurfaceDistancePanel />
+      <SectionPanel />
     </aside>
   );
 }
