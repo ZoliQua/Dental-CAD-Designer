@@ -361,6 +361,16 @@ export async function save(): Promise<void> {
     await uploadMissingMeshes();
     const documentToSave = useCaseStore.getState().document;
     const summary = await requestJson<CaseSummary>('PUT', `/cases/${activeCaseId}`, documentToSave);
+    if (usePersistenceStore.getState().activeCaseId !== activeCaseId) {
+      // The user opened/created a DIFFERENT case while this save's network
+      // calls were in flight (openCase/createCase already reset
+      // lastPersistedDocument/status/meshStore for the now-active case) —
+      // the PUT above still correctly wrote `documentToSave` to ITS OWN
+      // case id on the server (harmless, even useful), but applying its
+      // "saved" bookkeeping here would clobber the NEW case's tracking
+      // state. Silently drop it.
+      return;
+    }
     lastPersistedDocument = documentToSave;
     usePersistenceStore.getState().setActiveCase({ id: summary.id, name: summary.name });
     usePersistenceStore.getState().setLastSavedAt(summary.updatedAt);

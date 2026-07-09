@@ -308,6 +308,37 @@ describe('save / openCase round trip', () => {
     expect(usePersistenceStore.getState().status).toBe('saved');
     expect(useCaseStore.getState().document.scene[0]!.opacity).toBe(0.25);
   });
+
+  it('discards a save\'s bookkeeping if a DIFFERENT case became active while its PUT was in flight', async () => {
+    await createCase('Case A');
+    buildRepresentativeCase();
+    const caseAId = usePersistenceStore.getState().activeCaseId!;
+
+    const realFetch = server.fetchImpl;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const method = (init?.method ?? 'GET').toUpperCase();
+        const path = String(input);
+        if (method === 'PUT' && path.includes(`/cases/${caseAId}`)) {
+          // Simulate the user opening a DIFFERENT case while case A's PUT
+          // was in flight (openCase/createCase would have already reset
+          // activeCaseId — reproduced directly here for a deterministic,
+          // race-free test).
+          usePersistenceStore.getState().setActiveCase({ id: 'case-b-simulated', name: 'Case B' });
+        }
+        return realFetch(input, init);
+      }),
+    );
+
+    await save();
+
+    // Case A's stale save result must NOT have clobbered case B's active-case
+    // tracking (it would show case A's own name/id here if the guard were
+    // missing — see persistence.ts's `save()` doc).
+    expect(usePersistenceStore.getState().activeCaseId).toBe('case-b-simulated');
+    expect(usePersistenceStore.getState().activeCaseName).toBe('Case B');
+  });
 });
 
 describe('renameCase', () => {
