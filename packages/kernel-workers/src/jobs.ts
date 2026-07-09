@@ -43,6 +43,7 @@ import {
   type IndexedMesh,
   type IntakeReport,
   type IntakeStepReport,
+  type IntakeStepCounts,
   type MeshStats,
   type Bvh,
   type Vec3,
@@ -64,7 +65,13 @@ export { KERNEL_VERSION };
 // node-worker-reachable starting Phase 1 (see its own module docs' "Import
 // extension convention" note) specifically so a job like `parseMeshFile`
 // below could run STL/PLY parsing off the main/UI thread.
-import { iterateInFixedChunks, parsePlyStream, parseStlStream, type ParseFormat } from '@dqcad/io';
+import {
+  iterateInFixedChunks,
+  parsePlyStream,
+  parseStlStream,
+  writeStlBinary,
+  type ParseFormat,
+} from '@dqcad/io';
 
 /** Context passed to a job handler for progress reporting and cooperative
  * cancellation. Both members are plain functions on the worker side; the
@@ -316,6 +323,143 @@ const parseMeshFile: JobHandler<'parseMeshFile'> = async (payload, ctx) => {
     warnings: mesh.diagnostics.warnings,
   };
   return result;
+};
+
+// ---------------------------------------------------------------------------
+// serializeMeshStl / weldMeshSoup (Task 11: scene persistence).
+//
+// apps/client/src/engine cannot import `@dqcad/io` directly (layer rule:
+// engine -> kernel-workers|state|shared-types only), so both halves of the
+// "store a mesh as binary STL" round trip have to happen in a worker job —
+// see docs/plans/phase-1-import-viewer.md Task 11's brief: "solve via a
+// kernel-workers job... so serialization happens in the worker".
+//
+// ## Why binary STL for storage, and why that means a lossy round trip
+//
+// The case document stores each MeshAsset's geometry SEPARATELY from the
+// document JSON (server: content-addressed files under
+// apps/server/data/meshes/<hash>; client: engine/meshStore.ts, keyed by
+// MeshAsset.contentHash) — `serializeMeshStl` is what turns an already
+// intake'd (welded, degenerate-dropped, oriented) `IndexedMesh` back into a
+// binary STL BYTE STREAM for that storage, and `weldMeshSoup` is what turns
+// bytes read back (via `parseMeshFile`, format 'stl') back into an
+// `IndexedMesh` for `MeshStore.register`.
+//
+// Binary STL has no concept of shared/indexed vertices — writing ALWAYS
+// expands the indexed mesh into an unindexed triangle soup (one vertex
+// triple per triangle corner), and `writeStlBinary` (packages/io) narrows
+// every coordinate to float32 (that package's own documented, inherent
+// lossy boundary of the file format — see stl/binary.ts's `writeStlBinary`
+// doc). This means re-parsing a saved mesh's STL bytes and re-welding it
+// (see `weldMeshSoup` below) reproduces the SAME topology/shape (well within
+// the 1 µm display-resolution budget — float32 relative precision at
+// case-scale mm coordinates is on the order of 1e-5 mm) but NOT bit-identical
+// Float64 values, and therefore NOT the same `hashMeshContent` result the
+// client computed at import time. `MeshAsset.contentHash` (shared-types)
+// deliberately stays the ORIGINAL, in-session hash — engine/persistence.ts's
+// load path passes that stored `contentHash` straight into
+// `MeshStore.register()` rather than recomputing it from the reloaded
+// (quantized) buffers, so a case's SceneNode.meshId / MeshAsset.contentHash
+// linkage never has to survive the STL round trip byte-for-byte. See
+// `MeshAsset.fileHash`'s doc (shared-types) for the separate hash that DOES
+// key the server's content-addressed file store.
+//
+// ## Why `weldMeshSoup` is NOT `intakeMesh` again ("intake-skip")
+//
+// A loaded mesh's geometry has ALREADY been through the full intake
+// pipeline once, at original import time (weld -> dropDegenerateTriangles ->
+// orientNormalsConsistently -> analyze) — that work, and its `IntakeReport`,
+// is already durably recorded in the case's `history` journal (the
+// `import-mesh`/`unit-rescale` Operations importer.ts appended then). Running
+// dropDegenerateTriangles/orientNormalsConsistently a SECOND time on load
+// would (by the Global Constraints' determinism guarantee) be a structural
+// no-op on an already-clean, already-oriented mesh — but it would still cost
+// real CPU on every load, and treating a load as a second "intake" would
+// misleadingly suggest a NEW journal-worthy event happened, when nothing did.
+// `weldMeshSoup` therefore reconstructs ONLY the piece binary STL actually
+// threw away — the shared-vertex indexing — via `weldVertices` alone, and
+// returns a single-step `IntakeReport` (`step: 'weld'`) purely so its result
+// shape satisfies `EngineMeshRecord.report`'s type without fabricating
+// degenerate/orient step data that never ran.
+// ---------------------------------------------------------------------------
+
+export interface SerializeMeshStlPayload {
+  /** Float64 master mesh buffers (kernel Float64 rule) — the caller should
+   * pass PRIVATE copies in the transfer list (e.g. `positions.slice()`),
+   * never a mesh's live master buffer, exactly like `BuildBvhPayload`'s
+   * documented convention (transferring detaches the original ArrayBuffer,
+   * and the caller's meshStore needs its master copy to keep living for
+   * rendering). */
+  positions: Float64Array;
+  indices: Uint32Array;
+}
+
+export interface SerializeMeshStlResult {
+  /** Binary STL file bytes (see this section's module doc for the float32
+   * narrowing this inherently performs). */
+  bytes: Uint8Array;
+}
+
+/** Expands an indexed mesh into the flat 9-per-triangle soup binary STL
+ * requires — every triangle owns its own 3 vertex copies (packages/io's
+ * `RawTriangleSoup` shape). */
+function indexedToTriangleSoupPositions(positions: Float64Array, indices: Uint32Array): Float64Array {
+  const triangleCount = indices.length / 3;
+  const soup = new Float64Array(triangleCount * 9);
+  for (let t = 0; t < triangleCount; t++) {
+    for (let corner = 0; corner < 3; corner++) {
+      const vertexIndex = indices[t * 3 + corner]!;
+      const soupOffset = t * 9 + corner * 3;
+      soup[soupOffset] = positions[vertexIndex * 3]!;
+      soup[soupOffset + 1] = positions[vertexIndex * 3 + 1]!;
+      soup[soupOffset + 2] = positions[vertexIndex * 3 + 2]!;
+    }
+  }
+  return soup;
+}
+
+const serializeMeshStl: JobHandler<'serializeMeshStl'> = async (payload) => {
+  requireMeshPayload(payload.positions, payload.indices, 'serializeMeshStl');
+  const soupPositions = indexedToTriangleSoupPositions(payload.positions, payload.indices);
+  const bytes = writeStlBinary({
+    positions: soupPositions,
+    normals: null,
+    triangleCount: payload.indices.length / 3,
+  });
+  return { bytes };
+};
+
+export interface WeldMeshSoupPayload {
+  /** Float64, 9-values-per-triangle unindexed soup — e.g. `parseMeshFile`'s
+   * `StlSoupResult.positions` after reading a persisted mesh back. */
+  positions: Float64Array;
+}
+
+/** Same shape as `IntakeMeshResult` — see this section's module doc for why
+ * this is a distinct job rather than a call to `intakeMesh`. */
+export type WeldMeshSoupResult = IntakeMeshResult;
+
+const weldMeshSoup: JobHandler<'weldMeshSoup'> = async (payload, ctx) => {
+  if (!(payload.positions instanceof Float64Array)) {
+    throw new TypeError('weldMeshSoup: positions must be a Float64Array (kernel Float64 rule)');
+  }
+  if (payload.positions.length % 9 !== 0) {
+    throw new TypeError('weldMeshSoup: positions length must be a multiple of 9 (9 values per triangle)');
+  }
+  if (await ctx.cancelled()) {
+    throw new JobCancelledError();
+  }
+  ctx.progress(0);
+  const triangleCount = payload.positions.length / 9;
+  const before: IntakeStepCounts = { vertexCount: triangleCount * 3, triangleCount };
+  const mesh = weldVertices({ positions: payload.positions, normals: null, triangleCount });
+  const stats = analyzeMesh(mesh);
+  const report: IntakeReport = {
+    weldEpsilonMm: MESH_WELD_EPSILON_MM,
+    steps: [makeStepReport('weld', before, countsOf(mesh), {})],
+  };
+  ctx.progress(1);
+  return { positions: mesh.positions, indices: mesh.indices, stats, report };
 };
 
 /**
@@ -954,6 +1098,8 @@ export interface JobPayloadMap {
   manifoldSmoke: ManifoldSmokePayload;
   parseMeshFile: ParseMeshFilePayload;
   intakeMesh: IntakeMeshPayload;
+  serializeMeshStl: SerializeMeshStlPayload;
+  weldMeshSoup: WeldMeshSoupPayload;
   rescaleMesh: RescaleMeshPayload;
   buildBvh: BuildBvhPayload;
   releaseBvh: ReleaseBvhPayload;
@@ -972,6 +1118,8 @@ export interface JobResultMap {
   manifoldSmoke: ManifoldSmokeResult;
   parseMeshFile: ParseMeshFileResult;
   intakeMesh: IntakeMeshResult;
+  serializeMeshStl: SerializeMeshStlResult;
+  weldMeshSoup: WeldMeshSoupResult;
   rescaleMesh: RescaleMeshResult;
   buildBvh: BuildBvhResult;
   releaseBvh: ReleaseBvhResult;
@@ -1275,6 +1423,8 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   manifoldSmoke,
   parseMeshFile,
   intakeMesh,
+  serializeMeshStl,
+  weldMeshSoup,
   rescaleMesh,
   buildBvh: buildBvhJob,
   releaseBvh,

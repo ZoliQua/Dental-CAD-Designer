@@ -386,6 +386,56 @@ class CaseStoreEngine {
     return record;
   }
 
+  /**
+   * Records the server-assigned `fileHash` (SHA-256 of the uploaded binary
+   * STL bytes — see `MeshAsset.fileHash`'s doc in @dqcad/shared-types) for
+   * an already-registered `MeshAsset`. Called by engine/persistence.ts's
+   * `save()` right after a mesh's bytes are confirmed stored on the server
+   * (either freshly uploaded, or already present per a `HEAD` check), so a
+   * later save of the SAME mesh can skip re-serializing/re-uploading it. A
+   * no-op (not an error) if `contentHash` isn't a known MeshAsset — mirrors
+   * `removeMeasurement`'s tolerant style for a caller that could legitimately
+   * race a concurrent document mutation (e.g. the mesh's SceneNode got
+   * removed mid-save).
+   */
+  setMeshAssetFileHash(contentHash: string, fileHash: string): void {
+    const asset = this.document.meshes.find((mesh) => mesh.contentHash === contentHash);
+    if (!asset || asset.fileHash === fileHash) {
+      return;
+    }
+    this.document = {
+      ...this.document,
+      meshes: this.document.meshes.map((mesh) =>
+        mesh.contentHash === contentHash ? { ...mesh, fileHash } : mesh,
+      ),
+    };
+    this.publish();
+  }
+
+  /**
+   * LOAD-ONLY: installs `document` (freshly fetched from the server — see
+   * engine/persistence.ts's `openCase()`) as the CURRENT case document in
+   * ONE atomic publish, bypassing the incremental per-node mutation methods
+   * above (`addSceneNode`/`registerImportedMesh`/etc.) — a loaded document
+   * already has its full, valid `scene`/`meshes`/`history`/`measurements`
+   * arrays; replaying it node-by-node would fire a publish per node for no
+   * benefit and would (per persistence.ts's dirty-tracking doc) look
+   * indistinguishable from a burst of real user edits.
+   *
+   * Does NOT touch `meshStore` — persistence.ts's `openCase()` is
+   * responsible for registering (via the NORMAL `meshStore.register()` path
+   * — recenter etc. — never a shortcut) every mesh `document.scene`
+   * references BEFORE calling this, so `getRenderNodes()` never observes a
+   * SceneNode with a dangling `meshId`, even transiently. Selection is
+   * cleared (a freshly loaded case has no meaningful prior selection).
+   */
+  loadDocument(document: CaseDocument): void {
+    this.document = document;
+    this.selectedNodeId = null;
+    this.publish();
+    this.publishSelection();
+  }
+
   private publish(): void {
     useCaseStore.getState().setDocument(this.document);
   }

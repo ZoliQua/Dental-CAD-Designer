@@ -170,6 +170,31 @@
     "keepMm": "Marad mm-ben",
     "applyFactor": "Alkalmazás ×{{factor}}"
   },
+  "persistence": {
+    "noCaseOpen": "Nincs nyitott eset",
+    "openCaseButton": "Eset megnyitása…",
+    "saveButton": "Mentés",
+    "status": {
+      "idle": "Nincs nyitott eset",
+      "saved": "Mentve",
+      "saving": "Mentés…",
+      "unsaved": "Nem mentett változtatások",
+      "error": "Mentés sikertelen: {{message}}"
+    },
+    "picker": {
+      "title": "Esetek",
+      "closeButton": "Bezárás",
+      "newCaseNamePlaceholder": "Új eset neve…",
+      "createButton": "Létrehozás",
+      "openButton": "Megnyitás",
+      "renameButton": "Átnevezés",
+      "empty": "Még nincs eset.",
+      "loading": "Esetek betöltése…",
+      "errorLabel": "Az esetek betöltése sikertelen: {{message}}",
+      "activeLabel": "Aktív",
+      "updatedAtLabel": "Frissítve: {{date}}"
+    }
+  },
   "repair": {
     "panelTitle": "Javítás",
     "previewLoading": "Előnézet számítása…",

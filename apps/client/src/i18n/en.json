@@ -170,6 +170,31 @@
     "keepMm": "Keep as-is (mm)",
     "applyFactor": "Apply ×{{factor}}"
   },
+  "persistence": {
+    "noCaseOpen": "No case open",
+    "openCaseButton": "Open case…",
+    "saveButton": "Save",
+    "status": {
+      "idle": "No case open",
+      "saved": "Saved",
+      "saving": "Saving…",
+      "unsaved": "Unsaved changes",
+      "error": "Save failed: {{message}}"
+    },
+    "picker": {
+      "title": "Cases",
+      "closeButton": "Close",
+      "newCaseNamePlaceholder": "New case name…",
+      "createButton": "Create",
+      "openButton": "Open",
+      "renameButton": "Rename",
+      "empty": "No cases yet.",
+      "loading": "Loading cases…",
+      "errorLabel": "Failed to load cases: {{message}}",
+      "activeLabel": "Active",
+      "updatedAtLabel": "Updated {{date}}"
+    }
+  },
   "repair": {
     "panelTitle": "Repair",
     "previewLoading": "Computing preview…",

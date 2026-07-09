@@ -170,6 +170,31 @@
     "keepMm": "So belassen (mm)",
     "applyFactor": "×{{factor}} anwenden"
   },
+  "persistence": {
+    "noCaseOpen": "Kein Fall geöffnet",
+    "openCaseButton": "Fall öffnen…",
+    "saveButton": "Speichern",
+    "status": {
+      "idle": "Kein Fall geöffnet",
+      "saved": "Gespeichert",
+      "saving": "Wird gespeichert…",
+      "unsaved": "Ungespeicherte Änderungen",
+      "error": "Speichern fehlgeschlagen: {{message}}"
+    },
+    "picker": {
+      "title": "Fälle",
+      "closeButton": "Schließen",
+      "newCaseNamePlaceholder": "Name des neuen Falls…",
+      "createButton": "Erstellen",
+      "openButton": "Öffnen",
+      "renameButton": "Umbenennen",
+      "empty": "Noch keine Fälle.",
+      "loading": "Fälle werden geladen…",
+      "errorLabel": "Fälle konnten nicht geladen werden: {{message}}",
+      "activeLabel": "Aktiv",
+      "updatedAtLabel": "Aktualisiert: {{date}}"
+    }
+  },
   "repair": {
     "panelTitle": "Reparatur",
     "previewLoading": "Vorschau wird berechnet…",

@@ -480,3 +480,102 @@ describe('caseStore selection', () => {
     expect(caseStore.getSelectedNodeId()).toBe(nodeB.id);
   });
 });
+
+describe('caseStore.setMeshAssetFileHash (Task 11)', () => {
+  it('stamps fileHash onto the matching MeshAsset without touching anything else', () => {
+    caseStore.registerImportedMesh({
+      contentHash: 'hash-a',
+      name: 'scan.stl',
+      format: 'stl',
+      positions: new Float64Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+      indices: new Uint32Array([0, 1, 2]),
+      stats: statsForBbox([0, 0, 0], [1, 1, 0]),
+      report: EMPTY_REPORT,
+      operations: [importOp('hash-a')],
+    });
+    const before = useCaseStore.getState().document;
+
+    caseStore.setMeshAssetFileHash('hash-a', 'file-hash-xyz');
+
+    const after = useCaseStore.getState().document;
+    expect(after).not.toBe(before); // a real publish happened
+    expect(after.meshes[0]).toEqual({
+      id: 'hash-a',
+      contentHash: 'hash-a',
+      name: 'scan.stl',
+      unit: 'mm',
+      triangleCount: 1,
+      fileHash: 'file-hash-xyz',
+    });
+    expect(after.history).toEqual(before.history); // journal untouched
+  });
+
+  it('is a no-op for an unknown contentHash', () => {
+    const before = useCaseStore.getState().document;
+    caseStore.setMeshAssetFileHash('no-such-hash', 'file-hash-xyz');
+    expect(useCaseStore.getState().document).toBe(before);
+  });
+
+  it('is a no-op (no re-publish) if the fileHash is already set to the same value', () => {
+    caseStore.registerImportedMesh({
+      contentHash: 'hash-a',
+      name: 'scan.stl',
+      format: 'stl',
+      positions: new Float64Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+      indices: new Uint32Array([0, 1, 2]),
+      stats: statsForBbox([0, 0, 0], [1, 1, 0]),
+      report: EMPTY_REPORT,
+      operations: [importOp('hash-a')],
+    });
+    caseStore.setMeshAssetFileHash('hash-a', 'file-hash-xyz');
+    const afterFirst = useCaseStore.getState().document;
+
+    caseStore.setMeshAssetFileHash('hash-a', 'file-hash-xyz');
+    expect(useCaseStore.getState().document).toBe(afterFirst);
+  });
+});
+
+describe('caseStore.loadDocument (Task 11)', () => {
+  function registerMesh(contentHash: string): void {
+    caseStore.registerImportedMesh({
+      contentHash,
+      name: 'scan.stl',
+      format: 'stl',
+      positions: new Float64Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+      indices: new Uint32Array([0, 1, 2]),
+      stats: statsForBbox([0, 0, 0], [1, 1, 0]),
+      report: EMPTY_REPORT,
+      operations: [importOp(contentHash)],
+    });
+  }
+
+  it('installs the document in one atomic publish and clears any prior selection', () => {
+    registerMesh('hash-a');
+    const node = caseStore.addSceneNode('hash-a', 'upperJaw');
+    caseStore.setSelectedNodeId(node.id);
+
+    const incoming = {
+      ...useCaseStore.getState().document,
+      id: 'loaded-case-id',
+    };
+    caseStore.loadDocument(incoming);
+
+    expect(useCaseStore.getState().document).toBe(incoming);
+    expect(caseStore.getDocument()).toBe(incoming);
+    expect(caseStore.getSelectedNodeId()).toBeNull();
+    expect(useCaseStore.getState().selectedNodeId).toBeNull();
+  });
+
+  it('does NOT touch meshStore — the caller is responsible for registering referenced meshes first', () => {
+    registerMesh('hash-a');
+    expect(caseStore.meshStore.has('hash-a')).toBe(true);
+
+    const incoming = { ...useCaseStore.getState().document, id: 'loaded-case-id' };
+    caseStore.loadDocument(incoming);
+
+    // meshStore is untouched by loadDocument itself (still has the mesh
+    // registered from this test's own setup, not because loadDocument did
+    // anything to it).
+    expect(caseStore.meshStore.has('hash-a')).toBe(true);
+  });
+});
