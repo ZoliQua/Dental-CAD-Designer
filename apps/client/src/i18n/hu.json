@@ -155,6 +155,7 @@
     "offsetLabel": "Pozíció a normális mentén",
     "yawLabel": "Elfordulás (yaw)",
     "pitchLabel": "Dőlés (pitch)",
+    "pitchHelp": "A dőlés a világ X tengelye körül forgatja a metszősíkot (1. fázisú egyszerűsítés).",
     "showCapToggle": "Kitöltött fedél megjelenítése",
     "clipToggle": "Háló vágása a síknál",
     "running": "Számítás…",

@@ -272,6 +272,60 @@ describe('sectionMesh — on-plane vertex handling (epsilon policy)', () => {
   });
 });
 
+describe('sectionMesh — whole triangle coplanar with the cutting plane', () => {
+  // Pins the documented degenerate case from this module's top doc / the
+  // `triangleCandidates` `allOn` check: a triangle with ALL THREE vertices
+  // ON the plane yields 3 raw candidates (its own 3 vertices), which is
+  // explicitly short-circuited to `[]` BEFORE the edge-crossing loop below
+  // it — so it contributes NO section geometry of its own (not even its
+  // vertices), and (per `sectionMesh`'s `candidates.length !== 2` check) is
+  // silently skipped rather than crashing or corrupting the edge graph.
+  //
+  // Triangle 0 (indices 0,1,2) is entirely in the z=0 plane. Triangle 1
+  // (indices 3,4,5) is an ordinary, UNRELATED crossing triangle (no shared
+  // vertex/edge with triangle 0) included purely so a real section still
+  // gets extracted correctly in the same call — proving the coplanar
+  // triangle's skip doesn't disturb unrelated section geometry.
+  function coplanarTrianglePlusOrdinaryCrossing(): IndexedMesh {
+    const positions = new Float64Array([
+      0, 0, 0, // 0: ON plane (triangle 0)
+      2, 0, 0, // 1: ON plane (triangle 0)
+      1, 1, 0, // 2: ON plane (triangle 0)
+      10, 0, 1, // 3: above (triangle 1)
+      10, 2, -1, // 4: below (triangle 1)
+      10, -2, -1, // 5: below (triangle 1)
+    ]);
+    const indices = new Uint32Array([0, 1, 2, 3, 4, 5]);
+    return { positions, indices };
+  }
+
+  it('contributes no section geometry of its own (no crash, no duplicate/degenerate segments)', () => {
+    const mesh = coplanarTrianglePlusOrdinaryCrossing();
+    const result = sectionMesh(mesh, { point: [0, 0, 0], normal: [0, 0, 1] });
+
+    // Only triangle 1's ordinary crossing shows up: one open, 2-point
+    // segment. If the coplanar triangle leaked its 3 ON-plane vertices in
+    // (the pre-`allOn`-check candidate count), this would instead see a
+    // second (degenerate/duplicate) polyline or a corrupted point count.
+    expect(result.polylines.length).toBe(1);
+    expect(totalPointCount(result)).toBe(2);
+    const polyline = result.polylines[0]!;
+    expect(polyline.closed).toBe(false);
+
+    // The two crossing points are triangle 1's edge-3-4 and edge-3-5
+    // midpoints (both edges have |d|=1 on each end, straddling z=0): exactly
+    // (10, 1, 0) and (10, -1, 0), in some order — and NEITHER equals any of
+    // triangle 0's (coplanar, skipped) vertices (0,0,0)/(2,0,0)/(1,1,0).
+    const points = [polylinePoint(polyline, 0), polylinePoint(polyline, 1)];
+    const ys = points.map((p) => p[1]).sort((a, b) => a - b);
+    expect(ys).toEqual([-1, 1]);
+    for (const [x, , z] of points) {
+      expect(x).toBe(10);
+      expect(z).toBe(0);
+    }
+  });
+});
+
 describe('sectionMesh — determinism', () => {
   it('produces bit-identical output across repeated calls on the same input', () => {
     const mesh = icosphereMesh(SPHERE_RADIUS_MM, 4);

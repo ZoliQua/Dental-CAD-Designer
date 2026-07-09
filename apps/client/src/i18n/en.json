@@ -155,6 +155,7 @@
     "offsetLabel": "Position along normal",
     "yawLabel": "Yaw",
     "pitchLabel": "Pitch",
+    "pitchHelp": "Pitch rotates the section plane around the world X axis (Phase-1 simplification).",
     "showCapToggle": "Show filled cap",
     "clipToggle": "Clip mesh at plane",
     "running": "Computing…",

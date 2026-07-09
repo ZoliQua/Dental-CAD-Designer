@@ -29,6 +29,23 @@ describe('sectionToSvg — snapshot', () => {
     expect(svg).toMatchSnapshot();
   });
 
+  it('scale != 1: the width/height SVG attributes state the true physical mm extent, not the viewBox-unit magnitude', () => {
+    // A 10mm x 10mm square with scale:2 and the default 1mm padding: the
+    // viewBox is in units of 2mm each (scale=2), so the viewBox's own
+    // width/height number is 6 (= 10mm / 2 + 2 * (1mm padding / 2)) — but
+    // the `width`/`height` attributes are documented (and labeled "mm") as
+    // the physical extent, which is 6 viewBox-units * 2mm/unit = 12mm, NOT
+    // the bare viewBox-unit number "6". Regression test for a bug where the
+    // viewBox-unit magnitude was reported directly, mislabeled "mm".
+    const square: SectionSvgPolyline = {
+      points: new Float64Array([0, 0, 10, 0, 10, 10, 0, 10]),
+      closed: true,
+    };
+    const svg = sectionToSvg([square], { scale: 2 });
+    expect(svg).toContain('width="12mm" height="12mm"');
+    expect(svg).toContain('viewBox="-0.5 -0.5 6 6"');
+  });
+
   it('is a pure function: identical input produces identical output', () => {
     const polyline: SectionSvgPolyline = {
       points: new Float64Array([0, 0, 1, 1, 2, 0]),

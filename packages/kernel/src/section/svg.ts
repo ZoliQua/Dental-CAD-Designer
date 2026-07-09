@@ -142,9 +142,17 @@ export function sectionToSvg(
     )
     .join('\n  ');
 
+  // `width`/`height` are viewBox-unit magnitudes (1 viewBox unit === `scale`
+  // mm — see SectionToSvgOptions.scale doc), but the `width`/`height` SVG
+  // attributes below are labeled "mm" and must state the true physical mm
+  // extent, so they need converting back out of viewBox units by
+  // multiplying by `scale` (a no-op at the default scale=1).
+  const widthMm = width * scale;
+  const heightMm = height * scale;
+
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${formatNumber(viewMinX)} ${formatNumber(viewMinY)} ${formatNumber(width)} ${formatNumber(height)}" ` +
-    `width="${formatNumber(width)}mm" height="${formatNumber(height)}mm">\n` +
+    `width="${formatNumber(widthMm)}mm" height="${formatNumber(heightMm)}mm">\n` +
     `  ${paths}\n` +
     `</svg>\n`
   );

@@ -116,6 +116,9 @@ export function SectionPanel() {
             />
             <span className="section-panel__field-value">{pitchDeg.toFixed(0)}°</span>
           </label>
+          <p className="section-panel__help" data-testid="section-pitch-help">
+            {t('section.pitchHelp')}
+          </p>
 
           <label className="section-panel__checkbox">
             <input

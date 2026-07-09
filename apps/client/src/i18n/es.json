@@ -155,6 +155,7 @@
     "offsetLabel": "Posición a lo largo de la normal",
     "yawLabel": "Guiñada",
     "pitchLabel": "Cabeceo",
+    "pitchHelp": "El cabeceo rota el plano de sección alrededor del eje X del mundo (simplificación de la Fase 1).",
     "showCapToggle": "Mostrar tapa rellena",
     "clipToggle": "Recortar malla en el plano",
     "running": "Calculando…",

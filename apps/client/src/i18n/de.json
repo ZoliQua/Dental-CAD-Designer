@@ -155,6 +155,7 @@
     "offsetLabel": "Position entlang der Normalen",
     "yawLabel": "Gieren (Yaw)",
     "pitchLabel": "Neigen (Pitch)",
+    "pitchHelp": "Die Neigung dreht die Schnittebene um die Welt-X-Achse (Phase-1-Vereinfachung).",
     "showCapToggle": "Gefüllte Kappe anzeigen",
     "clipToggle": "Netz an der Ebene beschneiden",
     "running": "Berechnung…",

@@ -946,6 +946,13 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.section-panel__help {
+  font-size: 0.68rem;
+  color: var(--color-text-muted);
+  margin: -0.1rem 0 0.2rem;
+  font-style: italic;
+}
+
 .section-panel__status {
   font-size: 0.78rem;
   color: var(--color-text-muted);
