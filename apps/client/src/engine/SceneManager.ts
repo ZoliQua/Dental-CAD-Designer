@@ -938,7 +938,10 @@ export class SceneManager {
    * call, same "small result, changes at most once per plane adjustment"
    * reasoning as `syncMeasurements`.
    */
-  syncSectionOverlay(outline: readonly SectionOutlinePolyline[], caps: readonly SectionCapEntry[]): void {
+  syncSectionOverlay(
+    outline: readonly SectionOutlinePolyline[],
+    caps: readonly SectionCapEntry[],
+  ): void {
     for (const line of this.sectionOutlineObjects) {
       this.sectionGroup.remove(line);
       line.geometry.dispose();
@@ -1053,6 +1056,28 @@ export class SceneManager {
 
   getProjection(): CameraProjection {
     return this.projectionMode;
+  }
+
+  /**
+   * Task 12 (e2e): the active camera's render-frame position and
+   * `OrbitControls.target` — the "store-exposed test hook, not canvas
+   * pixels" this task's brief asks for so e2e/phase1.spec.ts can assert a
+   * standard-view button click actually moved the camera (e.g. its offset
+   * from `target` is parallel to `engine/standardViews.ts`'s documented
+   * unit vector for that view) instead of screenshotting the WebGL canvas.
+   * Only ever consumed through `engine/testHooks.ts`'s dev-only
+   * `window.__dqcadTestHooks__` — never called by production UI code.
+   */
+  getCameraState(): {
+    position: readonly [number, number, number];
+    target: readonly [number, number, number];
+  } {
+    const camera = this.activeCamera;
+    const target = this.controls.target;
+    return {
+      position: [camera.position.x, camera.position.y, camera.position.z],
+      target: [target.x, target.y, target.z],
+    };
   }
 
   /** Switches between perspective and orthographic while keeping the

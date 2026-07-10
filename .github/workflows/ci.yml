@@ -3,6 +3,16 @@ name: CI
 on:
   push:
   pull_request:
+  # Task 12: the perf-guard job below (large-fixture UI-thread responsiveness
+  # e2e check) is deliberately NOT on this push/pull_request trigger — see
+  # its own job comment for why — so it needs its own way to run: a weekly
+  # schedule (catches a slow regression eventually, without slowing down
+  # every push) plus workflow_dispatch (an on-demand manual run from the
+  # Actions tab, e.g. right before a release or after touching the import
+  # pipeline).
+  schedule:
+    - cron: '0 6 * * 1' # every Monday 06:00 UTC
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -10,6 +20,10 @@ concurrency:
 
 jobs:
   ci:
+    # Runs on every push/PR (the schedule/workflow_dispatch triggers above
+    # exist only to drive the separate `perf-guard` job below — this main
+    # job still runs then too, which is harmless/cheap and keeps a
+    # scheduled/manual run's normal test suite results visible as well).
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -57,16 +71,33 @@ jobs:
         # If LFS content didn't come down as real binaries, these tests fail
         # with an explicit "git lfs pull" message (test/golden/stl-reader.ts)
         # rather than a confusing parse error.
+        #
+        # Task 12 note: test/manual/*.ts (real-scan pipeline replication
+        # scripts, committed per Task 12's review carry-over — see
+        # test/manual/README.md) are excluded from every Vitest project's
+        # `include` glob in vitest.config.ts/vitest.fuzz.config.ts (they
+        # don't even have a `.test.ts` suffix) — verified they do NOT run as
+        # part of `npm test`/`npm run test:golden`/`npm run test:fuzz`
+        # above; they're still typechecked by the "Typecheck" step (root
+        # tsconfig.json's `include` covers `test/`).
         run: npm run test:golden
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
-      - name: E2E smoke test
+      - name: E2E tests (smoke + phase1)
         # playwright.config.ts's webServer boots `npm run dev` (client +
         # server) itself, including the server's own DB migration step
         # (apps/server/package.json's predev/dev scripts) — no separate
-        # migrate step needed here.
+        # migrate step needed here. `playwright test` (no args, `testDir:
+        # './e2e'`) runs every spec under e2e/: smoke.spec.ts (Phase 0) AND
+        # phase1.spec.ts (Task 12's import->intake->view->measure->section->
+        # save->reload acceptance walkthrough — see that file's module doc).
+        # e2e/perf.spec.ts ALSO lives under e2e/ and is picked up by this
+        # same command, but self-skips (`test.skip(!RUN_PERF_E2E, ...)`)
+        # since RUN_PERF_E2E isn't set here — it shows as "skipped" in this
+        # job's output, never runs its ~120 MB fixture here. See the
+        # separate `perf-guard` job below for where it actually runs.
         run: npm run test:e2e
 
       - name: Upload Playwright report and test results
@@ -74,6 +105,66 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
+  perf-guard:
+    # Task 12: e2e/perf.spec.ts asserts the UI thread stays responsive (a
+    # requestAnimationFrame heartbeat's max gap) while streaming a real
+    # ~120 MB generated fixture through the full import pipeline — see that
+    # file's module doc for the measurement method and the 50 ms target /
+    # 100 ms CI-gate distinction.
+    #
+    # NOT run on every push/PR: generating the fixture + reading/hashing/
+    # parsing/welding ~2.5M triangles through real worker jobs takes on the
+    # order of a minute even though it correctly never blocks the UI thread
+    # (that's the whole point being measured) — several times slower than
+    # every other CI step combined, for a check whose failure mode (an
+    # accidental main-thread block creeping into the import pipeline) is a
+    # slow-moving regression, not something that needs catching within
+    # seconds of the commit that caused it. Runs weekly (schedule, see the
+    # workflow-level `on:` trigger above) plus on-demand
+    # (workflow_dispatch) instead.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        # No `lfs: true` — the perf fixture is generated on demand
+        # (scripts/generate-large-fixture.ts), not stored in LFS, and this
+        # job's own e2e spec doesn't touch any other LFS-backed fixture.
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate --schema apps/server/prisma/schema.prisma
+
+      - name: Generate the ~120 MB perf fixture
+        run: npm run fixtures:generate-large
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Perf guard e2e
+        env:
+          RUN_PERF_E2E: '1'
+        run: npx playwright test e2e/perf.spec.ts
+
+      - name: Upload Playwright report and test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-perf-guard
           path: |
             playwright-report/
             test-results/

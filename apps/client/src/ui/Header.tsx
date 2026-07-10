@@ -45,7 +45,12 @@ export function Header() {
         <span className="app-header__case-name" data-testid="active-case-name">
           {activeCaseName ?? t('persistence.noCaseOpen')}
         </span>
-        <button type="button" className="app-header__open-case-button" onClick={handleOpenPicker}>
+        <button
+          type="button"
+          className="app-header__open-case-button"
+          data-testid="open-case-picker-button"
+          onClick={handleOpenPicker}
+        >
           {t('persistence.openCaseButton')}
         </button>
         <button
