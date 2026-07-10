@@ -34,6 +34,12 @@
 // trip can't reproduce that hash bit-for-bit). Only once every live mesh is
 // registered does `caseStore.loadDocument()` install the document — so
 // `getRenderNodes()` never observes a dangling `meshId`, even transiently.
+// The OUTGOING case's now-unreferenced meshes/BVHs are only released AFTER
+// that swap succeeds (both cases briefly resident together), and if the
+// fetch/parse/weld loop fails partway through, this attempt's own partial
+// registrations are rolled back and the outgoing case's document/meshes are
+// left exactly as they were — see `openCase`'s own doc for the full
+// rationale.
 //
 // ## Autosave: debounced, coalesced, dirty-tracked
 //
@@ -125,8 +131,11 @@ async function uploadMeshBytes(expectedHash: string, bytes: Uint8Array): Promise
 
 /** Releases every currently-registered mesh's worker-side BVH cache entry
  * (see engine/workers.ts's `releaseBvhForMesh` doc) and clears `meshStore` —
- * shared by `createCase`/`openCase` (both fully replace "the current case",
- * so the OUTGOING case's geometry has no reason to stay resident). */
+ * used by `createCase`, whose new document starts with an empty `scene`, so
+ * the OUTGOING case's geometry unconditionally has no reason to stay
+ * resident (there's no fetch/parse/weld loop that could fail partway
+ * through in between, unlike `openCase` below — see that function's doc for
+ * why it does its own targeted release instead of this blanket clear). */
 function resetMeshRegistryForCaseSwitch(): void {
   for (const record of caseStore.meshStore.list()) {
     releaseBvhForMesh(record.contentHash);
@@ -197,13 +206,45 @@ export async function createCase(name: string): Promise<void> {
  * a reload anyway (ImportPanel's role dropdown only exists for the SAME
  * session's freshly imported files) — fetching its bytes would be pure
  * waste. Deliberate scope cut, not an oversight.
+ *
+ * ## Atomic swap, not clear-then-load
+ *
+ * Unlike `createCase` (which has no fetch/parse/weld loop that can fail
+ * partway through, so it's safe to blanket-clear `meshStore` up front — see
+ * `resetMeshRegistryForCaseSwitch`'s doc), `openCase` must NOT release the
+ * OUTGOING case's meshes before every INCOMING mesh is confirmed resident.
+ * If a fetch/parse/weld failed mid-loop after an early clear, `caseStore`'s
+ * document would still point at the old case (this function's `catch`
+ * rethrows without ever calling `loadDocument`) while the meshes it renders
+ * were already gone — a dangling `meshId` observable by `getRenderNodes()`,
+ * violating this file's module doc "never observes a dangling meshId, even
+ * transiently" invariant.
+ *
+ * So instead: fetch/register every live mesh the NEW document needs
+ * (skipping any whose `contentHash` is already resident — e.g. shared with
+ * the outgoing case, so both cases briefly overlapping in `meshStore` costs
+ * nothing extra there), THEN swap the document in with `loadDocument`, THEN
+ * release whatever the OUTGOING case had that the new document doesn't
+ * reference. Both cases' meshes are resident together for the duration of
+ * the fetch loop — acceptable Phase 1 memory tradeoff for correctness (scans
+ * are a handful of meshes, not hundreds).
+ *
+ * On failure, anything THIS attempt newly registered (tracked in
+ * `registeredThisAttempt`) is rolled back — those meshes have no SceneNode
+ * referencing them (the swap never happened) and would otherwise leak until
+ * some later successful switch happened to notice they're unreferenced.
+ * Meshes reused from the outgoing case (skipped above, never added to that
+ * list) are correctly left alone since the outgoing case's document is still
+ * the active one.
  */
 export async function openCase(id: string, name: string): Promise<void> {
+  const registeredThisAttempt: string[] = [];
   try {
     const document = await requestJson<CaseDocument>('GET', `/cases/${id}`);
-    resetMeshRegistryForCaseSwitch();
 
+    const previousMeshHashes = new Set(caseStore.meshStore.list().map((record) => record.contentHash));
     const liveMeshIds = new Set(document.scene.map((node) => node.meshId));
+
     for (const meshId of liveMeshIds) {
       const asset: MeshAsset | undefined = document.meshes.find((mesh) => mesh.contentHash === meshId);
       if (!asset) {
@@ -214,6 +255,16 @@ export async function openCase(id: string, name: string): Promise<void> {
         console.warn(
           `persistence: openCase — MeshAsset ${asset.contentHash} has no fileHash (never saved), skipping`,
         );
+        continue;
+      }
+      if (caseStore.meshStore.has(asset.contentHash)) {
+        // Already resident — shared (by contentHash) with the outgoing
+        // case, or left over from a previously rolled-back attempt at this
+        // same case. MeshStore.register is idempotent by contentHash
+        // anyway; this just skips the wasted fetch/parse/weld round trip,
+        // and (just as importantly) keeps it OUT of `registeredThisAttempt`
+        // so a later failure in this loop won't roll it back out from under
+        // the outgoing case that's still actively relying on it.
         continue;
       }
       const bytes = await fetchMeshBytes(asset.fileHash);
@@ -239,10 +290,24 @@ export async function openCase(id: string, name: string): Promise<void> {
         stats: welded.stats,
         report: welded.report,
       });
+      registeredThisAttempt.push(asset.contentHash);
     }
 
+    // Every live mesh the new document needs is now resident — safe to swap
+    // atomically. `getRenderNodes()` never observes a dangling `meshId`.
     lastPersistedDocument = document;
     caseStore.loadDocument(document);
+
+    // NOW release whatever the OUTGOING case had that the new document
+    // doesn't also reference (see this function's doc's "Atomic swap"
+    // section).
+    for (const oldContentHash of previousMeshHashes) {
+      if (!liveMeshIds.has(oldContentHash)) {
+        caseStore.meshStore.remove(oldContentHash);
+        releaseBvhForMesh(oldContentHash);
+      }
+    }
+
     usePersistenceStore.getState().setActiveCase({ id, name });
     // GET /api/cases/:id doesn't return `updatedAt` (only the document) — a
     // freshly loaded document is, by construction, identical to what's on
@@ -251,6 +316,14 @@ export async function openCase(id: string, name: string): Promise<void> {
     usePersistenceStore.getState().setLastSavedAt(new Date().toISOString());
     usePersistenceStore.getState().setStatus('saved');
   } catch (error) {
+    // Roll back this FAILED attempt's own newly-registered meshes (see this
+    // function's doc) — the outgoing case's document/meshes were never
+    // touched (loadDocument only runs once every live mesh is confirmed
+    // resident, above), so they remain exactly as they were.
+    for (const contentHash of registeredThisAttempt) {
+      caseStore.meshStore.remove(contentHash);
+      releaseBvhForMesh(contentHash);
+    }
     usePersistenceStore.getState().setStatus('error', errorMessageOf(error));
     throw error;
   }

@@ -205,6 +205,39 @@ function buildRepresentativeCase(): { contentHash: string; nodeId: string } {
   return { contentHash, nodeId: node.id };
 }
 
+/** Creates a new case, registers+places one `upperJaw` SceneNode per
+ * `meshContentHashes` (each a translated copy of the tetrahedron geometry —
+ * translated by its POSITION in the array, not by its hash string, so two
+ * calls sharing a contentHash at the same index produce byte-identical STL
+ * output/fileHash, which the "shared mesh" test below relies on; distinct
+ * indices get distinct STL bytes/fileHash, which the "fetch fails partway
+ * through" test below relies on to target one specific mesh's GET), saves
+ * it (uploading every mesh's bytes to the fake server), and returns its
+ * server-assigned id/name — a ready-to-reopen fixture for the openCase
+ * atomic-swap tests below. Leaves the newly created case active. */
+async function createSavedCase(
+  name: string,
+  meshContentHashes: readonly string[],
+): Promise<{ id: string; name: string }> {
+  await createCase(name);
+  meshContentHashes.forEach((contentHash, index) => {
+    const positions = TET_POSITIONS.map((value, i) => (i % 3 === 0 ? value + index + 1 : value));
+    caseStore.registerImportedMesh({
+      contentHash,
+      name: `${contentHash}.stl`,
+      format: 'stl',
+      positions,
+      indices: TET_INDICES.slice(),
+      stats: tetStats(),
+      report: EMPTY_REPORT,
+      operations: [importOp(contentHash)],
+    });
+    caseStore.addSceneNode(contentHash, 'upperJaw');
+  });
+  await save();
+  return { id: usePersistenceStore.getState().activeCaseId!, name };
+}
+
 describe('createCase', () => {
   it('creates a case on the (fake) server and installs a matching empty document', async () => {
     await createCase('New case');
@@ -301,10 +334,14 @@ describe('save / openCase round trip', () => {
     const putCalls = vi
       .mocked(fetch)
       .mock.calls.filter(([, init]) => (init?.method ?? 'GET').toUpperCase() === 'PUT');
-    // One PUT for the first save, and (since the mutation made it dirty
-    // again) exactly one coalesced follow-up PUT — never more.
-    expect(putCalls.length).toBeGreaterThanOrEqual(1);
-    expect(putCalls.length).toBeLessThanOrEqual(2);
+    // Exactly one PUT for the first save, and (since the mutation made it
+    // dirty again) exactly one coalesced follow-up PUT — never more, never
+    // fewer. This is deterministic, not just likely: `saveInFlight` is set
+    // synchronously before `firstSave`'s first `await`, so `secondSave`'s
+    // call to `save()` is guaranteed to observe it already `true` and take
+    // the coalescing (`pendingSaveRequested = true`) branch rather than a
+    // second overlapping PUT.
+    expect(putCalls.length).toBe(2);
     expect(usePersistenceStore.getState().status).toBe('saved');
     expect(useCaseStore.getState().document.scene[0]!.opacity).toBe(0.25);
   });
@@ -338,6 +375,81 @@ describe('save / openCase round trip', () => {
     // missing — see persistence.ts's `save()` doc).
     expect(usePersistenceStore.getState().activeCaseId).toBe('case-b-simulated');
     expect(usePersistenceStore.getState().activeCaseName).toBe('Case B');
+  });
+});
+
+describe('openCase atomic swap on failure', () => {
+  it('leaves the previous case\'s document AND meshes fully intact (and renderable) when a mesh fetch fails partway through', async () => {
+    const caseA = await createSavedCase('Case A', ['a-hash']);
+    const caseB = await createSavedCase('Case B', ['b-hash-1', 'b-hash-2', 'b-hash-3']);
+
+    // Reactivate A as "the case currently open" before attempting the
+    // (about to fail) switch to B.
+    await openCase(caseA.id, caseA.name);
+    const documentBeforeFailedAttempt = useCaseStore.getState().document;
+
+    // Fail the 2nd of B's 3 mesh fetches (b-hash-2); b-hash-1 (fetched
+    // first) succeeds, b-hash-3 is never reached. Mesh GETs are keyed by
+    // `fileHash` (content-addressed STL bytes), not by our own contentHash
+    // strings, so look up the actual fileHash the save() above assigned to
+    // b-hash-2's MeshAsset.
+    const caseBRow = server.cases.get(caseB.id)!;
+    const bHash2FileHash = caseBRow.document!.meshes.find((m) => m.contentHash === 'b-hash-2')!.fileHash!;
+    const realFetch = server.fetchImpl;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        if (String(input).includes(`/api/meshes/${bHash2FileHash}`)) {
+          return new Response(null, { status: 500 });
+        }
+        return realFetch(input, init);
+      }),
+    );
+
+    await expect(openCase(caseB.id, caseB.name)).rejects.toThrow();
+
+    expect(usePersistenceStore.getState().status).toBe('error');
+    // The document was never swapped — same object, not just deep-equal.
+    expect(useCaseStore.getState().document).toBe(documentBeforeFailedAttempt);
+    expect(usePersistenceStore.getState().activeCaseId).toBe(caseA.id);
+
+    // A's mesh is still resident and resolves via the normal render path.
+    expect(caseStore.getMeshRecord('a-hash')).toBeDefined();
+    const renderNodes = caseStore.getRenderNodes();
+    expect(renderNodes).toHaveLength(1);
+    expect(renderNodes[0]!.role).toBe('upperJaw');
+
+    // b-hash-1 (registered successfully before b-hash-2 failed) was rolled
+    // back, not leaked — this failed attempt left NO trace in meshStore.
+    expect(caseStore.getMeshRecord('b-hash-1')).toBeUndefined();
+    expect(caseStore.getMeshRecord('b-hash-2')).toBeUndefined();
+    expect(caseStore.getMeshRecord('b-hash-3')).toBeUndefined();
+  });
+});
+
+describe('openCase successful switch', () => {
+  it('releases the outgoing case\'s meshes/BVHs, but keeps meshes shared (by contentHash) with the new case', async () => {
+    const caseA = await createSavedCase('Case A', ['shared-hash', 'a-only-hash']);
+    const caseB = await createSavedCase('Case B', ['shared-hash', 'b-only-hash']);
+
+    await openCase(caseA.id, caseA.name);
+    expect(caseStore.getMeshRecord('shared-hash')).toBeDefined();
+    expect(caseStore.getMeshRecord('a-only-hash')).toBeDefined();
+
+    await openCase(caseB.id, caseB.name);
+
+    expect(usePersistenceStore.getState().status).toBe('saved');
+    // a-only-hash was only referenced by the outgoing case (A) — released.
+    expect(caseStore.getMeshRecord('a-only-hash')).toBeUndefined();
+    // shared-hash is referenced by the NEW case (B) too — kept, not
+    // released-then-refetched.
+    expect(caseStore.getMeshRecord('shared-hash')).toBeDefined();
+    expect(caseStore.getMeshRecord('b-only-hash')).toBeDefined();
+
+    // Both of B's scene nodes resolve — no dangling meshId.
+    const renderNodes = caseStore.getRenderNodes();
+    expect(renderNodes).toHaveLength(2);
+    expect(renderNodes.every((node) => node.role === 'upperJaw')).toBe(true);
   });
 });
 
