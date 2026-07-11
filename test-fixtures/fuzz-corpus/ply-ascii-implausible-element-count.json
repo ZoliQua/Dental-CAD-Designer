@@ -1,0 +1,8 @@
+{
+  "parser": "ply",
+  "expected": {
+    "kind": "throws",
+    "errorClassName": "TruncatedFileError"
+  },
+  "note": "Task 3 finding (risk-analysis-motivated, verified safe to exercise via this bounded corpus entry rather than open-ended fuzzing given the OOM risk): a PLY header element count is trusted input with no byte-length-consistency check (unlike STL). A corrupted/adversarial huge declared vertex count would size positions/normals/colors allocations directly from it before reading any real row, risking a multi-gigabyte allocation attempt on a tiny file. Fixed via ply/element-count-guard.ts (a hard ceiling, MAX_PLAUSIBLE_ELEMENT_COUNT = 50_000_000, applied before any element allocation in binary.ts, ascii.ts, and stream.ts)."
+}

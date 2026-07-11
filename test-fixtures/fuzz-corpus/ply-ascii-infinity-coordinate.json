@@ -1,0 +1,8 @@
+{
+  "parser": "ply",
+  "expected": {
+    "kind": "throws",
+    "errorClassName": "MalformedSyntaxError"
+  },
+  "note": "Task 3 mutation-fuzz-motivated finding: same Number(\"Infinity\") gap as the STL ASCII case, in ply/ascii.ts readVertexElement. Fixed with a role-scoped Number.isFinite check (scoped to consumed roles only, so a skipped/unrecognized property still tolerates arbitrary garbage values)."
+}

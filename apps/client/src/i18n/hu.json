@@ -15,7 +15,10 @@
   },
   "sidebar": {
     "sceneTreeTitle": "Jelenet",
-    "empty": "Még nincs objektum a jelenetben."
+    "empty": "Még nincs objektum a jelenetben.",
+    "visibilityToggle": "Láthatóság be/ki",
+    "opacityLabel": "Átlátszatlanság",
+    "removeButton": "Eltávolítás"
   },
   "statusBar": {
     "engineReady": "Motor: kész",
@@ -30,5 +33,198 @@
     "manifoldSmokeTestRunning": "Manifold: fut…",
     "manifoldSmokeTestSuccess": "Manifold: ✓ térfogat {{volume}}",
     "manifoldSmokeTestFailure": "Manifold: ✗ sikertelen"
+  },
+  "import": {
+    "dropzoneTitle": "Húzza ide az STL vagy PLY fájlokat",
+    "dropzoneHint": "vagy",
+    "browseButton": "Fájlok tallózása…",
+    "dropOverlayTitle": "Engedje el az importáláshoz",
+    "cancelButton": "Mégse",
+    "phase": {
+      "reading": "Fájl beolvasása…",
+      "parsing": "Feldolgozás…",
+      "awaitingUnitConfirmation": "Mértékegység megerősítésére vár…",
+      "rescaling": "Átméretezés…",
+      "intake": "Háló feldolgozása…",
+      "registering": "Regisztrálás…",
+      "done": "Kész",
+      "cancelled": "Megszakítva",
+      "error": "Hiba"
+    },
+    "errorLabel": "Hiba: {{message}}",
+    "stats": {
+      "watertight": "Vízhatlan",
+      "manifold": "Sokaság élek",
+      "components": "Komponensek",
+      "bbox": "Határoló doboz (mm)",
+      "area": "Felszín (mm²)",
+      "volume": "Térfogat (mm³)",
+      "degenerate": "Elfajult háromszögek",
+      "boundaryEdges": "Határélek",
+      "yes": "Igen",
+      "no": "Nem",
+      "notApplicable": "n/a"
+    },
+    "warningsTitle": "Figyelmeztetések",
+    "roleLabel": "Hozzáadás a jelenethez mint",
+    "rolePlaceholder": "Válasszon szerepet…",
+    "addedToScene": "Hozzáadva a jelenethez"
+  },
+  "role": {
+    "upperJaw": "Felső állcsont",
+    "lowerJaw": "Alsó állcsont",
+    "prepDie": "Csonk / munkamodell",
+    "antagonist": "Antagonista",
+    "situ": "Situ",
+    "gingiva": "Íny"
+  },
+  "viewer": {
+    "view": {
+      "groupLabel": "Standard nézetek",
+      "front": "Elölnézet",
+      "buccal": "Bukkális",
+      "lingual": "Linguális",
+      "mesial": "Mesiális",
+      "distal": "Disztális",
+      "occlusal": "Okkluzális"
+    },
+    "projection": {
+      "perspective": "Perspektivikus",
+      "orthographic": "Ortografikus"
+    },
+    "shading": {
+      "label": "Árnyalás",
+      "clinical": "Klinikai",
+      "matcap": "Matcap"
+    },
+    "wireframe": {
+      "toggle": "Drótváz"
+    },
+    "frameAll": "Minden a képbe",
+    "frameSelection": "Kijelölés a képbe"
+  },
+  "measure": {
+    "toolGroupLabel": "Mérés",
+    "pointToPoint": "Pont-pont",
+    "pointToSurface": "Pont-felület",
+    "angle": "Szög",
+    "cancelButton": "Mégse",
+    "instruction": "Válasszon {{picked}}/{{required}} pontot",
+    "panelTitle": "Mérések",
+    "empty": "Még nincs mérés.",
+    "deleteButton": "Törlés",
+    "kind": {
+      "pointToPoint": "Pont-pont",
+      "pointToSurface": "Pont-felület",
+      "angle": "Szög"
+    },
+    "angleValue": "{{degrees}}°"
+  },
+  "heatmap": {
+    "panelTitle": "Felületi távolság",
+    "needsTwoMeshes": "Adjon a jelenethez legalább két hálót a felületek összehasonlításához.",
+    "meshALabel": "A háló",
+    "meshBLabel": "B háló",
+    "selectPlaceholder": "Válasszon hálót…",
+    "signedLabel": "Előjeles (belül −, kívül +)",
+    "runButton": "Futtatás",
+    "running": "Számítás…",
+    "errorLabel": "A felületi távolság számítása sikertelen: {{message}}",
+    "statsMin": "Min",
+    "statsMax": "Max",
+    "statsMean": "Átlag",
+    "statsRms": "RMS",
+    "showToggle": "Hőtérkép megjelenítése",
+    "legendTitle": "Jelmagyarázat (µm)",
+    "rangeMinLabel": "Min (µm)",
+    "rangeMaxLabel": "Max (µm)",
+    "rangeManual": "Tartomány alkalmazása",
+    "rangeAuto": "Automatikus tartomány"
+  },
+  "section": {
+    "panelTitle": "Keresztmetszet",
+    "needsMesh": "Adjon hálót a jelenethez a keresztmetszet elkészítéséhez.",
+    "enableToggle": "Keresztmetszet eszköz bekapcsolása",
+    "axisGroupLabel": "Tengely preset",
+    "axis": {
+      "x": "X",
+      "y": "Y",
+      "z": "Z",
+      "custom": "Egyéni"
+    },
+    "offsetLabel": "Pozíció a normális mentén",
+    "yawLabel": "Elfordulás (yaw)",
+    "pitchLabel": "Dőlés (pitch)",
+    "pitchHelp": "A dőlés a világ X tengelye körül forgatja a metszősíkot (1. fázisú egyszerűsítés).",
+    "showCapToggle": "Kitöltött fedél megjelenítése",
+    "clipToggle": "Háló vágása a síknál",
+    "running": "Számítás…",
+    "errorLabel": "A keresztmetszet sikertelen: {{message}}",
+    "pointCount": "{{count}} körvonalpont",
+    "exportSvgButton": "SVG letöltése"
+  },
+  "unitConfirm": {
+    "title": "Mértékegység megerősítése",
+    "messageCm": "\"{{fileName}}\" szokatlanul kicsinek tűnik (legnagyobb kiterjedés {{extent}} mm) — lehet, hogy valójában centiméterben van, nem milliméterben. Szorozzuk az összes koordinátát {{factor}}-szel?",
+    "messageUm": "\"{{fileName}}\" szokatlanul nagynak tűnik (legnagyobb kiterjedés {{extent}} mm) — lehet, hogy valójában mikrométerben van, nem milliméterben. Szorozzuk az összes koordinátát {{factor}}-szel?",
+    "keepMm": "Marad mm-ben",
+    "applyFactor": "Alkalmazás ×{{factor}}"
+  },
+  "persistence": {
+    "noCaseOpen": "Nincs nyitott eset",
+    "openCaseButton": "Eset megnyitása…",
+    "saveButton": "Mentés",
+    "status": {
+      "idle": "Nincs nyitott eset",
+      "saved": "Mentve",
+      "saving": "Mentés…",
+      "unsaved": "Nem mentett változtatások",
+      "error": "Mentés sikertelen: {{message}}"
+    },
+    "picker": {
+      "title": "Esetek",
+      "closeButton": "Bezárás",
+      "newCaseNamePlaceholder": "Új eset neve…",
+      "createButton": "Létrehozás",
+      "openButton": "Megnyitás",
+      "renameButton": "Átnevezés",
+      "empty": "Még nincs eset.",
+      "loading": "Esetek betöltése…",
+      "errorLabel": "Az esetek betöltése sikertelen: {{message}}",
+      "renameErrorLabel": "Az eset átnevezése sikertelen: {{message}}",
+      "activeLabel": "Aktív",
+      "updatedAtLabel": "Frissítve: {{date}}"
+    }
+  },
+  "repair": {
+    "panelTitle": "Javítás",
+    "previewLoading": "Előnézet számítása…",
+    "previewError": "Javítási előnézet sikertelen: {{message}}",
+    "applyButton": "Alkalmaz",
+    "applying": "Alkalmazás…",
+    "applied": "Alkalmazva",
+    "measurementsCleared": "{{count}} mérés eltávolítva — a javított felületre hivatkoztak",
+    "stats": {
+      "before": "Előtte",
+      "after": "Utána"
+    },
+    "removeComponents": {
+      "title": "Kis komponensek eltávolítása",
+      "description": "Csak a legnagyobb összefüggő darabot tartja meg, eltávolítva a kisebb, eltévedt töredékeket.",
+      "summary": "{{total}} komponensből {{removed}} eltávolítva",
+      "noneToRemove": "Nincs mit eltávolítani — minden komponens megmaradna."
+    },
+    "splitNonManifoldEdges": {
+      "title": "Nem sokaság élek szétválasztása",
+      "description": "Megkettőzi a csúcsokat a 2-nél több háromszög által megosztott éleken, hogy minden él legfeljebb 2 háromszöghöz tartozzon.",
+      "summary": "{{count}} csúcs megkettőzve {{edges}} nem sokaság élen"
+    },
+    "fillSmallHoles": {
+      "title": "Kis lyukak kitöltése",
+      "description": "Sima (nem görbület-folytonos) folttal zárja le a kis határhurkokat. A nagyobb lyukakat elutasítja, nem tölti ki.",
+      "summary": "{{found}} lyukból {{filled}} kitöltve",
+      "skippedSummary": "{{count}} lyuk elutasítva (túl nagy a biztonságos kitöltéshez)",
+      "noneToFill": "Nem található lyuk."
+    }
   }
 }

@@ -15,7 +15,10 @@
   },
   "sidebar": {
     "sceneTreeTitle": "Escena",
-    "empty": "Todavía no hay objetos en la escena."
+    "empty": "Todavía no hay objetos en la escena.",
+    "visibilityToggle": "Alternar visibilidad",
+    "opacityLabel": "Opacidad",
+    "removeButton": "Eliminar"
   },
   "statusBar": {
     "engineReady": "Motor: listo",
@@ -30,5 +33,198 @@
     "manifoldSmokeTestRunning": "Manifold: en ejecución…",
     "manifoldSmokeTestSuccess": "Manifold: ✓ volumen {{volume}}",
     "manifoldSmokeTestFailure": "Manifold: ✗ falló"
+  },
+  "import": {
+    "dropzoneTitle": "Arrastra y suelta archivos STL o PLY aquí",
+    "dropzoneHint": "o",
+    "browseButton": "Examinar archivos…",
+    "dropOverlayTitle": "Suelta para importar",
+    "cancelButton": "Cancelar",
+    "phase": {
+      "reading": "Leyendo archivo…",
+      "parsing": "Analizando…",
+      "awaitingUnitConfirmation": "Esperando confirmación de unidades…",
+      "rescaling": "Reescalando…",
+      "intake": "Procesando malla…",
+      "registering": "Registrando…",
+      "done": "Listo",
+      "cancelled": "Cancelado",
+      "error": "Error"
+    },
+    "errorLabel": "Error: {{message}}",
+    "stats": {
+      "watertight": "Estanco",
+      "manifold": "Bordes variedad",
+      "components": "Componentes",
+      "bbox": "Caja delimitadora (mm)",
+      "area": "Área de superficie (mm²)",
+      "volume": "Volumen (mm³)",
+      "degenerate": "Triángulos degenerados",
+      "boundaryEdges": "Bordes de contorno",
+      "yes": "Sí",
+      "no": "No",
+      "notApplicable": "n/d"
+    },
+    "warningsTitle": "Advertencias",
+    "roleLabel": "Añadir a la escena como",
+    "rolePlaceholder": "Elegir rol…",
+    "addedToScene": "Añadido a la escena"
+  },
+  "role": {
+    "upperJaw": "Maxilar superior",
+    "lowerJaw": "Maxilar inferior",
+    "prepDie": "Preparación / muñón",
+    "antagonist": "Antagonista",
+    "situ": "In situ",
+    "gingiva": "Encía"
+  },
+  "viewer": {
+    "view": {
+      "groupLabel": "Vistas estándar",
+      "front": "Frontal",
+      "buccal": "Bucal",
+      "lingual": "Lingual",
+      "mesial": "Mesial",
+      "distal": "Distal",
+      "occlusal": "Oclusal"
+    },
+    "projection": {
+      "perspective": "Perspectiva",
+      "orthographic": "Ortográfica"
+    },
+    "shading": {
+      "label": "Sombreado",
+      "clinical": "Clínico",
+      "matcap": "Matcap"
+    },
+    "wireframe": {
+      "toggle": "Malla de alambre"
+    },
+    "frameAll": "Encuadrar todo",
+    "frameSelection": "Encuadrar selección"
+  },
+  "measure": {
+    "toolGroupLabel": "Medir",
+    "pointToPoint": "Punto a punto",
+    "pointToSurface": "Punto a superficie",
+    "angle": "Ángulo",
+    "cancelButton": "Cancelar",
+    "instruction": "Elige {{picked}} de {{required}} puntos",
+    "panelTitle": "Mediciones",
+    "empty": "Todavía no hay mediciones.",
+    "deleteButton": "Eliminar",
+    "kind": {
+      "pointToPoint": "Punto a punto",
+      "pointToSurface": "Punto a superficie",
+      "angle": "Ángulo"
+    },
+    "angleValue": "{{degrees}}°"
+  },
+  "heatmap": {
+    "panelTitle": "Distancia entre superficies",
+    "needsTwoMeshes": "Añade al menos dos mallas a la escena para comparar superficies.",
+    "meshALabel": "Malla A",
+    "meshBLabel": "Malla B",
+    "selectPlaceholder": "Elige una malla…",
+    "signedLabel": "Con signo (dentro −, fuera +)",
+    "runButton": "Ejecutar",
+    "running": "Calculando…",
+    "errorLabel": "Error en la distancia entre superficies: {{message}}",
+    "statsMin": "Mín",
+    "statsMax": "Máx",
+    "statsMean": "Media",
+    "statsRms": "RMS",
+    "showToggle": "Mostrar mapa de calor",
+    "legendTitle": "Leyenda (µm)",
+    "rangeMinLabel": "Mín (µm)",
+    "rangeMaxLabel": "Máx (µm)",
+    "rangeManual": "Aplicar rango",
+    "rangeAuto": "Rango automático"
+  },
+  "section": {
+    "panelTitle": "Sección transversal",
+    "needsMesh": "Añada una malla a la escena para obtener una sección transversal.",
+    "enableToggle": "Activar herramienta de sección",
+    "axisGroupLabel": "Preajuste de eje",
+    "axis": {
+      "x": "X",
+      "y": "Y",
+      "z": "Z",
+      "custom": "Personalizado"
+    },
+    "offsetLabel": "Posición a lo largo de la normal",
+    "yawLabel": "Guiñada",
+    "pitchLabel": "Cabeceo",
+    "pitchHelp": "El cabeceo rota el plano de sección alrededor del eje X del mundo (simplificación de la Fase 1).",
+    "showCapToggle": "Mostrar tapa rellena",
+    "clipToggle": "Recortar malla en el plano",
+    "running": "Calculando…",
+    "errorLabel": "La sección falló: {{message}}",
+    "pointCount": "{{count}} punto(s) de contorno",
+    "exportSvgButton": "Descargar SVG"
+  },
+  "unitConfirm": {
+    "title": "Confirmar unidades del escaneo",
+    "messageCm": "\"{{fileName}}\" parece inusualmente pequeño (extensión máxima {{extent}} mm) — podría estar en centímetros en lugar de milímetros. ¿Multiplicar todas las coordenadas por {{factor}}?",
+    "messageUm": "\"{{fileName}}\" parece inusualmente grande (extensión máxima {{extent}} mm) — podría estar en micrómetros en lugar de milímetros. ¿Multiplicar todas las coordenadas por {{factor}}?",
+    "keepMm": "Mantener como está (mm)",
+    "applyFactor": "Aplicar ×{{factor}}"
+  },
+  "persistence": {
+    "noCaseOpen": "Ningún caso abierto",
+    "openCaseButton": "Abrir caso…",
+    "saveButton": "Guardar",
+    "status": {
+      "idle": "Ningún caso abierto",
+      "saved": "Guardado",
+      "saving": "Guardando…",
+      "unsaved": "Cambios sin guardar",
+      "error": "Error al guardar: {{message}}"
+    },
+    "picker": {
+      "title": "Casos",
+      "closeButton": "Cerrar",
+      "newCaseNamePlaceholder": "Nombre del nuevo caso…",
+      "createButton": "Crear",
+      "openButton": "Abrir",
+      "renameButton": "Renombrar",
+      "empty": "Todavía no hay casos.",
+      "loading": "Cargando casos…",
+      "errorLabel": "No se pudieron cargar los casos: {{message}}",
+      "renameErrorLabel": "No se pudo renombrar el caso: {{message}}",
+      "activeLabel": "Activo",
+      "updatedAtLabel": "Actualizado: {{date}}"
+    }
+  },
+  "repair": {
+    "panelTitle": "Reparación",
+    "previewLoading": "Calculando vista previa…",
+    "previewError": "Error en la vista previa de reparación: {{message}}",
+    "applyButton": "Aplicar",
+    "applying": "Aplicando…",
+    "applied": "Aplicado",
+    "measurementsCleared": "Se eliminaron {{count}} medición(es) — hacían referencia a la superficie reparada",
+    "stats": {
+      "before": "Antes",
+      "after": "Después"
+    },
+    "removeComponents": {
+      "title": "Eliminar componentes pequeños",
+      "description": "Conserva solo la pieza conectada más grande, eliminando fragmentos sueltos más pequeños.",
+      "summary": "Elimina {{removed}} de {{total}} componente(s)",
+      "noneToRemove": "Nada que eliminar — se conservarían todos los componentes."
+    },
+    "splitNonManifoldEdges": {
+      "title": "Separar bordes no variedad",
+      "description": "Duplica los vértices en bordes compartidos por más de 2 triángulos para que cada borde tenga como máximo 2.",
+      "summary": "Duplica {{count}} vértice(s) en {{edges}} borde(s) no variedad"
+    },
+    "fillSmallHoles": {
+      "title": "Rellenar agujeros pequeños",
+      "description": "Cierra bucles de contorno pequeños con un parche suave (no continuo en curvatura). Los agujeros más grandes se rechazan, no se rellenan.",
+      "summary": "Rellena {{filled}} de {{found}} agujero(s)",
+      "skippedSummary": "{{count}} agujero(s) rechazado(s) (demasiado grande para rellenar con seguridad)",
+      "noneToFill": "No se encontraron agujeros."
+    }
   }
 }

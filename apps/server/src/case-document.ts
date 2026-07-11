@@ -14,6 +14,7 @@ export function createEmptyCaseDocument(id: string, createdAt: string): CaseDocu
     meshes: [],
     scene: [],
     restorations: [],
+    measurements: [],
     history: [],
     settings: {
       materialProfileId: 'unassigned',

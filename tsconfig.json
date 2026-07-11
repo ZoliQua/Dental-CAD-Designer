@@ -3,7 +3,16 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
-    "types": ["node"]
+    "types": ["node"],
+    // "DOM" added for Task 12's test/manual/*.ts scripts, which import
+    // `@dqcad/kernel-workers` (packages/kernel-workers/src/pool.ts's
+    // WorkerPool spans both a browser Worker and Node worker_threads
+    // backend, so its types reference DOM globals like `Transferable`/
+    // `ErrorEvent` even when only the Node backend is ever exercised here)
+    // — doesn't affect any package's own isolated tsconfig (each sets its
+    // own `lib`; this only widens the ROOT program that typechecks
+    // scripts/test/e2e).
+    "lib": ["ES2022", "DOM"]
   },
   "include": ["scripts", "test", "e2e", "eslint.boundaries.test.ts", "playwright.config.ts"]
 }

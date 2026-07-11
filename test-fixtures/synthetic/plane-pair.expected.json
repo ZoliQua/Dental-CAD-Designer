@@ -1,0 +1,36 @@
+{
+  "analyticOffsetMm": 0.017,
+  "toleranceMm": 1e-9,
+  "a": {
+    "file": "plane-pair-a.stl",
+    "sha256": "37b3afdc84ef5d8fac12cc39245f99251997e491144102827480e6b33cc3be54",
+    "bbox": {
+      "min": [
+        -5,
+        -5,
+        0
+      ],
+      "max": [
+        5,
+        5,
+        0
+      ]
+    }
+  },
+  "b": {
+    "file": "plane-pair-b.stl",
+    "sha256": "6cc8e25595f7172c1314e3d6dddb85be3149e8d145686612a995d4a1b83baac9",
+    "bbox": {
+      "min": [
+        -7,
+        -7,
+        0.017
+      ],
+      "max": [
+        7,
+        7,
+        0.017
+      ]
+    }
+  }
+}

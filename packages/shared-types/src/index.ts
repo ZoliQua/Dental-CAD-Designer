@@ -41,11 +41,33 @@ export type MeshRole = 'upperJaw' | 'lowerJaw' | 'prepDie' | 'antagonist' | 'sit
 /** An immutable, content-addressed source mesh (a scan). */
 export interface MeshAsset {
   id: string;
-  /** SHA-256 (or equivalent) of the mesh bytes; identity for journaling/reproducibility. */
+  /** SHA-256 (or equivalent) of the mesh's PROCESSED (post-intake, welded)
+   * Float64 content — see apps/client/src/engine/hash.ts's
+   * `hashMeshContent`. Identity for journaling/reproducibility; NOT the same
+   * value as `fileHash` below (see that field's doc for why the two must
+   * stay distinct). */
   contentHash: string;
   name: string;
   unit: 'mm';
   triangleCount: number;
+  /**
+   * SHA-256 of the binary-STL FILE BYTES this mesh was last persisted as on
+   * the server (`POST /api/meshes`'s content-addressed store — see
+   * docs/plans/phase-1-import-viewer.md Task 11). Deliberately a SEPARATE
+   * hash from `contentHash`: `contentHash` is computed over the exact
+   * Float64 positions/indices buffers in memory, while binary STL only
+   * stores float32 coordinates (packages/io's `writeStlBinary` — an
+   * inherent, documented lossy boundary of the file format), so re-parsing
+   * the persisted file never reproduces the identical Float64 bytes
+   * `contentHash` was derived from. Keeping both means: `contentHash` stays
+   * the stable in-session/journal identity (and is what a loaded
+   * `SceneNode.meshId` and `MeshStore` record key on — never recomputed
+   * after a load), while `fileHash` is purely "where is this mesh's byte
+   * payload on the server" (`GET /api/meshes/:fileHash`). Optional/absent
+   * for a `MeshAsset` that has never been saved to the server yet (created
+   * this session, only present in `meshStore`/in-memory).
+   */
+  fileHash?: string;
 }
 
 /** Placement of a MeshAsset in the scene. */
@@ -103,6 +125,39 @@ export interface Restoration {
     finalMesh?: string;
   };
   qc: QcReport | null;
+}
+
+// ---------------------------------------------------------------------------
+// Measurements
+// ---------------------------------------------------------------------------
+
+/** `pointToPoint`/`pointToSurface` store 2 `points` and a mm `value`;
+ * `angle` stores 3 `points` (vertex is `points[1]`) and a degree `value`. */
+export type MeasurementKind = 'pointToPoint' | 'pointToSurface' | 'angle';
+
+/** A single picked (or, for point-to-surface's second point, derived — the
+ * nearest point on the target surface) point anchoring a `Measurement`. */
+export interface MeasurementPoint {
+  /** The SceneNode the point lies on — lets an overlay re-render after that
+   * node's visibility/opacity changes, and is a future extension point for
+   * re-deriving a measurement after its underlying mesh moves (Task 6+
+   * alignment tools; out of this task's scope — see PLAN.md). */
+  nodeId: string;
+  /** World-space Float64 mm coordinates (same frame as the owning mesh's
+   * `IndexedMesh.positions` — Phase 1 SceneNode transforms are always
+   * identity, see `SceneNode.transform`'s doc, so "world" and "mesh-local"
+   * coincide for now). */
+  position: Vec3;
+}
+
+export interface Measurement {
+  id: string;
+  kind: MeasurementKind;
+  points: readonly MeasurementPoint[];
+  /** Millimeters for `pointToPoint`/`pointToSurface`; degrees for `angle`. */
+  value: number;
+  /** ISO 8601 timestamp — display/ordering only, never fed into computations. */
+  createdAt: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -165,6 +220,11 @@ export interface CaseDocument {
   meshes: readonly MeshAsset[];
   scene: readonly SceneNode[];
   restorations: readonly Restoration[];
+  /** Point-to-point / point-to-surface / angle measurements (Task 7) —
+   * ephemeral user annotations, not journaled as `Operation`s (they don't
+   * mutate any mesh geometry — CLAUDE.md invariant 5 concerns geometry
+   * mutation, not measurement bookkeeping). */
+  measurements: readonly Measurement[];
   history: readonly Operation[];
   settings: CaseSettings;
 }

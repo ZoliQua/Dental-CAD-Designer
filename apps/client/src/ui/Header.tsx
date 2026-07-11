@@ -1,15 +1,69 @@
 import { useTranslation } from 'react-i18next';
+import { saveActiveCase } from '../engine/persistence';
+import { usePersistenceStore } from '../state/persistenceStore';
 import { LanguagePicker } from './LanguagePicker';
 import { ThemeToggle } from './ThemeToggle';
 
+/** Task 11: save status label — 'idle'/'saved'/'saving'/'unsaved'/'error'
+ * (state/persistenceStore.ts's `SaveStatus`), with the failed save's error
+ * message interpolated for the 'error' case. */
+function SaveStatusIndicator() {
+  const { t } = useTranslation();
+  const status = usePersistenceStore((state) => state.status);
+  const errorMessage = usePersistenceStore((state) => state.errorMessage);
+
+  const label =
+    status === 'error'
+      ? t('persistence.status.error', { message: errorMessage ?? '' })
+      : t(`persistence.status.${status}`);
+
+  return (
+    <span
+      className={`app-header__save-status app-header__save-status--${status}`}
+      data-testid="save-status"
+    >
+      {label}
+    </span>
+  );
+}
+
 export function Header() {
   const { t } = useTranslation();
+  const activeCaseName = usePersistenceStore((state) => state.activeCaseName);
+  const status = usePersistenceStore((state) => state.status);
+
+  function handleOpenPicker(): void {
+    usePersistenceStore.getState().setPickerOpen(true);
+  }
 
   return (
     <header className="app-header">
       <h1 className="app-header__title" data-testid="app-title">
         {t('app.title')}
       </h1>
+      <div className="app-header__case">
+        <span className="app-header__case-name" data-testid="active-case-name">
+          {activeCaseName ?? t('persistence.noCaseOpen')}
+        </span>
+        <button
+          type="button"
+          className="app-header__open-case-button"
+          data-testid="open-case-picker-button"
+          onClick={handleOpenPicker}
+        >
+          {t('persistence.openCaseButton')}
+        </button>
+        <button
+          type="button"
+          className="app-header__save-button"
+          data-testid="save-button"
+          disabled={status === 'idle' || status === 'saving'}
+          onClick={() => void saveActiveCase()}
+        >
+          {t('persistence.saveButton')}
+        </button>
+        <SaveStatusIndicator />
+      </div>
       <div className="app-header__controls">
         <LanguagePicker />
         <ThemeToggle />

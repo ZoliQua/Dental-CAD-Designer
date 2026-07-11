@@ -1,0 +1,72 @@
+{
+  "stats": {
+    "watertight": false,
+    "manifoldEdges": true,
+    "componentCount": 1,
+    "bbox": {
+      "min": [
+        -34.18594741821289,
+        -21.3995304107666,
+        -0.8029499650001526
+      ],
+      "max": [
+        33.371490478515625,
+        28.105690002441406,
+        22.320178985595703
+      ]
+    },
+    "surfaceAreaMm2": 5177.110019126217,
+    "signedVolumeMm3": null,
+    "degenerateCount": 0,
+    "boundaryEdgeCount": 2624
+  },
+  "report": {
+    "weldEpsilonMm": 0.000001,
+    "steps": [
+      {
+        "step": "weld",
+        "before": {
+          "vertexCount": 750384,
+          "triangleCount": 250128
+        },
+        "after": {
+          "vertexCount": 126377,
+          "triangleCount": 250128
+        },
+        "details": {}
+      },
+      {
+        "step": "dropDegenerateTriangles",
+        "before": {
+          "vertexCount": 126377,
+          "triangleCount": 250128
+        },
+        "after": {
+          "vertexCount": 126377,
+          "triangleCount": 250128
+        },
+        "details": {
+          "degenerateCount": 0,
+          "duplicateIndexCount": 0
+        }
+      },
+      {
+        "step": "orientNormalsConsistently",
+        "before": {
+          "vertexCount": 126377,
+          "triangleCount": 250128
+        },
+        "after": {
+          "vertexCount": 126377,
+          "triangleCount": 250128
+        },
+        "details": {
+          "flippedCount": 0,
+          "componentCount": 1,
+          "ambiguousComponentCount": 1
+        }
+      }
+    ]
+  },
+  "resultSha256": "1382310d505628c229181c7c12ca181f2eb9a0e7ec0b154bbb4a79ecd8f2bd72"
+}

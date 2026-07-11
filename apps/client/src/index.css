@@ -70,6 +70,55 @@ body {
   gap: 0.75rem;
 }
 
+/* Task 11: case name/save controls */
+.app-header__case {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.85rem;
+}
+
+.app-header__case-name {
+  color: var(--color-text-muted);
+  max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-header__open-case-button,
+.app-header__save-button {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.8rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.app-header__open-case-button:hover,
+.app-header__save-button:hover:not(:disabled) {
+  border-color: var(--color-accent);
+}
+
+.app-header__save-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.app-header__save-status {
+  color: var(--color-text-muted);
+}
+
+.app-header__save-status--unsaved {
+  color: var(--color-accent);
+}
+
+.app-header__save-status--error {
+  color: #e05555;
+}
+
 .language-picker {
   display: flex;
   align-items: center;
@@ -127,6 +176,66 @@ body {
   background: var(--color-bg);
 }
 
+.viewer-toolbar {
+  position: absolute;
+  top: 0.6rem;
+  left: 0.6rem;
+  right: 0.6rem;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+
+.viewer-toolbar__group {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem;
+  background: color-mix(in srgb, var(--color-bg-elevated) 85%, transparent);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  pointer-events: auto;
+}
+
+.viewer-toolbar__button {
+  font-size: 0.75rem;
+  padding: 0.3rem 0.55rem;
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.viewer-toolbar__button:hover:not(:disabled) {
+  border-color: var(--color-accent);
+}
+
+.viewer-toolbar__button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.viewer-toolbar__select {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.4rem;
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+}
+
+.viewer-toolbar__checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  color: var(--color-text);
+  padding: 0 0.3rem;
+}
+
 .status-bar {
   display: flex;
   gap: 1.5rem;
@@ -160,4 +269,859 @@ body {
 .status-bar__worker-button:disabled {
   cursor: default;
   opacity: 0.6;
+}
+
+/* Import panel — drag & drop, picker, per-file progress, intake summary. */
+.import-panel {
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.import-panel__controls {
+  display: flex;
+}
+
+.import-panel__browse-button {
+  width: 100%;
+  font-size: 0.8rem;
+  padding: 0.5rem;
+  background: transparent;
+  color: var(--color-text);
+  border: 1px dashed var(--color-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.import-panel__browse-button:hover {
+  border-color: var(--color-accent);
+}
+
+.import-panel__file-input {
+  display: none;
+}
+
+.import-panel__file-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.import-panel__file-row {
+  font-size: 0.78rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 0.4rem 0.5rem;
+}
+
+.import-panel__file-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.import-panel__file-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.import-panel__file-phase {
+  color: var(--color-text-muted);
+}
+
+.import-panel__cancel-button {
+  font-size: 0.7rem;
+  padding: 0.1rem 0.4rem;
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.import-panel__progress {
+  width: 100%;
+  margin-top: 0.3rem;
+}
+
+.import-panel__error {
+  color: #e05555;
+  margin: 0.3rem 0 0;
+}
+
+.import-summary {
+  margin-top: 0.4rem;
+}
+
+.import-summary__stats {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.1rem 0.5rem;
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+}
+
+.import-summary__stats dt {
+  font-weight: 600;
+}
+
+.import-summary__stats dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.import-summary__role {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-top: 0.4rem;
+  font-size: 0.75rem;
+}
+
+.import-summary__added {
+  display: inline-block;
+  margin-top: 0.3rem;
+  color: var(--color-accent);
+  font-size: 0.72rem;
+}
+
+.import-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  pointer-events: none;
+}
+
+.import-overlay__message {
+  font-size: 1.4rem;
+  color: #fff;
+  border: 3px dashed var(--color-accent);
+  border-radius: 12px;
+  padding: 2rem 3rem;
+}
+
+.unit-confirm-dialog__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.unit-confirm-dialog {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 1.25rem;
+  max-width: 26rem;
+}
+
+.unit-confirm-dialog__title {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.unit-confirm-dialog__message {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.unit-confirm-dialog__actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.unit-confirm-dialog__actions button {
+  flex: 1;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.8rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.unit-confirm-dialog__actions button:hover {
+  border-color: var(--color-accent);
+}
+
+/* Task 11: case picker */
+.case-picker__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.case-picker {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 1.25rem;
+  width: 28rem;
+  max-width: calc(100vw - 2rem);
+  max-height: calc(100vh - 4rem);
+  overflow-y: auto;
+}
+
+.case-picker__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.case-picker__title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.case-picker__create-form {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.case-picker__create-form input {
+  flex: 1;
+}
+
+.case-picker__loading,
+.case-picker__error,
+.case-picker__empty {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.case-picker__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.case-picker__row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.85rem;
+}
+
+.case-picker__name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.case-picker__active-badge {
+  margin-left: 0.4rem;
+  font-size: 0.7rem;
+  color: var(--color-accent);
+}
+
+.case-picker__updated-at {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+}
+
+.case-picker__rename-form {
+  display: flex;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+/* Scene tree */
+.scene-tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.scene-tree__row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  gap: 0.25rem 0.4rem;
+  font-size: 0.78rem;
+}
+
+.scene-tree__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scene-tree__role {
+  color: var(--color-text-muted);
+  font-size: 0.7rem;
+}
+
+.scene-tree__opacity {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+.scene-tree__remove {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  color: var(--color-text);
+  cursor: pointer;
+  line-height: 1;
+  width: 1.4rem;
+  height: 1.4rem;
+}
+
+.scene-tree__remove:hover {
+  border-color: var(--color-accent);
+}
+
+.scene-tree__repair {
+  grid-column: 1 / -1;
+}
+
+/* Repair panel (Task 8) — per-scene-node, appears under a scene-tree row
+   when that mesh's current stats show an issue. */
+.repair-panel {
+  margin-top: 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.repair-panel__title {
+  margin: 0;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-text-muted);
+}
+
+.repair-card {
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.72rem;
+}
+
+.repair-card__title {
+  margin: 0 0 0.15rem;
+  font-size: 0.76rem;
+}
+
+.repair-card__description {
+  margin: 0 0 0.3rem;
+  color: var(--color-text-muted);
+}
+
+.repair-card__status {
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.repair-card__error {
+  color: #e05555;
+  margin: 0;
+}
+
+.repair-card__applied {
+  color: var(--color-accent);
+  margin: 0;
+}
+
+.repair-card__summary {
+  margin: 0 0 0.3rem;
+}
+
+.repair-card__summary--muted {
+  color: var(--color-text-muted);
+}
+
+.repair-card__stats {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 0.35rem;
+  color: var(--color-text-muted);
+}
+
+.repair-card__stats th,
+.repair-card__stats td {
+  text-align: left;
+  padding: 0.05rem 0.3rem 0.05rem 0;
+  font-weight: normal;
+}
+
+.repair-card__apply-button {
+  font-size: 0.72rem;
+  padding: 0.25rem 0.6rem;
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-accent);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.repair-card__apply-button:hover:not(:disabled) {
+  background: var(--color-accent);
+  color: var(--color-bg);
+}
+
+.repair-card__apply-button:disabled {
+  cursor: default;
+  opacity: 0.5;
+  border-color: var(--color-border);
+}
+
+/* Measurement toolbar (Viewport overlay — same floating-panel style as
+   .viewer-toolbar, positioned below it) */
+.measure-toolbar {
+  position: absolute;
+  top: 3.2rem;
+  left: 0.6rem;
+  right: 0.6rem;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  pointer-events: none;
+}
+
+.measure-toolbar__group {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem;
+  background: color-mix(in srgb, var(--color-bg-elevated) 85%, transparent);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  pointer-events: auto;
+}
+
+.measure-toolbar__button,
+.measure-toolbar__cancel {
+  font-size: 0.75rem;
+  padding: 0.3rem 0.55rem;
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.measure-toolbar__button:hover,
+.measure-toolbar__cancel:hover {
+  border-color: var(--color-accent);
+}
+
+.measure-toolbar__button[aria-pressed='true'] {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.measure-toolbar__hint,
+.measure-toolbar__error {
+  margin: 0;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--color-bg-elevated) 85%, transparent);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  pointer-events: none;
+}
+
+.measure-toolbar__error {
+  color: #e05252;
+}
+
+/* Measurement HTML overlay labels (screen-space, no 3D geometry text —
+   see SceneManager.ts's syncMeasurements doc). */
+.measurement-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  pointer-events: none;
+}
+
+.measurement-overlay__label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-size: 0.72rem;
+  white-space: nowrap;
+  padding: 0.1rem 0.35rem;
+  background: color-mix(in srgb, var(--color-bg-elevated) 80%, transparent);
+  border: 1px solid var(--color-accent);
+  border-radius: 3px;
+  color: var(--color-text);
+}
+
+/* Measurement results panel (Sidebar) */
+.measurement-panel {
+  border-top: 1px solid var(--color-border);
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+}
+
+.measurement-panel__title {
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  margin: 0 0 0.5rem;
+}
+
+.measurement-panel__empty {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.measurement-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.measurement-list__row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+}
+
+.measurement-list__kind {
+  color: var(--color-text-muted);
+  flex: 1;
+}
+
+.measurement-list__value {
+  font-variant-numeric: tabular-nums;
+}
+
+.measurement-list__remove {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  color: var(--color-text);
+  cursor: pointer;
+  line-height: 1;
+  width: 1.4rem;
+  height: 1.4rem;
+}
+
+.measurement-list__remove:hover {
+  border-color: var(--color-accent);
+}
+
+/* Surface-distance heatmap panel (Task 9, Sidebar) */
+.surface-distance-panel {
+  border-top: 1px solid var(--color-border);
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.surface-distance-panel__title {
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.surface-distance-panel__empty {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.surface-distance-panel__selectors {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.surface-distance-panel__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+}
+
+.surface-distance-panel__field select,
+.surface-distance-panel__field input {
+  font-size: 0.78rem;
+  color: var(--color-text);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  padding: 0.2rem 0.3rem;
+}
+
+.surface-distance-panel__checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--color-text);
+}
+
+.surface-distance-panel__run-button {
+  font-size: 0.78rem;
+  padding: 0.3rem 0.6rem;
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-accent);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.surface-distance-panel__run-button:hover:not(:disabled) {
+  background: var(--color-accent);
+  color: var(--color-bg);
+}
+
+.surface-distance-panel__run-button:disabled {
+  cursor: default;
+  opacity: 0.5;
+  border-color: var(--color-border);
+}
+
+.surface-distance-panel__progress {
+  width: 100%;
+  height: 0.4rem;
+  border-radius: 2px;
+  background: var(--color-border);
+  overflow: hidden;
+}
+
+.surface-distance-panel__progress-bar {
+  height: 100%;
+  background: var(--color-accent);
+  transition: width 0.15s ease-out;
+}
+
+.surface-distance-panel__error {
+  color: #e05555;
+  font-size: 0.78rem;
+  margin: 0;
+}
+
+.surface-distance-panel__result {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.surface-distance-panel__stats {
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.surface-distance-panel__stats th {
+  text-align: left;
+  font-weight: normal;
+  color: var(--color-text-muted);
+  padding: 0.05rem 0.6rem 0.05rem 0;
+}
+
+.surface-distance-panel__stats td {
+  font-variant-numeric: tabular-nums;
+}
+
+.surface-distance-panel__range-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.surface-distance-panel__range-controls button {
+  font-size: 0.72rem;
+  padding: 0.25rem 0.5rem;
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.surface-distance-panel__range-controls button:hover:not(:disabled) {
+  border-color: var(--color-accent);
+}
+
+.surface-distance-panel__range-controls button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.heatmap-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.heatmap-legend__title {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+}
+
+.heatmap-legend__bar {
+  height: 0.6rem;
+  border-radius: 2px;
+  border: 1px solid var(--color-border);
+}
+
+.heatmap-legend__ticks {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.68rem;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Cross-section panel (Task 10, Sidebar) — reuses surface-distance-panel's
+   field/checkbox visual language for consistency. */
+.section-panel {
+  border-top: 1px solid var(--color-border);
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.section-panel__title {
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.section-panel__empty {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.section-panel__checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--color-text);
+}
+
+.section-panel__axis-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.section-panel__axis-button {
+  font-size: 0.78rem;
+  padding: 0.2rem 0.5rem;
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.section-panel__axis-button:hover {
+  border-color: var(--color-accent);
+}
+
+.section-panel__axis-button--active {
+  background: var(--color-accent);
+  color: var(--color-bg);
+  border-color: var(--color-accent);
+}
+
+.section-panel__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+}
+
+.section-panel__field-value {
+  font-size: 0.72rem;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.section-panel__help {
+  font-size: 0.68rem;
+  color: var(--color-text-muted);
+  margin: -0.1rem 0 0.2rem;
+  font-style: italic;
+}
+
+.section-panel__status {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.section-panel__error {
+  font-size: 0.78rem;
+  color: #e05252;
+  margin: 0;
+}
+
+.section-panel__export-button {
+  align-self: flex-start;
+  font-size: 0.78rem;
+  padding: 0.3rem 0.6rem;
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-accent);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.section-panel__export-button:hover:not(:disabled) {
+  background: var(--color-accent);
+  color: var(--color-bg);
+}
+
+.section-panel__export-button:disabled {
+  cursor: default;
+  opacity: 0.5;
+  border-color: var(--color-border);
 }

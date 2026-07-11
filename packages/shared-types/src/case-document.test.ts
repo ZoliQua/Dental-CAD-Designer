@@ -57,6 +57,7 @@ describe('CaseDocument', () => {
       },
     ],
     restorations: [restoration],
+    measurements: [],
     history: [],
     settings: {
       materialProfileId: 'zirconia-default',

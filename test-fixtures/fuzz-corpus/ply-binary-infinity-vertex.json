@@ -1,0 +1,8 @@
+{
+  "parser": "ply",
+  "expected": {
+    "kind": "throws",
+    "errorClassName": "MalformedSyntaxError"
+  },
+  "note": "Task 3 mutation-fuzz-motivated finding: binary PLY float32/float64 properties can legally encode an Infinity bit pattern; the pre-fix reader stored it into positions[] unchecked. Fixed in ply/binary.ts readVertexRow with a role-scoped Number.isFinite check."
+}

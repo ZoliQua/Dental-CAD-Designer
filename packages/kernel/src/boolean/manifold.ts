@@ -18,8 +18,9 @@
 // packages/kernel-workers/tsconfig.json's allowImportingTsExtensions
 // comment for the same requirement on that package.
 import Module from 'manifold-3d';
-import type { ErrorStatus, Manifold, ManifoldToplevel, Mesh } from 'manifold-3d';
+import type { ErrorStatus, Manifold, ManifoldToplevel, Mat4, Mesh } from 'manifold-3d';
 import type { IndexedMesh } from '../mesh/types.ts';
+import { normalizePlane, type Plane, type PlaneBasis } from '../section/plane.ts';
 
 // manifold-3d's Mesh only ever carries our three position channels here —
 // no normals, UVs, or other vertex properties (YAGNI, see module doc above).
@@ -227,4 +228,111 @@ export async function volume(mesh: IndexedMesh): Promise<number> {
  * {@link NonManifoldInputError} if `mesh` is not watertight. */
 export async function surfaceArea(mesh: IndexedMesh): Promise<number> {
   return withManifold(mesh, (manifold) => manifold.surfaceArea());
+}
+
+// ---------------------------------------------------------------------------
+// sectionCap (Task 10): filled cross-section polygon, via manifold-3d's
+// `Manifold.slice()`, for closed watertight meshes. This is the DISPLAY-ONLY
+// half of Task 10's cross-section feature — the acceptance-critical outline
+// polyline (../section/polyline.ts's `sectionMesh`) never touches
+// manifold-3d and is exact Float64 end-to-end; this function inherits
+// manifold-3d's Float32 WASM-boundary rounding (see `toManifoldMesh`'s
+// `@errorBound` above) THROUGH THE ROTATION as well (the rotation below is
+// applied to the ALREADY-Float32-cast vertex positions manifold-3d holds
+// internally), so a cap vertex can be off the true section plane by up to
+// the same ~1.2e-7 relative / ~1.2e-4 mm absolute bound documented there —
+// acceptable for a visual fill, never used for any measurement.
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds the column-major `Mat4` (see manifold-3d's `Manifold.transform`
+ * doc: "last row is ignored", i.e. this is really a 3x4 affine transform
+ * with no translation here) that maps a world-space point `p` to
+ * `(e1.p, e2.p, normal.p)` — `basis`'s local frame, with `basis.normal`
+ * landing on manifold-3d's slice axis (+Z). No translation component: the
+ * plane's actual offset along `normal` is handled by `slice`'s `height`
+ * argument (`basis.d`) instead, not by translating the manifold first — see
+ * `sectionCap`'s call site.
+ */
+function rotationMat4FromBasis(basis: PlaneBasis): Mat4 {
+  const { e1, e2, normal } = basis;
+  return [
+    e1[0], e2[0], normal[0], 0,
+    e1[1], e2[1], normal[1], 0,
+    e1[2], e2[2], normal[2], 0,
+    0, 0, 0, 1,
+  ];
+}
+
+/**
+ * Filled cross-section polygon(s) where `plane` cuts `mesh`, triangulated
+ * into a flat `IndexedMesh` in WORLD coordinates — `null` if the plane
+ * misses the mesh entirely (manifold-3d's `slice` returns an empty
+ * `CrossSection` in that case; see `Manifold.slice`'s doc). Only valid for
+ * CLOSED WATERTIGHT meshes (this task's brief) — like `union`/`subtract`/
+ * `intersect` above, rejects a non-watertight `mesh` with
+ * {@link NonManifoldInputError} rather than silently producing a nonsense
+ * cap.
+ *
+ * Multiple disjoint contours (e.g. a plane cutting a torus through its
+ * center, or a hole in the cross-section) are handled automatically —
+ * `CrossSection.toPolygons()`/manifold-3d's own `triangulate()` already
+ * resolve the fill rule (which loops are outer boundaries vs. holes), so
+ * this function never needs to reason about winding/containment itself.
+ */
+export async function sectionCap(mesh: IndexedMesh, plane: Plane): Promise<IndexedMesh | null> {
+  const basis = normalizePlane(plane); // throws DegeneratePlaneError before touching WASM at all
+  const toplevel = await initManifold();
+  const manifold = constructManifold(toplevel, mesh); // throws NonManifoldInputError if not watertight
+  try {
+    const rotated = manifold.transform(rotationMat4FromBasis(basis));
+    try {
+      const cross = rotated.slice(basis.d);
+      try {
+        if (cross.isEmpty()) {
+          return null;
+        }
+        const polygons = cross.toPolygons();
+        const triangles = toplevel.triangulate(polygons);
+        if (triangles.length === 0) {
+          return null;
+        }
+
+        // Flatten `polygons` once, in the SAME order fed to `triangulate` —
+        // its returned triangle-vertex indices reference this exact
+        // concatenation ("referencing the original polygon points in
+        // order" — manifold-3d's `triangulate` doc).
+        const flat2d: [number, number][] = [];
+        for (const contour of polygons) {
+          for (const point of contour) {
+            flat2d.push(point);
+          }
+        }
+
+        const positions = new Float64Array(flat2d.length * 3);
+        for (let i = 0; i < flat2d.length; i++) {
+          const [u, v] = flat2d[i]!;
+          // Inverse of plane.ts's projectToPlaneXY — see PlaneBasis's doc:
+          // p = u*e1 + v*e2 + d*normal.
+          positions[i * 3] = u * basis.e1[0] + v * basis.e2[0] + basis.d * basis.normal[0];
+          positions[i * 3 + 1] = u * basis.e1[1] + v * basis.e2[1] + basis.d * basis.normal[1];
+          positions[i * 3 + 2] = u * basis.e1[2] + v * basis.e2[2] + basis.d * basis.normal[2];
+        }
+        const indices = new Uint32Array(triangles.length * 3);
+        for (let i = 0; i < triangles.length; i++) {
+          const [a, b, c] = triangles[i]!;
+          indices[i * 3] = a;
+          indices[i * 3 + 1] = b;
+          indices[i * 3 + 2] = c;
+        }
+        return { positions, indices };
+      } finally {
+        cross.delete();
+      }
+    } finally {
+      rotated.delete();
+    }
+  } finally {
+    manifold.delete();
+  }
 }

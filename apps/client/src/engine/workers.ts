@@ -15,9 +15,113 @@ const SMOKE_TEST_TRIANGLE_COUNT = 1000;
 
 let pool: WorkerPool | null = null;
 
-function getPool(): WorkerPool {
+/**
+ * The single shared WorkerPool for the whole client — smoke tests below and
+ * engine/importer.ts (parseMeshFile/intakeMesh/rescaleMesh jobs) all reuse
+ * this one instance rather than each spinning up their own pool of
+ * (expensive to spawn) workers.
+ */
+export function getPool(): WorkerPool {
   pool ??= new WorkerPool();
   return pool;
+}
+
+// ---------------------------------------------------------------------------
+// Measurement pool — buildBvh / releaseBvh / measurePointToSurface /
+// raycastMesh (Task 7).
+//
+// Deliberately a SEPARATE, `size: 1` pool from `getPool()`'s general
+// (multi-worker) geometry pool, not just another job type routed through it.
+// kernel-workers' `buildBvh`/`measurePointToSurface`/`raycastMesh` jobs cache
+// a mesh's BVH in THAT WORKER's own memory, keyed by contentHash (see
+// jobs.ts's "Per-worker BVH cache" doc) — `WorkerPool.run()` has no per-job
+// worker affinity, so on a multi-worker pool a `buildBvh` call and a later
+// `measurePointToSurface` call for the same mesh are not guaranteed to reuse
+// the same cache. Pinning every BVH-related job to a pool that only ever has
+// ONE worker makes "build once, query many times" actually hold, at the
+// (acceptable) cost of serializing measurement picks — a single interactive
+// user action, never a bulk/parallel workload in Phase 1.
+let measurementPool: WorkerPool | null = null;
+
+function getMeasurementPool(): WorkerPool {
+  measurementPool ??= new WorkerPool({ size: 1 });
+  return measurementPool;
+}
+
+/** contentHashes already confirmed built on the measurement pool's one
+ * worker — an in-memory mirror of that worker's own `bvhCache` (jobs.ts) so
+ * `ensureBvhBuilt` can skip a redundant `buildBvh` round trip for a mesh
+ * already queried this session. Cleared only by `releaseBvhForMesh` (mesh
+ * removed from the case) — never grows unbounded beyond "meshes currently
+ * live in this session", matching meshStore's own lifetime. */
+const builtBvhHashes = new Set<string>();
+
+/**
+ * Ensures a BVH is cached (on the measurement pool's worker) for the mesh
+ * identified by `contentHash`, building it via the `buildBvh` job if this is
+ * the first time this session sees that hash. `positions`/`indices` should
+ * be the mesh's Float64 MASTER buffers (meshStore.ts's `EngineMeshRecord`) —
+ * this function `.slice()`s them before transferring the copy into the
+ * worker, so the caller's master buffers are never detached (a `Transferable`
+ * transfer would otherwise steal them, breaking rendering/every other
+ * consumer of that same EngineMeshRecord — see jobs.ts's `BuildBvhPayload`
+ * doc for the same point from the worker side).
+ */
+export async function ensureBvhBuilt(
+  contentHash: string,
+  positions: Float64Array,
+  indices: Uint32Array,
+): Promise<void> {
+  if (builtBvhHashes.has(contentHash)) {
+    return;
+  }
+  const positionsCopy = positions.slice();
+  const indicesCopy = indices.slice();
+  await getMeasurementPool().run(
+    'buildBvh',
+    { contentHash, positions: positionsCopy, indices: indicesCopy },
+    { transfer: [positionsCopy.buffer, indicesCopy.buffer] },
+  );
+  builtBvhHashes.add(contentHash);
+}
+
+/**
+ * Releases a mesh's cached BVH — called from engine/caseStore.ts's
+ * `removeSceneNode` alongside `meshStore.remove` (same "last reference
+ * gone" lifecycle — see that method's doc), so a removed mesh's worker-side
+ * BVH doesn't outlive it for the rest of the session. Fire-and-forget and a
+ * no-op if this session never built a BVH for `contentHash` (skips even
+ * spawning the measurement pool's worker just to release nothing it has).
+ */
+export function releaseBvhForMesh(contentHash: string): void {
+  if (!builtBvhHashes.delete(contentHash)) {
+    return;
+  }
+  void getMeasurementPool()
+    .run('releaseBvh', { contentHash })
+    .catch((error: unknown) => {
+      console.error('releaseBvhForMesh: releaseBvh job failed', error);
+    });
+}
+
+/** Exposes the measurement pool for ToolManager.ts's `buildBvh`/
+ * `measurePointToSurface`/`raycastMesh` calls — kept as its own accessor
+ * (rather than folding measurement jobs into `getPool()`'s callers) so the
+ * "why a separate pool" reasoning above stays attached to one obvious call
+ * site. */
+export function getMeasurementWorkerPool(): WorkerPool {
+  return getMeasurementPool();
+}
+
+/** TEST-ONLY: drops the "already built this session" memo so tests can
+ * assert `ensureBvhBuilt` actually issues a fresh `buildBvh` call rather
+ * than skipping it because an EARLIER test (same worker-process module
+ * instance) happened to use the same literal contentHash. Does not destroy
+ * the underlying pool/worker (mirrors `getPool()`'s own no-teardown
+ * convention — spawning a worker is expensive, so the singleton persists
+ * across a test file's whole run). */
+export function resetBvhCacheForTests(): void {
+  builtBvhHashes.clear();
 }
 
 /**

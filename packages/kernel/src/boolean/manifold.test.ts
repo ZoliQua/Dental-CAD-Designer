@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import type { IndexedMesh } from '../mesh/types.ts';
 import { icosphereMesh } from './manifold.test-fixtures.ts';
-import { NonManifoldInputError, intersect, subtract, union, volume } from './manifold.ts';
+import { NonManifoldInputError, intersect, sectionCap, subtract, union, volume } from './manifold.ts';
 
 // Unit cube (edge length 1), corner at (offsetX, offsetY, offsetZ). Winding
 // verified directly against manifold-3d (status 'NoError', analytic volume)
@@ -132,5 +132,89 @@ describe('determinism', () => {
     const second = await union(a, b);
 
     expect(hashMesh(first)).toBe(hashMesh(second));
+  });
+});
+
+/** Sum of triangle areas of a flat `IndexedMesh` (used here only for
+ * roughly-planar cap meshes, where this is a physically meaningful total
+ * area regardless of triangulation). */
+function meshArea(mesh: IndexedMesh): number {
+  let area = 0;
+  const { positions, indices } = mesh;
+  for (let t = 0; t < indices.length / 3; t++) {
+    const ia = indices[t * 3]!;
+    const ib = indices[t * 3 + 1]!;
+    const ic = indices[t * 3 + 2]!;
+    const ax = positions[ia * 3]!, ay = positions[ia * 3 + 1]!, az = positions[ia * 3 + 2]!;
+    const bx = positions[ib * 3]!, by = positions[ib * 3 + 1]!, bz = positions[ib * 3 + 2]!;
+    const cx = positions[ic * 3]!, cy = positions[ic * 3 + 1]!, cz = positions[ic * 3 + 2]!;
+    const ux = bx - ax, uy = by - ay, uz = bz - az;
+    const vx = cx - ax, vy = cy - ay, vz = cz - az;
+    const crossX = uy * vz - uz * vy;
+    const crossY = uz * vx - ux * vz;
+    const crossZ = ux * vy - uy * vx;
+    area += 0.5 * Math.hypot(crossX, crossY, crossZ);
+  }
+  return area;
+}
+
+// sectionCap (Task 10): filled cross-section polygon via manifold-3d's
+// slice — see boolean/manifold.ts's module doc for why this is
+// DISPLAY-ONLY (Float32-WASM-boundary-bounded precision, never the
+// acceptance-critical outline — that's ../section/polyline.ts's
+// `sectionMesh`, exact Float64 end-to-end, tested in polyline.test.ts).
+describe('sectionCap', () => {
+  it('caps a unit cube through its middle (z=0.5) to a 1x1 square, area 1', async () => {
+    const cube = unitCubeMesh(0, 0, 0);
+    const cap = await sectionCap(cube, { point: [0, 0, 0.5], normal: [0, 0, 1] });
+    expect(cap).not.toBeNull();
+    expect(meshArea(cap!)).toBeCloseTo(1, 3);
+    for (let i = 0; i < cap!.positions.length; i += 3) {
+      expect(cap!.positions[i + 2]).toBeCloseTo(0.5, 3); // every cap vertex lies on the cutting plane
+    }
+  });
+
+  it('caps an axis-aligned tilted plane through the cube with the correct analytic area', async () => {
+    // Plane x=0.5 (normal along X instead of Z) — same square cross-section
+    // by symmetry, exercising the general (non-identity) rotation path.
+    const cube = unitCubeMesh(0, 0, 0);
+    const cap = await sectionCap(cube, { point: [0.5, 0, 0], normal: [1, 0, 0] });
+    expect(cap).not.toBeNull();
+    expect(meshArea(cap!)).toBeCloseTo(1, 3);
+  });
+
+  it('caps a sphere through its center with area close to pi*r^2', async () => {
+    const radius = 5;
+    const sphere = icosphereMesh(radius, 4);
+    const cap = await sectionCap(sphere, { point: [0, 0, 0], normal: [0, 0, 1] });
+    expect(cap).not.toBeNull();
+    const expectedArea = Math.PI * radius ** 2;
+    // Loose tolerance: icosphere tessellation deficit (see
+    // manifold.test-fixtures.ts's icosphereMesh doc, ~0.86% at subdivision
+    // 4 for VOLUME; the cap's 2D cross-section deficit is the same order)
+    // plus the documented Float32 WASM-boundary rounding — this is a
+    // display-quality sanity check, not a precision claim.
+    expect(Math.abs(meshArea(cap!) - expectedArea) / expectedArea).toBeLessThan(0.02);
+  });
+
+  it('returns null when the plane misses the mesh entirely', async () => {
+    const cube = unitCubeMesh(0, 0, 0);
+    const cap = await sectionCap(cube, { point: [0, 0, 100], normal: [0, 0, 1] });
+    expect(cap).toBeNull();
+  });
+
+  it('rejects a non-watertight mesh with NonManifoldInputError', async () => {
+    const open = openBoxMesh();
+    await expect(sectionCap(open, { point: [0, 0, 0.5], normal: [0, 0, 1] })).rejects.toThrow(
+      NonManifoldInputError,
+    );
+  });
+
+  it('produces byte-identical output hashes across repeated calls', async () => {
+    const cube = unitCubeMesh(0, 0, 0);
+    const plane = { point: [0, 0, 0.5] as const, normal: [0.2, 0.3, 1] as const };
+    const first = await sectionCap(cube, plane);
+    const second = await sectionCap(cube, plane);
+    expect(hashMesh(first!)).toBe(hashMesh(second!));
   });
 });

@@ -15,7 +15,10 @@
   },
   "sidebar": {
     "sceneTreeTitle": "Scene",
-    "empty": "No objects in the scene yet."
+    "empty": "No objects in the scene yet.",
+    "visibilityToggle": "Toggle visibility",
+    "opacityLabel": "Opacity",
+    "removeButton": "Remove"
   },
   "statusBar": {
     "engineReady": "Engine: ready",
@@ -30,5 +33,198 @@
     "manifoldSmokeTestRunning": "Manifold: running…",
     "manifoldSmokeTestSuccess": "Manifold: ✓ volume {{volume}}",
     "manifoldSmokeTestFailure": "Manifold: ✗ failed"
+  },
+  "import": {
+    "dropzoneTitle": "Drag & drop STL or PLY files here",
+    "dropzoneHint": "or",
+    "browseButton": "Browse files…",
+    "dropOverlayTitle": "Drop to import",
+    "cancelButton": "Cancel",
+    "phase": {
+      "reading": "Reading file…",
+      "parsing": "Parsing…",
+      "awaitingUnitConfirmation": "Waiting for unit confirmation…",
+      "rescaling": "Rescaling…",
+      "intake": "Processing mesh…",
+      "registering": "Registering…",
+      "done": "Done",
+      "cancelled": "Cancelled",
+      "error": "Error"
+    },
+    "errorLabel": "Error: {{message}}",
+    "stats": {
+      "watertight": "Watertight",
+      "manifold": "Manifold edges",
+      "components": "Components",
+      "bbox": "Bounding box (mm)",
+      "area": "Surface area (mm²)",
+      "volume": "Volume (mm³)",
+      "degenerate": "Degenerate triangles",
+      "boundaryEdges": "Boundary edges",
+      "yes": "Yes",
+      "no": "No",
+      "notApplicable": "n/a"
+    },
+    "warningsTitle": "Warnings",
+    "roleLabel": "Add to scene as",
+    "rolePlaceholder": "Choose role…",
+    "addedToScene": "Added to scene"
+  },
+  "role": {
+    "upperJaw": "Upper jaw",
+    "lowerJaw": "Lower jaw",
+    "prepDie": "Prep / die",
+    "antagonist": "Antagonist",
+    "situ": "Situ",
+    "gingiva": "Gingiva"
+  },
+  "viewer": {
+    "view": {
+      "groupLabel": "Standard views",
+      "front": "Front",
+      "buccal": "Buccal",
+      "lingual": "Lingual",
+      "mesial": "Mesial",
+      "distal": "Distal",
+      "occlusal": "Occlusal"
+    },
+    "projection": {
+      "perspective": "Perspective",
+      "orthographic": "Orthographic"
+    },
+    "shading": {
+      "label": "Shading",
+      "clinical": "Clinical",
+      "matcap": "Matcap"
+    },
+    "wireframe": {
+      "toggle": "Wireframe"
+    },
+    "frameAll": "Frame all",
+    "frameSelection": "Frame selection"
+  },
+  "measure": {
+    "toolGroupLabel": "Measure",
+    "pointToPoint": "Point to point",
+    "pointToSurface": "Point to surface",
+    "angle": "Angle",
+    "cancelButton": "Cancel",
+    "instruction": "Pick {{picked}} of {{required}} points",
+    "panelTitle": "Measurements",
+    "empty": "No measurements yet.",
+    "deleteButton": "Delete",
+    "kind": {
+      "pointToPoint": "Point to point",
+      "pointToSurface": "Point to surface",
+      "angle": "Angle"
+    },
+    "angleValue": "{{degrees}}°"
+  },
+  "heatmap": {
+    "panelTitle": "Surface distance",
+    "needsTwoMeshes": "Add at least two meshes to the scene to compare surfaces.",
+    "meshALabel": "Mesh A",
+    "meshBLabel": "Mesh B",
+    "selectPlaceholder": "Choose mesh…",
+    "signedLabel": "Signed (inside −, outside +)",
+    "runButton": "Run",
+    "running": "Computing…",
+    "errorLabel": "Surface distance failed: {{message}}",
+    "statsMin": "Min",
+    "statsMax": "Max",
+    "statsMean": "Mean",
+    "statsRms": "RMS",
+    "showToggle": "Show heatmap",
+    "legendTitle": "Legend (µm)",
+    "rangeMinLabel": "Min (µm)",
+    "rangeMaxLabel": "Max (µm)",
+    "rangeManual": "Apply range",
+    "rangeAuto": "Auto range"
+  },
+  "section": {
+    "panelTitle": "Cross-section",
+    "needsMesh": "Add a mesh to the scene to take a cross-section.",
+    "enableToggle": "Enable section tool",
+    "axisGroupLabel": "Axis preset",
+    "axis": {
+      "x": "X",
+      "y": "Y",
+      "z": "Z",
+      "custom": "Custom"
+    },
+    "offsetLabel": "Position along normal",
+    "yawLabel": "Yaw",
+    "pitchLabel": "Pitch",
+    "pitchHelp": "Pitch rotates the section plane around the world X axis (Phase-1 simplification).",
+    "showCapToggle": "Show filled cap",
+    "clipToggle": "Clip mesh at plane",
+    "running": "Computing…",
+    "errorLabel": "Section failed: {{message}}",
+    "pointCount": "{{count}} outline point(s)",
+    "exportSvgButton": "Download SVG"
+  },
+  "unitConfirm": {
+    "title": "Confirm scan units",
+    "messageCm": "\"{{fileName}}\" looks unusually small (largest extent {{extent}} mm) — it may actually be in centimeters, not millimeters. Multiply all coordinates by {{factor}}?",
+    "messageUm": "\"{{fileName}}\" looks unusually large (largest extent {{extent}} mm) — it may actually be in micrometers, not millimeters. Multiply all coordinates by {{factor}}?",
+    "keepMm": "Keep as-is (mm)",
+    "applyFactor": "Apply ×{{factor}}"
+  },
+  "persistence": {
+    "noCaseOpen": "No case open",
+    "openCaseButton": "Open case…",
+    "saveButton": "Save",
+    "status": {
+      "idle": "No case open",
+      "saved": "Saved",
+      "saving": "Saving…",
+      "unsaved": "Unsaved changes",
+      "error": "Save failed: {{message}}"
+    },
+    "picker": {
+      "title": "Cases",
+      "closeButton": "Close",
+      "newCaseNamePlaceholder": "New case name…",
+      "createButton": "Create",
+      "openButton": "Open",
+      "renameButton": "Rename",
+      "empty": "No cases yet.",
+      "loading": "Loading cases…",
+      "errorLabel": "Failed to load cases: {{message}}",
+      "renameErrorLabel": "Failed to rename case: {{message}}",
+      "activeLabel": "Active",
+      "updatedAtLabel": "Updated {{date}}"
+    }
+  },
+  "repair": {
+    "panelTitle": "Repair",
+    "previewLoading": "Computing preview…",
+    "previewError": "Repair preview failed: {{message}}",
+    "applyButton": "Apply",
+    "applying": "Applying…",
+    "applied": "Applied",
+    "measurementsCleared": "{{count}} measurement(s) removed — they referenced the repaired surface",
+    "stats": {
+      "before": "Before",
+      "after": "After"
+    },
+    "removeComponents": {
+      "title": "Remove small components",
+      "description": "Keeps only the largest connected piece, dropping smaller stray fragments.",
+      "summary": "Removes {{removed}} of {{total}} component(s)",
+      "noneToRemove": "Nothing to remove — every component would be kept."
+    },
+    "splitNonManifoldEdges": {
+      "title": "Split non-manifold edges",
+      "description": "Duplicates vertices on edges shared by more than 2 triangles so every edge has at most 2.",
+      "summary": "Duplicates {{count}} vertex/vertices across {{edges}} non-manifold edge(s)"
+    },
+    "fillSmallHoles": {
+      "title": "Fill small holes",
+      "description": "Closes small boundary loops with a smooth (not curvature-continuous) patch. Larger holes are refused, not filled.",
+      "summary": "Fills {{filled}} of {{found}} hole(s)",
+      "skippedSummary": "{{count}} hole(s) refused (too large to fill safely)",
+      "noneToFill": "No holes found."
+    }
   }
 }
