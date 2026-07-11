@@ -191,6 +191,7 @@
       "empty": "Még nincs eset.",
       "loading": "Esetek betöltése…",
       "errorLabel": "Az esetek betöltése sikertelen: {{message}}",
+      "renameErrorLabel": "Az eset átnevezése sikertelen: {{message}}",
       "activeLabel": "Aktív",
       "updatedAtLabel": "Frissítve: {{date}}"
     }

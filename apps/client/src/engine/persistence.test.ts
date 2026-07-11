@@ -256,6 +256,60 @@ describe('createCase', () => {
     const row = server.cases.get(state.activeCaseId!)!;
     expect(row.document).toEqual(doc);
   });
+
+  it('on a PUT failure, leaves the previously active case\'s document AND meshes fully intact (and renderable), and surfaces status "error"', async () => {
+    const caseA = await createSavedCase('Case A', ['a-hash']);
+    const documentBeforeFailedAttempt = useCaseStore.getState().document;
+    expect(documentBeforeFailedAttempt.id).toBe(caseA.id);
+
+    // Fail the NEW case's PUT (the one createCase('Case B') is about to
+    // issue) while letting everything else (including case A's own PUT,
+    // already long past by this point) through untouched.
+    const realFetch = server.fetchImpl;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const method = (init?.method ?? 'GET').toUpperCase();
+        const path = String(input);
+        if (method === 'PUT' && !path.includes(`/cases/${caseA.id}`)) {
+          return new Response(null, { status: 500 });
+        }
+        return realFetch(input, init);
+      }),
+    );
+
+    await expect(createCase('Case B')).rejects.toThrow();
+
+    expect(usePersistenceStore.getState().status).toBe('error');
+    // Case A is still the active case — createCase's PUT failure must never
+    // reach setActiveCase/loadDocument/resetMeshRegistryForCaseSwitch.
+    expect(usePersistenceStore.getState().activeCaseId).toBe(caseA.id);
+    expect(useCaseStore.getState().document).toBe(documentBeforeFailedAttempt);
+
+    // Case A's mesh is still resident and resolves via the normal render
+    // path — no dangling meshId, no premature registry clear.
+    expect(caseStore.getMeshRecord('a-hash')).toBeDefined();
+    const renderNodes = caseStore.getRenderNodes();
+    expect(renderNodes).toHaveLength(1);
+    expect(renderNodes[0]!.role).toBe('upperJaw');
+  });
+
+  it('on success, releases the previously active case\'s meshes and installs a clean empty document', async () => {
+    const caseA = await createSavedCase('Case A', ['a-hash']);
+    expect(caseStore.getMeshRecord('a-hash')).toBeDefined();
+
+    await createCase('Case B');
+
+    expect(usePersistenceStore.getState().status).toBe('saved');
+    expect(usePersistenceStore.getState().activeCaseId).not.toBe(caseA.id);
+    // Case A's mesh was only referenced by the outgoing case — released once
+    // Case B's empty document was installed.
+    expect(caseStore.getMeshRecord('a-hash')).toBeUndefined();
+
+    const doc = useCaseStore.getState().document;
+    expect(doc.scene).toHaveLength(0);
+    expect(doc.meshes).toHaveLength(0);
+  });
 });
 
 describe('save / openCase round trip', () => {

@@ -20,6 +20,7 @@ export function CasePicker() {
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [renameError, setRenameError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -44,6 +45,14 @@ export function CasePicker() {
       await createCase(name);
       setNewCaseName('');
       close();
+    } catch (error) {
+      // createCase already flips usePersistenceStore's status to 'error'
+      // (see engine/persistence.ts) and the header's status pill renders
+      // that message — nothing more for this modal to show. Log for
+      // debugging/telemetry visibility and just stay open on the create
+      // form (creating=false below lets the user retry) rather than
+      // silently swallowing the rejection into an unhandled promise.
+      console.error('CasePicker: createCase failed', error);
     } finally {
       setCreating(false);
     }
@@ -55,6 +64,13 @@ export function CasePicker() {
     try {
       await openCase(id, name);
       close();
+    } catch (error) {
+      // Same rationale as handleCreate above: openCase already surfaces the
+      // failure via usePersistenceStore's status ('error', with message) —
+      // the header's status pill is the user-visible surface for this.
+      // Stay on the picker (don't close) so the user can pick a different
+      // case or retry.
+      console.error('CasePicker: openCase failed', error);
     } finally {
       setOpeningId(null);
     }
@@ -63,14 +79,28 @@ export function CasePicker() {
   function startRename(caseSummary: CaseSummary): void {
     setRenamingId(caseSummary.id);
     setRenameValue(caseSummary.name);
+    setRenameError(null);
   }
 
   async function submitRename(event: FormEvent<HTMLFormElement>, id: string): Promise<void> {
     event.preventDefault();
     const name = renameValue.trim();
     if (!name) return;
-    await renameCase(id, name);
-    setRenamingId(null);
+    try {
+      await renameCase(id, name);
+      setRenamingId(null);
+      setRenameError(null);
+    } catch (error) {
+      // Unlike create/open, a failed rename has no other user-visible
+      // surface (renameCase doesn't touch usePersistenceStore's status —
+      // it's not a save/load operation), so this modal owns showing it.
+      // Exit rename mode so the row doesn't get stuck showing a form the
+      // user has no way to dismiss otherwise; the row's name simply reverts
+      // to showing its last-known (still-correct, since the rename never
+      // landed) value.
+      setRenamingId(null);
+      setRenameError(error instanceof Error ? error.message : String(error));
+    }
   }
 
   return (
@@ -99,6 +129,11 @@ export function CasePicker() {
         {casesLoading && <p className="case-picker__loading">{t('persistence.picker.loading')}</p>}
         {casesError && (
           <p className="case-picker__error">{t('persistence.picker.errorLabel', { message: casesError })}</p>
+        )}
+        {renameError && (
+          <p className="case-picker__error" data-testid="case-picker-rename-error">
+            {t('persistence.picker.renameErrorLabel', { message: renameError })}
+          </p>
         )}
         {!casesLoading && cases.length === 0 && !casesError && (
           <p className="case-picker__empty">{t('persistence.picker.empty')}</p>

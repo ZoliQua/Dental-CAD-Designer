@@ -135,7 +135,16 @@ async function uploadMeshBytes(expectedHash: string, bytes: Uint8Array): Promise
  * the OUTGOING case's geometry unconditionally has no reason to stay
  * resident (there's no fetch/parse/weld loop that could fail partway
  * through in between, unlike `openCase` below — see that function's doc for
- * why it does its own targeted release instead of this blanket clear). */
+ * why it does its own targeted release instead of this blanket clear).
+ *
+ * MUST be called only AFTER `caseStore.loadDocument()` has installed the new
+ * (empty-`scene`) document — never before, and never if the POST/PUT that
+ * produced it could still fail. Clearing first would leave the OLD
+ * document's SceneNodes pointing at now-missing `meshId`s the instant a
+ * later step throws (a transiently-observable dangling `meshId`, exactly
+ * the invariant this file's module doc rules out); clearing after is safe
+ * specifically because the just-installed document's `scene` is empty, so
+ * every mesh this clears is, by construction, already unreferenced. */
 function resetMeshRegistryForCaseSwitch(): void {
   for (const record of caseStore.meshStore.list()) {
     releaseBvhForMesh(record.contentHash);
@@ -173,22 +182,52 @@ export async function listCases(): Promise<void> {
  * the server never actually has, silently diverging until the first real
  * edit triggers a save. This makes creation behave exactly like any other
  * confirmed save.
+ *
+ * ## Ordering: POST -> PUT -> loadDocument -> release old meshes
+ *
+ * Mirrors `openCase`'s "never observe a dangling meshId, old state intact on
+ * failure" discipline, adapted to `createCase`'s simpler shape (no
+ * fetch/parse/weld loop to roll back — the new document's `scene` is always
+ * empty). The OUTGOING case's meshes are only released via
+ * `resetMeshRegistryForCaseSwitch()` AFTER `loadDocument(emptyDocument)` has
+ * installed the new (empty-scene) document — at that point they're
+ * unconditionally unreferenced, so the blanket clear is safe. If the POST or
+ * the PUT rejects, execution never reaches `loadDocument`/the registry
+ * clear at all: the previously active case's document AND meshes are left
+ * completely untouched (still the current `caseStore` document, still
+ * resident/renderable), status flips to `'error'`, and the error is
+ * rethrown for the caller (ui/CasePicker.tsx) to react to — same contract
+ * `openCase` already provides.
  */
 export async function createCase(name: string): Promise<void> {
-  const created = await requestJson<CaseSummary>('POST', '/cases', { name });
-  resetMeshRegistryForCaseSwitch();
-  const emptyDocument: CaseDocument = {
-    ...createEmptyCaseDocument(),
-    id: created.id,
-    createdAt: created.createdAt,
-  };
-  const summary = await requestJson<CaseSummary>('PUT', `/cases/${created.id}`, emptyDocument);
-  lastPersistedDocument = emptyDocument;
-  caseStore.loadDocument(emptyDocument);
-  usePersistenceStore.getState().setActiveCase({ id: summary.id, name: summary.name });
-  usePersistenceStore.getState().setLastSavedAt(summary.updatedAt);
-  usePersistenceStore.getState().setStatus('saved');
-  await listCases();
+  try {
+    const created = await requestJson<CaseSummary>('POST', '/cases', { name });
+    const emptyDocument: CaseDocument = {
+      ...createEmptyCaseDocument(),
+      id: created.id,
+      createdAt: created.createdAt,
+    };
+    const summary = await requestJson<CaseSummary>('PUT', `/cases/${created.id}`, emptyDocument);
+
+    // Only NOW, with the new case durably created and its empty document
+    // confirmed stored server-side, do we touch any client-side state that
+    // can't be trivially rolled back.
+    lastPersistedDocument = emptyDocument;
+    caseStore.loadDocument(emptyDocument);
+    // The just-installed document's `scene` is empty, so every mesh this
+    // releases is, by construction, unreferenced by it — see
+    // `resetMeshRegistryForCaseSwitch`'s doc for why this must run AFTER
+    // `loadDocument`, never before.
+    resetMeshRegistryForCaseSwitch();
+
+    usePersistenceStore.getState().setActiveCase({ id: summary.id, name: summary.name });
+    usePersistenceStore.getState().setLastSavedAt(summary.updatedAt);
+    usePersistenceStore.getState().setStatus('saved');
+    await listCases();
+  } catch (error) {
+    usePersistenceStore.getState().setStatus('error', errorMessageOf(error));
+    throw error;
+  }
 }
 
 /**

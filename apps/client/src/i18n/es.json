@@ -191,6 +191,7 @@
       "empty": "Todavía no hay casos.",
       "loading": "Cargando casos…",
       "errorLabel": "No se pudieron cargar los casos: {{message}}",
+      "renameErrorLabel": "No se pudo renombrar el caso: {{message}}",
       "activeLabel": "Activo",
       "updatedAtLabel": "Actualizado: {{date}}"
     }
