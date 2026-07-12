@@ -115,7 +115,9 @@ jobs:
     # requestAnimationFrame heartbeat's max gap) while streaming a real
     # ~120 MB generated fixture through the full import pipeline — see that
     # file's module doc for the measurement method and the 50 ms target /
-    # 100 ms CI-gate distinction.
+    # 80 ms CI-gate distinction (tightened from 100 ms by Phase 2 Task 1's
+    # worker-side hashing fix — see docs/demos/phase-1.md's "Update — Phase
+    # 2 Task 1 re-measurement" note).
     #
     # NOT run on every push/PR: generating the fixture + reading/hashing/
     # parsing/welding ~2.5M triangles through real worker jobs takes on the

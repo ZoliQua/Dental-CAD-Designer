@@ -8,8 +8,8 @@
 // `.ts`-extension relative imports (not this repo's usual `.js` suffix,
 // contrast packages/shared-types): this module is reachable via NATIVE Node
 // module resolution, not just bundler/vitest resolution — kernel-workers'
-// manifoldSmoke job (packages/kernel-workers/src/jobs.ts) imports
-// '@dqcad/kernel', and worker-entry.node.ts loads jobs.ts directly through
+// manifoldSmoke job (packages/kernel-workers/src/jobs/misc.ts) imports
+// '@dqcad/kernel', and worker-entry.node.ts loads jobs/registry.ts directly through
 // Node's own loader (no bundler in between) inside a worker_threads worker.
 // Node's native TS type-stripping resolves relative specifiers by their
 // literal extension — it does NOT map a `.js` specifier to a sibling `.ts`

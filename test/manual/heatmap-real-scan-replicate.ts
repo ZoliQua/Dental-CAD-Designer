@@ -10,7 +10,7 @@
 // synthetic fixture).
 //
 // A `size: 1` pool is used deliberately: `distanceHeatmap`'s target BVH is
-// cached PER WORKER (see packages/kernel-workers/src/jobs.ts's "Per-worker
+// cached PER WORKER (see packages/kernel-workers/src/jobs/bvh.ts's "Per-worker
 // BVH cache" doc) — `WorkerPool.run()` has no per-job worker affinity, so
 // only a pool that never has more than one worker guarantees a `buildBvh`
 // call and a later `distanceHeatmap` call for the same contentHash land on

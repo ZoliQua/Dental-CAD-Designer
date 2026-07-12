@@ -70,7 +70,7 @@ export interface BuildBvhOptions {
    * cancellation is intentionally out of scope for Phase 1 — a build is
    * bounded to a few seconds even at 1M triangles (see this module's build
    * doc), so the job-level "cancelled before starting" check (see
-   * kernel-workers/src/jobs.ts's `buildBvh` handler) is judged sufficient.
+   * kernel-workers/src/jobs/bvh.ts's `buildBvh` handler) is judged sufficient.
    */
   onProgress?: (trianglesInCompletedLeaves: number, totalTriangles: number) => void;
   progressLeafInterval?: number;

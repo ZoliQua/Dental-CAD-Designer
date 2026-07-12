@@ -5,7 +5,7 @@ import type { IndexedMesh } from '../mesh/types.ts';
 import { buildEdgeMap } from '../intake/topology.ts';
 
 /** Unit cube (edge length 1), corner at `offset`, 8 vertices / 12 triangles,
- * CCW-from-outside winding — same construction as kernel-workers/src/jobs.ts's
+ * CCW-from-outside winding — same construction as kernel-workers/src/jobs/misc.ts's
  * `unitCubeMesh` test fixture, duplicated here (rather than imported) since
  * that one lives in a different package with no shared TEST-ONLY fixture
  * module between them. */

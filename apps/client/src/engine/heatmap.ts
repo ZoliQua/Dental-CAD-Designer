@@ -10,9 +10,9 @@
 // ## Why this runs on the SAME size:1 measurement pool as point/surface picks
 //
 // The kernel-workers `distanceHeatmap` job (packages/kernel-workers/src/
-// jobs.ts) takes only the TARGET mesh's `contentHash` — it queries against
+// jobs/heatmap.ts) takes only the TARGET mesh's `contentHash` — it queries against
 // whatever BVH is already cached under that hash on the worker it runs on
-// (see jobs.ts's "Per-worker BVH cache" doc). `WorkerPool.run()` has no
+// (see jobs/bvh.ts's "Per-worker BVH cache" doc). `WorkerPool.run()` has no
 // per-job worker affinity, so a `buildBvh` call and a later `distanceHeatmap`
 // call for the same contentHash are only guaranteed to reuse the SAME
 // worker's cache on a pool that never has more than one worker — this is

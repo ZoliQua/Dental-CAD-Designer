@@ -10,7 +10,7 @@
 // trivially unit-testable — see colormap.test.ts's value->RGB table).
 //
 // `packages/kernel`/`packages/kernel-workers` compute DISTANCES only, always
-// Float64 mm (see jobs.ts's `DistanceHeatmapResult`) — colors are strictly a
+// Float64 mm (see jobs/heatmap.ts's `DistanceHeatmapResult`) — colors are strictly a
 // downstream, display-only concern that belongs in apps/client/src/engine,
 // never in the kernel layer (this task's brief: "colormap math in engine —
 // no kernel dependency on colors").
@@ -90,7 +90,7 @@ export const DEFAULT_AUTO_RANGE_PERCENTILE = 0.98;
  * bare max) is used.
  *
  * - If every distance is >= 0 (the common, unsigned heatmap case — see
- *   jobs.ts's `DistanceHeatmapPayload.signed`), the range is `[0, magnitude]`
+ *   jobs/heatmap.ts's `DistanceHeatmapPayload.signed`), the range is `[0, magnitude]`
  *   — blue anchored at exactly 0 (`colorForValue`'s "touching" endpoint),
  *   red at the percentile-clipped max. This matches this task's brief's own
  *   notation for the unsigned case ("blue−0 → white → red+").

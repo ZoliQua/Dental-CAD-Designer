@@ -6,7 +6,7 @@
 // pattern (see importer.ts's unit-rescale confirmation flow) — but simpler,
 // since a repair never needs a confirmation DIALOG mid-pipeline: the repair
 // itself IS the preview (cheap enough on an already-loaded, already-intake'd
-// mesh to just run eagerly — same reasoning kernel-workers/src/jobs.ts's
+// mesh to just run eagerly — same reasoning kernel-workers/src/jobs/repair.ts's
 // repair-job doc gives for their single-checkpoint cancellation), and
 // `applyRepairPreview` below is the only thing gated behind the UI's
 // explicit per-repair "Apply" button (CLAUDE.md invariant 5: "No silent data
@@ -38,7 +38,6 @@ import {
 export type { MeshStats };
 import type { Operation } from '@dqcad/shared-types';
 import { caseStore } from './caseStore';
-import { hashMeshContent } from './hash';
 import type { EngineMeshRecord } from './meshStore';
 import { getPool } from './workers';
 
@@ -196,9 +195,25 @@ function paramsFor(preview: RepairPreview): Record<string, unknown> {
  * function in this module that mutates the case — the UI's per-repair
  * "Apply" button is the sole caller (NO auto-apply, NO bulk-apply-all — see
  * this task's brief).
+ *
+ * `outputHash` is computed via kernel-workers' standalone `hashMesh` job
+ * (worker-side, off the UI thread — Phase 2 Task 1 debt fix; see
+ * kernel-workers/src/jobs/misc.ts's "hashMesh" module doc for why this is
+ * deferred to apply-time rather than computed eagerly on every preview) —
+ * replaces the old main-thread `hashMeshContent(preview.positions,
+ * preview.indices)` call. `preview.positions`/`preview.indices` are passed
+ * as PRIVATE copies (`.slice()`) into the job's transfer list, never the
+ * preview's own buffers — those are still needed intact right below, for
+ * `caseStore.applyRepair`.
  */
 export async function applyRepairPreview(preview: RepairPreview): Promise<EngineMeshRecord> {
-  const outputHash = await hashMeshContent(preview.positions, preview.indices);
+  const positionsCopy = preview.positions.slice();
+  const indicesCopy = preview.indices.slice();
+  const { contentHash: outputHash } = await getPool().run(
+    'hashMesh',
+    { positions: positionsCopy, indices: indicesCopy },
+    { transfer: [positionsCopy.buffer, indicesCopy.buffer] },
+  );
   const operation: Operation = {
     id: crypto.randomUUID(),
     name: OPERATION_NAME[preview.kind],

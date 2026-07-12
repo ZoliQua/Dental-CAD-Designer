@@ -25,7 +25,7 @@
 // ONLY scene-referenced meshes, not every `MeshAsset` ever recorded),
 // fetches its stored STL bytes and reconstructs an `IndexedMesh` via
 // `parseMeshFile` + `weldMeshSoup` (kernel-workers) — deliberately NOT a
-// second full `intakeMesh` run; see jobs.ts's "serializeMeshStl /
+// second full `intakeMesh` run; see jobs/io.ts's "weldMeshSoup" and jobs/misc.ts's "serializeMeshStl" /
 // weldMeshSoup" section doc for the "intake-skip" rationale. Each mesh is
 // registered into `meshStore` via the NORMAL `MeshStore.register()` path
 // (recentering etc. — Task 11's guardrail: "no shortcuts"), keyed by the
@@ -59,7 +59,6 @@ import type { CaseDocument, MeshAsset } from '@dqcad/shared-types';
 import { createEmptyCaseDocument, useCaseStore } from '../state/caseStore';
 import { type CaseSummary, usePersistenceStore } from '../state/persistenceStore';
 import { caseStore } from './caseStore';
-import { sha256Hex } from './hash';
 import { getPool, releaseBvhForMesh } from './workers';
 
 const API_BASE = '/api';
@@ -107,9 +106,10 @@ async function uploadMeshBytes(expectedHash: string, bytes: Uint8Array): Promise
     method: 'POST',
     headers: { 'content-type': 'application/octet-stream' },
     // Same TS 5.7+ `ArrayBufferView<ArrayBuffer>`-vs-`ArrayBufferLike`
-    // generic-typing gap as engine/hash.ts's `sha256Hex` cast — `bytes` is a
-    // real, non-shared-ArrayBuffer-backed Uint8Array at runtime, a valid
-    // BodyInit, DOM lib's fetch() types just don't see it structurally.
+    // generic-typing gap as kernel-workers/src/hash.ts's `sha256Hex` cast —
+    // `bytes` is a real, non-shared-ArrayBuffer-backed Uint8Array at
+    // runtime, a valid BodyInit, DOM lib's fetch() types just don't see it
+    // structurally.
     body: bytes as unknown as BodyInit,
   });
   if (!response.ok) {
@@ -435,12 +435,15 @@ async function uploadMissingMeshes(): Promise<void> {
     }
     const positionsCopy = record.positions.slice();
     const indicesCopy = record.indices.slice();
-    const { bytes } = await getPool().run(
+    // `fileHash` is computed WORKER-SIDE by serializeMeshStl itself now
+    // (kernel-workers/src/jobs/misc.ts's `SerializeMeshStlResult.fileHash` doc) —
+    // replaces the old main-thread `sha256Hex(bytes)` call (Phase 2 Task 1);
+    // identical value, computed right where `bytes` is already produced.
+    const { bytes, fileHash } = await getPool().run(
       'serializeMeshStl',
       { positions: positionsCopy, indices: indicesCopy },
       { transfer: [positionsCopy.buffer, indicesCopy.buffer] },
     );
-    const fileHash = await sha256Hex(bytes);
     if (!(await headMeshExists(fileHash))) {
       await uploadMeshBytes(fileHash, bytes);
     }

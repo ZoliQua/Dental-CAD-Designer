@@ -34,7 +34,7 @@ export function getPool(): WorkerPool {
 // (multi-worker) geometry pool, not just another job type routed through it.
 // kernel-workers' `buildBvh`/`measurePointToSurface`/`raycastMesh` jobs cache
 // a mesh's BVH in THAT WORKER's own memory, keyed by contentHash (see
-// jobs.ts's "Per-worker BVH cache" doc) — `WorkerPool.run()` has no per-job
+// jobs/bvh.ts's "Per-worker BVH cache" doc) — `WorkerPool.run()` has no per-job
 // worker affinity, so on a multi-worker pool a `buildBvh` call and a later
 // `measurePointToSurface` call for the same mesh are not guaranteed to reuse
 // the same cache. Pinning every BVH-related job to a pool that only ever has
@@ -49,7 +49,7 @@ function getMeasurementPool(): WorkerPool {
 }
 
 /** contentHashes already confirmed built on the measurement pool's one
- * worker — an in-memory mirror of that worker's own `bvhCache` (jobs.ts) so
+ * worker — an in-memory mirror of that worker's own `bvhCache` (jobs/bvh.ts) so
  * `ensureBvhBuilt` can skip a redundant `buildBvh` round trip for a mesh
  * already queried this session. Cleared only by `releaseBvhForMesh` (mesh
  * removed from the case) — never grows unbounded beyond "meshes currently
@@ -64,7 +64,7 @@ const builtBvhHashes = new Set<string>();
  * this function `.slice()`s them before transferring the copy into the
  * worker, so the caller's master buffers are never detached (a `Transferable`
  * transfer would otherwise steal them, breaking rendering/every other
- * consumer of that same EngineMeshRecord — see jobs.ts's `BuildBvhPayload`
+ * consumer of that same EngineMeshRecord — see jobs/bvh.ts's `BuildBvhPayload`
  * doc for the same point from the worker side).
  */
 export async function ensureBvhBuilt(
@@ -197,7 +197,7 @@ export async function runWorkerSmokeTest(): Promise<void> {
 const MANIFOLD_SMOKE_TEST_TOLERANCE = 1e-4;
 
 /**
- * Runs the manifoldSmoke job (packages/kernel-workers/src/jobs.ts) in the
+ * Runs the manifoldSmoke job (packages/kernel-workers/src/jobs/misc.ts) in the
  * browser worker pool: builds two overlapping unit cubes, unions them via
  * manifold-3d, and checks the result against the analytic expected volume.
  * Proves manifold-3d's WASM module loads and runs inside a real browser Web

@@ -12,6 +12,6 @@
 // needs no explicit endpoint argument here — contrast worker-entry.node.ts,
 // which must wrap `parentPort` first.
 import * as Comlink from 'comlink';
-import { runJob } from './jobs.js';
+import { runJob } from './jobs/registry.js';
 
 Comlink.expose(runJob);

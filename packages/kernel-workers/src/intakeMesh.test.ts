@@ -9,7 +9,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { writeStlBinary } from '@dqcad/io';
 import { JobCancelledError, WorkerPool } from './pool.js';
-import type { IntakeMeshPayload } from './jobs.js';
+import type { IntakeMeshPayload } from './jobs/registry.js';
 
 const pools: WorkerPool[] = [];
 

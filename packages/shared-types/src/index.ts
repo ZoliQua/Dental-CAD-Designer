@@ -42,10 +42,11 @@ export type MeshRole = 'upperJaw' | 'lowerJaw' | 'prepDie' | 'antagonist' | 'sit
 export interface MeshAsset {
   id: string;
   /** SHA-256 (or equivalent) of the mesh's PROCESSED (post-intake, welded)
-   * Float64 content — see apps/client/src/engine/hash.ts's
-   * `hashMeshContent`. Identity for journaling/reproducibility; NOT the same
-   * value as `fileHash` below (see that field's doc for why the two must
-   * stay distinct). */
+   * Float64 content — computed worker-side by kernel-workers'
+   * `intakeMesh`/`hashMesh` jobs (see packages/kernel-workers/src/hash.ts's
+   * `hashMeshContent`). Identity for journaling/reproducibility; NOT the
+   * same value as `fileHash` below (see that field's doc for why the two
+   * must stay distinct). */
   contentHash: string;
   name: string;
   unit: 'mm';

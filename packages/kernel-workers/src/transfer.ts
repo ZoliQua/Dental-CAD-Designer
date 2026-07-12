@@ -1,6 +1,6 @@
 // Helpers for building the transfer-list arguments used by
 // `WorkerPool.run(..., { transfer })` (pool.ts) and by the worker-side
-// dispatch that hands job results back (jobs.ts's runJob, invoked from the
+// dispatch that hands job results back (jobs/registry.ts's runJob, invoked from the
 // worker-entry files) — see meshBuffers and transferablesOf respectively.
 
 export interface MeshBuffersPayload {
@@ -35,7 +35,7 @@ export function meshBuffers(positions: Float64Array, indices: Uint32Array): Mesh
  * fields, so the worker-side dispatcher can transfer them back to the
  * caller (zero-copy) without every job needing to declare its own transfer
  * list. Only inspects one level deep — sufficient for the flat
- * `{ positions, indices }`-shaped results jobs.ts currently produces.
+ * `{ positions, indices }`-shaped results jobs/registry.ts's runJob currently produces.
  */
 export function transferablesOf(value: unknown): Transferable[] {
   if (value === null || typeof value !== 'object') {

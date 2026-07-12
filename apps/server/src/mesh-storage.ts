@@ -25,8 +25,9 @@ import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 /** Lowercase hex SHA-256 — same digest algorithm/encoding as the client's
- * engine/hash.ts `sha256Hex`, so a client-computed hash and this function's
- * output are always directly comparable strings. */
+ * worker-side `sha256Hex` (packages/kernel-workers/src/hash.ts), so a
+ * client-computed hash and this function's output are always directly
+ * comparable strings. */
 export function sha256HexOf(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
 }

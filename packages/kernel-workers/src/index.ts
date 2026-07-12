@@ -1,7 +1,8 @@
 // packages/kernel-workers — worker pool infrastructure (Comlink, transferables,
 // cancellation, progress) for running geometry jobs off the UI thread, in
 // both browser (Web Worker) and Node (worker_threads). See pool.ts for the
-// WorkerPool implementation and jobs.ts for the job registry.
+// WorkerPool implementation and jobs/registry.ts for the job registry (split
+// into jobs/*.ts per-domain modules — see that file's module doc).
 export {
   WorkerPool,
   JobCancelledError,
@@ -51,7 +52,9 @@ export {
   type RepairFillSmallHolesResult,
   type SectionMeshPayload,
   type SectionMeshResult,
-} from './jobs.js';
+  type HashMeshPayload,
+  type HashMeshResult,
+} from './jobs/registry.js';
 export { meshBuffers, type MeshBuffersPayload, type MeshBuffersResult } from './transfer.js';
 // MeshStats/IntakeReport/Bbox: re-exported here (rather than only living on
 // IntakeMeshResult's field types) so apps/client/src/engine — which cannot
