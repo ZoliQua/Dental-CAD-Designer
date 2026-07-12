@@ -2,6 +2,7 @@
 // packages/kernel/src/boolean/manifold.test-fixtures.ts's convention (not
 // exported from packages/kernel/src/index.ts).
 import type { IndexedMesh } from '../mesh/types.ts';
+import { edgeKey } from '../mesh/edgeKey.ts';
 import { buildEdgeMap } from '../intake/topology.ts';
 
 /** Unit cube (edge length 1), corner at `offset`, 8 vertices / 12 triangles,
@@ -43,13 +44,14 @@ export function unitCubeMesh(offset: readonly [number, number, number] = [0, 0, 
  */
 export function removeTriangleNeighborhood(mesh: IndexedMesh, seedTriangle: number): IndexedMesh {
   const edges = buildEdgeMap(mesh);
+  const vertexCount = mesh.positions.length / 3;
   const toRemove = new Set<number>([seedTriangle]);
   const base = seedTriangle * 3;
   const corners = [mesh.indices[base]!, mesh.indices[base + 1]!, mesh.indices[base + 2]!];
   for (let i = 0; i < 3; i++) {
     const a = corners[i]!;
     const b = corners[(i + 1) % 3]!;
-    const key = a < b ? `${a},${b}` : `${b},${a}`;
+    const key = a < b ? edgeKey(a, b, vertexCount) : edgeKey(b, a, vertexCount);
     const entry = edges.get(key);
     if (!entry) continue;
     for (const inc of entry.incidences) {

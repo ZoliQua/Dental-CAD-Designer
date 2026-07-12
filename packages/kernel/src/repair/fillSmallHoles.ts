@@ -120,7 +120,7 @@ function vertexPos(mesh: IndexedMesh, v: number): Vec3 {
  * forever or silently producing a wrong triangulation — an acceptable,
  * documented gap for Phase 1's synthetic/real-scan boundary shapes, which do
  * not produce pinched boundaries in practice. */
-function findBoundaryLoops(mesh: IndexedMesh, edges: Map<string, EdgeEntry>): number[][] {
+function findBoundaryLoops(mesh: IndexedMesh, edges: Map<number, EdgeEntry>): number[][] {
   const holeNext = new Map<number, number>();
   for (const entry of edges.values()) {
     if (entry.incidences.length !== 1) continue;
