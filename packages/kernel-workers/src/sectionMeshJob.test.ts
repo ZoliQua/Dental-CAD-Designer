@@ -149,7 +149,7 @@ describe('WorkerPool — sectionMesh', () => {
     // Comlink reconstructs a thrown error as a plain Error with the
     // original name/message preserved (not the exact built-in subclass) —
     // same caveat as JobCancelledError/BvhNotCachedError elsewhere in this
-    // package (see jobs.ts's doc comments) — so this asserts by `.name`
+    // package (see jobs/context.ts's and jobs/bvh.ts's doc comments) — so this asserts by `.name`
     // rather than `instanceof TypeError`.
     await expect(
       pool.run('sectionMesh', {

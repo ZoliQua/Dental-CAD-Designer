@@ -72,8 +72,10 @@ their source fixtures on disk).
   reproducibility of the STORED mesh, not of the original intake computation
   against the original scan. If source-byte retention is added later (e.g. a
   separate raw-upload blob store, keyed by the `fileHash` `parseMeshFile`
-  already computes worker-side — see ADR for Phase 2 Task 1's worker-side
-  hashing), the replay harness can be strengthened to a full
+  already computes worker-side — see `packages/kernel-workers/src/hash.ts`'s
+  module doc and Phase 2 Task 1's hash test coverage
+  (`packages/kernel-workers/src/hash.test.ts`)), the replay harness can be
+  strengthened to a full
   `parseMeshFile` + `intakeMesh` re-run at that point; no journal schema
   change is needed to do so; `Operation.inputHashes[0]` already carries the
   raw-file hash that would key such a store.

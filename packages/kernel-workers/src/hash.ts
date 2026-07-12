@@ -1,6 +1,6 @@
 // Worker-side SHA-256 hashing — the off-main-thread replacement for what
 // apps/client/src/engine/hash.ts used to do on the UI thread (see
-// docs/adr/003-import-extension-convention.md's sibling ADR-001 for the
+// docs/adr/003-ts-extension-import-convention.md's sibling ADR-001 for the
 // perf rationale, and jobs/io.ts's `parseMeshFile`, jobs/intake.ts's
 // `intakeMesh`, and jobs/misc.ts's `rescaleMesh`/`serializeMeshStl`/
 // `hashMesh` for the call sites). Every algorithm/encoding here is BYTE-FOR-
@@ -31,13 +31,16 @@ function isNodeRuntime(): boolean {
   return typeof process !== 'undefined' && process.versions?.node != null;
 }
 
-/** Lowercase hex SHA-256 digest of `bytes` — see this module's doc for the
- * Node/browser split. */
-export async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  if (isNodeRuntime()) {
-    const { createHash } = await import('node:crypto');
-    return createHash('sha256').update(bytes).digest('hex');
-  }
+/** The browser (Web Worker) branch of `sha256Hex`, pulled out into its own
+ * exported function as a deliberate, minimal test seam: `crypto.subtle` is
+ * ALSO available in Node >=19 as `globalThis.crypto.subtle` (unrelated to
+ * `isNodeRuntime()`'s `process.versions.node` check above), so hash.test.ts
+ * can call this directly under vitest to exercise the SubtleCrypto path
+ * byte-for-byte against `sha256Hex`'s node:crypto path, with no
+ * `process`-global mocking required. Not meant to be called by job code —
+ * `sha256Hex` below still owns runtime branch selection; this only exists
+ * so the branch itself is independently testable. */
+export async function sha256HexSubtle(bytes: Uint8Array): Promise<string> {
   // Same TS 5.7+ `ArrayBufferView<ArrayBuffer>`-vs-`ArrayBufferLike`
   // generic-typing gap the old engine/hash.ts documented — every buffer
   // here is a real, non-shared ArrayBuffer at runtime, so this cast is
@@ -46,6 +49,16 @@ export async function sha256Hex(bytes: Uint8Array): Promise<string> {
   return Array.from(new Uint8Array(digest))
     .map((byte) => byte.toString(16).padStart(2, '0'))
     .join('');
+}
+
+/** Lowercase hex SHA-256 digest of `bytes` — see this module's doc for the
+ * Node/browser split. */
+export async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  if (isNodeRuntime()) {
+    const { createHash } = await import('node:crypto');
+    return createHash('sha256').update(bytes).digest('hex');
+  }
+  return sha256HexSubtle(bytes);
 }
 
 /**

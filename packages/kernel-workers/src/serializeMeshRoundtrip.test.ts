@@ -4,7 +4,7 @@
 // round-trips through serializeMeshStl -> (binary STL bytes) ->
 // parseMeshFile -> weldMeshSoup back to the same topology (same vertex/
 // triangle counts, coordinates equal within float32 STL precision — see
-// jobs.ts's module doc for why NOT bit-identical), (b) serializeMeshStl's
+// jobs/io.ts's module doc for why NOT bit-identical), (b) serializeMeshStl's
 // output is a real, parseable binary STL, (c) weldMeshSoup's report is a
 // single 'weld' step (the "intake-skip" contract), (d) output buffers are
 // transferred (not copied) back.
@@ -29,7 +29,7 @@ const CUBE_CORNERS: ReadonlyArray<readonly [number, number, number]> = [
   [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
 ];
 
-// Outward-wound unit cube (same fixture as jobs.ts's unitCubeMesh / intakeMesh.test.ts).
+// Outward-wound unit cube (same fixture as jobs/misc.ts's unitCubeMesh / intakeMesh.test.ts).
 const CUBE_TRIANGLES: ReadonlyArray<readonly [number, number, number]> = [
   [0, 2, 1], [0, 3, 2],
   [4, 5, 6], [4, 6, 7],
@@ -114,7 +114,7 @@ describe('WorkerPool — weldMeshSoup', () => {
     expect(weldStep.after.vertexCount).toBe(8);
 
     // Coordinates match the original within float32 STL precision (not
-    // bit-identical — see jobs.ts's module doc).
+    // bit-identical — see jobs/io.ts's module doc).
     for (let i = 0; i < welded.positions.length; i++) {
       const originalValue = positions[i % positions.length]!;
       // Loose bound: any welded vertex should be within float32 rounding of

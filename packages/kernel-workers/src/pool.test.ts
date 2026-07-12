@@ -94,7 +94,7 @@ describe('WorkerPool — longTask progress', () => {
     // one this `run()` call's own result travels over, so nothing about
     // postMessage ordering alone would guarantee `fractions` already holds
     // the final `1` by the time `run()` resolves above. What makes it
-    // deterministic is jobs.ts's `runJob` dispatcher explicitly awaiting
+    // deterministic is jobs/registry.ts's `runJob` dispatcher explicitly awaiting
     // every progress delivery (including this job's last one) before it
     // lets its own result go out — see runJob's "Progress delivery ordering
     // contract" doc comment and pool.ts's `RunJobOptions.onProgress` doc for
@@ -258,7 +258,7 @@ describe('WorkerPool — worker crash', () => {
   it('rejects the in-flight run() with WorkerCrashedError, and a later run() on the same pool succeeds (dead worker not recycled)', async () => {
     const pool = createPool({ size: 1 });
 
-    // '__test_crashWorker__' is a TEST-ONLY job (see jobs.ts's
+    // '__test_crashWorker__' is a TEST-ONLY job (see jobs/registry.ts's
     // testOnlyRegistry doc comment) that calls process.exit(1) inside the
     // worker — genuinely killing the worker thread, unlike a normal thrown
     // error (which Comlink would just turn into an ordinary rejection). It

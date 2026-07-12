@@ -39,7 +39,7 @@ afterEach(async () => {
 
 // ---------------------------------------------------------------------------
 // Small synthetic fixtures (unit cube) for the non-acceptance behavioral
-// tests below — same outward-wound cube as bvhJobs.test.ts/jobs.ts's
+// tests below — same outward-wound cube as bvhJobs.test.ts/jobs/misc.ts's
 // unitCubeMesh.
 // ---------------------------------------------------------------------------
 
@@ -168,7 +168,7 @@ describe('distanceHeatmap — behavioral tests (unit cube)', () => {
     await pool.run('buildBvh', { contentHash: CUBE_HASH, positions, indices });
 
     // A few thousand query points so there's more than one progress
-    // checkpoint (DISTANCE_HEATMAP_PROGRESS_CHUNK_POINTS in jobs.ts is 2000).
+    // checkpoint (DISTANCE_HEATMAP_PROGRESS_CHUNK_POINTS in jobs/heatmap.ts is 2000).
     const pointCount = 5000;
     const points = new Float64Array(pointCount * 3);
     for (let i = 0; i < pointCount; i++) {
