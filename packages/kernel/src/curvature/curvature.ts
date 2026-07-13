@@ -93,6 +93,15 @@
 // all) gets `H = K = k1 = k2 = 0` (never NaN/Infinity) and
 // `isBoundary[v] = 1`; callers MUST check `isBoundary` before treating a 0
 // as a real flat-point measurement.
+//
+// The SAME flag-and-exclude fallback also covers a topologically-interior
+// vertex whose `mixedArea` is degenerate (not `> 0` — e.g. every incident
+// triangle is itself degenerate/zero-area): with no well-defined divisor,
+// it is retroactively treated exactly like a true boundary vertex
+// (`isBoundary[v] = 1`, `H = K = k1 = k2 = 0`) rather than dividing by zero
+// or a near-zero area (which would otherwise produce Infinity/NaN or a
+// wildly unstable value) — see the `if (!(area > 0))` check at this
+// function's per-vertex loop below.
 import { buildHalfedge, destinationVertex, forEachOutgoingHalfedge } from '../halfedge/index.ts';
 import type { HalfedgeMesh } from '../halfedge/types.ts';
 import type { IndexedMesh } from '../mesh/types.ts';

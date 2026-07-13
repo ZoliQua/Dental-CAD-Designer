@@ -14,15 +14,29 @@
 // radius `r`, the error is `O(theta^2 / r)` for H and `O(theta^2 / r^2)`
 // for K. `curvatureToleranceH`/`curvatureToleranceK` below apply that
 // SAME formula, with a single constant `TOLERANCE_CONSTANT`, to every case
-// (sphere/cylinder/torus) uniformly — chosen generously (not tuned): a
-// throwaway empirical measurement across all 3 shapes (documented in this
-// project's Task 3 report, not re-run here) found realized
-// error/theta^2*r(^2) ratios of ~0.001-0.03 for H and ~0.03-0.30 for K
-// across every fixture below; `TOLERANCE_CONSTANT = 1` is comfortably above
-// every observed ratio (>=3x margin even on the tightest case, K) while
-// still being a single, uniform, principled constant — not a per-case fudge
-// factor (mirrors this repo's own "generous, not tuned" margin convention,
-// e.g. test/golden/golden.test.ts's documented `* 3` margin).
+// (sphere/cylinder/torus) uniformly — chosen generously (not tuned).
+//
+// Measured (not cited): a one-off script ran `computeCurvature` over each
+// EXACT fixture/parameter combination used below (sphere r=5 at
+// subdivisions 2/3/4; the capped-cylinder tube region r=3; the torus
+// R=5,r=2 outer+inner rings), took the max observed
+// `|H_computed - H_analytic|` / `|K_computed - K_analytic|` over every
+// vertex this file checks, and divided by that same case's `theta^2/r` (H)
+// or `theta^2/r^2` (K) — i.e. exactly the ratio `TOLERANCE_CONSTANT` must
+// exceed. Measured max-error ratios per case:
+//   sphere (subdiv 2/3/4): ratioH ~1.2e-3 / 1.1e-3 / 3.2e-4, ratioK ~0.27 / 0.29 / 0.30
+//   cylinder tube region:  ratioH ~1.7e-12 (near machine precision — K truly 0),  ratioK ~2.8e-12
+//   torus outer+inner:     ratioH ~3.4e-2,  ratioK ~7.0e-2
+// Worst case overall: ratioH = 3.4e-2 (torus), ratioK = 3.0e-1 (sphere,
+// subdiv=4) — both COMFORTABLY below 1: `TOLERANCE_CONSTANT = 1` holds with
+// ~29x margin on H and ~3.4x margin on K, while still being a single,
+// uniform, principled constant — not a per-case fudge factor (mirrors this
+// repo's own "generous, not tuned" margin convention, e.g.
+// test/golden/golden.test.ts's documented `* 3` margin). Reproduce by
+// computing `computeCurvature(fixture)`, diffing against the analytic H/K
+// used in the `it(...)` blocks below, and dividing by `theta^2/r`
+// (H) or `theta^2/r^2` (K) using each case's own `theta`/`r` as defined
+// in that case's own describe block.
 import { describe, expect, it } from 'vitest';
 import { analyzeMesh } from '../intake/index.ts';
 import { icosphereMesh, torusMesh } from '../halfedge/halfedge.test-fixtures.ts';
