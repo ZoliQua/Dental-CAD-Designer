@@ -141,6 +141,26 @@
     "rangeManual": "Tartomány alkalmazása",
     "rangeAuto": "Automatikus tartomány"
   },
+  "curvature": {
+    "panelTitle": "Görbület",
+    "needsMesh": "Adjon a jelenethez egy hálót a görbület megtekintéséhez.",
+    "meshLabel": "Háló",
+    "selectPlaceholder": "Válasszon hálót…",
+    "fieldLabel": "Mező",
+    "fieldMean": "Átlagos (H)",
+    "fieldGaussian": "Gauss-féle (K)",
+    "runButton": "Futtatás",
+    "running": "Számítás…",
+    "errorLabel": "A görbület számítása sikertelen: {{message}}",
+    "statsMin": "Min",
+    "statsMax": "Max",
+    "statsMean": "Átlag",
+    "showToggle": "Görbület megjelenítése",
+    "legendTitle": "Jelmagyarázat",
+    "unitPerMm": "mm⁻¹",
+    "unitPerMm2": "mm⁻²",
+    "rangeAuto": "Automatikus tartomány"
+  },
   "section": {
     "panelTitle": "Keresztmetszet",
     "needsMesh": "Adjon hálót a jelenethez a keresztmetszet elkészítéséhez.",

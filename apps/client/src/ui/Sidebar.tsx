@@ -7,6 +7,7 @@ import type { ChangeEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { MeshAsset, SceneNode } from '@dqcad/shared-types';
 import { caseStore } from '../engine/caseStore';
+import { CurvaturePanel } from './CurvaturePanel';
 import { ImportPanel } from './ImportPanel';
 import { MeasurementPanel } from './MeasurementPanel';
 import { RepairPanel } from './RepairPanel';
@@ -37,6 +38,7 @@ export function Sidebar() {
       )}
       <MeasurementPanel />
       <SurfaceDistancePanel />
+      <CurvaturePanel />
       <SectionPanel />
     </aside>
   );
