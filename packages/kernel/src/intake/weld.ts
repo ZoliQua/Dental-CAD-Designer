@@ -176,6 +176,14 @@ export function weldVertices(soup: TriangleSoup, epsilon: number = MESH_WELD_EPS
       // a future query within ε of this vertex is guaranteed to probe it.
       const key = hashCell(Math.floor(px / cellSize), Math.floor(py / cellSize), Math.floor(pz / cellSize));
       const bucket = buckets.get(key);
+      // Small-bucket `.push()` here is deliberate and NOT the same shape as
+      // the output-accumulation rebuild this function's "Accumulation" doc
+      // above describes: a bucket holds only the handful of already-welded
+      // vertices sharing one spatial grid cell (typically 1, rarely more
+      // than a few), never one entry per raw input vertex — its size stays
+      // small and roughly constant regardless of mesh scale, so this never
+      // becomes the O(rawVertexCount)-many-tiny-heap-objects footprint that
+      // made `weldedPositions`/`indices` worth preallocating as typed arrays.
       if (bucket) {
         bucket.push(matchIndex);
       } else {

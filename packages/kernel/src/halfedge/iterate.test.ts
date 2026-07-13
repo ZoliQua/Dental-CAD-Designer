@@ -22,6 +22,7 @@ import {
   octahedronMesh,
   openGridPatchMesh,
   torusMesh,
+  twoDisjointOpenPatchesMesh,
 } from './halfedge.test-fixtures.ts';
 
 /** Brute-force one-ring neighbor set for `v`: every OTHER vertex sharing a
@@ -140,6 +141,36 @@ describe('findBoundaryLoops', () => {
       const dest = hm.vertex[hm.next[he]!]!;
       expect(dest).toBe(hm.vertex[nextHe]!);
     }
+  });
+
+  it('two disjoint open patches produce exactly 2 independent boundary loops, each a closed walk of the expected perimeter length', () => {
+    const rows1 = 3;
+    const cols1 = 4;
+    const rows2 = 2;
+    const cols2 = 5;
+    const mesh = twoDisjointOpenPatchesMesh(rows1, cols1, rows2, cols2);
+    const hm = buildHalfedge(mesh);
+    const loops = findBoundaryLoops(hm);
+    expect(loops).toHaveLength(2);
+
+    const expectedLengths = [2 * rows1 + 2 * cols1, 2 * rows2 + 2 * cols2].sort((a, b) => a - b);
+    const actualLengths = loops.map((loop) => loop.length).sort((a, b) => a - b);
+    expect(actualLengths).toEqual(expectedLengths);
+
+    // Each loop is closed under this module's boundary-walk convention:
+    // consecutive entries chain destination(loop[i]) === origin(loop[i+1]),
+    // wrapping back to loop[0] at the end.
+    for (const loop of loops) {
+      for (let i = 0; i < loop.length; i++) {
+        const he = loop[i]!;
+        const nextHe = loop[(i + 1) % loop.length]!;
+        expect(hm.vertex[hm.next[he]!]!).toBe(hm.vertex[nextHe]!);
+      }
+    }
+
+    // Genuinely independent: no halfedge is shared between the two loops.
+    const allHalfedges = new Set([...loops[0]!, ...loops[1]!]);
+    expect(allHalfedges.size).toBe(loops[0]!.length + loops[1]!.length);
   });
 });
 

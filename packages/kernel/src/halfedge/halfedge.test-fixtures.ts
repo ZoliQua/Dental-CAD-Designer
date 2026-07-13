@@ -290,3 +290,47 @@ export function openGridPatchMesh(rows: number, cols: number, cellSize = 1): Ind
   }
   return meshFromLists(positions, triangles);
 }
+
+/**
+ * Two topologically INDEPENDENT open rectangular grid patches (see
+ * `openGridPatchMesh`) combined into a single mesh — a closed-form fixture
+ * for exercising `findBoundaryLoops` with exactly 2 boundary loops. (The
+ * other standard way to get 2 boundary loops, an annulus/disk-with-a-hole,
+ * needs ring/hole index math; two disjoint patches are topologically just as
+ * valid a "2 independent boundary loops" case and are far simpler to make
+ * exact — each patch's perimeter length is already known in closed form from
+ * `openGridPatchMesh`'s own convention.) `buildHalfedge`/`findBoundaryLoops`
+ * never consult vertex positions or connectivity between components, so
+ * nothing about correctness depends on the two patches being disjoint in
+ * space — they're translated apart along X purely so the fixture is sane to
+ * look at if ever dumped/visualized. Requires both patches' `rows >= 1 &&
+ * cols >= 1`.
+ */
+export function twoDisjointOpenPatchesMesh(
+  rows1: number,
+  cols1: number,
+  rows2: number,
+  cols2: number,
+): IndexedMesh {
+  const patch1 = openGridPatchMesh(rows1, cols1);
+  const patch2 = openGridPatchMesh(rows2, cols2);
+  const gapX = cols1 + 2; // clear of patch1's bounding box (X in [0, cols1])
+  const vertexCount1 = patch1.positions.length / 3;
+  const vertexCount2 = patch2.positions.length / 3;
+
+  const positions = new Float64Array(patch1.positions.length + patch2.positions.length);
+  positions.set(patch1.positions, 0);
+  for (let i = 0; i < vertexCount2; i++) {
+    positions[patch1.positions.length + i * 3] = patch2.positions[i * 3]! + gapX;
+    positions[patch1.positions.length + i * 3 + 1] = patch2.positions[i * 3 + 1]!;
+    positions[patch1.positions.length + i * 3 + 2] = patch2.positions[i * 3 + 2]!;
+  }
+
+  const indices = new Uint32Array(patch1.indices.length + patch2.indices.length);
+  indices.set(patch1.indices, 0);
+  for (let i = 0; i < patch2.indices.length; i++) {
+    indices[patch1.indices.length + i] = patch2.indices[i]! + vertexCount1;
+  }
+
+  return { positions, indices };
+}

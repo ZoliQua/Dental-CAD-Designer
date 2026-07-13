@@ -12,7 +12,7 @@ import {
   prevHalfedge,
 } from './build.ts';
 import { assertValidTopology } from './validate.ts';
-import { cubeMesh, octahedronMesh } from './halfedge.test-fixtures.ts';
+import { cubeMesh, octahedronMesh, openGridPatchMesh } from './halfedge.test-fixtures.ts';
 
 function mesh(
   positions: readonly (readonly [number, number, number])[],
@@ -190,6 +190,24 @@ describe('buildHalfedge — rejects non-manifold edges', () => {
   });
 });
 
+describe('buildHalfedge — isolated/unreferenced vertex', () => {
+  it('a vertex present in positions but referenced by no triangle gets vertexHalfedge -1, and the mesh still validates', () => {
+    // cubeMesh's 8 vertices, plus one extra position no triangle indexes.
+    const base = cubeMesh();
+    const positions = new Float64Array(base.positions.length + 3);
+    positions.set(base.positions);
+    positions.set([5, 5, 5], base.positions.length); // isolated vertex
+    const m: IndexedMesh = { positions, indices: base.indices };
+
+    const hm = buildHalfedge(m);
+    const isolatedVertex = base.positions.length / 3; // last index (8)
+    expect(hm.vertexCount).toBe(base.positions.length / 3 + 1);
+    // Per types.ts:55-57's doc: an unreferenced vertex's vertexHalfedge is -1.
+    expect(hm.vertexHalfedge[isolatedVertex]).toBe(-1);
+    expect(() => assertValidTopology(hm)).not.toThrow();
+  });
+});
+
 /** Two closed 4-triangle "umbrella" fans sharing a single apex vertex (0)
  * with disjoint ring vertices — every edge stays degree <= 2 (buildHalfedge
  * succeeds) but vertex 0's local neighborhood is two disconnected fans (a
@@ -229,6 +247,14 @@ describe('findNonManifoldVertices — bowtie detection', () => {
     const m = bowtieMesh();
     const reports = findNonManifoldVertices(m);
     expect(reports).toEqual([{ vertex: 0, fanCount: 2 }]);
+  });
+
+  it('does NOT flag a legitimate boundary vertex as a bowtie (open patch — boundary vertices are not bowties)', () => {
+    // Contrast with the bowtie assertion above: an open patch's boundary
+    // vertices each have exactly one (open, not closed) link-edge chain —
+    // one connected fan, same as an interior vertex — so none should report.
+    const m = openGridPatchMesh(3, 4);
+    expect(findNonManifoldVertices(m)).toEqual([]);
   });
 
   it('buildHalfedge SUCCEEDS on a bowtie mesh (only edges are rejected, not vertices)', () => {
