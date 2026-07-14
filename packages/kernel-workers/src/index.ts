@@ -56,6 +56,11 @@ export {
   type SectionMeshResult,
   type HashMeshPayload,
   type HashMeshResult,
+  type GeodesicPathPayload,
+  type GeodesicPathResult,
+  type SnapPolylinePayload,
+  type SnapPolylineResult,
+  type SurfacePointPayload,
 } from './jobs/registry.js';
 export { meshBuffers, type MeshBuffersPayload, type MeshBuffersResult } from './transfer.js';
 // MeshStats/IntakeReport/Bbox: re-exported here (rather than only living on

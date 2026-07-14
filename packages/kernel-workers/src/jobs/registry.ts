@@ -25,6 +25,7 @@
 //                      repairFillSmallHoles
 //   jobs/misc.ts       echoMesh, longTask, manifoldSmoke, rescaleMesh,
 //                      serializeMeshStl, hashMesh
+//   jobs/geodesic.ts   geodesicPath, snapPolyline (Phase 2 Task 4)
 //   jobs/registry.ts   this file — types + runJob + registry assembly
 //
 // This was a PURE MECHANICAL MOVE (plus this same task's worker-side-hashing
@@ -118,6 +119,17 @@ import { sectionMeshJob, type SectionMeshPayload, type SectionMeshResult } from 
 export type { SectionMeshPayload, SectionMeshResult };
 
 import {
+  geodesicPathJob,
+  snapPolyline,
+  type GeodesicPathPayload,
+  type GeodesicPathResult,
+  type SnapPolylinePayload,
+  type SnapPolylineResult,
+  type SurfacePointPayload,
+} from './geodesic.ts';
+export type { GeodesicPathPayload, GeodesicPathResult, SnapPolylinePayload, SnapPolylineResult, SurfacePointPayload };
+
+import {
   repairRemoveComponents,
   repairSplitNonManifoldEdges,
   repairFillSmallHoles,
@@ -192,6 +204,8 @@ export interface JobPayloadMap {
   repairFillSmallHoles: RepairFillSmallHolesPayload;
   sectionMesh: SectionMeshPayload;
   hashMesh: HashMeshPayload;
+  geodesicPath: GeodesicPathPayload;
+  snapPolyline: SnapPolylinePayload;
 }
 
 export interface JobResultMap {
@@ -214,6 +228,8 @@ export interface JobResultMap {
   repairFillSmallHoles: RepairFillSmallHolesResult;
   sectionMesh: SectionMeshResult;
   hashMesh: HashMeshResult;
+  geodesicPath: GeodesicPathResult;
+  snapPolyline: SnapPolylineResult;
 }
 
 export type JobName = keyof JobPayloadMap;
@@ -243,6 +259,8 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   repairFillSmallHoles,
   sectionMesh: sectionMeshJob,
   hashMesh,
+  geodesicPath: geodesicPathJob,
+  snapPolyline,
 };
 
 const noopContext: JobContext = {

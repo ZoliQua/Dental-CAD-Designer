@@ -140,3 +140,22 @@ export {
   type SectionSvgPolyline,
   type SectionToSvgOptions,
 } from './section/index.ts';
+
+export {
+  evaluateSurfacePoint,
+  surfacePointFromClosestPoint,
+  snapToSurface,
+  surfacePointDistanceSquared,
+  triangleVertexIndices,
+  NoCorridorError,
+  dualGraphDijkstra,
+  geodesicPath,
+  GEODESIC_MAX_ITERATIONS,
+  GEODESIC_REL_TOL,
+  snapPolylineGeodesic,
+  resnapPolylineAnchor,
+  type SurfacePoint,
+  type GeodesicPathResult,
+  type GeodesicOptions,
+  type SnappedPolyline,
+} from './geodesic/index.ts';
