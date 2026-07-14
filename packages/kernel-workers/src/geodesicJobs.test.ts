@@ -161,6 +161,54 @@ describe('geodesicPath job', () => {
     ).rejects.toThrow(JobCancelledError);
   });
 
+  it('releaseBvh also evicts the per-worker halfedge cache — a rebuild under the SAME contentHash with a DIFFERENT-topology mesh works correctly', async () => {
+    const pool = createPool({ size: 1 });
+    const ico = icosahedronBuffers(); // 20 triangles
+    await pool.run('buildBvh', { contentHash: ICO_HASH, positions: ico.positions, indices: ico.indices });
+    // Warm the halfedge cache for the icosahedron topology.
+    await pool.run('geodesicPath', {
+      contentHash: ICO_HASH,
+      start: { triangleIndex: 0, barycentric: [1 / 3, 1 / 3, 1 / 3] },
+      end: { triangleIndex: 19, barycentric: [1 / 3, 1 / 3, 1 / 3] },
+    });
+
+    await pool.run('releaseBvh', { contentHash: ICO_HASH });
+
+    // Rebuild the SAME contentHash with a DIFFERENT-topology mesh (a unit
+    // cube — 12 triangles vs the icosahedron's 20, different vertex count).
+    // If jobs/geodesic.ts's halfedge cache were NOT evicted on releaseBvh,
+    // the stale icosahedron overlay (faceCount 20, 12 vertices) would be
+    // used against the cube's buffers — wrong topology, wrong/undefined
+    // results. With correct eviction this recomputes a fresh overlay and
+    // returns a valid path on the cube.
+    const cubePositions = new Float64Array(
+      [
+        [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+        [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
+      ].flat(),
+    );
+    const cubeIndices = Uint32Array.from(
+      [
+        [0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7], [0, 1, 5], [0, 5, 4],
+        [1, 2, 6], [1, 6, 5], [2, 3, 7], [2, 7, 6], [0, 4, 7], [0, 7, 3],
+      ].flat(),
+    );
+    await pool.run('buildBvh', { contentHash: ICO_HASH, positions: cubePositions, indices: cubeIndices });
+
+    const result = await pool.run('geodesicPath', {
+      contentHash: ICO_HASH,
+      start: { triangleIndex: 0, barycentric: [1 / 3, 1 / 3, 1 / 3] }, // bottom face
+      end: { triangleIndex: 2, barycentric: [1 / 3, 1 / 3, 1 / 3] }, // top face
+    });
+    expect(Number.isFinite(result.length)).toBe(true);
+    expect(result.length).toBeGreaterThan(0);
+    // Bottom-face centroid to top-face centroid on a unit cube: the path
+    // must at least span the cube's height (1) and is bounded by a walk
+    // over a few unit faces — a coarse sanity envelope, deliberately loose.
+    expect(result.length).toBeGreaterThan(1);
+    expect(result.length).toBeLessThan(4);
+  });
+
   it('determinism: two identical calls produce bit-identical results', async () => {
     const pool = createPool({ size: 1 });
     const { positions, indices } = icosahedronBuffers();

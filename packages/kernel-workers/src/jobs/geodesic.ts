@@ -41,10 +41,20 @@ import {
   type SurfacePoint,
 } from '@dqcad/kernel';
 import { JobCancelledError, type JobContext } from './context.ts';
-import { requireCachedBvh } from './bvh.ts';
+import { onBvhRelease, requireCachedBvh } from './bvh.ts';
 import type { Vec3Payload } from './shared.ts';
 
 const halfedgeCache = new Map<string, HalfedgeMesh>();
+
+// Evict this cache's overlay whenever the SAME contentHash's BVH is
+// released (jobs/bvh.ts's `releaseBvh`) — a released mesh's geodesic jobs
+// would fail on `requireCachedBvh` anyway, so a still-cached halfedge
+// overlay for it is pure leaked memory (tens of MB at real-scan scale). See
+// `onBvhRelease`'s doc for why this is a listener, not a direct import from
+// jobs/bvh.ts's side.
+onBvhRelease((contentHash) => {
+  halfedgeCache.delete(contentHash);
+});
 
 function requireCachedHalfedge(contentHash: string, mesh: IndexedMesh): HalfedgeMesh {
   const cached = halfedgeCache.get(contentHash);
