@@ -130,6 +130,27 @@ import {
 export type { GeodesicPathPayload, GeodesicPathResult, SnapPolylinePayload, SnapPolylineResult, SurfacePointPayload };
 
 import {
+  affectedSpanIndices,
+  fitSurfaceSpline,
+  fitSurfaceSplineSpan,
+  surfacePointPayloadAt,
+  type FitSurfaceSplinePayload,
+  type FitSurfaceSplineResult,
+  type FitSurfaceSplineSpanPayload,
+  type FitSurfaceSplineSpanResult,
+  type SurfacePointPayload as SplineSurfacePointPayload,
+} from './spline.ts';
+export {
+  affectedSpanIndices,
+  surfacePointPayloadAt,
+  type FitSurfaceSplinePayload,
+  type FitSurfaceSplineResult,
+  type FitSurfaceSplineSpanPayload,
+  type FitSurfaceSplineSpanResult,
+  type SplineSurfacePointPayload,
+};
+
+import {
   repairRemoveComponents,
   repairSplitNonManifoldEdges,
   repairFillSmallHoles,
@@ -206,6 +227,8 @@ export interface JobPayloadMap {
   hashMesh: HashMeshPayload;
   geodesicPath: GeodesicPathPayload;
   snapPolyline: SnapPolylinePayload;
+  fitSurfaceSpline: FitSurfaceSplinePayload;
+  fitSurfaceSplineSpan: FitSurfaceSplineSpanPayload;
 }
 
 export interface JobResultMap {
@@ -230,6 +253,8 @@ export interface JobResultMap {
   hashMesh: HashMeshResult;
   geodesicPath: GeodesicPathResult;
   snapPolyline: SnapPolylineResult;
+  fitSurfaceSpline: FitSurfaceSplineResult;
+  fitSurfaceSplineSpan: FitSurfaceSplineSpanResult;
 }
 
 export type JobName = keyof JobPayloadMap;
@@ -261,6 +286,8 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   hashMesh,
   geodesicPath: geodesicPathJob,
   snapPolyline,
+  fitSurfaceSpline,
+  fitSurfaceSplineSpan,
 };
 
 const noopContext: JobContext = {
