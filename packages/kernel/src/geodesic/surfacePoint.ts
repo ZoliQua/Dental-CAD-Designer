@@ -51,6 +51,39 @@ export function snapToSurface(mesh: IndexedMesh, bvh: Bvh, point: Vec3): Surface
   return surfacePointFromClosestPoint(closestPoint(mesh, bvh, point));
 }
 
+/** Epsilon (in barycentric-weight units) within which a `SurfacePoint` is
+ * treated as "vertex-exact" by `vertexIndexIfExact` — see that function's
+ * doc and corridor.ts's "one-ring seed extension" module doc. Tight enough
+ * to only catch points that are genuinely AT a vertex (either bit-exact —
+ * `funnel.ts`'s `surfacePointAtVertex` always emits `[1,0,0]`-style
+ * barycentrics, and BVH `closestPoint` projections that land on/very near a
+ * vertex are effectively exact too — or fast-check's shrink-biased
+ * near-vertex samples, e.g. `[1, 1e-111, 1e-165]`), never a typical
+ * randomly-sampled interior point (a uniform sample landing within `1e-9`
+ * of a vertex by chance is vanishingly unlikely). */
+export const VERTEX_EXACT_BARYCENTRIC_EPSILON = 1e-9;
+
+/**
+ * Returns the global mesh vertex index `sp` sits (at least effectively)
+ * exactly AT — one barycentric weight within `epsilon` of 1 — or `null` if
+ * `sp` is a genuine interior/edge point. Used by corridor.ts's one-ring
+ * seed extension (seeding/terminating the corridor search from every
+ * triangle incident to the vertex, not just `sp.triangleIndex`) and
+ * geodesicPath.ts's exact endpoint placement in the unfolded 2D frame — see
+ * geodesicPath.ts's `@errorBound` "vertex-exact endpoints" section for why
+ * this matters (a single arbitrarily-chosen containing triangle otherwise
+ * biases the corridor seed, measurably, for legitimate vertex-anchored
+ * surface points).
+ */
+export function vertexIndexIfExact(mesh: IndexedMesh, sp: SurfacePoint, epsilon: number = VERTEX_EXACT_BARYCENTRIC_EPSILON): number | null {
+  const [w0, w1, w2] = sp.barycentric;
+  const threshold = 1 - epsilon;
+  if (w0 >= threshold) return triangleVertexIndices(mesh, sp.triangleIndex)[0];
+  if (w1 >= threshold) return triangleVertexIndices(mesh, sp.triangleIndex)[1];
+  if (w2 >= threshold) return triangleVertexIndices(mesh, sp.triangleIndex)[2];
+  return null;
+}
+
 /** Squared Euclidean distance between two `SurfacePoint`s' evaluated 3D
  * positions — used by `geodesicPath`'s same-point fast path and by tests. */
 export function surfacePointDistanceSquared(mesh: IndexedMesh, a: SurfacePoint, b: SurfacePoint): number {

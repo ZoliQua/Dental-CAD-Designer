@@ -41,6 +41,23 @@ export interface GeodesicPathResult {
    * callers. See geodesicPath.ts's "Iterative straightening" doc for the
    * convergence criterion this counts against. */
   iterations: number;
+  /** `true` if the widening loop stopped because straightening genuinely
+   * met one of its convergence criteria (geodesicPath.ts's "Iterative
+   * straightening" doc, cases (a)/(b)/(c) — no further improvement is
+   * possible, or none was found) — including the trivial same-point fast
+   * path. `false` if `maxIterations` (case (d), the hang-guard hard cap)
+   * was reached BEFORE the loop could establish convergence, i.e. the
+   * result is only the best-so-far, not a verified local optimum. Callers
+   * that need a numeric-accuracy guarantee (e.g. an acceptance check)
+   * should treat `converged: false` as "this path may be measurably longer
+   * than the true polyhedral geodesic" rather than silently trusting
+   * `length`. See geodesicPath.test.ts's cap-boundary test for a
+   * concrete case where a lower `maxIterations` reports `false` while a
+   * higher one, given the SAME inputs, converges to the identical answer
+   * and reports `true` — the flag reflects whether convergence was
+   * actually VERIFIED before stopping, not merely whether the numeric
+   * result happens to already be optimal. */
+  converged: boolean;
 }
 
 /** Options shared by `geodesicPath`/`snapPolylineGeodesic` — see

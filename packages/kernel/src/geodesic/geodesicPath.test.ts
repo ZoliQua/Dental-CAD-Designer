@@ -19,7 +19,7 @@ import {
   tetrahedronMesh,
 } from '../halfedge/halfedge.test-fixtures.ts';
 import { MESH_WELD_EPSILON_MM } from '../intake/weld.ts';
-import { geodesicPath } from './geodesicPath.ts';
+import { GEODESIC_MAX_ITERATIONS, geodesicPath } from './geodesicPath.ts';
 import { evaluateSurfacePoint } from './surfacePoint.ts';
 import type { SurfacePoint } from './types.ts';
 
@@ -59,6 +59,7 @@ describe('geodesicPath — flat mesh yields an exact straight line', () => {
 
     expect(euclidean).toBeCloseTo(0.5, 12);
     expect(result.length).toBeCloseTo(euclidean, 9); // machine-precision exact — see this task's brief
+    expect(result.converged).toBe(true); // a taut single-segment path converges immediately (case (b))
     // Every materialized point lies on the line y = 0.5, z = 0.
     for (const sp of result.points) {
       const p = evaluateSurfacePoint(m, sp);
@@ -134,6 +135,7 @@ describe('geodesicPath — degenerate cases', () => {
     const result = geodesicPath(m, hm, sp, sp);
     expect(result.length).toBe(0);
     expect(result.points).toEqual([sp, sp]);
+    expect(result.converged).toBe(true); // trivially converged — nothing to straighten/widen
   });
 
   it('same 3D point reached via two DIFFERENT triangles sharing a vertex: length 0', () => {
@@ -169,6 +171,65 @@ describe('geodesicPath — degenerate cases', () => {
     // Half the great-circle circumference, generously bounded.
     expect(result.length).toBeGreaterThan(Math.PI * radius * 0.9);
     expect(result.length).toBeLessThan(Math.PI * radius * 1.1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// `GeodesicPathResult.converged` — this task's brief: distinguish genuine
+// convergence from a `maxIterations` cap truncation.
+// ---------------------------------------------------------------------------
+
+describe('geodesicPath — GeodesicPathResult.converged', () => {
+  // A specific icosphere(5, 3) surface-point pair whose widening loop needs
+  // exactly 4 improving passes to reach its natural (converged) optimum —
+  // found by sweeping seeded random pairs for one whose `iterations` at the
+  // default cap (8) is comfortably below the cap, so we can then cap it
+  // BELOW that natural stopping point and observe genuine truncation (the
+  // length keeps measurably improving with each of the first 4 passes, then
+  // stabilizes) — see this task's fix-batch notes for the sweep. This is a
+  // real cap-forcing case, not a weakened/fake cap: `maxIterations` is
+  // simply set below the pass count this SPECIFIC pair genuinely needs.
+  const radius = 5;
+  const mesh = icosphereMesh(radius, 3);
+  const hm = buildHalfedge(mesh);
+  const start: SurfacePoint = { triangleIndex: 960, barycentric: [0.46768958026167806, 0.26829355180994185, 0.2640168679283801] };
+  const end: SurfacePoint = { triangleIndex: 560, barycentric: [0.5791267294121226, 0.16937583238675563, 0.25149743820112175] };
+
+  it('converges naturally (well under the default cap) on a typical pair: converged === true', () => {
+    const result = geodesicPath(mesh, hm, start, end);
+    expect(result.converged).toBe(true);
+    expect(result.iterations).toBeLessThan(GEODESIC_MAX_ITERATIONS);
+  });
+
+  it('a maxIterations cap set BELOW this pair\'s natural convergence point genuinely truncates: converged === false', () => {
+    // With the default cap, this pair converges at iterations === 4 (see
+    // the test above / the sweep this fixture was chosen from). Capping at
+    // 2 forces the loop to stop while strictly more improvement was still
+    // available — a real truncation, not a coincidence: the returned
+    // length is measurably LONGER than the fully-converged answer.
+    const capped = geodesicPath(mesh, hm, start, end, { maxIterations: 2 });
+    const converged = geodesicPath(mesh, hm, start, end); // default cap — reaches the true local optimum
+
+    expect(capped.converged).toBe(false);
+    expect(capped.iterations).toBe(2);
+    expect(converged.converged).toBe(true);
+    // The capped result is a valid, but strictly worse (longer), path —
+    // proving the cap actually cut off real, available improvement rather
+    // than merely reporting `false` out of over-caution.
+    expect(capped.length).toBeGreaterThan(converged.length);
+  });
+
+  it('loop boundary condition: maxIterations = 0 never attempts widening — always reports converged === false (unless the seed was already exact)', () => {
+    // Direct unit test of the (d) hang-guard boundary itself (this task's
+    // brief: acceptable when a genuinely cap-forcing mesh for a SPECIFIC
+    // scenario is impractical to hand-construct — here it is not
+    // impractical, see the test above, but this case additionally pins the
+    // exact boundary: `maxIterations: 0` means the loop can NEVER reach a
+    // genuine convergence check, so `converged` must always be `false`
+    // whenever there is anything left to potentially improve).
+    const capped = geodesicPath(mesh, hm, start, end, { maxIterations: 0 });
+    expect(capped.iterations).toBe(0);
+    expect(capped.converged).toBe(false);
   });
 });
 

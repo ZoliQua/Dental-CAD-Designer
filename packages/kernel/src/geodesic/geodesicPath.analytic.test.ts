@@ -165,3 +165,45 @@ describe('geodesicPath — ACCEPTANCE: icosphere geodesic length vs analytic gre
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// Multi-seed robustness sweep (this task's fix-batch, minor (a)): a
+// LIGHTWEIGHT, COMMITTED version of the dev-time cross-seed sweep this
+// file's top doc already cites ("mulberry32 seeds 1, 2, 3, 42, 12345,
+// 99999 ... measured max relative error ranged 0.018% - 0.065%"). That
+// sweep was previously only a manual/dev-time check, not asserted in CI —
+// this `describe.each` makes it a real regression test, asserting the SAME
+// per-pair 0.1% acceptance budget as the primary test above, for every one
+// of the 6 report seeds. Pair count is reduced from 50 to
+// `SWEEP_PAIRS_PER_SEED` (documented below) purely for CI runtime — the
+// primary test above already covers 50 pairs at `PROPERTY_SEED`; this sweep
+// exists to catch a regression that happens to dodge that ONE seed, not to
+// re-establish the accuracy bound from scratch.
+const SWEEP_SEEDS = [1, 2, 3, 42, 12345, 99999];
+const SWEEP_PAIRS_PER_SEED = 15; // reduced from NUM_PAIRS (50) — see doc above; 6 seeds x 15 pairs = 90 total geodesicPath calls, comparable total cost to the primary test's 50
+
+describe('geodesicPath — multi-seed robustness sweep (icosphere, reduced pair count per seed)', () => {
+  const radius = 5;
+  const subdivisions = 5; // same fixture as the primary acceptance test above
+  const mesh = icosphereMesh(radius, subdivisions);
+  const hm = buildHalfedge(mesh);
+  const faceCount = mesh.indices.length / 3;
+
+  it.each(SWEEP_SEEDS)(`seed %i: ${SWEEP_PAIRS_PER_SEED} pairs, each within the acceptance budget`, (seed) => {
+    const rand = mulberry32(seed);
+    let maxRelError = 0;
+    for (let i = 0; i < SWEEP_PAIRS_PER_SEED; i++) {
+      const a = randomSurfacePoint(rand, faceCount);
+      const b = randomSurfacePoint(rand, faceCount);
+      const result = geodesicPath(mesh, hm, a, b);
+      const analytic = greatCircleLength(radius, evaluateSurfacePoint(mesh, a), evaluateSurfacePoint(mesh, b));
+      const relError = analytic > 1e-9 ? Math.abs(result.length - analytic) / analytic : 0;
+      if (relError > maxRelError) maxRelError = relError;
+      expect(relError).toBeLessThan(ACCEPTANCE_BOUND);
+    }
+    console.log(
+      `[geodesicPath sweep] seed=${seed}: ${SWEEP_PAIRS_PER_SEED} pairs, measured max relative error = ` +
+        `${(maxRelError * 100).toFixed(4)}% (budget: ${(ACCEPTANCE_BOUND * 100).toFixed(2)}%)`,
+    );
+  });
+});

@@ -119,6 +119,7 @@ describe('geodesicPath job', () => {
     expect(result.triangleIndices[0]).toBe(0);
     expect(result.triangleIndices[result.triangleIndices.length - 1]).toBe(1);
     expect(result.iterations).toBeGreaterThanOrEqual(0);
+    expect(typeof result.converged).toBe('boolean');
   });
 
   it('same start/end triangle+barycentric: length 0, a single point', async () => {
@@ -244,6 +245,10 @@ describe('snapPolyline job', () => {
     expect(result.segmentTriangleIndices.length).toBe(
       Array.from(result.segmentPointCounts).reduce((a, b) => a + b, 0),
     );
+    expect(result.segmentConverged.length).toBe(2);
+    // Aggregate `converged` is the AND of the per-segment flags.
+    const expectedAggregate = Array.from(result.segmentConverged).every((v) => v === 1);
+    expect(result.converged).toBe(expectedAggregate);
   });
 
   it('rejects a malformed points array (length not a multiple of 3)', async () => {

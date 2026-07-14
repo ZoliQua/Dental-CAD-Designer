@@ -63,19 +63,61 @@
 // shorter") is not implemented (YAGNI: not needed by Phase 3's margin-line
 // use case, which always anchors ON the surface, never spans a hole).
 //
+// ## One-ring seed extension (vertex-exact endpoints)
+//
+// `start`/`end` are arbitrary surface points — triangle + barycentric, per
+// types.ts's `SurfacePoint` doc — but a LEGITIMATE surface point can happen
+// to sit exactly (or effectively — `surfacePoint.ts`'s
+// `vertexIndexIfExact`) AT a mesh vertex: `funnel.ts`'s own
+// `materializeGeodesic` emits vertex-exact bend points, and Phase 3's
+// planned margin-editing re-snap workflow round-trips through them (a bend
+// point becomes a later re-snap's endpoint). Whichever ONE triangle such a
+// point's `triangleIndex` happens to name is essentially arbitrary — a BVH
+// projection or a previous funnel pass could have attached it to any of the
+// (typically 5-6) triangles incident to that vertex, all representing the
+// EXACT SAME 3D point. Seeding (or terminating) the search from only that
+// one triangle measurably biases the incrementally-unfolded distance
+// metric toward whichever local "wedge" of the one-ring that triangle
+// happens to be in — this was measured to cost up to ~0.55% length error
+// on vertex-anchored pairs (vs. ~0.05% typical), against a 0.1% acceptance
+// budget (see geodesicPath.ts's `@errorBound`).
+//
+// The fix: when `start` (`end`) is vertex-exact at vertex `v`,
+// `dualGraphDijkstra` seeds (terminates) from EVERY triangle in `v`'s
+// one-ring (`oneRingFaces`) simultaneously, not just `start.triangleIndex`
+// (`end.triangleIndex`) — a genuine multi-source/multi-sink Dijkstra. Each
+// one-ring triangle is independently placed via `placeFirstFace` (its own
+// hinge-unfold chain, own 2D frame — unrelated to any other one-ring
+// triangle's frame) with distance 0 AT THE VERTEX (not the face centroid —
+// `anchor2D` below is the vertex's own exact local corner position within
+// that triangle's placement, inherited unchanged by every face reached
+// further along that SAME chain, since `placeNextFace` only ever extends a
+// chain's existing frame). Whichever one-ring triangle turns out to lead to
+// the shortest route wins — eliminating the single-triangle seed bias
+// entirely, since every one-ring triangle is tried on equal footing. See
+// geodesicPath.ts's `placeSurfacePoint2D` for the corresponding change on
+// the MATERIALIZATION side (the corridor's first/last face is no longer
+// guaranteed to be `start.triangleIndex`/`end.triangleIndex` itself, so the
+// exact vertex position — `unfold.ts`'s `vertex2D` map — is used instead of
+// a barycentric combination against a specific face).
+//
 // ## Determinism
 //
 // Search tie-breaks are fully deterministic: the priority queue (heap.ts's
 // `MinHeap`) breaks exact-priority ties by lower triangle index, and
 // `faceNeighbors`' fixed per-triangle-corner order means the 3 candidate
-// relaxations per popped triangle are always visited in the same order. No
+// relaxations per popped triangle are always visited in the same order. The
+// one-ring seed/target extension above adds no new nondeterminism: seed
+// faces are pushed in `oneRingFaces`' own fixed traversal order (itself
+// deterministic — halfedge/iterate.ts), and ties across DIFFERENT seed
+// chains still resolve via the same `(priority, lower id)` heap rule. No
 // `Math.random`/`Date.now` anywhere.
 import type { IndexedMesh } from '../mesh/types.ts';
 import type { HalfedgeMesh } from './../halfedge/types.ts';
-import { faceNeighbors } from '../halfedge/iterate.ts';
+import { faceNeighbors, oneRingFaces } from '../halfedge/iterate.ts';
 import { MinHeap } from './heap.ts';
 import { placeFirstFace, placeNextFace, vec2Sub, vec2Length, type FacePlacement, type Vec2 } from './unfold.ts';
-import { evaluateSurfacePoint } from './surfacePoint.ts';
+import { evaluateSurfacePoint, vertexIndexIfExact } from './surfacePoint.ts';
 import type { SurfacePoint } from './types.ts';
 
 function faceCentroid2D(p: readonly [Vec2, Vec2, Vec2]): Vec2 {
@@ -165,28 +207,62 @@ export function dualGraphDijkstra(
   const dist = new Float64Array(faceCount).fill(Infinity);
   const prev = new Int32Array(faceCount).fill(-1);
   const placements: (FacePlacement | undefined)[] = new Array(faceCount);
+  // Per-face "distance-0" anchor — the vertex/point `dist[f]` is measured
+  // FROM, expressed in `f`'s own placement frame. Ordinarily every face
+  // shares the SAME anchor (`start`'s single placed position), but the
+  // one-ring seed extension (module doc above) gives each seed chain its
+  // OWN anchor (the shared vertex's own local corner position within that
+  // chain's root), inherited unchanged by every face relaxed further along
+  // that same chain (`placeNextFace` only ever extends an existing frame,
+  // never re-roots it).
+  const anchor2D: (Vec2 | undefined)[] = new Array(faceCount);
   const visited = new Uint8Array(faceCount);
   const heap = new MinHeap();
   const endPos = evaluateSurfacePoint(mesh, end);
 
-  const rootPlacement = placeFirstFace(mesh, startFace);
-  const [w0, w1, w2] = start.barycentric;
-  const start2D: Vec2 = {
-    x: rootPlacement.positions[0].x * w0 + rootPlacement.positions[1].x * w1 + rootPlacement.positions[2].x * w2,
-    y: rootPlacement.positions[0].y * w0 + rootPlacement.positions[1].y * w1 + rootPlacement.positions[2].y * w2,
-  };
-  placements[startFace] = rootPlacement;
-  dist[startFace] = distanceToStart2D(start2D, rootPlacement);
-  heap.push(dist[startFace]! + heuristicToEnd(mesh, rootPlacement.corners, endPos), startFace);
+  const startVertex = vertexIndexIfExact(mesh, start);
+  const seedFaces = startVertex !== null ? oneRingFaces(hm, startVertex) : [startFace];
+  for (const f of seedFaces) {
+    if (placements[f] !== undefined) continue; // defensive de-dup — oneRingFaces never repeats a face
+    const rootPlacement = placeFirstFace(mesh, f);
+    let a2D: Vec2;
+    if (startVertex !== null) {
+      const local = rootPlacement.corners.indexOf(startVertex);
+      a2D = rootPlacement.positions[local as 0 | 1 | 2]!; // exact — no barycentric rounding
+    } else {
+      const [w0, w1, w2] = start.barycentric;
+      a2D = {
+        x: rootPlacement.positions[0].x * w0 + rootPlacement.positions[1].x * w1 + rootPlacement.positions[2].x * w2,
+        y: rootPlacement.positions[0].y * w0 + rootPlacement.positions[1].y * w1 + rootPlacement.positions[2].y * w2,
+      };
+    }
+    placements[f] = rootPlacement;
+    anchor2D[f] = a2D;
+    const d0 = distanceToStart2D(a2D, rootPlacement);
+    dist[f] = d0;
+    heap.push(d0 + heuristicToEnd(mesh, rootPlacement.corners, endPos), f);
+  }
 
+  // Symmetric one-ring TARGET extension: when `end` is vertex-exact, the
+  // search may legitimately terminate at ANY triangle incident to that
+  // vertex — `end.triangleIndex` is just one arbitrary member of that set
+  // (same reasoning as the seed side, mirrored — module doc above).
+  const endVertex = vertexIndexIfExact(mesh, end);
+  const targetFaces: ReadonlySet<number> = endVertex !== null ? new Set(oneRingFaces(hm, endVertex)) : new Set([endFace]);
+
+  let actualEndFace = -1;
   while (heap.size > 0) {
     const top = heap.pop()!;
     const f = top.id;
     if (visited[f]) continue;
     visited[f] = 1;
-    if (f === endFace) break; // early termination — see module doc
+    if (targetFaces.has(f)) {
+      actualEndFace = f; // early termination — see module doc
+      break;
+    }
 
     const placement = placements[f]!;
+    const a2D = anchor2D[f]!;
     const neighbors = faceNeighbors(hm, f);
     for (const n of neighbors) {
       if (n === -1) continue;
@@ -198,22 +274,23 @@ export function dualGraphDijkstra(
       } catch {
         continue; // defensive — should not happen for a genuine mesh neighbor
       }
-      const candidateDist = distanceToStart2D(start2D, candidatePlacement);
+      const candidateDist = distanceToStart2D(a2D, candidatePlacement);
       if (candidateDist < dist[n]!) {
         dist[n] = candidateDist;
         prev[n] = f;
         placements[n] = candidatePlacement;
+        anchor2D[n] = a2D; // inherited — same chain/frame as `f`, see doc above
         heap.push(candidateDist + heuristicToEnd(mesh, candidatePlacement.corners, endPos), n);
       }
     }
   }
 
-  if (!visited[endFace]) {
+  if (actualEndFace === -1) {
     throw new NoCorridorError(startFace, endFace);
   }
 
   const corridor: number[] = [];
-  let cur = endFace;
+  let cur = actualEndFace;
   while (cur !== -1) {
     corridor.push(cur);
     cur = prev[cur]!;
