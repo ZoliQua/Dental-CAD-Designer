@@ -138,8 +138,25 @@ export interface ReleaseBvhResult {
   released: boolean;
 }
 
+/** Listeners invoked by `releaseBvh` with the released `contentHash`, so
+ * OTHER per-worker caches keyed by the same contentHash can evict alongside
+ * the BVH (jobs/geodesic.ts's halfedge cache registers here — a ~250k-tri
+ * mesh's `HalfedgeMesh` overlay is tens of MB, and a worker that outlives
+ * many load/release cycles must not accumulate overlays for meshes whose
+ * BVH is already gone). A listener callback, rather than jobs/bvh.ts
+ * importing the other caches directly, keeps the jobs/*.ts dependency graph
+ * a strict DAG (geodesic.ts already imports THIS module for
+ * `requireCachedBvh` — an import in the other direction would be the
+ * circular VALUE import jobs/registry.ts's module doc rules out). */
+const releaseListeners: ((contentHash: string) => void)[] = [];
+
+export function onBvhRelease(listener: (contentHash: string) => void): void {
+  releaseListeners.push(listener);
+}
+
 export const releaseBvh = async (payload: ReleaseBvhPayload): Promise<ReleaseBvhResult> => {
   const released = bvhCache.delete(payload.contentHash);
+  for (const listener of releaseListeners) listener(payload.contentHash);
   return { released };
 };
 
