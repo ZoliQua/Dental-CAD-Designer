@@ -211,9 +211,10 @@ export interface SurfaceSplineSpan {
    * this span's length" comparison against `length` above). */
   readonly ambientLength: number;
   /** Re-projection passes actually performed — see this module's "Iterate"
-   * doc. 0 if the very first ambient-to-surface projection already met
-   * `relativeTolerance` (checked starting from the SECOND pass, same as
-   * `geodesicPath.ts`'s convention — see `converged`'s doc). */
+   * doc. Always ≥ 1: the convergence check compares consecutive passes, so
+   * even a span whose first projection already meets `relativeTolerance`
+   * reports 1 (the pass that confirmed it). Same convention as
+   * `geodesicPath.ts` — see `converged`'s doc. */
   readonly iterations: number;
   /** `true` if re-projection genuinely converged (relative length change
    * below tolerance on some pass, or nothing left to project — e.g. a
