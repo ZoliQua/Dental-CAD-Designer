@@ -114,6 +114,11 @@ export interface GeodesicPathResult {
    * `GeodesicPathResult.iterations` (@dqcad/kernel) for the convergence
    * criterion this counts against. */
   iterations: number;
+  /** Whether straightening genuinely converged before any iteration cap —
+   * see `GeodesicPathResult.converged` (@dqcad/kernel) for the exact
+   * semantics (`false` means the result is only best-so-far, truncated by
+   * `maxIterations`, not a verified local optimum). */
+  converged: boolean;
 }
 
 /**
@@ -142,7 +147,7 @@ export const geodesicPathJob = async (payload: GeodesicPathPayload, ctx: JobCont
 
   ctx.progress(1);
   const { triangleIndices, barycentric } = flattenPoints(result.points);
-  return { triangleIndices, barycentric, length: result.length, iterations: result.iterations };
+  return { triangleIndices, barycentric, length: result.length, iterations: result.iterations, converged: result.converged };
 };
 
 export interface SnapPolylinePayload {
@@ -173,6 +178,13 @@ export interface SnapPolylineResult {
    * order/length as `segmentPointCounts`. */
   segmentLengths: Float64Array;
   segmentIterations: Uint32Array;
+  /** Per-segment `GeodesicPathResult.converged` (@dqcad/kernel), 0/1 encoded
+   * (no boolean typed array) — same order/length as `segmentPointCounts`.
+   * See `converged` below for the whole-polyline aggregate. */
+  segmentConverged: Uint8Array;
+  /** `SnappedPolyline.converged` (@dqcad/kernel) — AND of every
+   * `segmentConverged` entry (`true` vacuously for 0 segments). */
+  converged: boolean;
 }
 
 /**
@@ -218,6 +230,7 @@ export const snapPolyline = async (payload: SnapPolylinePayload, ctx: JobContext
   const segmentPointCounts = new Uint32Array(polyline.segments.length);
   const segmentLengths = new Float64Array(polyline.segments.length);
   const segmentIterations = new Uint32Array(polyline.segments.length);
+  const segmentConverged = new Uint8Array(polyline.segments.length);
   let totalSegmentPoints = 0;
   for (let i = 0; i < polyline.segments.length; i++) {
     totalSegmentPoints += polyline.segments[i]!.points.length;
@@ -230,6 +243,7 @@ export const snapPolyline = async (payload: SnapPolylinePayload, ctx: JobContext
     segmentPointCounts[i] = segment.points.length;
     segmentLengths[i] = segment.length;
     segmentIterations[i] = segment.iterations;
+    segmentConverged[i] = segment.converged ? 1 : 0;
     const flat = flattenPoints(segment.points);
     segmentTriangleIndices.set(flat.triangleIndices, offset);
     segmentBarycentric.set(flat.barycentric, offset * 3);
@@ -245,5 +259,7 @@ export const snapPolyline = async (payload: SnapPolylinePayload, ctx: JobContext
     segmentPointCounts,
     segmentLengths,
     segmentIterations,
+    segmentConverged,
+    converged: polyline.converged,
   };
 };

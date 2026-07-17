@@ -78,7 +78,16 @@
 //       geodesicPath.test.ts's degenerate-case tests).
 // `GeodesicPathResult.iterations` reports how many widening passes actually
 // applied an improving re-seed (0 if the very first corridor was already
-// locally taut).
+// locally taut). `GeodesicPathResult.converged` (types.ts) reports WHICH of
+// the two families above actually stopped the loop: `true` for (a)/(b)/(c)
+// (a genuine convergence criterion was met), `false` only for (d) (the hard
+// cap fired first — see geodesicPath.test.ts's cap-boundary test for a case
+// where the exact same accuracy is reached at `maxIterations = 4` (reports
+// `converged: false`, since the cap fires before the loop can check for
+// convergence) as at the default cap (reports `converged: true`, since the
+// loop keeps running long enough to actually verify no further improvement
+// is available) — the flag is honest about what was VERIFIED, not just
+// about the numeric answer.
 //
 // ## Determinism
 //
@@ -142,12 +151,35 @@
 //    applied concretely to the icosphere acceptance fixture (subdivision
 //    level chosen so `theta^2/24` is comfortably under the 0.1% acceptance
 //    budget) and the MEASURED max error over the seeded point-pair set.
+//
+// ### Vertex-exact endpoints (one-ring seed extension — fix batch)
+//
+// A THIRD, previously-undocumented error source affected `start`/`end`
+// points sitting exactly (or effectively — `surfacePoint.ts`'s
+// `vertexIndexIfExact`) AT a mesh vertex: `dualGraphDijkstra` used to seed
+// (terminate) the corridor search from only the ONE triangle such a point's
+// `triangleIndex` happened to name, even though every triangle incident to
+// that vertex represents the exact same 3D point. This measurably biased
+// the seed corridor toward whichever local "wedge" of the one-ring that
+// triangle happened to be in — up to ~0.55% length error in the worst
+// hunted case (fast-check's shrink-biased vertex sampling), well over the
+// 0.1% acceptance budget, even though TYPICAL (non-vertex) points measured
+// comfortably under it (see above). This is now FIXED: `dualGraphDijkstra`
+// seeds/terminates from the vertex's WHOLE one-ring simultaneously (a
+// genuine multi-source/multi-sink search — see corridor.ts's "One-ring seed
+// extension" module doc for the mechanism), which makes the result
+// PROVABLY INDEPENDENT of which one-ring triangle a caller happened to
+// attach the point to (geodesicPath.vertexEndpoints.test.ts's "attachment
+// invariance" test asserts this directly — bit-identical results across
+// every one-ring choice). Measured max error on a seeded vertex-anchored
+// pair set post-fix: see that same test file's "budget" test — comparable
+// to the typical-case accuracy above, well under the 0.1% budget.
 import type { HalfedgeMesh } from '../halfedge/types.ts';
 import type { IndexedMesh } from '../mesh/types.ts';
 import { dualGraphDijkstra, edgeKey } from './corridor.ts';
 import { materializeGeodesic, type MaterializedPath } from './funnel.ts';
-import { surfacePointDistanceSquared } from './surfacePoint.ts';
-import { sequentialUnfold, triarea2, vec2Length, vec2Sub, type Vec2 } from './unfold.ts';
+import { surfacePointDistanceSquared, vertexIndexIfExact } from './surfacePoint.ts';
+import { sequentialUnfold, triarea2, vec2Length, vec2Sub, type UnfoldedCorridor, type Vec2 } from './unfold.ts';
 import type { GeodesicOptions, GeodesicPathResult, SurfacePoint } from './types.ts';
 
 /** Hard cap on corridor-widening passes — see this file's "Iterative
@@ -157,16 +189,36 @@ export const GEODESIC_MAX_ITERATIONS = 8;
  * converged — see this file's "Iterative straightening" doc. */
 export const GEODESIC_REL_TOL = 1e-9;
 
-function placeSurfacePoint2D(sp: SurfacePoint, face2D: readonly [Vec2, Vec2, Vec2][], corridorIndex: number): Vec2 {
-  const [p0, p1, p2] = face2D[corridorIndex]!;
+/**
+ * Places `sp` in the corridor's shared unfolded 2D frame. If `sp` is
+ * vertex-exact (`vertexIndexIfExact` — see corridor.ts's "one-ring seed
+ * extension" doc), the EXACT vertex position already recorded in
+ * `unfolded.vertex2D` is used instead of a barycentric combination against
+ * `face2D[corridorIndex]` — this matters because `dualGraphDijkstra`'s
+ * one-ring seeding means the corridor's first/last face is not necessarily
+ * `sp.triangleIndex` itself (any triangle in the vertex's one-ring can win
+ * the search), and even when it is, the exact vertex placement avoids any
+ * barycentric-rounding noise at the one point where an exact answer is
+ * available for free. Falls back to the ordinary barycentric placement if
+ * the corridor doesn't happen to touch that vertex at all (defensive —
+ * should not arise from `dualGraphDijkstra`'s own corridors, only possible
+ * for a hand-built corridor bypassing it).
+ */
+function placeSurfacePoint2D(mesh: IndexedMesh, sp: SurfacePoint, unfolded: UnfoldedCorridor, corridorIndex: number): Vec2 {
+  const vertex = vertexIndexIfExact(mesh, sp);
+  if (vertex !== null) {
+    const exact = unfolded.vertex2D.get(vertex);
+    if (exact) return exact;
+  }
+  const [p0, p1, p2] = unfolded.face2D[corridorIndex]!;
   const [w0, w1, w2] = sp.barycentric;
   return { x: p0.x * w0 + p1.x * w1 + p2.x * w2, y: p0.y * w0 + p1.y * w1 + p2.y * w2 };
 }
 
 function runCorridor(mesh: IndexedMesh, corridor: readonly number[], start: SurfacePoint, end: SurfacePoint): MaterializedPath {
   const unfolded = sequentialUnfold(mesh, corridor);
-  const start2D = placeSurfacePoint2D(start, unfolded.face2D, 0);
-  const end2D = placeSurfacePoint2D(end, unfolded.face2D, corridor.length - 1);
+  const start2D = placeSurfacePoint2D(mesh, start, unfolded, 0);
+  const end2D = placeSurfacePoint2D(mesh, end, unfolded, corridor.length - 1);
   return materializeGeodesic(mesh, corridor, unfolded, start, start2D, end, end2D);
 }
 
@@ -235,9 +287,10 @@ export function geodesicPath(
   const maxIterations = options.maxIterations ?? GEODESIC_MAX_ITERATIONS;
   const relTol = options.relativeTolerance ?? GEODESIC_REL_TOL;
 
-  // Degenerate case: same point (this task's brief: "length 0").
+  // Degenerate case: same point (this task's brief: "length 0"). Trivially
+  // converged — there is nothing to straighten/widen.
   if (surfacePointDistanceSquared(mesh, start, end) === 0) {
-    return { points: [start, end], length: 0, iterations: 0 };
+    return { points: [start, end], length: 0, iterations: 0, converged: true };
   }
 
   const forbiddenEdges = new Set<string>();
@@ -283,13 +336,23 @@ export function geodesicPath(
   }
   let prevLength = Infinity;
   let iterations = 0;
+  // `converged` tracks whether the loop's LAST break was a genuine
+  // convergence criterion ((a)/(b)/(c) below) rather than the hard cap
+  // (d) — see types.ts's `GeodesicPathResult.converged` doc. Defaults
+  // `false`: only explicitly flipped `true` at each convergence break, so a
+  // cap-triggered exit (which never reaches one of those breaks) correctly
+  // reports `false` by construction.
+  let converged = false;
 
   for (let iter = 0; iter <= maxIterations; iter++) {
     const relImprovement = (prevLength - materialized.length) / Math.max(prevLength, 1e-12);
     iterations = iter;
-    if (iter > 0 && relImprovement < relTol) break; // converged — see (a) above
+    if (iter > 0 && relImprovement < relTol) {
+      converged = true;
+      break; // converged — see (a) above
+    }
     prevLength = materialized.length;
-    if (iter === maxIterations) break; // hang-guard cap — see (d) above
+    if (iter === maxIterations) break; // hang-guard cap — see (d) above; `converged` stays false
 
     // Forbid every bend's pinch edge (fixed scan order — see this file's
     // "Determinism" doc), then re-derive the WHOLE corridor fresh under
@@ -313,8 +376,8 @@ export function geodesicPath(
       // most-bulging interior face's two corridor-adjacent edges and retry
       // — an independent widening trigger that doesn't require a bend.
       const unfolded = sequentialUnfold(mesh, corridor);
-      const start2D = placeSurfacePoint2D(start, unfolded.face2D, 0);
-      const end2D = placeSurfacePoint2D(end, unfolded.face2D, corridor.length - 1);
+      const start2D = placeSurfacePoint2D(mesh, start, unfolded, 0);
+      const end2D = placeSurfacePoint2D(mesh, end, unfolded, corridor.length - 1);
       const worst = findWorstDeviationFace(corridor, unfolded.face2D, start2D, end2D);
       if (worst) {
         for (const key of [
@@ -328,22 +391,35 @@ export function geodesicPath(
         }
       }
     }
-    if (!addedForbidden) break; // nothing left to try — see (b)/(c) above
+    if (!addedForbidden) {
+      converged = true;
+      break; // nothing left to try — see (b)/(c) above
+    }
 
     let nextCorridor: number[];
     try {
       nextCorridor = dualGraphDijkstra(mesh, hm, start, end, forbiddenEdges);
     } catch {
-      break; // no route avoiding every forbidden edge tried so far — keep the best result found
+      // No route avoids every forbidden edge tried so far — keep the best
+      // result found. This is a genuine convergence state (nothing MORE to
+      // try), not a cap truncation.
+      converged = true;
+      break;
     }
-    if (sameCorridor(nextCorridor, corridor)) break; // re-seed found nothing new — see (c) above
+    if (sameCorridor(nextCorridor, corridor)) {
+      converged = true;
+      break; // re-seed found nothing new — see (c) above
+    }
 
     const nextMaterialized = runCorridor(mesh, nextCorridor, start, end);
-    if (!(nextMaterialized.length < materialized.length)) break; // no improvement — see (c) above
+    if (!(nextMaterialized.length < materialized.length)) {
+      converged = true;
+      break; // no improvement — see (c) above
+    }
 
     corridor = nextCorridor;
     materialized = nextMaterialized;
   }
 
-  return { points: materialized.points, length: materialized.length, iterations };
+  return { points: materialized.points, length: materialized.length, iterations, converged };
 }

@@ -147,6 +147,8 @@ export {
   snapToSurface,
   surfacePointDistanceSquared,
   triangleVertexIndices,
+  vertexIndexIfExact,
+  VERTEX_EXACT_BARYCENTRIC_EPSILON,
   NoCorridorError,
   dualGraphDijkstra,
   geodesicPath,

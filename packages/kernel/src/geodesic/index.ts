@@ -10,6 +10,8 @@ export {
   snapToSurface,
   surfacePointDistanceSquared,
   triangleVertexIndices,
+  vertexIndexIfExact,
+  VERTEX_EXACT_BARYCENTRIC_EPSILON,
 } from './surfacePoint.ts';
 export { NoCorridorError, dualGraphDijkstra } from './corridor.ts';
 export { geodesicPath, GEODESIC_MAX_ITERATIONS, GEODESIC_REL_TOL } from './geodesicPath.ts';

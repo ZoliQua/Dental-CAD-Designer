@@ -134,7 +134,10 @@ export interface ReleaseBvhPayload {
 export interface ReleaseBvhResult {
   /** Whether a cached BVH for `contentHash` actually existed on this worker
    * to release — `false` is not an error (e.g. releasing a mesh this
-   * particular worker never happened to build, in a multi-worker pool). */
+   * particular worker never happened to build, in a multi-worker pool).
+   * NOTE: `releaseBvh` also evicts the SAME contentHash's per-worker
+   * geodesic halfedge cache — see `onBvhRelease`'s doc below and
+   * jobs/geodesic.ts's `onBvhRelease` listener. */
   released: boolean;
 }
 

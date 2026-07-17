@@ -26,6 +26,17 @@
 // scratch" — see this module's perf test (kernel-workers/geodesicJobs.test.ts)
 // for the measured per-segment latency on the real ~250k-triangle upperjaw
 // fixture against this task's guardrail (< 100 ms per re-snapped segment).
+//
+// ## `converged` (surfacing `GeodesicPathResult.converged` at the polyline
+// level — see types.ts's doc)
+//
+// Each `segments[i]` already carries its own `converged` flag from
+// `geodesicPath`. `SnappedPolyline.converged` is the AND of all of them (an
+// aggregate convenience so a caller doesn't have to scan `segments` just to
+// answer "is this whole polyline trustworthy") — `resnapPolylineAnchor`
+// recomputes it fresh each call from the (possibly-carried-over,
+// possibly-just-recomputed) `segments` array, so it always reflects the
+// CURRENT `segments`, not just the ones touched by the latest move.
 import type { Bvh } from '../bvh/types.ts';
 import type { Vec3 } from '../bvh/geometry.ts';
 import type { HalfedgeMesh } from '../halfedge/types.ts';
@@ -39,8 +50,22 @@ export interface SnappedPolyline {
    * projected onto `mesh`'s surface via `bvh` (`snapToSurface`). */
   anchors: SurfacePoint[];
   /** `anchors.length - 1` entries: `segments[i]` is the geodesic path from
-   * `anchors[i]` to `anchors[i + 1]`. Empty if fewer than 2 anchors. */
+   * `anchors[i]` to `anchors[i + 1]`. Empty if fewer than 2 anchors. Each
+   * segment already carries its OWN `converged` flag
+   * (`GeodesicPathResult.converged`, types.ts) — inspect `segments[i]
+   * .converged` directly for PER-SEGMENT detail. */
   segments: GeodesicPathResult[];
+  /** `true` only if EVERY segment converged (`GeodesicPathResult.converged`
+   * — types.ts) — `true` vacuously when there are 0 segments (a
+   * single-anchor polyline). An aggregate convenience for callers that just
+   * want "is this whole polyline trustworthy" without scanning `segments`
+   * themselves; see `segments[i].converged` for which specific segment(s)
+   * didn't, when this is `false`. */
+  converged: boolean;
+}
+
+function aggregateConverged(segments: readonly GeodesicPathResult[]): boolean {
+  return segments.every((s) => s.converged);
 }
 
 /**
@@ -66,7 +91,7 @@ export function snapPolylineGeodesic(
   for (let i = 0; i < anchors.length - 1; i++) {
     segments.push(geodesicPath(mesh, hm, anchors[i]!, anchors[i + 1]!, options));
   }
-  return { anchors, segments };
+  return { anchors, segments, converged: aggregateConverged(segments) };
 }
 
 /**
@@ -103,5 +128,5 @@ export function resnapPolylineAnchor(
     segments[index] = geodesicPath(mesh, hm, anchors[index]!, anchors[index + 1]!, options);
   }
 
-  return { anchors, segments };
+  return { anchors, segments, converged: aggregateConverged(segments) };
 }
