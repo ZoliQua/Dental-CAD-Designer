@@ -4,7 +4,7 @@
 // bundling+running the client dev smoke panel (see apps/client/src/engine/
 // workers.ts) since jsdom doesn't implement real Web Workers.
 import { afterEach, describe, expect, it } from 'vitest';
-import type { JobName } from './jobs.js';
+import type { JobName } from './jobs/registry.js';
 import {
   JobCancelledError,
   PoolDestroyedError,

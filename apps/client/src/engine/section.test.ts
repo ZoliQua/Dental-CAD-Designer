@@ -28,7 +28,7 @@ function statsForBbox(min: [number, number, number], max: [number, number, numbe
 }
 
 // Outward-wound unit cube, corner at the origin — same fixture shape as
-// packages/kernel-workers' unitCubeMesh (jobs.ts) / manifold.test.ts.
+// packages/kernel-workers' unitCubeMesh (jobs/misc.ts) / manifold.test.ts.
 function unitCubeMesh(): { positions: Float64Array; indices: Uint32Array } {
   const positions = new Float64Array([
     0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1,

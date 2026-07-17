@@ -2,7 +2,7 @@
 // infrastructure. Spawns a small, bounded pool of workers — browser Web
 // Workers or Node worker_threads Workers, picked at runtime by
 // isNodeRuntime() — reuses them across jobs, and layers progress reporting
-// and cooperative cancellation on top of jobs.ts's `runJob` dispatcher via
+// and cooperative cancellation on top of jobs/registry.ts's `runJob` dispatcher via
 // Comlink.
 //
 // Environment split: the two `new Worker(new URL('./worker-entry.*.ts',
@@ -20,7 +20,13 @@
 // needs to resolve it eagerly; Vite externalizes the bare specifier to an
 // inert stub, which is never reached at runtime in a browser.
 import * as Comlink from 'comlink';
-import { JobCancelledError, type JobName, type JobPayloadMap, type JobResultMap, type RunJob } from './jobs.js';
+import {
+  JobCancelledError,
+  type JobName,
+  type JobPayloadMap,
+  type JobResultMap,
+  type RunJob,
+} from './jobs/registry.js';
 
 export { JobCancelledError };
 
@@ -30,7 +36,7 @@ export interface RunJobOptions {
   transfer?: Transferable[];
   /**
    * Progress delivery ordering guarantee: every call the job makes to
-   * `ctx.progress(...)` (jobs.ts) is guaranteed to have already reached
+   * `ctx.progress(...)` (jobs/registry.ts) is guaranteed to have already reached
    * `onProgress` — i.e. this callback has actually run for it — by the time
    * this `run()` call's returned promise settles (resolves OR rejects),
    * including the job's final progress event, if any. Callers may safely
@@ -38,7 +44,7 @@ export interface RunJobOptions {
    * the job's true final state" (e.g. a UI progress bar reading 100% exactly
    * when its "done" handler fires) without racing the job's own resolution.
    *
-   * This is enforced centrally by jobs.ts's `runJob` dispatcher (see its
+   * This is enforced centrally by jobs/registry.ts's `runJob` dispatcher (see its
    * "Progress delivery ordering contract" doc comment), not by this pool
    * itself — `onProgress` here is `Comlink.proxy()`-wrapped and handed
    * straight to the worker, which invokes it over its own dedicated
@@ -53,7 +59,7 @@ export interface RunJobOptions {
   /** Cooperative cancellation: aborting rejects the returned promise with
    * JobCancelledError. If the job is still queued (pool saturated), the
    * rejection is immediate — it never gets a worker. If the job is already
-   * running, the worker notices at its next chunk boundary (see jobs.ts's
+   * running, the worker notices at its next chunk boundary (see jobs/misc.ts's
    * longTask doc comment) — not necessarily instantly. */
   signal?: AbortSignal;
 }
@@ -327,6 +333,18 @@ export class WorkerPool {
     }
   }
 
+  /**
+   * Always resolves, even with jobs queued or in flight (see pool.test.ts's
+   * destroy-related tests). Rejects every affected `run()` call with
+   * `PoolDestroyedError` BEFORE actually terminating the underlying
+   * worker(s) below — see jobs/registry.ts's `runJob` TSDoc, "Pool-
+   * destruction progress-flush race" section, for why an in-flight job's
+   * own `runJob` (running inside the worker being terminated) can
+   * legitimately still be mid-await when its caller already observed this
+   * rejection, and why that's safe (no leaked timer/promise — the
+   * worker's entire JS context is what actually resolves it, via
+   * `worker.terminate()` below).
+   */
   async destroy(): Promise<void> {
     this.destroyed = true;
 

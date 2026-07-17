@@ -10,7 +10,7 @@ export type Language = 'en' | 'hu' | 'de' | 'es';
  * @dqcad/kernel-workers (lint-enforced). UI only reads this via the store. */
 export type WorkerSmokeTestStatus = 'idle' | 'running' | 'success' | 'failure';
 /** Dev manifold-3d smoke-test panel (StatusBar) — proves the manifoldSmoke
- * job (packages/kernel-workers/src/jobs.ts) runs manifold-3d's WASM inside
+ * job (packages/kernel-workers/src/jobs/misc.ts) runs manifold-3d's WASM inside
  * the browser worker. Same idle/running/success/failure shape as
  * WorkerSmokeTestStatus, kept as a distinct type since the two tests are
  * independent and can be in different states simultaneously. */

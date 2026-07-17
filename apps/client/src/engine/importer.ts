@@ -33,7 +33,6 @@ import {
 import type { MeshRole, Operation } from '@dqcad/shared-types';
 import { useImportStore, type ImportPhase, type PendingUnitConfirmation } from '../state/importStore';
 import { caseStore } from './caseStore';
-import { hashMeshContent, sha256Hex } from './hash';
 import { computeBboxMm, suggestUnitRescale } from './units';
 import { getPool } from './workers';
 
@@ -110,7 +109,7 @@ export function fromFile(file: File, id: string = crypto.randomUUID()): ImportSo
 /**
  * Reads every chunk of `source` into one contiguous `Uint8Array` (required —
  * `parseMeshFile`'s payload is a single transferable buffer, see
- * kernel-workers/src/jobs.ts's module doc for why). Grows the buffer if
+ * kernel-workers/src/jobs/io.ts's module doc for why). Grows the buffer if
  * actual bytes exceed `source.totalBytes` (a hint, not a hard guarantee for
  * injected test sources); reports fractional progress as bytes accumulate.
  */
@@ -258,9 +257,15 @@ export async function importMeshFile(input: ImportSource): Promise<ImportOutcome
       (fraction) => setPhase(input.id, 'reading', fraction),
       controller.signal,
     );
-    const fileHash = await sha256Hex(rawBytes);
 
     setPhase(input.id, 'parsing', 0);
+    // `fileHash` (SHA-256 of the raw file bytes) is computed WORKER-SIDE by
+    // parseMeshFile itself now (see kernel-workers/src/jobs/io.ts's
+    // `ParseMeshFilePayload`/`StlSoupResult.fileHash` doc) — Phase 2 Task 1
+    // moved this off the UI thread; it used to be a main-thread
+    // `sha256Hex(rawBytes)` call right here, which `e2e/perf.spec.ts`'s
+    // module doc identified as Phase 1's leading rAF-gap suspect for large
+    // files.
     const parsed: ParseMeshFileResult = await getPool().run(
       'parseMeshFile',
       { format: input.format, bytes: rawBytes },
@@ -270,6 +275,7 @@ export async function importMeshFile(input: ImportSource): Promise<ImportOutcome
         onProgress: (fraction) => setPhase(input.id, 'parsing', fraction),
       },
     );
+    const fileHash = parsed.fileHash;
 
     let positions = parsed.positions;
     const indices = parsed.kind === 'ply-mesh' ? parsed.indices : undefined;
@@ -293,7 +299,10 @@ export async function importMeshFile(input: ImportSource): Promise<ImportOutcome
       }
       if (choice === 'apply-factor') {
         setPhase(input.id, 'rescaling', 0);
-        const beforeHash = await hashPositionsOnly(positions);
+        // Before/after positions hashes are computed WORKER-SIDE by
+        // rescaleMesh itself now (kernel-workers/src/jobs/misc.ts's
+        // `RescaleMeshResult.beforeHash`/`afterHash` doc) — replaces the old
+        // main-thread `hashPositionsOnly` helper (Phase 2 Task 1).
         const rescaled = await getPool().run(
           'rescaleMesh',
           { positions, factor: suggestion.factor },
@@ -304,7 +313,6 @@ export async function importMeshFile(input: ImportSource): Promise<ImportOutcome
           },
         );
         positions = rescaled.positions;
-        const afterHash = await hashPositionsOnly(positions);
         operations.push({
           id: crypto.randomUUID(),
           name: 'unit-rescale',
@@ -313,8 +321,8 @@ export async function importMeshFile(input: ImportSource): Promise<ImportOutcome
             factor: suggestion.factor,
             suspectedUnit: suggestion.suspectedUnit,
           },
-          inputHashes: [beforeHash],
-          outputHashes: [afterHash],
+          inputHashes: [rescaled.beforeHash],
+          outputHashes: [rescaled.afterHash],
           kernelVersion: KERNEL_VERSION,
           timestamp: new Date().toISOString(),
         });
@@ -336,7 +344,12 @@ export async function importMeshFile(input: ImportSource): Promise<ImportOutcome
     });
 
     setPhase(input.id, 'registering', 0);
-    const contentHash = await hashMeshContent(intakeResult.positions, intakeResult.indices);
+    // `contentHash` is computed WORKER-SIDE by intakeMesh itself now
+    // (kernel-workers/src/jobs/misc.ts's `IntakeMeshResult.contentHash` doc) —
+    // replaces the old main-thread `hashMeshContent(intakeResult.positions,
+    // intakeResult.indices)` call (Phase 2 Task 1); same byte layout/value,
+    // just computed off the UI thread, right where the buffers already are.
+    const contentHash = intakeResult.contentHash;
     operations.push({
       id: crypto.randomUUID(),
       name: 'import-mesh',
@@ -382,10 +395,6 @@ export async function importMeshFile(input: ImportSource): Promise<ImportOutcome
     activeControllers.delete(input.id);
     pendingResolvers.delete(input.id);
   }
-}
-
-async function hashPositionsOnly(positions: Float64Array): Promise<string> {
-  return sha256Hex(new Uint8Array(positions.buffer, positions.byteOffset, positions.byteLength));
 }
 
 /** Fire-and-forget entry point for ui/: kicks off every source's pipeline
