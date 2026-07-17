@@ -1,7 +1,7 @@
 // scripts/generate-large-fixture.ts
 //
-// Deterministic ~120 MB binary STL "standin arch" fixture generator for
-// Task 3's chunked-parsing perf test
+// Deterministic ~120 MB / ~2.5M-triangle binary STL "standin arch" fixture
+// generator, originally for Task 3's chunked-parsing perf test
 // (packages/io/src/stl/large-fixture.perf.test.ts, env-gated by
 // RUN_LARGE_FIXTURE=1 — see that file). Writes to test-fixtures/generated/
 // (git-ignored, see .gitignore, and NOT committed — regenerate on demand
@@ -9,6 +9,15 @@
 // running the gated perf test, per docs/plans/phase-1-import-viewer.md's
 // Global Constraints: "the >100 MB perf fixture is NOT committed —
 // generated deterministically on demand").
+//
+// Phase 2 Task 2 extends this with a second, ~5M-triangle variant
+// (`generate5MTriangleFixture` / `npm run fixtures:generate-large-5m`,
+// writing `standin-arch-5m.stl`) for that task's PLAN.md §7 NFR evidence
+// ("handle meshes up to ~5M triangles") — see
+// test/golden/halfedge-intake.perf.test.ts. The original ~2.5M/120MB
+// function (`generateLargeFixture`) and its default output filename are
+// UNCHANGED (same signature, same behavior) so Task 3's existing perf test
+// and `npm run test:perf-large` keep working exactly as before.
 //
 // Determinism (same invariant as scripts/generate-fixtures.ts): no
 // Math.random/Date.now anywhere below — every vertex is closed-form trig
@@ -96,14 +105,28 @@ export interface LargeFixtureSpec {
 }
 
 /** Picks `(longitudinalSegments, tubeSegments)` so the resulting triangle
+ * soup has (close to, at or just under) `targetTriangleCount` triangles.
+ * `tubeSegments` is held at a fixed, visually-reasonable roundness;
+ * `longitudinalSegments` is solved for from the target triangle count.
+ * Factored out of `planLargeFixture` (below) so Phase 2 Task 2's ~5M-
+ * triangle variant (`generate5MTriangleFixture`) can target a triangle
+ * count directly, without going through a byte-size estimate first. */
+export function planLargeFixtureForTriangleCount(
+  targetTriangleCount: number,
+  tubeSegments = 48,
+): LargeFixtureSpec {
+  const longitudinalSegments = Math.max(1, Math.round(targetTriangleCount / (tubeSegments * 2)));
+  return { longitudinalSegments, tubeSegments };
+}
+
+/** Picks `(longitudinalSegments, tubeSegments)` so the resulting triangle
  * soup's binary STL byte length is close to (at or just under)
  * `targetBytes`. `tubeSegments` is held at a fixed, visually-reasonable
  * roundness; `longitudinalSegments` is solved for from the target byte
  * budget. */
 export function planLargeFixture(targetBytes: number, tubeSegments = 48): LargeFixtureSpec {
   const targetTriangleCount = Math.floor((targetBytes - STL_HEADER_BYTES - STL_COUNT_BYTES) / STL_RECORD_BYTES);
-  const longitudinalSegments = Math.max(1, Math.round(targetTriangleCount / (tubeSegments * 2)));
-  return { longitudinalSegments, tubeSegments };
+  return planLargeFixtureForTriangleCount(targetTriangleCount, tubeSegments);
 }
 
 export function largeFixtureTriangleCount(spec: LargeFixtureSpec): number {
@@ -180,10 +203,32 @@ export function generateLargeFixture(outDir: string): { path: string; byteLength
   return { path, byteLength: bytes.byteLength, triangleCount: soup.triangleCount };
 }
 
-// Run directly (`tsx scripts/generate-large-fixture.ts` / `npm run
-// fixtures:generate-large`) vs. imported (e.g. by the perf test, to
+/** Phase 2 Task 2's ~5M-triangle variant, per PLAN.md §7's NFR ("handle
+ * meshes up to ~5M triangles") — targets a TRIANGLE COUNT directly (not a
+ * byte budget) via `planLargeFixtureForTriangleCount`, since the NFR itself
+ * is phrased in triangles. Same horseshoe-tube geometry, same determinism
+ * guarantee, distinct output filename (`standin-arch-5m.stl`) so it never
+ * collides with `generateLargeFixture`'s ~2.5M-triangle output. */
+const TARGET_TRIANGLE_COUNT_5M = 5_000_000;
+
+export function generate5MTriangleFixture(outDir: string): { path: string; byteLength: number; triangleCount: number } {
+  const spec = planLargeFixtureForTriangleCount(TARGET_TRIANGLE_COUNT_5M);
+  const soup = buildLargeFixtureSoup(spec);
+  const bytes = writeStlBinary(soup, { headerText: 'DQCAD perf fixture: standin arch (5M variant)' });
+
+  mkdirSync(outDir, { recursive: true });
+  const path = join(outDir, 'standin-arch-5m.stl');
+  writeFileSync(path, bytes);
+
+  return { path, byteLength: bytes.byteLength, triangleCount: soup.triangleCount };
+}
+
+// Run directly (`tsx scripts/generate-large-fixture.ts [--5m]` / `npm run
+// fixtures:generate-large[-5m]`) vs. imported (e.g. by a perf test, to
 // regenerate on demand) — same "only run main() when this is the
-// entrypoint" pattern scripts/generate-fixtures.ts uses.
+// entrypoint" pattern scripts/generate-fixtures.ts uses. `--5m` selects the
+// ~5M-triangle variant; no flag (the default, preserving every existing
+// caller's behavior exactly) generates the original ~2.5M/120MB fixture.
 function isMainModule(): boolean {
   const invoked = process.argv[1];
   return invoked !== undefined && import.meta.url === pathToFileURL(resolve(invoked)).href;
@@ -191,7 +236,9 @@ function isMainModule(): boolean {
 
 if (isMainModule()) {
   const outDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'test-fixtures', 'generated');
-  const result = generateLargeFixture(outDir);
+  const result = process.argv.includes('--5m')
+    ? generate5MTriangleFixture(outDir)
+    : generateLargeFixture(outDir);
   const mb = (result.byteLength / (1024 * 1024)).toFixed(1);
   console.log(
     `Generated ${result.path} — ${mb} MB, ${result.triangleCount.toLocaleString()} triangles.`,

@@ -88,6 +88,20 @@ function hashCell(ix: number, iy: number, iz: number): number {
  * (CLAUDE.md invariant: meshes are immutable values). Callers may reuse
  * `soup.positions` freely after this call returns.
  *
+ * **Accumulation (Phase 2 Task 2 intake scalability rebuild)**: welded
+ * positions are written directly into a preallocated `Float64Array` sized
+ * to the worst case (`rawVertexCount * 3` — welding can only ever produce
+ * at most as many distinct vertices as raw ones went in), then trimmed to
+ * the actual count with a single `.slice()` copy at the end — never a plain
+ * `number[]` accumulated via `.push()`. At the multi-million-vertex scale
+ * this project's NFR targets (PLAN.md §7), a `number[]` boxes every
+ * coordinate as a heap `Number` and `Float64Array.from()` must then convert
+ * the whole thing element-by-element; writing straight into a typed array
+ * (and growing nothing, since the upper bound is known up front) avoids
+ * both costs. The single trailing `.slice()` is an intentional, bounded
+ * O(weldedVertexCount) copy — the same one-time cost `Float64Array.from`
+ * paid before, just without the boxed intermediate.
+ *
  * @errorBound Vertices farther apart than `epsilon` are never merged, and
  * every merge decision is a real Euclidean-distance check against
  * `epsilon` (not just "same grid cell") — so this introduces no positional
@@ -110,7 +124,11 @@ export function weldVertices(soup: TriangleSoup, epsilon: number = MESH_WELD_EPS
   // hashCell(home cell) -> welded vertex indices bucketed there (possibly
   // from several distinct colliding cells — see hashCell's doc).
   const buckets = new Map<number, number[]>();
-  const weldedPositions: number[] = [];
+  // Upper bound: welding can never produce more distinct vertices than raw
+  // ones went in — preallocate for the worst case and trim with one
+  // `.slice()` at the end (see this function's "Accumulation" doc above).
+  const weldedPositions = new Float64Array(rawVertexCount * 3);
+  let weldedVertexCount = 0;
   const indices = new Uint32Array(rawVertexCount);
 
   for (let raw = 0; raw < rawVertexCount; raw++) {
@@ -147,8 +165,12 @@ export function weldVertices(soup: TriangleSoup, epsilon: number = MESH_WELD_EPS
     }
 
     if (matchIndex === -1) {
-      matchIndex = weldedPositions.length / 3;
-      weldedPositions.push(px, py, pz);
+      matchIndex = weldedVertexCount;
+      const dst = matchIndex * 3;
+      weldedPositions[dst] = px;
+      weldedPositions[dst + 1] = py;
+      weldedPositions[dst + 2] = pz;
+      weldedVertexCount++;
       // Home cell: floor(p/cellSize) per axis — always within the probe
       // ranges above (floor((p−ε)/2ε) ≤ floor(p/2ε) ≤ floor((p+ε)/2ε)), so
       // a future query within ε of this vertex is guaranteed to probe it.
@@ -163,5 +185,5 @@ export function weldVertices(soup: TriangleSoup, epsilon: number = MESH_WELD_EPS
     indices[raw] = matchIndex;
   }
 
-  return { positions: Float64Array.from(weldedPositions), indices };
+  return { positions: weldedPositions.slice(0, weldedVertexCount * 3), indices };
 }

@@ -68,28 +68,96 @@ export interface OrientNormalsResult {
   components: OrientComponentReport[];
 }
 
-interface Neighbor {
-  neighbor: number;
-  /** This triangle's stored winding direction across the shared edge
-   * (`true` = traverses low-index -> high-index vertex). */
-  dSelf: boolean;
-  /** The neighbor's stored winding direction across the same edge. */
-  dNeighbor: boolean;
+/**
+ * Adjacency restricted to degree-2 (manifold-interior) edges only — see this
+ * module's doc for why non-manifold edges are deliberately excluded from
+ * flood-fill propagation.
+ *
+ * **CSR (compressed sparse row) typed-array storage** (Phase 2 Task 2 intake
+ * scalability rebuild): NOT a `Neighbor[][]` — one JS array per triangle,
+ * each accumulated via `.push()` — because at the multi-million-triangle
+ * scale this project's NFR targets (PLAN.md §7), allocating ~`triangleCount`
+ * individually-managed small arrays (via `Array.from({length,...}, () =>
+ * [])`) plus ~`2 * degreeTwoEdgeCount` pushed `Neighbor` objects turned out
+ * to be a genuine scalability CLIFF, not just a proportionally-larger cost:
+ * empirically, this pattern took a ~5M-triangle mesh from a healthy ~3.3 GB
+ * RSS straight past a 16 GB heap ceiling into an OOM crash (verified via a
+ * throwaway instrumented run — see this task's perf report), even though
+ * the SAME code at ~2.5M triangles only cost ~115 MB. A huge COUNT of tiny,
+ * individually-GC-tracked objects (rather than raw byte volume) is what
+ * breaks down here — millions of small arrays/objects is a documented weak
+ * spot for V8's generational/incremental GC, independent of how much actual
+ * data they hold.
+ *
+ * The fix: two passes over the SAME `edges` `Map` (whose iteration order is
+ * stable and IDENTICAL across repeated iterations of one `Map` instance —
+ * this is what makes the two passes agree), building one flat CSR structure
+ * instead: `start` (`Uint32Array`, length `triangleCount + 1`) gives
+ * triangle `t`'s adjacency slice as `[start[t], start[t+1])` into the flat
+ * `neighbor`/`dSelf`/`dNeighbor` arrays. This preserves, EXACTLY, the same
+ * per-triangle neighbor visiting order the original push-based version
+ * produced (both passes iterate `edges.values()` in the same order, so
+ * pass 2 appends each triangle's entries in the same relative order pass 1
+ * counted them in) — required for `orientNormalsConsistently`'s flood-fill
+ * traversal, and therefore its floating-point `signedVolumeOf` summation
+ * order, to stay BIT-IDENTICAL to before (this task's brief: "OUTPUT must
+ * be bit-identical").
+ */
+interface DegreeTwoAdjacency {
+  /** `start[t] .. start[t+1])` is triangle `t`'s slice into
+   * `neighbor`/`dSelf`/`dNeighbor`. Length `triangleCount + 1`. */
+  start: Uint32Array;
+  neighbor: Int32Array;
+  /** `1`/`0` in place of `boolean` — packed into a `Uint8Array`, avoiding a
+   * third `boolean[]`/object-per-entry allocation. */
+  dSelf: Uint8Array;
+  dNeighbor: Uint8Array;
 }
 
-/** Adjacency restricted to degree-2 (manifold-interior) edges only — see
- * this module's doc for why non-manifold edges are deliberately excluded
- * from flood-fill propagation. */
-function buildDegreeTwoAdjacency(edges: ReturnType<typeof buildEdgeMap>, triangleCount: number): Neighbor[][] {
-  const adjacency: Neighbor[][] = Array.from({ length: triangleCount }, () => []);
+function buildDegreeTwoAdjacency(
+  edges: ReturnType<typeof buildEdgeMap>,
+  triangleCount: number,
+): DegreeTwoAdjacency {
+  const degree = new Uint32Array(triangleCount);
+  for (const entry of edges.values()) {
+    if (entry.incidences.length !== 2) continue;
+    const ta = entry.incidences[0]!.triangle;
+    const tb = entry.incidences[1]!.triangle;
+    degree[ta] = degree[ta]! + 1;
+    degree[tb] = degree[tb]! + 1;
+  }
+
+  const start = new Uint32Array(triangleCount + 1);
+  for (let t = 0; t < triangleCount; t++) start[t + 1] = start[t]! + degree[t]!;
+  const total = start[triangleCount]!;
+
+  const neighbor = new Int32Array(total);
+  const dSelf = new Uint8Array(total);
+  const dNeighbor = new Uint8Array(total);
+  // Per-triangle write cursor, initialized to each triangle's slice start —
+  // a separate copy from `start` itself (which must stay untouched as the
+  // slice-boundary array callers read).
+  const cursor = start.slice(0, triangleCount);
+
   for (const entry of edges.values()) {
     if (entry.incidences.length !== 2) continue;
     const first = entry.incidences[0]!;
     const second = entry.incidences[1]!;
-    adjacency[first.triangle]!.push({ neighbor: second.triangle, dSelf: first.directed, dNeighbor: second.directed });
-    adjacency[second.triangle]!.push({ neighbor: first.triangle, dSelf: second.directed, dNeighbor: first.directed });
+
+    const i1 = cursor[first.triangle]!;
+    neighbor[i1] = second.triangle;
+    dSelf[i1] = first.directed ? 1 : 0;
+    dNeighbor[i1] = second.directed ? 1 : 0;
+    cursor[first.triangle] = i1 + 1;
+
+    const i2 = cursor[second.triangle]!;
+    neighbor[i2] = first.triangle;
+    dSelf[i2] = second.directed ? 1 : 0;
+    dNeighbor[i2] = first.directed ? 1 : 0;
+    cursor[second.triangle] = i2 + 1;
   }
-  return adjacency;
+
+  return { start, neighbor, dSelf, dNeighbor };
 }
 
 /** Signed volume (divergence theorem) of a triangle subset, applying each
@@ -176,8 +244,11 @@ export function orientNormalsConsistently(mesh: IndexedMesh): OrientNormalsResul
       const current = queue[head]!;
       head++;
       island.push(current);
-      for (const { neighbor, dSelf, dNeighbor } of adjacency[current]!) {
+      for (let i = adjacency.start[current]!; i < adjacency.start[current + 1]!; i++) {
+        const neighbor = adjacency.neighbor[i]!;
         if (visited[neighbor] === 1) continue;
+        const dSelf = adjacency.dSelf[i] === 1;
+        const dNeighbor = adjacency.dNeighbor[i] === 1;
         const effectiveSelf = dSelf !== (flip[current] === 1);
         const desiredNeighborEffective = !effectiveSelf;
         const neighborFlip = dNeighbor !== desiredNeighborEffective;

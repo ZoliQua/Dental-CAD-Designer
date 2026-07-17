@@ -23,8 +23,10 @@
     "test:fuzz": "vitest run --config vitest.fuzz.config.ts",
     "test:e2e": "playwright test",
     "test:perf-large": "npm run fixtures:generate-large && RUN_LARGE_FIXTURE=1 vitest run --project io src/stl/large-fixture.perf.test.ts",
+    "test:perf-halfedge": "npm run fixtures:generate-large && npm run fixtures:generate-large-5m && RUN_LARGE_FIXTURE=1 vitest run --project golden test/golden/halfedge-intake.perf.test.ts",
     "fixtures:generate": "tsx scripts/generate-fixtures.ts",
-    "fixtures:generate-large": "tsx scripts/generate-large-fixture.ts"
+    "fixtures:generate-large": "tsx scripts/generate-large-fixture.ts",
+    "fixtures:generate-large-5m": "tsx scripts/generate-large-fixture.ts --5m"
   },
   "devDependencies": {
     "@eslint/js": "^9.19.0",

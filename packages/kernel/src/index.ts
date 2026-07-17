@@ -69,6 +69,32 @@ export {
 } from './bvh/index.ts';
 
 export {
+  buildHalfedge,
+  prevHalfedge,
+  findNonManifoldVertices,
+  NonManifoldEdgeError,
+  assertValidTopology,
+  debugAssertValidTopology,
+  halfedgeDebugAssertionsEnabled,
+  destinationVertex,
+  nextOutgoingHalfedge,
+  forEachOutgoingHalfedge,
+  oneRingOutgoingHalfedges,
+  oneRingVertices,
+  oneRingFaces,
+  forEachFaceHalfedge,
+  faceVertices,
+  faceNeighbors,
+  findBoundaryLoops,
+  computeEulerCharacteristic,
+  computeGenus,
+  type NonManifoldEdgeInfo,
+  type NonManifoldVertexReport,
+  type EulerCharacteristic,
+  type HalfedgeMesh,
+} from './halfedge/index.ts';
+
+export {
   removeComponents,
   splitNonManifoldEdges,
   fillSmallHoles,
