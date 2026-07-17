@@ -3,6 +3,7 @@
 // No Three.js imports here; all render objects live in src/engine/.
 import { useEffect, useRef } from 'react';
 import { caseStore } from '../engine/caseStore';
+import { curvatureEngine } from '../engine/curvature';
 import { heatmapEngine } from '../engine/heatmap';
 import { toMeasurementRenderData, toWorldRay } from '../engine/measurementFrame';
 import type { RenderNode } from '../engine/renderNode';
@@ -12,6 +13,7 @@ import { toolManager } from '../engine/ToolManager';
 import { registerActiveSceneManager } from '../engine/viewerController';
 import { useAppStore } from '../state/appStore';
 import { useCaseStore } from '../state/caseStore';
+import { useCurvatureStore } from '../state/curvatureStore';
 import { useHeatmapStore } from '../state/heatmapStore';
 import { useSectionStore } from '../state/sectionStore';
 import { useToolStore } from '../state/toolStore';
@@ -20,18 +22,31 @@ import { MeasureToolbar } from './MeasureToolbar';
 import { MeasurementOverlay } from './MeasurementOverlay';
 import { ViewerToolbar } from './ViewerToolbar';
 
-/** `caseStore.getRenderNodes()`'s output, with the active heatmap overlay's
- * colors (if any — see engine/heatmap.ts's `getActiveOverlay`) merged onto
- * its matching source node. Kept HERE (not inside engine/caseStore.ts)
- * specifically to avoid a caseStore.ts <-> heatmap.ts import cycle — see
- * heatmap.ts's module doc for the full reasoning. */
+/** `caseStore.getRenderNodes()`'s output, with the active heatmap AND/OR
+ * curvature overlay's colors (if any — see engine/heatmap.ts's /
+ * engine/curvature.ts's `getActiveOverlay`) merged onto their matching
+ * source node(s). Kept HERE (not inside engine/caseStore.ts) specifically
+ * to avoid a caseStore.ts <-> heatmap.ts/curvature.ts import cycle — see
+ * heatmap.ts's module doc for the full reasoning (curvature.ts's overlay
+ * mirrors it identically). If both overlays happen to target the SAME
+ * node, curvature wins (arbitrary but documented tie-break — a dev user
+ * driving both panels on one mesh at once is not an expected workflow). */
 function buildRenderNodes(): RenderNode[] {
   const nodes = caseStore.getRenderNodes();
-  const overlay = heatmapEngine.getActiveOverlay();
-  if (!overlay) {
+  const heatmapOverlay = heatmapEngine.getActiveOverlay();
+  const curvatureOverlay = curvatureEngine.getActiveOverlay();
+  if (!heatmapOverlay && !curvatureOverlay) {
     return nodes;
   }
-  return nodes.map((node) => (node.id === overlay.nodeId ? { ...node, colors: overlay.colors } : node));
+  return nodes.map((node) => {
+    if (curvatureOverlay && node.id === curvatureOverlay.nodeId) {
+      return { ...node, colors: curvatureOverlay.colors };
+    }
+    if (heatmapOverlay && node.id === heatmapOverlay.nodeId) {
+      return { ...node, colors: heatmapOverlay.colors };
+    }
+    return node;
+  });
 }
 
 /** SceneManager's own `onMeasurePick` reports a ray in ITS render frame
@@ -66,6 +81,9 @@ export function Viewport() {
   const heatmapVisible = useHeatmapStore((state) => state.visible);
   const heatmapStatus = useHeatmapStore((state) => state.status);
   const heatmapRange = useHeatmapStore((state) => state.range);
+  const curvatureVisible = useCurvatureStore((state) => state.visible);
+  const curvatureStatus = useCurvatureStore((state) => state.status);
+  const curvatureRange = useCurvatureStore((state) => state.range);
   const sectionEnabled = useSectionStore((state) => state.enabled);
   const sectionStatus = useSectionStore((state) => state.status);
   const sectionClipEnabled = useSectionStore((state) => state.clipEnabled);
@@ -103,12 +121,13 @@ export function Viewport() {
 
   useEffect(() => {
     // Re-syncs whenever the case document changes OR the active heatmap's
-    // visibility/colors change (`heatmapStatus`/`heatmapRange` both change
-    // whenever a run completes or its display range is adjusted — see
+    // OR curvature overlay's visibility/colors change (`heatmapStatus`/
+    // `heatmapRange`/`curvatureStatus`/`curvatureRange` all change whenever
+    // a run completes or its display range is adjusted — see
     // buildRenderNodes' doc for why the overlay itself isn't part of
     // `document`/`useCaseStore`).
     sceneManagerRef.current?.syncRenderNodes(buildRenderNodes());
-  }, [document, heatmapVisible, heatmapStatus, heatmapRange]);
+  }, [document, heatmapVisible, heatmapStatus, heatmapRange, curvatureVisible, curvatureStatus, curvatureRange]);
 
   useEffect(() => {
     // Same trigger as the render-node sync above: a measurement's points

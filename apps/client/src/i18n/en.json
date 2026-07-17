@@ -141,6 +141,26 @@
     "rangeManual": "Apply range",
     "rangeAuto": "Auto range"
   },
+  "curvature": {
+    "panelTitle": "Curvature",
+    "needsMesh": "Add a mesh to the scene to view its curvature.",
+    "meshLabel": "Mesh",
+    "selectPlaceholder": "Choose mesh…",
+    "fieldLabel": "Field",
+    "fieldMean": "Mean (H)",
+    "fieldGaussian": "Gaussian (K)",
+    "runButton": "Run",
+    "running": "Computing…",
+    "errorLabel": "Curvature failed: {{message}}",
+    "statsMin": "Min",
+    "statsMax": "Max",
+    "statsMean": "Mean",
+    "showToggle": "Show curvature",
+    "legendTitle": "Legend",
+    "unitPerMm": "mm⁻¹",
+    "unitPerMm2": "mm⁻²",
+    "rangeAuto": "Auto range"
+  },
   "section": {
     "panelTitle": "Cross-section",
     "needsMesh": "Add a mesh to the scene to take a cross-section.",

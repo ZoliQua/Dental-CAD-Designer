@@ -95,6 +95,17 @@ export {
 } from './halfedge/index.ts';
 
 export {
+  cotangentAtVertex,
+  cotangentOpposite,
+  computeCotanWeights,
+  triangleVoronoiAreas,
+  computeMixedVoronoiAreas,
+  computeVertexNormals,
+  computeCurvature,
+  type CurvatureResult,
+} from './curvature/index.ts';
+
+export {
   removeComponents,
   splitNonManifoldEdges,
   fillSmallHoles,

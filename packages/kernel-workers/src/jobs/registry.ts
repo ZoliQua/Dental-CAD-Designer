@@ -111,6 +111,9 @@ export {
 import { distanceHeatmap, type DistanceHeatmapPayload, type DistanceHeatmapResult } from './heatmap.ts';
 export type { DistanceHeatmapPayload, DistanceHeatmapResult };
 
+import { computeCurvatureJob, type ComputeCurvaturePayload, type ComputeCurvatureResult } from './curvature.ts';
+export type { ComputeCurvaturePayload, ComputeCurvatureResult };
+
 import { sectionMeshJob, type SectionMeshPayload, type SectionMeshResult } from './section.ts';
 export type { SectionMeshPayload, SectionMeshResult };
 
@@ -183,6 +186,7 @@ export interface JobPayloadMap {
   measurePointToSurface: MeasurePointToSurfacePayload;
   raycastMesh: RaycastMeshPayload;
   distanceHeatmap: DistanceHeatmapPayload;
+  computeCurvature: ComputeCurvaturePayload;
   repairRemoveComponents: RepairRemoveComponentsPayload;
   repairSplitNonManifoldEdges: RepairSplitNonManifoldEdgesPayload;
   repairFillSmallHoles: RepairFillSmallHolesPayload;
@@ -204,6 +208,7 @@ export interface JobResultMap {
   measurePointToSurface: MeasurePointToSurfaceResult;
   raycastMesh: RaycastMeshResult;
   distanceHeatmap: DistanceHeatmapResult;
+  computeCurvature: ComputeCurvatureResult;
   repairRemoveComponents: RepairRemoveComponentsResult;
   repairSplitNonManifoldEdges: RepairSplitNonManifoldEdgesResult;
   repairFillSmallHoles: RepairFillSmallHolesResult;
@@ -232,6 +237,7 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   measurePointToSurface,
   raycastMesh,
   distanceHeatmap,
+  computeCurvature: computeCurvatureJob,
   repairRemoveComponents,
   repairSplitNonManifoldEdges,
   repairFillSmallHoles,

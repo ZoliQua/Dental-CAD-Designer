@@ -141,6 +141,26 @@
     "rangeManual": "Aplicar rango",
     "rangeAuto": "Rango automático"
   },
+  "curvature": {
+    "panelTitle": "Curvatura",
+    "needsMesh": "Añade una malla a la escena para ver su curvatura.",
+    "meshLabel": "Malla",
+    "selectPlaceholder": "Elige una malla…",
+    "fieldLabel": "Campo",
+    "fieldMean": "Media (H)",
+    "fieldGaussian": "Gaussiana (K)",
+    "runButton": "Ejecutar",
+    "running": "Calculando…",
+    "errorLabel": "Error en la curvatura: {{message}}",
+    "statsMin": "Mín",
+    "statsMax": "Máx",
+    "statsMean": "Media",
+    "showToggle": "Mostrar curvatura",
+    "legendTitle": "Leyenda",
+    "unitPerMm": "mm⁻¹",
+    "unitPerMm2": "mm⁻²",
+    "rangeAuto": "Rango automático"
+  },
   "section": {
     "panelTitle": "Sección transversal",
     "needsMesh": "Añada una malla a la escena para obtener una sección transversal.",

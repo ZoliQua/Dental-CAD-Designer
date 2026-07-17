@@ -44,6 +44,8 @@ export {
   type RaycastMeshResult,
   type DistanceHeatmapPayload,
   type DistanceHeatmapResult,
+  type ComputeCurvaturePayload,
+  type ComputeCurvatureResult,
   type RepairRemoveComponentsPayload,
   type RepairRemoveComponentsResult,
   type RepairSplitNonManifoldEdgesPayload,

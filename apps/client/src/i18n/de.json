@@ -141,6 +141,26 @@
     "rangeManual": "Bereich anwenden",
     "rangeAuto": "Automatischer Bereich"
   },
+  "curvature": {
+    "panelTitle": "Krümmung",
+    "needsMesh": "Fügen Sie der Szene ein Netz hinzu, um die Krümmung anzuzeigen.",
+    "meshLabel": "Netz",
+    "selectPlaceholder": "Netz wählen…",
+    "fieldLabel": "Feld",
+    "fieldMean": "Mittlere (H)",
+    "fieldGaussian": "Gauß’sche (K)",
+    "runButton": "Ausführen",
+    "running": "Wird berechnet…",
+    "errorLabel": "Krümmung fehlgeschlagen: {{message}}",
+    "statsMin": "Min",
+    "statsMax": "Max",
+    "statsMean": "Mittelwert",
+    "showToggle": "Krümmung anzeigen",
+    "legendTitle": "Legende",
+    "unitPerMm": "mm⁻¹",
+    "unitPerMm2": "mm⁻²",
+    "rangeAuto": "Automatischer Bereich"
+  },
   "section": {
     "panelTitle": "Querschnitt",
     "needsMesh": "Fügen Sie ein Netz zur Szene hinzu, um einen Querschnitt zu erstellen.",
