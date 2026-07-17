@@ -80,6 +80,47 @@ describe('assertValidTopology — negative cases (manually corrupted structures)
     const corrupted = { ...hm, twin: hm.twin.slice(0, hm.twin.length - 1) };
     expect(() => assertValidTopology(corrupted)).toThrow(/length/);
   });
+
+  it('throws when a twin index is out of range', () => {
+    const hm = buildHalfedge(cubeMesh());
+    const corrupted = { ...hm, twin: hm.twin.slice() };
+    corrupted.twin[0] = hm.halfedgeCount; // one past the valid [-1, halfedgeCount) range
+    expect(() => assertValidTopology(corrupted)).toThrow(/out of range/);
+  });
+
+  it('throws when a face index is out of range', () => {
+    const hm = buildHalfedge(cubeMesh());
+    const corrupted = { ...hm, face: hm.face.slice() };
+    corrupted.face[0] = hm.faceCount; // one past the valid [0, faceCount) range
+    expect(() => assertValidTopology(corrupted)).toThrow(/out of range/);
+  });
+
+  it('throws when a twin pair belongs to the same face', () => {
+    const hm = buildHalfedge(cubeMesh()); // closed: all twins currently point cross-face
+    const corrupted = { ...hm, twin: hm.twin.slice() };
+    // Halfedges 0 and 1 are two corners of the SAME triangle (face 0 — the
+    // fixed triangle-corner grouping means halfedges f*3..f*3+2 always share
+    // a face, see types.ts's "Layout" doc). Repoint them at each other:
+    // involution still holds (twin[0]=1, twin[1]=0, so twin[twin[0]]=0) and
+    // neither is self-twinned, but a real twin pair can never share a face
+    // (it always sits in the NEIGHBORING triangle across the shared edge).
+    corrupted.twin[0] = 1;
+    corrupted.twin[1] = 0;
+    expect(() => assertValidTopology(corrupted)).toThrow(/same face/);
+  });
+
+  it('throws on edge-endpoint symmetry mismatch (twin does not point back to the same edge)', () => {
+    const hm = buildHalfedge(cubeMesh()); // closed: halfedge 0 has a real (non -1) twin
+    const corrupted = { ...hm, vertex: hm.vertex.slice() };
+    const realTwin = hm.twin[0]!;
+    const originalOrigin = hm.vertex[realTwin]!;
+    // Repoint the twin halfedge's ORIGIN vertex at some other vertex — twin
+    // involution and same-face checks are untouched (twin/face arrays are
+    // unchanged) and the new value is still in range, but the twin's origin
+    // no longer equals halfedge 0's destination, breaking endpoint symmetry.
+    corrupted.vertex[realTwin] = (originalOrigin + 1) % hm.vertexCount;
+    expect(() => assertValidTopology(corrupted)).toThrow(/edge endpoints mismatch/);
+  });
 });
 
 describe('debug-build assertion gate (DQCAD_KERNEL_DEBUG_ASSERTIONS)', () => {

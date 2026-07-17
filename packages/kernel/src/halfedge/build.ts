@@ -156,6 +156,26 @@ export function buildHalfedge(mesh: IndexedMesh): HalfedgeMesh {
   // edgeKey -> halfedge indices sharing that undirected edge (see this
   // module's doc). Typically length 1 (boundary) or 2 (manifold interior);
   // only grows past 2 for a genuinely non-manifold edge.
+  //
+  // Why a `Map<number, number[]>` here is acceptable today, despite being
+  // structurally the same "one small array per key, built via `.push()`"
+  // pattern that OOM'd `intake/orient.ts`'s `buildDegreeTwoAdjacency` at 5M
+  // triangles (Phase 2 Task 2 report, .superpowers/sdd/p2-task-2-report.md
+  // §3): this allocates roughly one bucket per undirected edge — ~7.5M small
+  // arrays at the 5M-triangle NFR ceiling (~1.5 * faceCount for a closed
+  // manifold) — a materially smaller object count than `orient.ts`'s prior
+  // ~5M arrays PLUS ~15M pushed `Neighbor` objects, and this was MEASURED,
+  // not just assumed to be fine by comparison: the combined intake +
+  // `buildHalfedge` perf run (test/golden/halfedge-intake.perf.test.ts, same
+  // report §4) completed `buildHalfedge` alone in 4.52 s at 5M triangles,
+  // within an 8 GB heap (~3.73 GB total RSS for the whole pipeline) — no
+  // cliff observed, unlike `orient.ts`'s. If a future task's memory budget
+  // gets tighter (e.g. Tasks 3-11 calling `buildHalfedge` repeatedly rather
+  // than once per pipeline run), the known follow-up is the same CSR
+  // (compressed-sparse-row) typed-array conversion `orient.ts` already went
+  // through: two passes over `mesh.indices` — one to count halfedges per
+  // edge key, one to fill fixed-size `Uint32Array` slots — instead of a
+  // `Map` of pushed arrays.
   const edgeHalfedges = new Map<number, number[]>();
   for (let he = 0; he < halfedgeCount; he++) {
     const from = vertex[he]!;
