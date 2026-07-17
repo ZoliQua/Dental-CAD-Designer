@@ -100,7 +100,7 @@ describe('WorkerPool — parseMeshFile: STL', () => {
       expect(f).toBeLessThanOrEqual(1);
     }
     // NOT asserting the array's LAST captured element is exactly 1 here —
-    // `ctx.progress()` (jobs.ts) is deliberately fire-and-forget, not
+    // `ctx.progress()` (jobs/context.ts) is deliberately fire-and-forget, not
     // awaited by the job before it returns its result (see chunkStream's
     // doc), so under real concurrent load the final progress message and
     // the job's own result message are two independently-scheduled
@@ -156,7 +156,7 @@ describe('WorkerPool — parseMeshFile: STL', () => {
       thrown = error;
     }
     // Comlink reconstructs a thrown error's name/message across the worker
-    // boundary but not the exact packages/io class (see jobs.ts's
+    // boundary but not the exact packages/io class (see jobs/context.ts's
     // JobCancelledError doc for the same caveat) — assert on `.name`.
     expect((thrown as Error)?.name).toMatch(/TruncatedFileError|MalformedSyntaxError/);
   });

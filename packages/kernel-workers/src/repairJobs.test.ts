@@ -20,7 +20,7 @@ afterEach(async () => {
   await Promise.all(pools.splice(0).map((pool) => pool.destroy()));
 });
 
-// Outward-wound unit cube — same fixture as intakeMesh.test.ts / jobs.ts's
+// Outward-wound unit cube — same fixture as intakeMesh.test.ts / jobs/misc.ts's
 // unitCubeMesh.
 const CUBE_CORNERS: ReadonlyArray<readonly [number, number, number]> = [
   [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],

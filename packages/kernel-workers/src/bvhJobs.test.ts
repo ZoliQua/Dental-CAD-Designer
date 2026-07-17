@@ -1,7 +1,7 @@
 // bvh job tests (buildBvh / releaseBvh / measurePointToSurface / raycastMesh)
 // — exercised via the Node worker_threads path, same rationale as
 // intakeMesh.test.ts: the job logic is environment-agnostic, so testing it
-// through a real WorkerPool (rather than calling jobs.ts's handlers
+// through a real WorkerPool (rather than calling jobs/bvh.ts's handlers
 // in-process) also proves the Comlink transport (payload shapes, thrown
 // error names surviving the postMessage boundary) works end to end.
 import { afterEach, describe, expect, it } from 'vitest';
@@ -19,7 +19,7 @@ afterEach(async () => {
   await Promise.all(pools.splice(0).map((pool) => pool.destroy()));
 });
 
-// Same outward-wound unit cube fixture as intakeMesh.test.ts / jobs.ts's own
+// Same outward-wound unit cube fixture as intakeMesh.test.ts / jobs/misc.ts's own
 // manifoldSmoke unitCubeMesh — 8 vertices, 12 triangles, centered at
 // (0.5, 0.5, 0.5).
 const CUBE_CORNERS: ReadonlyArray<readonly [number, number, number]> = [
@@ -59,7 +59,7 @@ const CUBE_HASH = 'test-cube-hash';
 describe('buildBvh + measurePointToSurface (single-worker cache)', () => {
   it('caches the mesh under contentHash, then measurePointToSurface finds the exact closest face', async () => {
     // size: 1 — required to guarantee buildBvh and the follow-up
-    // measurePointToSurface call land on the SAME worker (see jobs.ts's
+    // measurePointToSurface call land on the SAME worker (see jobs/bvh.ts's
     // "Per-worker BVH cache" doc for why this isn't automatic on a
     // multi-worker pool).
     const pool = createPool({ size: 1 });
@@ -170,7 +170,7 @@ describe('buildBvh cache isolation across workers', () => {
     // Two separate size:1 pools are, by construction, two separate worker
     // processes with two separate module-level `bvhCache` instances — this
     // deterministically demonstrates "per-worker, not global" caching (see
-    // jobs.ts's "Per-worker BVH cache" doc) without depending on
+    // jobs/bvh.ts's "Per-worker BVH cache" doc) without depending on
     // WorkerPool's internal scheduling/timing.
     const poolA = createPool({ size: 1 });
     const poolB = createPool({ size: 1 });
