@@ -210,6 +210,38 @@ describe('computeCurvature — principal curvature ordering and NaN-freedom', ()
     }
     expect(boundaryCount).toBeGreaterThan(0); // sanity: the patch actually has a boundary
   });
+
+  it('discriminant clamp actually engages: octahedron r=1 has a NEGATIVE raw H^2-K at every (discrete-umbilic) vertex, yet k1===k2===H with no NaN', () => {
+    // octahedronMesh(1): every vertex is surrounded by 4 congruent
+    // equilateral-triangle faces (all edges from an axis-aligned octahedron
+    // vertex to its neighbors have equal length by symmetry), so H and K
+    // are IDENTICAL at all 6 vertices. Measured directly (not asserted as
+    // an exact literal, since the discrete formulas' output is a derived
+    // quantity, not a designed-in constant): H=1 exactly (mixed-area/cotan
+    // geometry happens to normalize to the sphere-like H=1/r here) but
+    // K's angle-defect/mixed-area estimate OVERSHOOTS the analytic
+    // continuum value at this coarse a tessellation, landing at
+    // K~1.8138 > H^2=1 — i.e. the raw discriminant `H^2 - K` is NEGATIVE
+    // (~-0.8138), exactly the scenario this file's module doc (curvature.ts,
+    // "Principal curvatures kappa1/kappa2") says the clamp exists for: H and
+    // K are independent discrete estimators whose errors need not agree
+    // sign-wise near an umbilic point, even though the analytic
+    // discriminant is always >= 0. Without the `Math.max(0, ...)` clamp at
+    // curvature.ts's `discriminant` line, this would try to `Math.sqrt` a
+    // negative number and produce NaN for k1/k2 on every vertex of this
+    // mesh.
+    const mesh = octahedronMesh(1);
+    const result = computeCurvature(mesh);
+    for (let v = 0; v < mesh.positions.length / 3; v++) {
+      expect(result.isBoundary[v]).toBe(0);
+      const rawDiscriminant = result.H[v]! * result.H[v]! - result.K[v]!;
+      expect(rawDiscriminant).toBeLessThan(0); // confirms this vertex actually exercises the clamp
+      expect(Number.isNaN(result.k1[v])).toBe(false);
+      expect(Number.isNaN(result.k2[v])).toBe(false);
+      expect(result.k1[v]).toBeCloseTo(result.H[v]!, 12); // clamp engaged -> sqrt(0) -> k1 == k2 == H
+      expect(result.k2[v]).toBeCloseTo(result.H[v]!, 12);
+    }
+  });
 });
 
 describe('computeCurvature — discrete Gauss-Bonnet (sum(K * mixedArea) = 2*pi*eulerCharacteristic)', () => {
