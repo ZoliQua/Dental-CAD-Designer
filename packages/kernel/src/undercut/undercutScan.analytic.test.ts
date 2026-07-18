@@ -8,6 +8,42 @@
 // analytic expectation" acceptance item early) and a sphere (lower
 // hemisphere undercut, depth growing pole-ward — spot asserts).
 //
+// ## Fix batch: occlusion detection — the CAPPED cylinder fixture stays
+// unmodified; the closed-form checks are UNAFFECTED (verified, not assumed)
+//
+// undercutScan.ts's occlusion extension ("Occlusion as an INDEPENDENT
+// undercut detector") raised a real risk for this file's fixture: a
+// FACETED (not smooth) closed solid's facing wall triangles could
+// self-occlude against their own caps (a wall triangle's sample point is
+// slightly INSET from the true cylindrical surface — see undercutScan.ts's
+// doc — so a `+d` ray from it isn't guaranteed to immediately leave into
+// open space the way a true smooth cylinder's would). This was checked
+// empirically, not assumed: at EVERY tilt this file tests (30°, 90°, 150°),
+// `undercutWallTriangleCount` below is measured to be EXACTLY
+// `(SEGMENTS/2)*HEIGHT_SEGMENTS*2` — identical to the pre-occlusion-
+// extension closed form — because a facing wall triangle's `+d` ray, for
+// these tilts, has a strictly non-decreasing radial distance from the axis
+// (see undercutScan.ts's doc) and exits through open space (past the
+// cylinder's own radius envelope) well before it could reach either cap's
+// height. NO fixture adjustment (e.g. an open, uncapped walls-only variant)
+// was needed for these three tilts — the closed form holds as originally
+// authored, on the ORIGINAL capped fixture, unmodified.
+//
+// The ONE genuine interaction is at EXACT axis alignment (`a = 0`): every
+// wall triangle there has `normal · d == 0` EXACTLY (not near-zero — see
+// this file's own derivation below), which means it falls inside
+// `UNDERCUT_BOUNDARY_EPSILON`'s band and is therefore excluded from the
+// occlusion check ENTIRELY (undercutScan.ts's "Near-perpendicular
+// triangles" doc: the boundary band is excluded from BOTH the facing and
+// the occlusion rule, precisely because a `+d` ray from a triangle with
+// `nd ~ 0` is tangent to that triangle's own plane — a genuine geometric
+// degeneracy, empirically confirmed to otherwise produce a spurious hit at
+// the wall's own shared edge with the cap, not a real cap self-occlusion).
+// The "axis-aligned (a=0) wall has ZERO undercut" describe block below adds
+// an explicit test exercising this epsilon band with a GENUINELY nonzero
+// (not exactly `0`) tilt, so the "zero undercut" result is demonstrably the
+// epsilon policy's doing, not a lucky floating-point cancellation.
+//
 // ## Tilting: the DIRECTION is tilted, not the mesh
 //
 // `cappedCylinderMesh` (curvature/curvature.test-fixtures.ts) builds its
@@ -142,6 +178,36 @@ describe('undercutScan — cylinder r=3,h=8: axis-aligned (a=0) wall has ZERO un
     expect(wallUndercutCount).toBe(0);
   });
 
+  it('a genuinely nonzero, sub-epsilon tilt (not exact axis alignment) STILL gives zero wall undercut — exercises the epsilon BAND, not FP cancellation luck', () => {
+    // Unlike the exact `a = 0` test above (whose `nd == 0` comes from a
+    // genuine STRUCTURAL cancellation: every wall triangle's normal has a
+    // z-component that is EXACTLY 0 by construction — see this file's
+    // module doc's "chord midpoint" derivation — regardless of any epsilon
+    // policy), this test's `d` is a REAL, nonzero tilt in `x`, chosen small
+    // enough that `|normal · d|` for EVERY wall strip is guaranteed to land
+    // strictly inside `UNDERCUT_BOUNDARY_EPSILON` (`1e-12`): since every
+    // wall normal here is EXACTLY `(nx, ny, 0)` (that same z=0 structural
+    // fact), `normal · d = nx * TINY_TILT` exactly (the `d_z` term
+    // contributes nothing, however large) — with `|nx| <= 1`, so
+    // `|normal · d| <= TINY_TILT = 1e-13`, an order of magnitude inside the
+    // `1e-12` band, for every one of the 1024 wall triangles. Without the
+    // epsilon policy (a bare `nd < 0` test), roughly HALF these wall
+    // triangles would flip to "undercut by facing" from a dot product that
+    // is a genuine (if minuscule) nonzero value here, not floating-point
+    // noise around an exact zero — i.e. this specific tilt is exactly the
+    // case `UNDERCUT_BOUNDARY_EPSILON` is sized to swallow.
+    const TINY_TILT = 1e-13;
+    const mesh = cappedCylinderMesh(RADIUS, HEIGHT, SEGMENTS, HEIGHT_SEGMENTS);
+    const bvh = buildBvh(mesh);
+    const d: Vec3 = [TINY_TILT, 0, 1];
+    const result = undercutScan(mesh, bvh, d);
+    let wallUndercutCount = 0;
+    for (let t = 0; t < WALL_TRIANGLE_COUNT; t++) {
+      if (result.undercut[t] === 1) wallUndercutCount++;
+    }
+    expect(wallUndercutCount).toBe(0);
+  });
+
   it('the TOP cap (normal +Z) is not undercut; the BOTTOM cap (normal -Z) IS undercut with depth === height exactly', () => {
     // Documented wrinkle (undercutScan.ts's doc doesn't special-case caps):
     // a flat cap facing directly away from d is undercut by the strict
@@ -224,8 +290,12 @@ describe('undercutScan — sphere r=5, d=+Z: lower hemisphere undercut, depth gr
     for (let t = 0; t < triangleCount; t++) {
       const c = triangleCentroid(mesh, t);
       // Skip triangles straddling the equator closely (boundary-noise band —
-      // see undercutScan.ts's doc on near-perpendicular triangles): only
-      // trust triangles comfortably in one hemisphere (|z| > 5% of radius).
+      // see undercutScan.ts's "Near-perpendicular triangles: the boundary
+      // epsilon policy" doc section, `UNDERCUT_BOUNDARY_EPSILON`): only
+      // trust triangles comfortably in one hemisphere (|z| > 5% of radius,
+      // several orders of magnitude wider than the epsilon band itself —
+      // this margin is about icosphere facet-normal discretization noise
+      // near the equator, not float noise at an exact-zero dot product).
       if (Math.abs(c[2]) < 0.05 * RADIUS_SPHERE) continue;
       if (c[2] < 0) {
         expect(result.undercut[t]).toBe(1);

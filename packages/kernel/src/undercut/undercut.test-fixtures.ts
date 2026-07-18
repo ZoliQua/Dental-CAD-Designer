@@ -152,3 +152,84 @@ export function overhangStepMesh(
   triangles = ensureOutwardWinding(positions, triangles);
   return meshFromLists(positions, triangles);
 }
+
+/** CCW-from-outside box triangle list for the 8-vertex layout
+ * `[xMin,yMin,zMin], [xMax,yMin,zMin], [xMax,yMax,zMin], [xMin,yMax,zMin],
+ * [xMin,yMin,zMax], [xMax,yMin,zMax], [xMax,yMax,zMax], [xMin,yMax,zMax]`
+ * — same vertex numbering/winding as halfedge.test-fixtures.ts's own
+ * `cubeMesh` (reproduced here, not imported, per this file's "TEST-ONLY,
+ * mirrors ... convention" doc — undercut/'s own fixtures stay self-
+ * contained), just parameterized by explicit min/max instead of `±halfExtent`. */
+function boxTriangles(): (readonly [number, number, number])[] {
+  return [
+    [0, 2, 1],
+    [0, 3, 2], // bottom (-z)
+    [4, 5, 6],
+    [4, 6, 7], // top (+z)
+    [0, 1, 5],
+    [0, 5, 4], // front (-y)
+    [1, 2, 6],
+    [1, 6, 5], // right (+x)
+    [2, 3, 7],
+    [2, 7, 6], // back (+y)
+    [0, 4, 7],
+    [0, 7, 3], // left (-x)
+  ];
+}
+
+function boxVertices(xMin: number, xMax: number, yMin: number, yMax: number, zMin: number, zMax: number): Vec3[] {
+  return [
+    [xMin, yMin, zMin],
+    [xMax, yMin, zMin],
+    [xMax, yMax, zMin],
+    [xMin, yMax, zMin],
+    [xMin, yMin, zMax],
+    [xMax, yMin, zMax],
+    [xMax, yMax, zMax],
+    [xMin, yMax, zMax],
+  ];
+}
+
+/**
+ * Two DISJOINT, individually closed/watertight axis-aligned boxes — a
+ * "floor" (`z` in `[0, floorThickness]`) and a "canopy" directly above it
+ * with a genuine air `gap` (`z` in `[floorThickness + gap, floorThickness +
+ * gap + canopyThickness]`), both spanning the SAME `[0,width] x [0,depthY]`
+ * footprint — purpose-built to exercise undercutScan.ts's OCCLUSION rule
+ * (see that module's "Occlusion as an INDEPENDENT undercut detector" doc):
+ * for `d = (0,0,1)`, the floor's TOP face (`normal = (0,0,1)`, `normal · d
+ * = 1 > 0`, strictly FACING — not undercut by the facing rule alone) sits
+ * directly under the canopy, so a `+d` ray from any point on it re-enters
+ * solid material (the canopy) after crossing EXACTLY the `gap` — i.e.
+ * `depthMm === gap` EXACTLY, independent of exactly where on the floor top
+ * the sample point falls (both boxes are flat-topped/bottomed and share the
+ * full footprint). This is a DIFFERENT mechanism from `overhangStepMesh`'s
+ * overhang (whose undercut undersides are undercut BY FACING, `normal · d <
+ * 0`) — here the undercut triangle's OWN normal is on the "correct" side;
+ * only the SEPARATE canopy mass makes it inaccessible.
+ *
+ * A valid `IndexedMesh` does not require a single connected component —
+ * this fixture is the plain CONCATENATION of the two boxes' own (each
+ * independently correct, CCW-from-outside) triangle lists; `undercutScan`
+ * operates per-triangle against the combined BVH regardless of connectivity.
+ * Requires `width > 0`, `depthY > 0`, `floorThickness > 0`, `gap > 0`,
+ * `canopyThickness > 0`. See undercutScan.overhang.test.ts's canopy case
+ * for the hand-computed assertions this fixture exists for.
+ */
+export function canopyMesh(width: number, depthY: number, floorThickness: number, gap: number, canopyThickness: number): IndexedMesh {
+  const floorVertices = boxVertices(0, width, 0, depthY, 0, floorThickness);
+  const canopyZMin = floorThickness + gap;
+  const canopyVertices = boxVertices(0, width, 0, depthY, canopyZMin, canopyZMin + canopyThickness);
+
+  const floorTriangles = ensureOutwardWinding(floorVertices, boxTriangles());
+  const canopyTrianglesLocal = ensureOutwardWinding(canopyVertices, boxTriangles());
+
+  const vertexOffset = floorVertices.length; // 8
+  const positions: Vec3[] = [...floorVertices, ...canopyVertices];
+  const triangles: (readonly [number, number, number])[] = [
+    ...floorTriangles,
+    ...canopyTrianglesLocal.map(([a, b, c]) => [a + vertexOffset, b + vertexOffset, c + vertexOffset] as const),
+  ];
+
+  return meshFromLists(positions, triangles);
+}

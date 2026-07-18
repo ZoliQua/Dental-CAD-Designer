@@ -59,6 +59,50 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.1.0] addendum — Fix batch: occlusion detection + boundary epsilon (no version bump)
+
+A follow-up fix batch extended `undercutScan`'s undercut rule from
+FACING-ONLY (`normal · d < 0`) to "facing-away OR occluded": a
+facing-correct triangle (`normal · d >= 0`) sitting under a genuine,
+separate overhang/canopy is now ALSO undercut, with `depthMm` = distance to
+the occluder (see `packages/kernel/src/undercut/undercutScan.ts`'s
+"Occlusion as an INDEPENDENT undercut detector" doc for the full derivation,
+including a documented, deliberate deviation from that task's brief's
+literal "cast along `-d`" prose — provably wrong for this module's `d`
+convention, see that doc). It also replaced the bare `nd >= 0` facing test
+with a principled `UNDERCUT_BOUNDARY_EPSILON` (`1e-12`) band, and excluded
+that same band from the new occlusion rule too (a `+d` ray is geometrically
+degenerate — tangent to the triangle's own plane — right at `nd ~ 0`,
+producing a spurious same-plane-seam hit otherwise; see that constant's doc
+and undercutScan.ts's "Near-perpendicular triangles" section).
+
+**This is a real algorithm change, but it did NOT change the pinned
+`"undercutScan"` kernel-ops golden entry (added in [0.1.0] below).**
+Verified, not assumed: `test/golden/kernel-ops.test.ts` passes unmodified
+against the ALREADY-committed golden file, and
+`npx tsx scripts/generate-kernel-goldens.ts` (double-run, determinism-
+checked) regenerates a BYTE-IDENTICAL `test-fixtures/golden/kernel-ops.json`
+— confirmed with a raw `diff` against the pre-fix committed file, not just
+"the test suite is green". The reason: the pinned fixture
+(`standin-prep-die.stl`, a fairly convex prep-die shape) has ZERO
+facing-correct-but-occluded triangles at ANY of several directions tested
+(including the pinned `(0.2, -0.4, 0.9)`) — a prep die simply doesn't have
+a canopy/overhang feature this specific extension detects; the existing
+facing-away undercuts it does have are computed by the UNCHANGED code path
+and are therefore bit-identical.
+Per this file's own policy above ("a 'small numeric diff'... is a red
+flag — investigate, don't regenerate"), the honest, policy-consistent
+action for a VERIFIED-unchanged golden output is to NOT bump
+`KERNEL_VERSION` — a bump with no corresponding hash diff would be exactly
+the kind of unjustified version churn this policy exists to prevent. New
+behavioral coverage for the occlusion branch is instead provided by a
+dedicated fixture/test (`undercut.test-fixtures.ts`'s `canopyMesh`,
+`undercutScan.overhang.test.ts`'s "canopy" describe block — two disjoint
+boxes with a genuine air gap, hand-computed exact depth), not by touching
+the pinned kernel-ops snapshot. See `.superpowers/sdd/p2-task-9-report.md`'s
+"Fix: occlusion detection + boundary epsilon" section for the full
+before/after test run and the `diff`-verified no-op golden regeneration.
+
 ## [0.1.0] — Phase 2 Task 9: insertion-axis undercut scan
 
 Adds `undercutScan`/`undercutScanBatch`/`undercutScanRange`

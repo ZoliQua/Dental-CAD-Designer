@@ -238,6 +238,7 @@ export {
   undercutScanBatch,
   undercutScanRange,
   RAY_ORIGIN_BIAS_MM,
+  UNDERCUT_BOUNDARY_EPSILON,
   type UndercutSamplingPolicy,
   type UndercutScanOptions,
   type UndercutScanBatchOptions,

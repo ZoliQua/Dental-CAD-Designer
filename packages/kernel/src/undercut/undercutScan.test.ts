@@ -108,7 +108,19 @@ describe('undercutScan — sampling policy: corners >= centroid (conservative, p
         const centroidResult = undercutScan(mesh, bvh, d, { sampling: 'centroid' });
         const cornersResult = undercutScan(mesh, bvh, d, { sampling: 'corners' });
         for (let t = 0; t < centroidResult.triangleCount; t++) {
-          expect(cornersResult.undercut[t]).toBe(centroidResult.undercut[t]); // boolean is normal-only, sampling-independent
+          // The undercut BOOLEAN is no longer normal-only/sampling-independent
+          // now that occlusion (undercutScan.ts's "Occlusion as an
+          // INDEPENDENT undercut detector") is itself sample-based: a corner
+          // can be occluded even when the centroid isn't, so 'corners' can
+          // find a triangle undercut that 'centroid' alone would MISS
+          // entirely. What remains true (and IS asserted below) is the
+          // conservative direction: 'corners' never UNDER-reports relative to
+          // 'centroid' — every triangle 'centroid' calls undercut, 'corners'
+          // also calls undercut (centroid is one of its own 4 samples), and
+          // 'corners' depth is never less than 'centroid' depth.
+          if (centroidResult.undercut[t] === 1) {
+            expect(cornersResult.undercut[t]).toBe(1);
+          }
           expect(cornersResult.depthMm[t]!).toBeGreaterThanOrEqual(centroidResult.depthMm[t]!);
         }
       }),
