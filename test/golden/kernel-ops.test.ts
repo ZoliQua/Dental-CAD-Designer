@@ -9,13 +9,35 @@
 // scripts/generate-kernel-goldens.ts import) against
 // test-fixtures/golden/kernel-ops.json.
 //
-// ## Enforcement (PLAN §6 / CLAUDE.md)
+// ## Enforcement (PLAN §6 / CLAUDE.md) — TWO layers, two different holes
 //
 // "Golden hashes change ONLY with a deliberate kernel version bump +
-// changelog entry." test/golden/goldenEnforcement.ts implements (and
-// separately unit-tests) the exact rule; this file just wires it to the
-// real computed-vs-committed comparison. See docs/CHANGELOG-kernel.md for
-// the changelog itself.
+// changelog entry." No single mechanism enforces this end to end; it takes
+// two layers, each catching a failure mode the other cannot:
+//
+//  1. TEST layer (this file, backed by test/golden/goldenEnforcement.ts's
+//     pure rule + its own synthetic-input unit tests): compares LIVE kernel
+//     output against whatever golden file is CURRENTLY COMMITTED. Catches
+//     "kernel behavior changed but the developer forgot to regenerate the
+//     golden file" — the live hash won't match the stale committed one.
+//     This is a live-vs-committed check; it says nothing about whether the
+//     committed file itself was updated honestly.
+//  2. CI layer (scripts/check-golden-version-gate.ts, run as its own CI
+//     step in .github/workflows/ci.yml — NOT part of this vitest file):
+//     diffs the current push/PR against a base ref and catches "the golden
+//     file WAS regenerated (so it now matches live output — layer 1 stays
+//     green) but KERNEL_VERSION was never bumped and/or no changelog entry
+//     was added". Layer 1 alone cannot see this, because a regenerated
+//     golden file is by definition self-consistent with live output.
+//
+// What NEITHER layer catches: a force-push/history-rewrite that replaces
+// the base ref itself, or a reviewer approving a PR without reading the
+// diff (i.e. the base-ref diff and merge-base computation assume normal,
+// non-rewritten git history). That residual stays code-review territory —
+// no mechanism here can make a rewritten history retroactively honest. See
+// docs/CHANGELOG-kernel.md's policy header for the same two-layer summary
+// from the policy side, and scripts/check-golden-version-gate.ts's module
+// doc for the CI layer's exact base-ref logic (push vs. pull_request).
 //
 // ## Runtime
 //

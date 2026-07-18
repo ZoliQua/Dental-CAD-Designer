@@ -18,15 +18,41 @@ flag — investigate, don't regenerate").
    can independently judge, *why* the kernel's numerical output changed
    (a bug fix, a new/adjusted algorithm, a precision improvement, ...) —
    not just "regenerated goldens".
-3. `test/golden/kernel-ops.test.ts` (Task 8's enforcement suite, backed by
-   `test/golden/goldenEnforcement.ts`'s pure rule + its own synthetic-input
-   unit tests) fails the build automatically if a golden hash differs while
-   `KERNEL_VERSION` is unchanged from the committed golden file — so this
-   policy is machine-enforced, not just documented. The same discipline
-   applies by convention (not yet the same automated gate) to
-   `test-fixtures/intake/*.golden.json`, `test-fixtures/curvature/*.golden.json`,
-   and `test-fixtures/offset/*.golden.json` (Tasks 4/3/7's earlier goldens,
-   predating this suite).
+3. This policy is machine-enforced by TWO layers, not one — each catches a
+   failure mode the other cannot:
+   - **Test layer** — `test/golden/kernel-ops.test.ts` (backed by
+     `test/golden/goldenEnforcement.ts`'s pure rule + its own
+     synthetic-input unit tests) fails the build automatically if a golden
+     hash differs from the committed file while `KERNEL_VERSION` is
+     unchanged. This catches "kernel behavior changed, developer forgot to
+     regenerate the golden file". It does **not** catch a golden file that
+     WAS regenerated and committed — a regenerated file always matches
+     itself, regardless of whether `KERNEL_VERSION` was bumped or this
+     changelog was updated.
+   - **CI base-ref gate** — `scripts/check-golden-version-gate.ts`, run as
+     its own step in `.github/workflows/ci.yml` (`fetch-depth: 0`, diffs the
+     push/PR against a base ref — see that script's module doc for the
+     exact push-vs-pull_request ref logic). This is the layer that closes
+     the test layer's gap: it fails the build if ANY golden-pinned file
+     changed in the diffed range without **both** a `KERNEL_VERSION` bump
+     **and** a new changelog entry mentioning the new version — i.e. it
+     catches "golden file regenerated (and self-consistent) but the bump +
+     changelog discipline was skipped". It applies uniformly to
+     `test-fixtures/golden/kernel-ops.json` AND, per the same enumeration in
+     that script (`GOLDEN_PATH_PATTERNS`), `test-fixtures/intake/*.golden.json`,
+     `test-fixtures/curvature/*.golden.json`, and
+     `test-fixtures/offset/*.golden.json` (Tasks 4/3/7's earlier goldens,
+     predating the kernel-ops suite) — the same discipline these older
+     goldens previously followed "by convention" only is now the same
+     automated gate.
+   - **What neither layer catches:** a force-push / history rewrite that
+     replaces the base ref the CI gate diffs against, or a reviewer
+     approving a PR without reading the diff. Both mechanisms above assume
+     normal, non-rewritten git history and a range that actually reflects
+     what changed — a rewritten history can make the diffed range itself
+     dishonest. That residual case stays code-review territory; no
+     automated mechanism here can make a rewritten history retroactively
+     honest.
 4. To regenerate `test-fixtures/golden/kernel-ops.json` after a legitimate,
    changelogged kernel change: `npx tsx scripts/generate-kernel-goldens.ts`
    (it double-runs every op and refuses to write a non-reproducible result —

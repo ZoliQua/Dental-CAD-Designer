@@ -191,7 +191,11 @@ function splitNonManifoldEdgesFixture(): IndexedMesh {
 
 /** Cube with triangle 0 (one of the bottom face's two triangles) deleted —
  * a single 3-edge boundary loop, well inside fillSmallHoles' default
- * `maxBoundaryEdges` (32). */
+ * `maxBoundaryEdges` (32). A cube-minus-triangle, NOT the icosphere fixture
+ * kernel's own repair tests use for this op (packages/kernel/src/repair/
+ * fillSmallHoles.test.ts) — valid seeded-damage geometry for pinning a
+ * hash, just a different (simpler) shape than that fixture, not a mirror
+ * of it. */
 function fillSmallHolesFixture(): IndexedMesh {
   const cube = unitCubeMesh();
   return { positions: cube.positions, indices: cube.indices.subarray(3) };

@@ -15,11 +15,34 @@
 //
 // NOTE (golden discipline, CLAUDE.md): this hash pins kernel output — it
 // may only change together with a KERNEL_VERSION bump + changelog entry.
-// The golden-enforcement framework lands in Task 8; until then the same
-// commit-the-hash-file convention as the intake golden applies. To
-// regenerate after an INTENTIONAL kernel change:
-//   UPDATE_OFFSET_GOLDEN=1 npx vitest run --project golden test/golden/offset.test.ts
+// test/golden/goldenEnforcement.ts's live-vs-committed comparison doesn't
+// cover this file directly (it's Task 8's kernel-ops suite's own
+// mechanism), but scripts/check-golden-version-gate.ts's CI base-ref gate
+// DOES — this golden's path matches its `test-fixtures/offset/*.golden.json`
+// pattern, so a push/PR that changes it without a version bump + changelog
+// entry fails that gate. To regenerate after an INTENTIONAL kernel change:
+//   UPDATE_OFFSET_GOLDEN=1 RUN_CLINICAL_GOLDEN=1 npx vitest run --project golden test/golden/offset.test.ts
 // then review the diff and bump KERNEL_VERSION accordingly.
+//
+// ## Runtime split (golden-suite headroom)
+//
+// The actual offset run below — the die at DEFAULT_OFFSET_VOXEL_PITCH_MM
+// (0.02 mm), the real clinical cement-gap scenario — takes ~117-118 s,
+// which was ~99% of `npm run test:golden`'s total runtime and sat right at
+// the suite's ~2 min CI budget. A FAST, coarse-pitch (0.1 mm) regression pin
+// of this SAME fixture already lives in the default suite instead:
+// scripts/kernel-ops-lib.ts's `offsetMesh` entry (same die, same distance,
+// committed in test-fixtures/golden/kernel-ops.json, ~2 s) — it catches an
+// SDF/marching-cubes/cleanup regression on every push/PR; it just can't
+// stand in for the clinical-pitch precision this file specifically pins.
+//
+// So the expensive test below is env-gated (`RUN_CLINICAL_GOLDEN=1`,
+// SKIPPED by default) rather than deleted or weakened: the clinical-pitch
+// hash stays committed and is still actually checked, just not on every
+// push. It's wired into the existing weekly `perf-guard` CI job (ci.yml —
+// same "slow-moving regression, not every-push" rationale as that job's
+// e2e perf check), plus available on demand via workflow_dispatch or a
+// local `RUN_CLINICAL_GOLDEN=1` run.
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -63,8 +86,8 @@ describe('offset — golden on standin-prep-die at the clinical default pitch', 
     expect(DEFAULT_OFFSET_VOXEL_PITCH_MM).toBe(0.02);
   });
 
-  it(
-    'offset(+50 µm) of the die matches the committed golden (stats, errorBound, output-buffer sha256)',
+  it.skipIf(process.env['RUN_CLINICAL_GOLDEN'] !== '1')(
+    'offset(+50 µm) of the die matches the committed golden (stats, errorBound, output-buffer sha256) [RUN_CLINICAL_GOLDEN=1 — weekly perf-guard CI job / on-demand only, see module doc]',
     { timeout: 600_000 },
     async () => {
       const buffer = readFileSync(diePath);

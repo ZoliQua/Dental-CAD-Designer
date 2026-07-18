@@ -31,6 +31,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           lfs: true
+          # fetch-depth: 0 (full history, all branches) is required by the
+          # "Golden version gate" step below — it needs `git merge-base`
+          # against either the previous commit (push) or the PR's target
+          # branch (pull_request), which a shallow (depth-1) checkout
+          # cannot provide. See scripts/check-golden-version-gate.ts's
+          # module doc for the exact base-ref logic this enables.
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -47,6 +54,28 @@ jobs:
         # other workspaces' typecheck/test steps depend on, so don't rely
         # on npm's workspace postinstall ordering here.
         run: npx prisma generate --schema apps/server/prisma/schema.prisma
+
+      - name: Golden version gate
+        # CI-only merge-boundary check (scripts/check-golden-version-gate.ts):
+        # fails the build if any golden-pinned file (test-fixtures/golden/
+        # kernel-ops.json, test-fixtures/{intake,curvature,offset}/*.golden.json)
+        # changed in this push/PR WITHOUT both a KERNEL_VERSION bump
+        # (packages/kernel/src/index.ts) and a matching docs/CHANGELOG-kernel.md
+        # entry. This is the layer that catches "regenerated golden file,
+        # self-consistent, but no deliberate version bump" — a scenario the
+        # golden regression suite's live-vs-committed hash comparison
+        # (test/golden/kernel-ops.test.ts) cannot see, because a freshly
+        # regenerated golden file matches itself. Runs BEFORE the golden
+        # fixture tests below so a defeated-gate push fails fast, with an
+        # actionable message, before spending time on the full suite.
+        # No-ops (exit 0) on schedule/workflow_dispatch runs, which have no
+        # single push/PR range to diff — see the script's module doc.
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+          GITHUB_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: npx tsx scripts/check-golden-version-gate.ts
 
       - name: Typecheck
         run: npm run typecheck
@@ -81,6 +110,14 @@ jobs:
         # fixture journals on every commit", fast fixture subset) — both
         # live in the same `golden` vitest project this step already runs,
         # so no separate workflow steps are needed.
+        #
+        # Runtime-split fix-batch note: this step no longer runs
+        # test/golden/offset.test.ts's expensive clinical-pitch
+        # (DEFAULT_OFFSET_VOXEL_PITCH_MM = 0.02 mm, ~117-118 s) die golden —
+        # that test self-skips here (`it.skipIf`, RUN_CLINICAL_GOLDEN unset)
+        # and instead runs in the `perf-guard` job below. A fast coarse-pitch
+        # pin of the SAME fixture (scripts/kernel-ops-lib.ts's `offsetMesh`
+        # entry, ~2 s) stays in this step's default `golden` project run.
         #
         # Task 12 note: test/manual/*.ts (real-scan pipeline replication
         # scripts, committed per Task 12's review carry-over — see
@@ -143,11 +180,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Checkout
+      - name: Checkout (with Git LFS)
         uses: actions/checkout@v4
-        # No `lfs: true` — the perf fixture is generated on demand
-        # (scripts/generate-large-fixture.ts), not stored in LFS, and this
-        # job's own e2e spec doesn't touch any other LFS-backed fixture.
+        with:
+          # lfs: true — the perf e2e fixture itself is generated on demand
+          # (scripts/generate-large-fixture.ts), not stored in LFS, but this
+          # job ALSO runs the clinical-pitch offset golden below
+          # (RUN_CLINICAL_GOLDEN=1), which needs the real (LFS-backed)
+          # test-fixtures/standin-scans/standin-prep-die.stl content, not a
+          # pointer file.
+          lfs: true
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -160,6 +202,20 @@ jobs:
 
       - name: Generate Prisma client
         run: npx prisma generate --schema apps/server/prisma/schema.prisma
+
+      - name: Clinical-pitch offset golden (RUN_CLINICAL_GOLDEN)
+        # test/golden/offset.test.ts's die-at-DEFAULT_OFFSET_VOXEL_PITCH_MM
+        # (0.02 mm) golden — ~117-118 s, moved off the every-push golden
+        # suite (see that file's module doc "Runtime split") onto this
+        # weekly/on-demand job, same rationale as the e2e perf-guard check
+        # below: a slow-moving regression, not something that needs
+        # catching within seconds of the causing commit. The default
+        # `npm run test:golden` suite still pins the SAME fixture at a
+        # coarse pitch (scripts/kernel-ops-lib.ts's `offsetMesh` entry) on
+        # every push/PR.
+        env:
+          RUN_CLINICAL_GOLDEN: '1'
+        run: npx vitest run --project golden test/golden/offset.test.ts
 
       - name: Generate the ~120 MB perf fixture
         run: npm run fixtures:generate-large
