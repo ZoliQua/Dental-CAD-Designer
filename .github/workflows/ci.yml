@@ -72,6 +72,16 @@ jobs:
         # with an explicit "git lfs pull" message (test/golden/stl-reader.ts)
         # rather than a confusing parse error.
         #
+        # Phase 2 Task 8: this single step also covers BOTH of that task's
+        # CI mandates — the kernel-ops golden regression suite
+        # (test/golden/kernel-ops.test.ts: pinned-param op hashes vs.
+        # test-fixtures/golden/kernel-ops.json, KERNEL_VERSION-gated
+        # enforcement per docs/CHANGELOG-kernel.md) and the journal-replay
+        # harness (test/golden/journal-replay.test.ts: PLAN §6.3 "CI replays
+        # fixture journals on every commit", fast fixture subset) — both
+        # live in the same `golden` vitest project this step already runs,
+        # so no separate workflow steps are needed.
+        #
         # Task 12 note: test/manual/*.ts (real-scan pipeline replication
         # scripts, committed per Task 12's review carry-over — see
         # test/manual/README.md) are excluded from every Vitest project's
