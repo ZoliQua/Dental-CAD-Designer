@@ -238,7 +238,7 @@ describe('sampleSdfGrid', () => {
     expect(result.grid[cornerFlat]).toBeGreaterThan(0);
   });
 
-  it('is cancellable mid-grid (a large-ish slice count)', async () => {
+  it('is cancellable BEFORE it starts (pre-flight: signal already aborted when run() is called)', async () => {
     const pool = createPool({ size: 1 });
     const { positions, indices } = cubeBuffers();
     await pool.run('buildBvh', { contentHash: CUBE_HASH, positions, indices });
@@ -258,6 +258,54 @@ describe('sampleSdfGrid', () => {
         { signal: controller.signal },
       ),
     ).rejects.toThrow(JobCancelledError);
+  });
+
+  it('is cancellable GENUINELY MID-GRID (abort triggered from the onProgress hook, after the first z-slice has already completed) — the job must not run to completion', async () => {
+    const pool = createPool({ size: 1 });
+    const { positions, indices } = cubeBuffers();
+    await pool.run('buildBvh', { contentHash: CUBE_HASH, positions, indices });
+    await pool.run('buildSdf', { contentHash: CUBE_HASH });
+
+    // extent 2 / pitch 0.1 + 1 = 21 slices along z — comfortably >= 3, so
+    // aborting after slice 1's progress event leaves most of the grid
+    // (slices 2-20) genuinely unrun, not a fluke of a 1-or-2-slice grid.
+    const controller = new AbortController();
+    const progressValues: number[] = [];
+    let abortedAfterFirstSlice = false;
+    await expect(
+      pool.run(
+        'sampleSdfGrid',
+        {
+          contentHash: CUBE_HASH,
+          bboxMin: [-0.5, -0.5, -0.5],
+          bboxMax: [1.5, 1.5, 1.5],
+          pitchMm: 0.1,
+        },
+        {
+          signal: controller.signal,
+          onProgress: (fraction) => {
+            progressValues.push(fraction);
+            // The FIRST onProgress call is the job's pre-loop `ctx.progress(0)`
+            // (jobs/sdf.ts's sampleSdfGridJob) — not a completed slice yet.
+            // The SECOND call (fraction = 1/21) is the first slice's own
+            // progress event — abort here, per this task's brief ("after the
+            // first slice's progress event").
+            if (!abortedAfterFirstSlice && fraction > 0) {
+              abortedAfterFirstSlice = true;
+              controller.abort();
+            }
+          },
+        },
+      ),
+    ).rejects.toThrow(JobCancelledError);
+
+    expect(abortedAfterFirstSlice).toBe(true); // sanity: the abort actually fired mid-loop, not skipped.
+    // The job must NOT have run to completion: its final progress fraction
+    // (1, reported only after the LAST of 21 slices) must never have been
+    // observed — a genuine mid-computation cancellation, not merely a
+    // pre-flight rejection dressed up with an onProgress hook.
+    expect(progressValues).not.toContain(1);
+    expect(progressValues.length).toBeLessThan(21);
   });
 
   it('rejects with SdfGridTooLargeError (the memory guard) for an oversized request, before any large allocation', async () => {

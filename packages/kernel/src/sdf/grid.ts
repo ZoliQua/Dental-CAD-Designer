@@ -160,6 +160,28 @@ export class SdfGridTooLargeError extends RangeError {
   }
 }
 
+/**
+ * The `MAX_SDF_GRID_CELLS` guard PREDICATE, extracted as its own (documented
+ * internal — not part of this package's public surface, but exported so
+ * grid.test.ts can exercise the boundary directly) function so the boundary
+ * condition (`cellCount === MAX_SDF_GRID_CELLS` accepted, `cellCount ===
+ * MAX_SDF_GRID_CELLS + 1` rejected) can be unit-tested WITHOUT constructing a
+ * real `bboxMm`/`pitchMm` pair that produces exactly that `cellCount` (which
+ * is impractical: at `~1.3e8` cells there is no small-integer bbox/pitch
+ * combination that lands on the ceiling exactly, and anything that did would
+ * still require the same multi-hundred-MB `sdfGridDims` math this function
+ * exists to test in isolation of). `sdfGridDims` below calls this directly —
+ * this is a pure extraction (this task's Fix batch, item 3a), not a logic
+ * change: same comparison, same error, same call site.
+ *
+ * @throws {SdfGridTooLargeError} if `cellCount > MAX_SDF_GRID_CELLS`.
+ */
+export function assertSdfGridCellCountWithinCeiling(cellCount: number): void {
+  if (cellCount > MAX_SDF_GRID_CELLS) {
+    throw new SdfGridTooLargeError(cellCount, MAX_SDF_GRID_CELLS);
+  }
+}
+
 export interface SdfGridBbox {
   readonly min: Vec3;
   readonly max: Vec3;
@@ -244,9 +266,7 @@ export function sdfGridDims(options: SdfGridOptions): SdfGridDims {
     dims[axis] = Math.ceil(extent / pitchMm) + 1;
   }
   const cellCount = dims[0] * dims[1] * dims[2];
-  if (cellCount > MAX_SDF_GRID_CELLS) {
-    throw new SdfGridTooLargeError(cellCount, MAX_SDF_GRID_CELLS);
-  }
+  assertSdfGridCellCountWithinCeiling(cellCount);
   return { dims, origin, cellCount };
 }
 

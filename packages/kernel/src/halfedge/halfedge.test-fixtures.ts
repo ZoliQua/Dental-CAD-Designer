@@ -44,8 +44,28 @@ function meshFromLists(
   return { positions: flatPositions, indices };
 }
 
-/** Regular tetrahedron (4 vertices / 4 triangles), CCW-from-outside. Genus
- * 0, closed, every vertex valence 3. */
+/** Regular tetrahedron (4 vertices / 4 triangles), CCW-from-outside
+ * (verified: `analyzeMesh(tetrahedronMesh()).signedVolumeMm3 > 0` —
+ * `intake/analyze.test.ts` and `sdf/pseudonormals.test.ts` both assert this
+ * directly). Genus 0, closed, every vertex valence 3.
+ *
+ * FIXED (this task's Fix batch, item 3b): this winding was previously CW-
+ * from-outside (`signedVolumeMm3 < 0`) despite this same doc comment already
+ * claiming "CCW-from-outside" — a pre-existing inaccuracy that never
+ * surfaced because every consumer at the time only cared about per-edge
+ * topological consistency (buildHalfedge) or unsigned quantities (mixed
+ * Voronoi areas, geodesic path length), never the mesh's global winding
+ * sign. `sdf/pseudonormals.test.ts` and `sdf/signedDistance.property.test.ts`
+ * both carried explicit workarounds/exclusions for the old bug — see their
+ * own doc comments for what changed once this was fixed. Consumers audited
+ * for silent compensation when this was fixed: `sdf/pseudonormals.test.ts`
+ * (updated to assert the now-correct outward sign, not just colinearity),
+ * `sdf/signedDistance.property.test.ts` (stale "NOT used here" comment
+ * updated to reflect the fix — the fixture is still not added to that
+ * file's FIXTURES array, out of scope for this fix), `geodesic/
+ * geodesicPath.test.ts`, `curvature/mixedArea.test.ts`, and `halfedge/
+ * halfedge.property.test.ts` (all three winding-independent — barycentric/
+ * topology/unsigned-area consumers only — no changes needed). */
 export function tetrahedronMesh(radius = 1): IndexedMesh {
   const raw: Vec3[] = [
     [1, 1, 1],
@@ -55,10 +75,10 @@ export function tetrahedronMesh(radius = 1): IndexedMesh {
   ];
   const positions = raw.map((p) => scale(normalize(p), radius));
   const triangles: [number, number, number][] = [
-    [0, 2, 1],
-    [0, 1, 3],
-    [0, 3, 2],
-    [1, 2, 3],
+    [0, 1, 2],
+    [0, 3, 1],
+    [0, 2, 3],
+    [1, 3, 2],
   ];
   return meshFromLists(positions, triangles);
 }
@@ -288,6 +308,92 @@ export function openGridPatchMesh(rows: number, cols: number, cellSize = 1): Ind
       triangles.push([a, b, c], [a, c, d]);
     }
   }
+  return meshFromLists(positions, triangles);
+}
+
+/**
+ * An "L-bracket": an L-shaped hexagonal footprint (in the xy-plane)
+ * extruded along z from `0` to `scale` — a closed, watertight, CCW-from-
+ * outside prism with exactly ONE reflex (concave, interior dihedral angle
+ * `270°`) vertical edge and its two reflex-adjacent vertices. Added for
+ * this task's Fix batch item 1: every other closed fixture in this file
+ * (tetrahedron/cube/octahedron/icosahedron/icosphere/torus — the torus is
+ * non-convex in the sense of not being star-shaped from its center, but has
+ * no REFLEX EDGE in the angle-weighted-pseudonormal sense: every edge of a
+ * torus tessellation is still only mildly non-planar, never a true concave
+ * crease) has no genuinely reflex feature to exercise pseudonormal
+ * disambiguation against; this fixture exists specifically to give
+ * `sdf/signedDistance.reflex.test.ts` one.
+ *
+ * Footprint (CCW when viewed from `+z`, vertex indices `0..5`), the
+ * standard "L" shape (a `2x2` square with its `1x1` top-right quadrant
+ * notched out):
+ * ```
+ *   5 (0,2) ---- 4 (1,2)
+ *     |            |
+ *     |            3 (1,1) ---- 2 (2,1)
+ *     |                           |
+ *   0 (0,0) ------------------- 1 (2,0)
+ * ```
+ * Vertex `3 = (1,1)` is the REFLEX corner (interior angle `270°` — verified
+ * by this file's own construction, not asserted at runtime here: the
+ * cross-product turn at `3` between edge `2->3` and edge `3->4` is negative
+ * for this CCW-wound polygon, the standard reflex-vertex test). The prism's
+ * REFLEX EDGE is the vertical segment from bottom vertex `3` (`(1,1,0)`,
+ * mesh index `3`) to top vertex `3` (`(1,1,scale)`, mesh index `9` — top
+ * layer is offset by `6`, the footprint's vertex count) — the two walls
+ * meeting there (the `x=1` wall and the `y=1` wall, both facing INTO the
+ * notch) have outward face normals `(1,0,0)` and `(0,1,0)` respectively, so
+ * this reflex edge's angle-weighted pseudonormal is `normalize((1,1,0))`,
+ * pointing diagonally into the (empty, exterior) notch — see
+ * `sdf/signedDistance.reflex.test.ts` for the geometric derivation of where
+ * this edge is the PROVABLY nearest surface feature (the solid-interior
+ * octant `x < 1 && y < 1` near the edge) and its use of that fact.
+ *
+ * 12 vertices (6 bottom + 6 top), 20 triangles (4 top-cap fan + 4
+ * bottom-cap fan, reversed winding + 12 side-wall triangles, 2 per
+ * footprint edge) — `signedVolumeMm3 = 3 * scale^3` (footprint area `3 *
+ * scale^2` times height `scale`), verified positive (genuinely CCW-from-
+ * outside) in `sdf/signedDistance.reflex.test.ts` via `analyzeMesh`, per
+ * this task's brief's explicit requirement. Requires `scale > 0`.
+ */
+export function notchedBoxMesh(scale = 1): IndexedMesh {
+  const footprint: readonly (readonly [number, number])[] = [
+    [0, 0],
+    [2, 0],
+    [2, 1],
+    [1, 1], // reflex corner
+    [1, 2],
+    [0, 2],
+  ];
+  const n = footprint.length;
+  const bottom: Vec3[] = footprint.map(([x, y]) => [x * scale, y * scale, 0]);
+  const top: Vec3[] = footprint.map(([x, y]) => [x * scale, y * scale, scale]);
+  const positions: Vec3[] = [...bottom, ...top]; // bottom: indices 0..n-1, top: indices n..2n-1
+
+  const triangles: [number, number, number][] = [];
+  // Top cap (z = scale): fan from footprint vertex 0, CCW order preserved
+  // -> outward +z normal (this file's `meshFromLists` winding convention).
+  for (let i = 1; i < n - 1; i++) {
+    triangles.push([n + 0, n + i, n + i + 1]);
+  }
+  // Bottom cap (z = 0): same fan, REVERSED -> outward -z normal.
+  for (let i = 1; i < n - 1; i++) {
+    triangles.push([0, i + 1, i]);
+  }
+  // Side walls: one quad (2 triangles) per footprint edge i -> i+1 (cyclic),
+  // outward-facing by construction (verified via signedVolumeMm3 in the
+  // consuming test, per this task's brief).
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    const b0 = i;
+    const b1 = j;
+    const t0 = n + i;
+    const t1 = n + j;
+    triangles.push([b0, b1, t1]);
+    triangles.push([b0, t1, t0]);
+  }
+
   return meshFromLists(positions, triangles);
 }
 

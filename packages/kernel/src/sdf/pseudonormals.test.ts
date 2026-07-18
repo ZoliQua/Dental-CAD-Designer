@@ -9,6 +9,7 @@
 // the actual SIGN behavior these pseudonormals feed into.
 import { describe, expect, it } from 'vitest';
 import { openGridPatchMesh, tetrahedronMesh } from '../halfedge/halfedge.test-fixtures.ts';
+import { analyzeMesh } from '../intake/analyze.ts';
 import type { IndexedMesh } from '../mesh/types.ts';
 import type { Vec3 } from '../bvh/geometry.ts';
 import { computePseudonormals, NonWatertightMeshError } from './pseudonormals.ts';
@@ -95,19 +96,26 @@ describe('computePseudonormals — unit cube (axis-aligned faces)', () => {
 });
 
 describe('computePseudonormals — angle-weighted vertex normal on a regular tetrahedron', () => {
-  it('every vertex normal is unit length and radial (parallel to the vertex\'s own position vector)', () => {
-    // NOTE: `tetrahedronMesh`'s own doc (halfedge/halfedge.test-fixtures.ts)
-    // claims "CCW-from-outside", but its `signedVolumeMm3` (analyzeMesh) is
-    // actually NEGATIVE — i.e. this fixture's winding is CW-from-outside in
-    // practice (a pre-existing inaccuracy in that shared fixture's doc,
-    // never surfaced before since buildHalfedge/topology tests don't care
-    // about global winding direction, only per-edge consistency). This test
-    // therefore checks only that the vertex pseudonormal is CO-LINEAR with
-    // the vertex's own radial direction (`|dot| ~= 1`) — which holds
-    // regardless of which way the whole mesh happens to be wound — rather
-    // than asserting a specific outward/inward sign; the cube tests above
-    // (a fixture independently verified outward via its known-positive
-    // signed volume) already cover the signed/oriented case.
+  it('tetrahedronMesh is genuinely CCW-from-outside (positive signed volume) — the fixture-winding bug this task\'s Fix batch retired', () => {
+    // `tetrahedronMesh`'s doc (halfedge/halfedge.test-fixtures.ts) claims
+    // "CCW-from-outside"; this used to be FALSE (signedVolumeMm3 was
+    // negative — see that fixture's updated doc for the history) until this
+    // task's Fix batch flipped its winding. Assert the invariant directly so
+    // a future regression here fails loudly instead of silently reintroducing
+    // the old bug.
+    const mesh = tetrahedronMesh(2);
+    const stats = analyzeMesh(mesh);
+    expect(stats.watertight).toBe(true);
+    expect(stats.signedVolumeMm3).not.toBeNull();
+    expect(stats.signedVolumeMm3!).toBeGreaterThan(0);
+  });
+
+  it('every vertex normal is unit length and points OUTWARD, radially (parallel to, same direction as, the vertex\'s own position vector)', () => {
+    // Now that `tetrahedronMesh` is confirmed genuinely CCW-from-outside
+    // (previous test), the vertex pseudonormal must point in the SAME
+    // direction as the vertex's own radial position vector (dot ~= +1), not
+    // merely be co-linear with it (`|dot| ~= 1`, which would also accept the
+    // inward-pointing case the old, mis-wound fixture silently produced).
     const mesh = tetrahedronMesh(2);
     const pn = computePseudonormals(mesh);
     expect(pn.vertexCount).toBe(4);
@@ -118,7 +126,7 @@ describe('computePseudonormals — angle-weighted vertex normal on a regular tet
       const p: Vec3 = [mesh.positions[v * 3]!, mesh.positions[v * 3 + 1]!, mesh.positions[v * 3 + 2]!];
       const pLen = Math.hypot(p[0], p[1], p[2]);
       const dot = (n[0] * p[0] + n[1] * p[1] + n[2] * p[2]) / pLen;
-      expect(Math.abs(dot)).toBeCloseTo(1, 6); // cosine(angle between n and p) ~= +-1
+      expect(dot).toBeCloseTo(1, 6); // cosine(angle between n and p) ~= +1 (outward, not merely co-linear)
     }
   });
 });

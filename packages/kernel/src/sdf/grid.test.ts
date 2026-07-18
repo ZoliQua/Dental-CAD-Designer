@@ -13,6 +13,7 @@ import { computePseudonormals } from './pseudonormals.ts';
 import {
   MAX_SDF_GRID_CELLS,
   SdfGridTooLargeError,
+  assertSdfGridCellCountWithinCeiling,
   sampleSdfGrid,
   sdfGridDims,
   markCandidateCells,
@@ -75,11 +76,34 @@ describe('sdfGridDims', () => {
     }
   });
 
-  it('a grid exactly AT the ceiling is accepted (boundary, not off-by-one rejected)', () => {
+  it('a grid comfortably under the ceiling is accepted (NOT a boundary case — see the dedicated predicate boundary test below for the real edge; a bbox/pitch pair that lands cellCount EXACTLY on MAX_SDF_GRID_CELLS is impractical to construct/allocate, hence this rename — this task\'s Fix batch item 3a)', () => {
     // Choose bbox/pitch so cellCount is comfortably under the ceiling but
     // still large enough to prove the check isn't accidentally always-throw.
     const { cellCount } = sdfGridDims({ bboxMm: { min: [0, 0, 0], max: [1, 1, 1] }, pitchMm: 0.05 });
     expect(cellCount).toBeLessThanOrEqual(MAX_SDF_GRID_CELLS);
+  });
+
+  describe('assertSdfGridCellCountWithinCeiling — the guard PREDICATE itself, tested at the true boundary without allocating anything', () => {
+    it('cellCount === MAX_SDF_GRID_CELLS is accepted (does not throw)', () => {
+      expect(() => assertSdfGridCellCountWithinCeiling(MAX_SDF_GRID_CELLS)).not.toThrow();
+    });
+
+    it('cellCount === MAX_SDF_GRID_CELLS + 1 is rejected (SdfGridTooLargeError, with the exact requested count and limit)', () => {
+      expect(() => assertSdfGridCellCountWithinCeiling(MAX_SDF_GRID_CELLS + 1)).toThrow(SdfGridTooLargeError);
+      try {
+        assertSdfGridCellCountWithinCeiling(MAX_SDF_GRID_CELLS + 1);
+        expect.unreachable();
+      } catch (error) {
+        expect(error).toBeInstanceOf(SdfGridTooLargeError);
+        const err = error as SdfGridTooLargeError;
+        expect(err.requestedCellCount).toBe(MAX_SDF_GRID_CELLS + 1);
+        expect(err.limit).toBe(MAX_SDF_GRID_CELLS);
+      }
+    });
+
+    it('cellCount === MAX_SDF_GRID_CELLS - 1 is accepted (one below the boundary, sanity check)', () => {
+      expect(() => assertSdfGridCellCountWithinCeiling(MAX_SDF_GRID_CELLS - 1)).not.toThrow();
+    });
   });
 });
 

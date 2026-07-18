@@ -27,12 +27,18 @@
 //    `classifyBarycentricFeature` on the actual result.
 //
 // `tetrahedronMesh` (halfedge/halfedge.test-fixtures.ts) is deliberately NOT
-// used here: its doc comment claims "CCW-from-outside" but its
-// `analyzeMesh(...).signedVolumeMm3` is actually NEGATIVE (inward-wound) —
-// see sdf/pseudonormals.test.ts's note on the same discovery. Every other
-// fixture used below (octahedron, cube, icosahedron, torus) was verified
-// (this task's report) to have POSITIVE signed volume, i.e. genuinely
-// CCW-from-outside, which `signedClosestPoint`'s sign convention requires.
+// used here: this file's FIXTURES array intentionally sticks to the four
+// shapes already covering the convex-vs-non-convex split (octahedron, cube,
+// icosahedron: convex; torus: non-convex) — the tetrahedron would only
+// duplicate the convex case. Historical note: this fixture's winding used to
+// be CW-from-outside despite its doc comment claiming otherwise (a pre-
+// existing bug, fixed in this task's Fix batch — see halfedge/
+// halfedge.test-fixtures.ts's updated `tetrahedronMesh` doc and
+// sdf/pseudonormals.test.ts's dedicated regression test for it); that bug is
+// unrelated to why it's absent from FIXTURES here. Every fixture used below
+// was verified (this task's report) to have POSITIVE signed volume, i.e.
+// genuinely CCW-from-outside, which `signedClosestPoint`'s sign convention
+// requires.
 //
 // Seeded (not fast-check's auto-random seed) — same convention as
 // bvh.property.test.ts / curvature.property.test.ts.
