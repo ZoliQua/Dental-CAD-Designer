@@ -142,6 +142,16 @@ export type { ComputeCurvaturePayload, ComputeCurvatureResult };
 import { offsetMeshJob, type OffsetMeshPayload, type OffsetMeshResult } from './offset.ts';
 export type { OffsetMeshPayload, OffsetMeshResult };
 
+import {
+  undercutScanJob,
+  undercutScanBatchJob,
+  type UndercutScanPayload,
+  type UndercutScanResult,
+  type UndercutScanBatchPayload,
+  type UndercutScanBatchResult,
+} from './undercut.ts';
+export type { UndercutScanPayload, UndercutScanResult, UndercutScanBatchPayload, UndercutScanBatchResult };
+
 import { sectionMeshJob, type SectionMeshPayload, type SectionMeshResult } from './section.ts';
 export type { SectionMeshPayload, SectionMeshResult };
 
@@ -250,6 +260,8 @@ export interface JobPayloadMap {
   signedClosestPoint: SignedClosestPointPayload;
   sampleSdfGrid: SampleSdfGridPayload;
   offsetMesh: OffsetMeshPayload;
+  undercutScan: UndercutScanPayload;
+  undercutScanBatch: UndercutScanBatchPayload;
   computeCurvature: ComputeCurvaturePayload;
   repairRemoveComponents: RepairRemoveComponentsPayload;
   repairSplitNonManifoldEdges: RepairSplitNonManifoldEdgesPayload;
@@ -280,6 +292,8 @@ export interface JobResultMap {
   signedClosestPoint: SignedClosestPointResult;
   sampleSdfGrid: SampleSdfGridResult;
   offsetMesh: OffsetMeshResult;
+  undercutScan: UndercutScanResult;
+  undercutScanBatch: UndercutScanBatchResult;
   computeCurvature: ComputeCurvatureResult;
   repairRemoveComponents: RepairRemoveComponentsResult;
   repairSplitNonManifoldEdges: RepairSplitNonManifoldEdgesResult;
@@ -317,6 +331,8 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   signedClosestPoint: signedClosestPointJob,
   sampleSdfGrid: sampleSdfGridJob,
   offsetMesh: offsetMeshJob,
+  undercutScan: undercutScanJob,
+  undercutScanBatch: undercutScanBatchJob,
   computeCurvature: computeCurvatureJob,
   repairRemoveComponents,
   repairSplitNonManifoldEdges,

@@ -59,6 +59,33 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.1.0] — Phase 2 Task 9: insertion-axis undercut scan
+
+Adds `undercutScan`/`undercutScanBatch`/`undercutScanRange`
+(`packages/kernel/src/undercut/`) — no existing op's algorithm or output
+changed. The kernel-ops golden file changed only by GAINING one new pinned
+entry, `"undercutScan"` (standin-prep-die, one fixed non-axis-aligned
+direction `(0.2, -0.4, 0.9)` normalized, `'corners'` sampling — see
+`scripts/kernel-ops-lib.ts`'s "14. undercutScan" block). Every pre-existing
+op's hash in `test-fixtures/golden/kernel-ops.json` is UNCHANGED by this
+bump (verified: `scripts/generate-kernel-goldens.ts`'s regeneration diff
+touches only the new `"undercutScan"` array entry, nothing else — see this
+task's report for the exact diff).
+
+Note on the golden-version-gate's treatment of an added-vs-changed entry:
+this task's own brief assumed the gate has a dedicated "op-added path" that
+skips the version-bump requirement for a pure addition. Verified against the
+actual gate logic (`scripts/check-golden-version-gate.ts`'s
+`checkGoldenVersionGate` — `goldenFilesChanged.length > 0` alone triggers
+the bump+changelog requirement, with no special case for "only additions")
+and confirmed empirically (`test/golden/kernel-ops.test.ts` fails
+immediately with `op "undercutScan" is computed but has no entry in the
+committed golden file` the moment the op is added, before any version bump)
+— there is NO such exemption. This entry follows the one real, documented
+workflow: bump `KERNEL_VERSION`, add this changelog entry, then regenerate
+and commit the refreshed golden file, exactly as CLAUDE.md's policy states
+for every golden-pinned change, additions included.
+
 ## [0.0.0] — Phase 0–2 (initial)
 
 Baseline. Every golden fixture currently committed (`test-fixtures/intake/`,

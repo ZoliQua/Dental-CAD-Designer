@@ -7,7 +7,7 @@
 // specifiers rather than this repo's usual `.js` suffix.
 
 /** Kernel package version, surfaced through the server health check. Bumped as the kernel evolves. */
-export const KERNEL_VERSION = '0.0.0';
+export const KERNEL_VERSION = '0.1.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -232,3 +232,17 @@ export {
   type SurfaceSplineSpan,
   type MarginLineLike,
 } from './spline/index.ts';
+
+export {
+  undercutScan,
+  undercutScanBatch,
+  undercutScanRange,
+  RAY_ORIGIN_BIAS_MM,
+  type UndercutSamplingPolicy,
+  type UndercutScanOptions,
+  type UndercutScanBatchOptions,
+  type UndercutScanResult,
+  type UndercutTriangleRange,
+  type UndercutScanRangeOutput,
+  type UndercutScanRangeStats,
+} from './undercut/index.ts';

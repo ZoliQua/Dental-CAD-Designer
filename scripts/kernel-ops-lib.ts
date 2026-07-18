@@ -60,6 +60,7 @@ import {
   splitNonManifoldEdges,
   fillSmallHoles,
   analyzeMesh,
+  undercutScan,
   type IndexedMesh,
   type SurfaceSpline,
 } from '@dqcad/kernel';
@@ -524,6 +525,38 @@ export async function computeKernelOpsSnapshot(): Promise<KernelOpsSnapshot> {
     });
   }
 
+  // --- 14. undercutScan (Phase 2 Task 9) ---------------------------------
+  // standin-prep-die, ONE fixed non-axis-aligned direction (per this task's
+  // brief: "golden on standin-prep-die, one fixed direction") — 'corners'
+  // sampling (the more expensive, more conservative policy — see
+  // undercut/undercutScan.ts's doc) so this golden also exercises the
+  // 4x-sample code path, not just the cheaper default.
+  {
+    const dieBvhForUndercut = buildBvh(dieMesh);
+    const direction = [0.2, -0.4, 0.9] as const;
+    const result = undercutScan(dieMesh, dieBvhForUndercut, direction, { sampling: 'corners' });
+    ops.push({
+      id: 'undercutScan',
+      op: 'undercutScan',
+      fixture: 'standin-prep-die (post-intake)',
+      params: { direction, sampling: 'corners' },
+      hash: sha256Of(
+        result.undercut,
+        result.depthMm,
+        JSON.stringify({
+          directionUnit: result.directionUnit,
+          undercutTriangleCount: result.undercutTriangleCount,
+          maxDepthMm: result.maxDepthMm,
+        }),
+      ),
+      meta: {
+        triangleCount: result.triangleCount,
+        undercutTriangleCount: result.undercutTriangleCount,
+        maxDepthMm: result.maxDepthMm,
+      },
+    });
+  }
+
   return {
     kernelVersion: KERNEL_VERSION,
     notes: [
@@ -533,6 +566,7 @@ export async function computeKernelOpsSnapshot(): Promise<KernelOpsSnapshot> {
       'union/subtract/intersect additionally assert a LOOSE (~3.6%) volume-vs-analytic bound against the committed boolean-pair-a/b fixtures (subdivisions=3) — the TIGHT 0.1% acceptance budget is proven separately, on finer in-memory spheres, by packages/kernel/src/boolean/manifold.analytic.test.ts.',
       'offsetMesh-preCleanupSoup is a SECONDARY hash (marching-cubes soup before weld + manifold-3d WASM cleanup) — isolates a manifold-3d WASM version/platform-only golden failure from a real SDF/marching-cubes regression (Task 7 reviewer suggestion).',
       'Repair-op fixtures are small, hand-built, seeded-damage meshes (not committed files) — see scripts/kernel-ops-lib.ts for their exact construction.',
+      'undercutScan (Phase 2 Task 9) uses \'corners\' sampling (the more expensive, more conservative policy) at a single fixed direction — see packages/kernel/src/undercut/undercutScan.ts for the sign convention and depth semantics.',
     ],
     ops,
   };

@@ -1,12 +1,13 @@
 {
-  "kernelVersion": "0.0.0",
+  "kernelVersion": "0.1.0",
   "notes": [
     "Runtime budget: every param here is chosen to keep this suite fast (target: whole suite well under the ~2 min CI budget) — see scripts/kernel-ops-lib.ts's module doc for each choice.",
     "offsetMesh uses pitchMm=0.1 (coarse) here, NOT DEFAULT_OFFSET_VOXEL_PITCH_MM=0.02 — the clinical-default-pitch acceptance golden lives separately in test/golden/offset.test.ts (~119 s on this same die fixture).",
     "sampleSdfGrid uses pitchMm=0.5, bandMm=1 (coarse) — ALWAYS passes bandMm per this repo's banded-sampling convention.",
     "union/subtract/intersect additionally assert a LOOSE (~3.6%) volume-vs-analytic bound against the committed boolean-pair-a/b fixtures (subdivisions=3) — the TIGHT 0.1% acceptance budget is proven separately, on finer in-memory spheres, by packages/kernel/src/boolean/manifold.analytic.test.ts.",
     "offsetMesh-preCleanupSoup is a SECONDARY hash (marching-cubes soup before weld + manifold-3d WASM cleanup) — isolates a manifold-3d WASM version/platform-only golden failure from a real SDF/marching-cubes regression (Task 7 reviewer suggestion).",
-    "Repair-op fixtures are small, hand-built, seeded-damage meshes (not committed files) — see scripts/kernel-ops-lib.ts for their exact construction."
+    "Repair-op fixtures are small, hand-built, seeded-damage meshes (not committed files) — see scripts/kernel-ops-lib.ts for their exact construction.",
+    "undercutScan (Phase 2 Task 9) uses 'corners' sampling (the more expensive, more conservative policy) at a single fixed direction — see packages/kernel/src/undercut/undercutScan.ts for the sign convention and depth semantics."
   ],
   "ops": [
     {
@@ -235,6 +236,25 @@
       "meta": {
         "loopsFound": 1,
         "loopsFilled": 1
+      }
+    },
+    {
+      "id": "undercutScan",
+      "op": "undercutScan",
+      "fixture": "standin-prep-die (post-intake)",
+      "params": {
+        "direction": [
+          0.2,
+          -0.4,
+          0.9
+        ],
+        "sampling": "corners"
+      },
+      "hash": "e151d52921d41176d5293fbaea86c6b6633c6176639bfa32abdcebeb52c9c918",
+      "meta": {
+        "triangleCount": 384,
+        "undercutTriangleCount": 178,
+        "maxDepthMm": 11.166528467912103
       }
     }
   ]
