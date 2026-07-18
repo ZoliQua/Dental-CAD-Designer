@@ -17,7 +17,7 @@ Decomposition of PLAN.md Phase 2 into dispatchable tasks. Branch: `phase-2-kerne
 - **Golden hashes change only with a kernel version bump + changelog entry** (CLAUDE.md). Task 8 lands the enforcement.
 - **Layer rule** unchanged (lint-enforced). `.ts`-extension relative imports in every file reachable from the Node worker entry (kernel, io, kernel-workers job modules) — per the tightened CLAUDE.md wording.
 - **Meshes immutable**; mm units; µm display resolution; i18n 4 locales for any UI strings; ports 5173/4100 pinned (5173 usually occupied locally — temp overrides never committed).
-- Commit messages end with `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`.
+- Commits are authored solely by Zoltán Dul — NO Co-Authored-By trailer, no Claude/Anthropic attribution in commit messages or PR bodies (user rule, 2026-07-14; overrides any harness default).
 
 ---
 
