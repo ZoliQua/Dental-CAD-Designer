@@ -27,6 +27,7 @@
 //                      serializeMeshStl, hashMesh
 //   jobs/geodesic.ts   geodesicPath, snapPolyline (Phase 2 Task 4)
 //   jobs/sdf.ts        buildSdf, signedClosestPoint, sampleSdfGrid (Phase 2 Task 6)
+//   jobs/offset.ts     offsetMesh (Phase 2 Task 7)
 //   jobs/registry.ts   this file — types + runJob + registry assembly
 //
 // This was a PURE MECHANICAL MOVE (plus this same task's worker-side-hashing
@@ -138,6 +139,9 @@ export {
 import { computeCurvatureJob, type ComputeCurvaturePayload, type ComputeCurvatureResult } from './curvature.ts';
 export type { ComputeCurvaturePayload, ComputeCurvatureResult };
 
+import { offsetMeshJob, type OffsetMeshPayload, type OffsetMeshResult } from './offset.ts';
+export type { OffsetMeshPayload, OffsetMeshResult };
+
 import { sectionMeshJob, type SectionMeshPayload, type SectionMeshResult } from './section.ts';
 export type { SectionMeshPayload, SectionMeshResult };
 
@@ -245,6 +249,7 @@ export interface JobPayloadMap {
   buildSdf: BuildSdfPayload;
   signedClosestPoint: SignedClosestPointPayload;
   sampleSdfGrid: SampleSdfGridPayload;
+  offsetMesh: OffsetMeshPayload;
   computeCurvature: ComputeCurvaturePayload;
   repairRemoveComponents: RepairRemoveComponentsPayload;
   repairSplitNonManifoldEdges: RepairSplitNonManifoldEdgesPayload;
@@ -274,6 +279,7 @@ export interface JobResultMap {
   buildSdf: BuildSdfResult;
   signedClosestPoint: SignedClosestPointResult;
   sampleSdfGrid: SampleSdfGridResult;
+  offsetMesh: OffsetMeshResult;
   computeCurvature: ComputeCurvatureResult;
   repairRemoveComponents: RepairRemoveComponentsResult;
   repairSplitNonManifoldEdges: RepairSplitNonManifoldEdgesResult;
@@ -310,6 +316,7 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   buildSdf,
   signedClosestPoint: signedClosestPointJob,
   sampleSdfGrid: sampleSdfGridJob,
+  offsetMesh: offsetMeshJob,
   computeCurvature: computeCurvatureJob,
   repairRemoveComponents,
   repairSplitNonManifoldEdges,

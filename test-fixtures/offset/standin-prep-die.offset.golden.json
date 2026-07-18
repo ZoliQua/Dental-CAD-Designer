@@ -1,0 +1,27 @@
+{
+  "distanceMm": 0.05,
+  "pitchMm": 0.02,
+  "errorBoundMm": 0.010022406179999999,
+  "stats": {
+    "watertight": true,
+    "manifoldEdges": true,
+    "componentCount": 1,
+    "bbox": {
+      "min": [
+        -4.049569129943848,
+        -4.049569129943848,
+        -0.04997999966144562
+      ],
+      "max": [
+        4.049569129943848,
+        4.049569129943848,
+        10.049980163574219
+      ]
+    },
+    "surfaceAreaMm2": 287.56763966736725,
+    "signedVolumeMm3": 367.8577483247107,
+    "degenerateCount": 0,
+    "boundaryEdgeCount": 0
+  },
+  "resultSha256": "04d2ce4ba3bf58f25eee85bddf2adfddfca23bb749731d5fe2fa3681def7d5d6"
+}

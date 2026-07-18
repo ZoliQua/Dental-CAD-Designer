@@ -18,6 +18,7 @@ export {
   volume,
   surfaceArea,
   sectionCap,
+  cleanupMesh,
   NonManifoldInputError,
 } from './boolean/manifold.ts';
 
@@ -126,6 +127,22 @@ export {
   type SampleSdfGridOptions,
   type SampleSdfGridResult,
 } from './sdf/index.ts';
+
+export {
+  marchingCubes,
+  marchingCubesSlab,
+  muClampEpsilon,
+  offsetMesh,
+  offsetGridSpec,
+  offsetErrorBoundMm,
+  maxAbsCoordOf,
+  OFFSET_BAND_MARGIN_PITCHES,
+  EmptyOffsetResultError,
+  type ScalarGrid,
+  type MarchingCubesSoup,
+  type OffsetMeshOptions,
+  type OffsetMeshResult,
+} from './offset/index.ts';
 
 export {
   removeComponents,

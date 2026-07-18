@@ -230,6 +230,28 @@ export async function surfaceArea(mesh: IndexedMesh): Promise<number> {
   return withManifold(mesh, (manifold) => manifold.surfaceArea());
 }
 
+/**
+ * Manifold cleanup pass (Phase 2 Task 7's offset pipeline, step 3): round-
+ * trips `mesh` through a manifold-3d `Manifold` construction and back. The
+ * construction VALIDATES the mesh is an oriented 2-manifold (rejecting with
+ * {@link NonManifoldInputError} otherwise) and — per manifold-3d's
+ * documented constructor behavior — "will collapse degenerate triangles and
+ * unnecessary vertices", so the returned mesh can differ from the input in
+ * both vertex positions (Float32 boundary, below) and topology
+ * (degenerate-sliver collapse). Callers needing post-cleanup facts must
+ * re-run `analyzeMesh` on the RESULT (offsetMesh.ts does).
+ *
+ * @errorBound Inherits {@link toManifoldMesh}'s documented Float64→Float32
+ * boundary: each coordinate is rounded once to Float32 (relative error
+ * ≤ ~1.2e-7; ≤ 1.2e-7 * |coordinate| mm absolute) on the way in and widened
+ * exactly on the way out. No other positional change is introduced — the
+ * collapse step removes degenerate topology, it does not smooth or move
+ * surviving vertices beyond that cast.
+ */
+export async function cleanupMesh(mesh: IndexedMesh): Promise<IndexedMesh> {
+  return withManifold(mesh, (manifold) => fromManifoldMesh(manifold.getMesh()));
+}
+
 // ---------------------------------------------------------------------------
 // sectionCap (Task 10): filled cross-section polygon, via manifold-3d's
 // `Manifold.slice()`, for closed watertight meshes. This is the DISPLAY-ONLY

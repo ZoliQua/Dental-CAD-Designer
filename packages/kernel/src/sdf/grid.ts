@@ -126,19 +126,28 @@ import type { Pseudonormals } from './pseudonormals.ts';
 import { signedClosestPoint } from './signedDistance.ts';
 
 /**
- * `MAX_SDF_GRID_CELLS = 1.3e8` — chosen to comfortably admit this task's own
- * motivating example (a 10 mm die at the clinical default 20 µm pitch,
- * `501^3 ≈ 1.258e8` samples — see this module's top-of-file doc) while still
- * rejecting a request an order of magnitude larger before it can attempt a
- * multi-GB allocation. At Float32 storage (this module's chosen grid dtype
- * — see top-of-file doc), the resulting grid array is `1.3e8 * 4 bytes ≈
- * 520 MB` — a real but bounded worker-thread allocation, roughly half of
- * what the SAME cell count would cost at Float64 (`~1.04 GB`), which is
- * this ceiling's actual memory justification. This ceiling bounds MEMORY
- * only, not wall-clock time — see this module's "Perf" doc above for why a
- * caller requesting a grid anywhere near this ceiling should pass `bandMm`.
+ * `MAX_SDF_GRID_CELLS = 1.4e8` — chosen to comfortably admit the real
+ * grids Phase 2 actually samples while still rejecting a request an order
+ * of magnitude larger before it can attempt a multi-GB allocation:
+ *  - Task 6's motivating example, a 10 mm die at the clinical default
+ *    20 µm pitch: `501^3 ≈ 1.258e8` samples (see this module's top-of-file
+ *    doc).
+ *  - Task 7's phase-acceptance offset case, a radius-5 mm sphere at the
+ *    same pitch with the offset pipeline's band-margin padding
+ *    (`|0.05| + 3 * 0.02 = 0.11 mm` per side — see offset/offsetMesh.ts's
+ *    `offsetGridSpec`): extent 10.22 mm → `513^3 ≈ 1.350e8` samples. This
+ *    case is why the ceiling is 1.4e8, not Task 6's original 1.3e8 (bumped
+ *    by Task 7 — a pure headroom change, no behavior change for any grid
+ *    that fit before).
+ * At Float32 storage (this module's chosen grid dtype — see top-of-file
+ * doc), the resulting grid array is `1.4e8 * 4 bytes ≈ 560 MB` — a real
+ * but bounded worker-thread allocation, roughly half of what the SAME cell
+ * count would cost at Float64 (`~1.12 GB`), which is this ceiling's actual
+ * memory justification. This ceiling bounds MEMORY only, not wall-clock
+ * time — see this module's "Perf" doc above for why a caller requesting a
+ * grid anywhere near this ceiling should pass `bandMm`.
  */
-export const MAX_SDF_GRID_CELLS = 130_000_000;
+export const MAX_SDF_GRID_CELLS = 140_000_000;
 
 /** Thrown by `sdfGridDims` (and therefore `sampleSdfGrid`) when the
  * requested `bboxMm`/`pitchMm`/`padding` combination would produce a grid
