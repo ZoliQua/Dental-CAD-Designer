@@ -194,11 +194,14 @@ export {
 import {
   repairRemoveComponents,
   repairSplitNonManifoldEdges,
+  repairSplitNonManifoldVertices,
   repairFillSmallHoles,
   type RepairRemoveComponentsPayload,
   type RepairRemoveComponentsResult,
   type RepairSplitNonManifoldEdgesPayload,
   type RepairSplitNonManifoldEdgesResult,
+  type RepairSplitNonManifoldVerticesPayload,
+  type RepairSplitNonManifoldVerticesResult,
   type RepairFillSmallHolesPayload,
   type RepairFillSmallHolesResult,
 } from './repair.ts';
@@ -207,6 +210,8 @@ export type {
   RepairRemoveComponentsResult,
   RepairSplitNonManifoldEdgesPayload,
   RepairSplitNonManifoldEdgesResult,
+  RepairSplitNonManifoldVerticesPayload,
+  RepairSplitNonManifoldVerticesResult,
   RepairFillSmallHolesPayload,
   RepairFillSmallHolesResult,
 };
@@ -270,6 +275,7 @@ export interface JobPayloadMap {
   computeCurvature: ComputeCurvaturePayload;
   repairRemoveComponents: RepairRemoveComponentsPayload;
   repairSplitNonManifoldEdges: RepairSplitNonManifoldEdgesPayload;
+  repairSplitNonManifoldVertices: RepairSplitNonManifoldVerticesPayload;
   repairFillSmallHoles: RepairFillSmallHolesPayload;
   sectionMesh: SectionMeshPayload;
   hashMesh: HashMeshPayload;
@@ -303,6 +309,7 @@ export interface JobResultMap {
   computeCurvature: ComputeCurvatureResult;
   repairRemoveComponents: RepairRemoveComponentsResult;
   repairSplitNonManifoldEdges: RepairSplitNonManifoldEdgesResult;
+  repairSplitNonManifoldVertices: RepairSplitNonManifoldVerticesResult;
   repairFillSmallHoles: RepairFillSmallHolesResult;
   sectionMesh: SectionMeshResult;
   hashMesh: HashMeshResult;
@@ -343,6 +350,7 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   computeCurvature: computeCurvatureJob,
   repairRemoveComponents,
   repairSplitNonManifoldEdges,
+  repairSplitNonManifoldVertices,
   repairFillSmallHoles,
   sectionMesh: sectionMeshJob,
   hashMesh,

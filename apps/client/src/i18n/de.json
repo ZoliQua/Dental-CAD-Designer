@@ -245,9 +245,14 @@
       "description": "Verdoppelt Eckpunkte an Kanten, die von mehr als 2 Dreiecken geteilt werden, sodass jede Kante höchstens 2 hat.",
       "summary": "Verdoppelt {{count}} Eckpunkt(e) an {{edges}} nicht-mannigfaltigen Kante(n)"
     },
+    "splitNonManifoldVertices": {
+      "title": "Schmetterlingsecken trennen",
+      "description": "Verdoppelt Eckpunkte, an denen sich zwei oder mehr Dreiecksfächer nur in einem einzigen Punkt treffen, sodass jeder Fächer einen eigenen Eckpunkt erhält.",
+      "summary": "Verdoppelt {{count}} Eckpunkt(e) an {{vertices}} Schmetterlingsecke(n)"
+    },
     "fillSmallHoles": {
       "title": "Kleine Löcher schließen",
-      "description": "Schließt kleine Randschleifen mit einem glatten (nicht krümmungsstetigen) Flicken. Größere Löcher werden abgelehnt, nicht gefüllt.",
+      "description": "Schließt kleine Randschleifen mit einem krümmungsstetigen Flicken, der der umgebenden Oberfläche folgt. Größere Löcher werden abgelehnt, nicht gefüllt.",
       "summary": "Füllt {{filled}} von {{found}} Loch/Löchern",
       "skippedSummary": "{{count}} Loch/Löcher abgelehnt (zu groß für ein sicheres Füllen)",
       "noneToFill": "Keine Löcher gefunden."

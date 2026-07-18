@@ -1,5 +1,5 @@
 // jobs/repair.ts — repairRemoveComponents / repairSplitNonManifoldEdges /
-// repairFillSmallHoles (Task 8).
+// repairFillSmallHoles (Task 8), repairSplitNonManifoldVertices (Task 11).
 //
 // Split out of the original monolithic jobs.ts (Phase 2 Task 1: "split
 // jobs.ts before new jobs" — see jobs/registry.ts's module doc for the full
@@ -32,6 +32,7 @@
 import {
   removeComponents,
   splitNonManifoldEdges,
+  splitNonManifoldVertices,
   fillSmallHoles,
   analyzeMesh,
   type IndexedMesh,
@@ -39,6 +40,7 @@ import {
   type RemoveComponentsSelector,
   type RemoveComponentsReport,
   type SplitNonManifoldEdgesReport,
+  type SplitNonManifoldVerticesReport,
   type FillSmallHolesOptions,
   type FillSmallHolesReport,
 } from '@dqcad/kernel';
@@ -68,6 +70,19 @@ export interface RepairSplitNonManifoldEdgesResult {
   positions: Float64Array;
   indices: Uint32Array;
   report: SplitNonManifoldEdgesReport;
+  statsBefore: MeshStats;
+  statsAfter: MeshStats;
+}
+
+export interface RepairSplitNonManifoldVerticesPayload {
+  positions: Float64Array;
+  indices: Uint32Array;
+}
+
+export interface RepairSplitNonManifoldVerticesResult {
+  positions: Float64Array;
+  indices: Uint32Array;
+  report: SplitNonManifoldVerticesReport;
   statsBefore: MeshStats;
   statsAfter: MeshStats;
 }
@@ -111,6 +126,21 @@ export const repairSplitNonManifoldEdges = async (
   const mesh: IndexedMesh = { positions: payload.positions, indices: payload.indices };
   const statsBefore = analyzeMesh(mesh);
   const { mesh: resultMesh, report } = splitNonManifoldEdges(mesh);
+  const statsAfter = analyzeMesh(resultMesh);
+  ctx.progress(1);
+  return { positions: resultMesh.positions, indices: resultMesh.indices, report, statsBefore, statsAfter };
+};
+
+export const repairSplitNonManifoldVertices = async (
+  payload: RepairSplitNonManifoldVerticesPayload,
+  ctx: JobContext,
+): Promise<RepairSplitNonManifoldVerticesResult> => {
+  requireMeshPayload(payload.positions, payload.indices, 'repairSplitNonManifoldVertices');
+  if (await ctx.cancelled()) throw new JobCancelledError();
+  ctx.progress(0);
+  const mesh: IndexedMesh = { positions: payload.positions, indices: payload.indices };
+  const statsBefore = analyzeMesh(mesh);
+  const { mesh: resultMesh, report } = splitNonManifoldVertices(mesh);
   const statsAfter = analyzeMesh(resultMesh);
   ctx.progress(1);
   return { positions: resultMesh.positions, indices: resultMesh.indices, report, statsBefore, statsAfter };

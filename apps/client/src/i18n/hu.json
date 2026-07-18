@@ -245,9 +245,14 @@
       "description": "Megkettőzi a csúcsokat a 2-nél több háromszög által megosztott éleken, hogy minden él legfeljebb 2 háromszöghöz tartozzon.",
       "summary": "{{count}} csúcs megkettőzve {{edges}} nem sokaság élen"
     },
+    "splitNonManifoldVertices": {
+      "title": "Csokornyakkendő-csúcsok szétválasztása",
+      "description": "Megkettőzi azokat a csúcsokat, ahol két vagy több háromszög-legyező csak egyetlen pontban találkozik, hogy minden legyező saját csúcsot kapjon.",
+      "summary": "{{count}} csúcs megkettőzve {{vertices}} csokornyakkendő-csúcson"
+    },
     "fillSmallHoles": {
       "title": "Kis lyukak kitöltése",
-      "description": "Sima (nem görbület-folytonos) folttal zárja le a kis határhurkokat. A nagyobb lyukakat elutasítja, nem tölti ki.",
+      "description": "Görbület-folytonos folttal zárja le a kis határhurkokat, amely követi a környező felületet. A nagyobb lyukakat elutasítja, nem tölti ki.",
       "summary": "{{found}} lyukból {{filled}} kitöltve",
       "skippedSummary": "{{count}} lyuk elutasítva (túl nagy a biztonságos kitöltéshez)",
       "noneToFill": "Nem található lyuk."

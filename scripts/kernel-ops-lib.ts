@@ -58,6 +58,7 @@ import {
   sectionMesh,
   removeComponents,
   splitNonManifoldEdges,
+  splitNonManifoldVertices,
   fillSmallHoles,
   analyzeMesh,
   undercutScan,
@@ -188,6 +189,35 @@ function splitNonManifoldEdgesFixture(): IndexedMesh {
   indices.set(cube.indices, 0);
   indices.set(cube.indices.subarray(0, 3), cube.indices.length);
   return { positions: cube.positions, indices };
+}
+
+/** Two closed tetrahedron-like fans sharing ONLY their apex vertex (index
+ * 0) — a bowtie vertex (`fanCount: 2`). Mirrors packages/kernel/src/repair/
+ * repair.test-fixtures.ts's `singleBowtieMesh` exactly (same `apexFan`
+ * winding pattern — see that file's doc for why it's a known-correct
+ * CCW-from-outside pattern, reused here purely for its per-edge winding
+ * consistency, not for any solid-volume property). */
+function splitNonManifoldVerticesFixture(): IndexedMesh {
+  function apexFan(positions: number[], apex: number, base: ReadonlyArray<readonly [number, number, number]>): number[] {
+    const baseIndex = positions.length / 3;
+    for (const p of base) positions.push(p[0], p[1], p[2]);
+    const [b0, b1, b2] = [baseIndex, baseIndex + 1, baseIndex + 2];
+    return [apex, b0, b1, apex, b2, b0, apex, b1, b2, b0, b2, b1];
+  }
+  const positions: number[] = [0, 0, 0];
+  const indices: number[] = [
+    ...apexFan(positions, 0, [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ]),
+    ...apexFan(positions, 0, [
+      [-1, 0, 0],
+      [0, -1, 0],
+      [0, 0, -1],
+    ]),
+  ];
+  return { positions: Float64Array.from(positions), indices: Uint32Array.from(indices) };
 }
 
 /** Cube with triangle 0 (one of the bottom face's two triangles) deleted —
@@ -487,7 +517,7 @@ export async function computeKernelOpsSnapshot(): Promise<KernelOpsSnapshot> {
     });
   }
 
-  // --- 11-13. repair ops (seeded-damage fixtures) -------------------------
+  // --- 11-14. repair ops (seeded-damage fixtures) -------------------------
   {
     const mesh = removeComponentsFixture();
     const { mesh: result, report } = removeComponents(mesh, { mode: 'minTriangles', minTriangles: 2 });
@@ -513,6 +543,18 @@ export async function computeKernelOpsSnapshot(): Promise<KernelOpsSnapshot> {
     });
   }
   {
+    const mesh = splitNonManifoldVerticesFixture();
+    const { mesh: result, report } = splitNonManifoldVertices(mesh);
+    ops.push({
+      id: 'repairSplitNonManifoldVertices',
+      op: 'splitNonManifoldVertices',
+      fixture: 'two closed tetrahedron-like fans sharing only their apex vertex (seeded bowtie-vertex damage, fanCount 2)',
+      params: {},
+      hash: sha256Of(result.positions, result.indices, JSON.stringify(report)),
+      meta: { nonManifoldVertexCountBefore: report.nonManifoldVertexCountBefore, duplicatedVertexCount: report.duplicatedVertexCount },
+    });
+  }
+  {
     const mesh = fillSmallHolesFixture();
     const { mesh: result, report } = fillSmallHoles(mesh);
     ops.push({
@@ -521,11 +563,11 @@ export async function computeKernelOpsSnapshot(): Promise<KernelOpsSnapshot> {
       fixture: 'unit cube with triangle 0 removed (seeded 3-edge-boundary-loop damage)',
       params: {},
       hash: sha256Of(result.positions, result.indices, JSON.stringify(report)),
-      meta: { loopsFound: report.loopsFound, loopsFilled: report.loopsFilled },
+      meta: { loopsFound: report.loopsFound, loopsFilled: report.loopsFilled, curvatureFallbackLoopCount: report.curvatureFallbackLoopCount },
     });
   }
 
-  // --- 14. undercutScan (Phase 2 Task 9) ---------------------------------
+  // --- 15. undercutScan (Phase 2 Task 9) ---------------------------------
   // standin-prep-die, ONE fixed non-axis-aligned direction (per this task's
   // brief: "golden on standin-prep-die, one fixed direction") — 'corners'
   // sampling (the more expensive, more conservative policy — see
@@ -566,6 +608,7 @@ export async function computeKernelOpsSnapshot(): Promise<KernelOpsSnapshot> {
       'union/subtract/intersect additionally assert a LOOSE (~3.6%) volume-vs-analytic bound against the committed boolean-pair-a/b fixtures (subdivisions=3) — the TIGHT 0.1% acceptance budget is proven separately, on finer in-memory spheres, by packages/kernel/src/boolean/manifold.analytic.test.ts.',
       'offsetMesh-preCleanupSoup is a SECONDARY hash (marching-cubes soup before weld + manifold-3d WASM cleanup) — isolates a manifold-3d WASM version/platform-only golden failure from a real SDF/marching-cubes regression (Task 7 reviewer suggestion).',
       'Repair-op fixtures are small, hand-built, seeded-damage meshes (not committed files) — see scripts/kernel-ops-lib.ts for their exact construction.',
+      'Phase 2 Task 11 (KERNEL_VERSION 0.2.0): repairFillSmallHoles\' hash CHANGED (curvature-continuity thin-plate solve replaces the Phase 1 fixed-lambda Laplacian relax as the default path — see packages/kernel/src/repair/fillSmallHoles.ts). repairSplitNonManifoldVertices is a NEW pinned entry (bowtie-vertex split). Every other op entry is UNCHANGED by this bump — see docs/CHANGELOG-kernel.md.',
       'undercutScan (Phase 2 Task 9) uses \'corners\' sampling (the more expensive, more conservative policy) at a single fixed direction — see packages/kernel/src/undercut/undercutScan.ts for the sign convention and depth semantics.',
     ],
     ops,

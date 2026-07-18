@@ -3,23 +3,35 @@
 // Detects boundary loops (holes) small enough to trust (per
 // `FillSmallHolesOptions`) and closes them: ear-clip triangulation using
 // only the loop's existing boundary vertices, then a local refinement +
-// Laplacian relax pass over the NEW interior vertices that refinement adds.
-// Reuses intake/topology.ts's `buildEdgeMap` for boundary-edge detection —
-// same edge-adjacency notion `MeshStats.boundaryEdgeCount` is defined
-// against.
+// curvature-continuity (thin-plate) fairing solve over the NEW interior
+// vertices that refinement adds (Phase 2 Task 11 — see this file's
+// `@approximation` doc below for the upgrade from Phase 1's plain Laplacian
+// relax, now kept only as a rare fallback). Reuses intake/topology.ts's
+// `buildEdgeMap` for boundary-edge detection — same edge-adjacency notion
+// `MeshStats.boundaryEdgeCount` is defined against.
 //
-// @approximation The fill this function produces is SMOOTH but explicitly
-// NOT curvature-continuous with the surrounding surface: the Laplacian relax
-// below (a handful of fixed-lambda averaging passes) blends the patch's
-// interior vertices toward their neighbors' positions, which removes gross
-// faceting but does not solve for (or even estimate) the surrounding
-// surface's actual curvature. A curvature-continuous fill (e.g. solving a
-// biharmonic/thin-plate energy against the boundary's tangent continuity) is
-// explicitly deferred to the Phase 2 kernel — see
-// docs/plans/phase-1-import-viewer.md's Task 8 "Deviations (Phase 1)" note.
-// QC gates in later phases treat a filled region like any other geometry (no
-// special-casing), so this is a documented, honest limitation rather than a
-// silent one.
+// @approximation (Phase 2 Task 11 upgrade — retires the Phase 1 plan-
+// deviation note, docs/plans/phase-1-import-viewer.md's "Deviations (Phase
+// 1)" section) After ear-clip refinement, this function solves a discrete
+// thin-plate (cotan-weighted graph bi-Laplacian) fairing energy for the
+// patch's new interior vertices, with the boundary ring FIXED and the
+// surrounding mesh's one-ring context feeding the solve's curvature
+// information — see curvatureFill.ts's module doc for the exact
+// discretization and solver. This is STILL an approximation (a linearized
+// energy over a fixed patch topology, not a true continuous PDE solve, and
+// not exactly G1/G2 in the strict differential-geometry sense) — but it is
+// a materially BETTER continuity class than Phase 1's fixed-lambda
+// Laplacian relax (which ignored the surrounding surface's curvature
+// entirely): fillSmallHoles.test.ts measures and asserts a seam dihedral-
+// angle bound (target < 5 degrees, PLAN Phase 5's blend language) and
+// reports the measured maximum. A rare, defensive fallback to the OLD
+// fixed-lambda relax remains for a loop whose local patch+context
+// neighborhood cannot be built as valid halfedge topology (see
+// curvatureFill.ts's "Fallback" section) — `FillSmallHolesReport.
+// curvatureFallbackLoopCount` surfaces whenever this fallback fires. QC
+// gates in later phases treat a filled region like any other geometry (no
+// special-casing), so this remains a documented, honest limitation rather
+// than a silent one.
 //
 // ## Boundary-loop walk direction
 //
@@ -48,30 +60,30 @@
 // be badly non-planar, and this function has no fallback for that case
 // beyond `maxAreaMm2`/`maxBoundaryEdges` refusing to attempt it at all.
 //
-// ## Local Laplacian relax of the new patch
+// ## Refining the ear-clip patch with new interior vertices
 //
 // Ear-clipping alone only ever introduces triangles between EXISTING
-// boundary-loop vertices — no new vertices, nothing to relax, and (more
-// importantly) it can leave the patch faceted/flat relative to the
-// surrounding curved surface. This function therefore refines the ear-clip
-// result once: every ear-clip triangle gets a new centroid vertex (fan-split
-// into 3 sub-triangles), and every INTERIOR ear-clip diagonal ("chord" —
-// as opposed to an original loop edge, which must stay untouched: it is
-// shared with a pre-existing, un-refillable triangle outside the patch —
-// detected via the `loopEdgeKeys` set built from the loop itself) gets a new
-// midpoint vertex shared by the two ear-clip
+// boundary-loop vertices — no new vertices, nothing for a fairing solve to
+// move, and (more importantly) it can leave the patch faceted/flat relative
+// to the surrounding curved surface. This function therefore refines the
+// ear-clip result once: every ear-clip triangle gets a new centroid vertex
+// (fan-split into 3 sub-triangles), and every INTERIOR ear-clip diagonal
+// ("chord" — as opposed to an original loop edge, which must stay
+// untouched: it is shared with a pre-existing, un-refillable triangle
+// outside the patch — detected via the `loopEdgeKeys` set built from the
+// loop itself) gets a new midpoint vertex shared by the two ear-clip
 // triangles on either side of it. This gives every new interior vertex (a
-// centroid or a chord midpoint) a real, non-trivial neighbor set — chord
-// midpoints in particular are adjacent to TWO centroids plus their 2 chord
-// endpoints — worth Laplacian-averaging. `LAPLACE_ITERATIONS`/
-// `LAPLACE_LAMBDA` below are fixed, documented constants (Jacobi-style
-// simultaneous update — every iteration's new positions are computed from
-// the PREVIOUS iteration's positions, never partially-updated ones, so the
-// result never depends on interior-vertex iteration order). Boundary loop
-// vertices are NEVER moved — they are shared with the rest of the mesh.
+// centroid or a chord midpoint) a real, non-trivial neighbor set for
+// curvatureFill.ts's thin-plate solve (see that file for the DEFAULT path)
+// or, on that solve's rare fallback, for `LAPLACE_ITERATIONS`/
+// `LAPLACE_LAMBDA` below's plain Jacobi Laplacian relax (Phase 1's
+// original algorithm, kept only as that fallback — see this file's
+// `@approximation` doc above). Boundary loop vertices are NEVER moved —
+// they are shared with the rest of the mesh.
 import type { IndexedMesh } from '../mesh/types.ts';
 import { buildEdgeMap, type EdgeEntry } from '../intake/topology.ts';
 import { countsOf } from '../intake/report.ts';
+import { solveCurvaturePatch } from './curvatureFill.ts';
 import {
   DEFAULT_MAX_BOUNDARY_EDGES,
   type FillSmallHolesOptions,
@@ -80,6 +92,11 @@ import {
   type SkippedHole,
 } from './types.ts';
 
+/** Fixed-lambda Jacobi Laplacian relax constants — FALLBACK ONLY (see this
+ * file's `@approximation` doc and curvatureFill.ts's "Fallback" section).
+ * Jacobi-style simultaneous update: every iteration's new positions are
+ * computed from the PREVIOUS iteration's positions, never partially-updated
+ * ones, so the result never depends on interior-vertex iteration order. */
 const LAPLACE_ITERATIONS = 4;
 const LAPLACE_LAMBDA = 0.5;
 /** Below this squared length, a loop's best-fit-plane normal is treated as
@@ -325,28 +342,62 @@ export function fillSmallHoles(mesh: IndexedMesh, options: FillSmallHolesOptions
   let loopsFilled = 0;
   let newVertexCount = 0;
   let newTriangleCount = 0;
+  let curvatureFallbackLoopCount = 0;
 
-  // Interior (relaxable) vertices introduced by refinement, across every
-  // loop filled this call — Jacobi Laplacian relax runs once, at the end,
-  // over the union (cheaper than per-loop, and loops never share interior
-  // vertices with each other so the result is identical either way).
-  const interiorNeighbors = new Map<number, Set<number>>();
-  function addInteriorEdge(a: number, b: number, interiorSet: Set<number>): void {
-    if (interiorSet.has(a)) {
-      let set = interiorNeighbors.get(a);
-      if (!set) {
-        set = new Set();
-        interiorNeighbors.set(a, set);
+  // Original-mesh vertex -> incident ORIGINAL triangle indices, ascending
+  // triangle-scan order — curvatureFill.ts's "context" (the surrounding
+  // mesh's one-ring beyond each loop). Built ONCE (not per loop): O(triangle
+  // count), shared read-only across every loop this call fills.
+  const vertexTriangles = new Map<number, number[]>();
+  {
+    const triangleCount = mesh.indices.length / 3;
+    for (let t = 0; t < triangleCount; t++) {
+      const base = t * 3;
+      for (let corner = 0; corner < 3; corner++) {
+        const vid = mesh.indices[base + corner]!;
+        let list = vertexTriangles.get(vid);
+        if (!list) {
+          list = [];
+          vertexTriangles.set(vid, list);
+        }
+        list.push(t);
       }
-      set.add(b);
     }
-    if (interiorSet.has(b)) {
-      let set = interiorNeighbors.get(b);
-      if (!set) {
-        set = new Set();
-        interiorNeighbors.set(b, set);
+  }
+
+  /** FALLBACK ONLY (curvatureFill.ts's solve failed for this one loop) —
+   * Phase 1's plain Jacobi Laplacian relax, scoped to a single loop's
+   * interior vertices. Behaviorally identical to running it once globally
+   * across every loop (the Phase 1 shape): different loops never share
+   * interior vertices, and each interior vertex's neighbor set here only
+   * ever contains OTHER interior vertices from the SAME loop plus fixed
+   * boundary-loop vertices, never anything from a different loop. */
+  function laplacianRelaxFallback(interiorIds: readonly number[], neighborsOf: ReadonlyMap<number, ReadonlySet<number>>): void {
+    for (let iter = 0; iter < LAPLACE_ITERATIONS; iter++) {
+      const updated: Array<[number, Vec3]> = [];
+      for (const id of interiorIds) {
+        const neighbors = neighborsOf.get(id)!;
+        let sx = 0;
+        let sy = 0;
+        let sz = 0;
+        for (const n of neighbors) {
+          const p = getPos(n);
+          sx += p[0];
+          sy += p[1];
+          sz += p[2];
+        }
+        const avg: Vec3 = [sx / neighbors.size, sy / neighbors.size, sz / neighbors.size];
+        const cur = getPos(id);
+        updated.push([
+          id,
+          [
+            cur[0] + LAPLACE_LAMBDA * (avg[0] - cur[0]),
+            cur[1] + LAPLACE_LAMBDA * (avg[1] - cur[1]),
+            cur[2] + LAPLACE_LAMBDA * (avg[2] - cur[2]),
+          ],
+        ]);
       }
-      set.add(a);
+      for (const [id, p] of updated) setPos(id, p);
     }
   }
 
@@ -378,6 +429,30 @@ export function fillSmallHoles(mesh: IndexedMesh, options: FillSmallHolesOptions
     }
     const chordMidpoints = new Map<string, number>();
     const thisLoopInterior = new Set<number>();
+    // This loop's own interior adjacency (fallback-relax-only, see
+    // `laplacianRelaxFallback`) and its own fan triangles (curvatureFill.ts
+    // input) — both SCOPED TO THIS LOOP, not shared across loops (loops
+    // never share interior vertices — see this file's module doc).
+    const loopInteriorNeighbors = new Map<number, Set<number>>();
+    const loopFanTriangles: [number, number, number][] = [];
+    function addInteriorEdge(a: number, b: number, interiorSet: Set<number>): void {
+      if (interiorSet.has(a)) {
+        let set = loopInteriorNeighbors.get(a);
+        if (!set) {
+          set = new Set();
+          loopInteriorNeighbors.set(a, set);
+        }
+        set.add(b);
+      }
+      if (interiorSet.has(b)) {
+        let set = loopInteriorNeighbors.get(b);
+        if (!set) {
+          set = new Set();
+          loopInteriorNeighbors.set(b, set);
+        }
+        set.add(a);
+      }
+    }
 
     function getChordMidpoint(gi: number, gj: number): number {
       const key = edgeKey(gi, gj);
@@ -412,63 +487,51 @@ export function fillSmallHoles(mesh: IndexedMesh, options: FillSmallHolesOptions
       if (!loopEdgeKeys.has(edgeKey(gk, gi))) perimeter.push(getChordMidpoint(gk, gi));
 
       // Fan sub-triangles (centroid, perimeter[s], perimeter[s+1]) — see
-      // module doc's "Local Laplacian relax" section for why this preserves
-      // manifoldness (every rim edge either reuses an untouched original
-      // loop edge, shared with exactly one pre-existing outside triangle, or
-      // a fresh half-chord shared by exactly the two ear triangles flanking
-      // it; every spoke is shared by exactly the two sub-triangles flanking
-      // that perimeter vertex within this same fan).
+      // module doc's "Refining the ear-clip patch" section for why this
+      // preserves manifoldness (every rim edge either reuses an untouched
+      // original loop edge, shared with exactly one pre-existing outside
+      // triangle, or a fresh half-chord shared by exactly the two ear
+      // triangles flanking it; every spoke is shared by exactly the two
+      // sub-triangles flanking that perimeter vertex within this same fan).
       for (let s = 0; s < perimeter.length; s++) {
         const p = perimeter[s]!;
         const q = perimeter[(s + 1) % perimeter.length]!;
         indices.push(centroidVertex, p, q);
+        loopFanTriangles.push([centroidVertex, p, q]);
         newTriangleCount++;
-        // Interior adjacency for relax: the spoke (centroidVertex, p), the
-        // spoke (centroidVertex, q), and the rim edge (p, q) — recorded
-        // against `thisLoopInterior` so only genuinely-new (centroid /
-        // chord-midpoint) vertices ever get an entry (boundary loop
-        // vertices are excluded, matching "boundary ring stays fixed").
+        // Interior adjacency for the FALLBACK relax only: the spoke
+        // (centroidVertex, p), the spoke (centroidVertex, q), and the rim
+        // edge (p, q) — recorded against `thisLoopInterior` so only
+        // genuinely-new (centroid / chord-midpoint) vertices ever get an
+        // entry (boundary loop vertices are excluded, matching "boundary
+        // ring stays fixed").
         addInteriorEdge(centroidVertex, p, thisLoopInterior);
         addInteriorEdge(centroidVertex, q, thisLoopInterior);
         addInteriorEdge(p, q, thisLoopInterior);
       }
     }
 
-    loopsFilled++;
-  }
-
-  // Laplacian relax: Jacobi-style simultaneous update over every interior
-  // vertex introduced above, `LAPLACE_ITERATIONS` passes at blend factor
-  // `LAPLACE_LAMBDA` — see module doc. Boundary loop vertices never appear
-  // as keys in `interiorNeighbors` (addInteriorEdge only records entries for
-  // vertices in a loop's `thisLoopInterior` set), so they are structurally
-  // impossible to move here.
-  const interiorIds = [...interiorNeighbors.keys()];
-  for (let iter = 0; iter < LAPLACE_ITERATIONS; iter++) {
-    const updated: Array<[number, Vec3]> = [];
-    for (const id of interiorIds) {
-      const neighbors = interiorNeighbors.get(id)!;
-      let sx = 0;
-      let sy = 0;
-      let sz = 0;
-      for (const n of neighbors) {
-        const p = getPos(n);
-        sx += p[0];
-        sy += p[1];
-        sz += p[2];
-      }
-      const avg: Vec3 = [sx / neighbors.size, sy / neighbors.size, sz / neighbors.size];
-      const cur = getPos(id);
-      updated.push([
-        id,
-        [
-          cur[0] + LAPLACE_LAMBDA * (avg[0] - cur[0]),
-          cur[1] + LAPLACE_LAMBDA * (avg[1] - cur[1]),
-          cur[2] + LAPLACE_LAMBDA * (avg[2] - cur[2]),
-        ],
-      ]);
+    // Curvature-continuity solve (DEFAULT path — see this file's
+    // `@approximation` doc and curvatureFill.ts's module doc): solves for
+    // `thisLoopInterior`'s positions in place. `interiorIds` in CREATION
+    // order (Set iteration order is insertion order) for deterministic
+    // column ordering in the solve's linear system.
+    const interiorIds = [...thisLoopInterior];
+    const { solved } = solveCurvaturePatch({
+      mesh,
+      loop,
+      patchTriangles: loopFanTriangles,
+      interiorIds,
+      getPos,
+      setPos,
+      vertexTriangles,
+    });
+    if (!solved) {
+      curvatureFallbackLoopCount++;
+      laplacianRelaxFallback(interiorIds, loopInteriorNeighbors);
     }
-    for (const [id, p] of updated) setPos(id, p);
+
+    loopsFilled++;
   }
 
   const newMesh: IndexedMesh = {
@@ -484,6 +547,7 @@ export function fillSmallHoles(mesh: IndexedMesh, options: FillSmallHolesOptions
     loopsSkipped,
     newVertexCount,
     newTriangleCount,
+    curvatureFallbackLoopCount,
     before: countsOf(mesh),
     after: countsOf(newMesh),
   };

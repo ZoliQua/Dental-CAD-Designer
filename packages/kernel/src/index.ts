@@ -6,8 +6,10 @@
 // kernel-workers' manifoldSmoke job), which requires literal `.ts`
 // specifiers rather than this repo's usual `.js` suffix.
 
-/** Kernel package version, surfaced through the server health check. Bumped as the kernel evolves. */
-export const KERNEL_VERSION = '0.1.0';
+/** Kernel package version, surfaced through the server health check. Bumped as the kernel evolves.
+ * See docs/CHANGELOG-kernel.md for what changed at each bump — 0.2.0
+ * (Phase 2 Task 11): fillSmallHoles' curvature-continuity upgrade. */
+export const KERNEL_VERSION = '0.2.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -147,6 +149,7 @@ export {
 export {
   removeComponents,
   splitNonManifoldEdges,
+  splitNonManifoldVertices,
   fillSmallHoles,
   DEFAULT_MAX_BOUNDARY_EDGES,
   type ComponentInfo,
@@ -161,6 +164,8 @@ export {
   type SkippedHoleReason,
   type SplitNonManifoldEdgesReport,
   type SplitNonManifoldEdgesResult,
+  type SplitNonManifoldVerticesReport,
+  type SplitNonManifoldVerticesResult,
 } from './repair/index.ts';
 
 export {

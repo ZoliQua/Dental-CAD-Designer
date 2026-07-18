@@ -59,6 +59,70 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.2.0] — Phase 2 Task 11: repair upgrades — curvature-continuous hole fill + bowtie split
+
+Two changes, one real golden diff:
+
+1. **`fillSmallHoles` — curvature-continuous hole fill (golden CHANGED).**
+   After ear-clip refinement, the patch's new interior (centroid /
+   chord-midpoint) vertices are now solved via a discrete thin-plate
+   (cotan-weighted graph bi-Laplacian) fairing energy against the
+   surrounding mesh's one-ring context, with the boundary ring fixed —
+   replacing Phase 1's fixed-lambda Jacobi Laplacian relax as the DEFAULT
+   path (that relax survives only as a rare, documented fallback for a
+   pathologically non-manifold local neighborhood — see
+   `packages/kernel/src/repair/curvatureFill.ts`'s module doc for the exact
+   discretization and `packages/kernel/src/repair/fillSmallHoles.ts`'s
+   `@approximation` doc). This retires the Phase 1 plan-deviation note
+   (`docs/plans/phase-1-import-viewer.md`'s "Deviations (Phase 1)" section).
+   **Measured, not assumed**: `fillSmallHoles.test.ts`'s seam-dihedral-angle
+   test measures the max angular jump between an untouched outside triangle
+   and its adjacent new patch triangle across every seam edge, on an
+   icosphere-with-a-hole fixture (subdivision 4 — see that file for why
+   subdivision 3's own natural faceting, ~5.75 deg max / ~5.0 deg mean,
+   already saturates a naive < 5 deg target) — measured max **2.828 deg**
+   against a **< 5 deg** documented threshold (PLAN Phase 5's blend
+   language), essentially matching that finer mesh's own natural
+   inter-facet faceting (~2.879 deg), i.e. the fill is no longer
+   distinguishable from ordinary mesh discretization noise. Volume
+   preservation on the same fixture also tightened from Phase 1's 0.5%
+   acceptance budget to **0.3%** (still comfortably passing — the solve is
+   a quality improvement, not a regression risk). The kernel-ops golden's
+   `"repairFillSmallHoles"` entry (small hand-built cube-minus-triangle
+   fixture, unchanged params) therefore CHANGED — its output mesh is
+   numerically different (better continuity), not merely re-hashed for no
+   reason. `FillSmallHolesReport` gained one new field,
+   `curvatureFallbackLoopCount` (0 for both the kernel-ops fixture and the
+   sphere-with-hole test fixture — the fallback path is exercised only by a
+   pathological, out-of-scope neighborhood, not by this repo's fixtures).
+
+2. **`splitNonManifoldVertices` — bowtie-vertex split (golden GAINED one new
+   entry, `"repairSplitNonManifoldVertices"`).** New repair op: duplicates a
+   bowtie vertex's one-ring fans (every fan but the lowest-triangle-index
+   one, which keeps the original vertex id — the same "keep first,
+   disconnect the rest" convention `splitNonManifoldEdges` already uses) so
+   `buildHalfedge` sees a proper single fan per vertex afterward. No
+   existing op's algorithm or output changed by this addition — see
+   `packages/kernel/src/repair/splitNonManifoldVertices.ts`'s module doc for
+   the fan-partition algorithm and its determinism guarantees.
+
+**Every other kernel-ops golden entry (intake, curvature, geodesicPath,
+fitSurfaceSpline, sampleSdfGrid, offsetMesh [+ pre-cleanup soup],
+union/subtract/intersect, sectionMesh, repairRemoveComponents,
+repairSplitNonManifoldEdges, undercutScan) is BYTE-IDENTICAL across this
+bump** — verified via `npx tsx scripts/generate-kernel-goldens.ts`'s
+regeneration diff (a scripted before/after JSON comparison, not just "the
+test suite is green"), which touched only the two entries described above.
+
+Repair UI: a new "Split bowtie vertices" card appears (`RepairPanel.tsx`)
+when `previewSplitNonManifoldVertices` detects at least one bowtie vertex
+(a per-card async detection call, deliberately NOT folded into `MeshStats`
+— doing so would have rippled into every OTHER golden entry that hashes
+`JSON.stringify(stats)`, e.g. `intake`/`offsetMesh`, far outside this
+change's scope). The "Fill small holes" card's description string was
+updated (all 4 locales) to note the improved (curvature-continuous, not
+just smooth) fill quality.
+
 ## [0.1.0] addendum — Fix batch: occlusion detection + boundary epsilon (no version bump)
 
 A follow-up fix batch extended `undercutScan`'s undercut rule from

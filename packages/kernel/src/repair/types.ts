@@ -89,6 +89,35 @@ export interface SplitNonManifoldEdgesResult {
 }
 
 // ---------------------------------------------------------------------------
+// splitNonManifoldVertices (Phase 2 Task 11 — "bowtie" split)
+// ---------------------------------------------------------------------------
+
+export interface SplitNonManifoldVerticesReport {
+  /** Bowtie vertices (`findNonManifoldVertices`, halfedge/build.ts) found in
+   * the INPUT mesh — every edge around each of these already has degree
+   * <= 2 (a DIFFERENT, narrower non-manifoldness than
+   * `SplitNonManifoldEdgesReport.nonManifoldEdgeCountBefore`, see
+   * splitNonManifoldVertices.ts's module doc). */
+  nonManifoldVertexCountBefore: number;
+  /** Always 0 in a successful result — re-verified (not assumed) by
+   * re-running `findNonManifoldVertices` on the OUTPUT mesh, same
+   * "verified, not assumed" convention `splitNonManifoldEdges.ts` uses for
+   * its own `nonManifoldEdgeCountAfter`. */
+  nonManifoldVertexCountAfter: number;
+  /** New vertices created — one per bowtie vertex's extra fan beyond its
+   * first (kept-original-id) fan; see module doc's "first-fan-keeps-
+   * original" convention. */
+  duplicatedVertexCount: number;
+  before: RepairCounts;
+  after: RepairCounts;
+}
+
+export interface SplitNonManifoldVerticesResult {
+  mesh: import('../mesh/types.ts').IndexedMesh;
+  report: SplitNonManifoldVerticesReport;
+}
+
+// ---------------------------------------------------------------------------
 // fillSmallHoles
 // ---------------------------------------------------------------------------
 
@@ -132,9 +161,18 @@ export interface FillSmallHolesReport {
   loopsFilled: number;
   loopsSkipped: readonly SkippedHole[];
   /** New (fan-centroid + chord-midpoint) interior vertices added across
-   * every filled loop — see module doc's "Laplacian relax" section. */
+   * every filled loop — see module doc's "Refining the ear-clip patch"
+   * section. */
   newVertexCount: number;
   newTriangleCount: number;
+  /** Count of filled loops whose curvature-continuity solve
+   * (curvatureFill.ts) could not run (local patch+context topology was
+   * itself non-manifold-edge — see that file's "Fallback" section) and
+   * therefore used the plain Laplacian relax fallback instead. `0` in the
+   * overwhelmingly common case; a nonzero value does NOT mean the fill
+   * failed (the mesh is still watertight/manifold), only that this
+   * specific loop's patch is not curvature-continuous. */
+  curvatureFallbackLoopCount: number;
   before: RepairCounts;
   after: RepairCounts;
 }

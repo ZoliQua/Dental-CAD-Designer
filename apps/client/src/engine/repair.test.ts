@@ -16,6 +16,7 @@ import {
   previewFillSmallHoles,
   previewRemoveComponents,
   previewSplitNonManifoldEdges,
+  previewSplitNonManifoldVertices,
 } from './repair';
 
 const EMPTY_REPORT: IntakeReport = { weldEpsilonMm: 1e-6, steps: [] };
@@ -146,6 +147,47 @@ describe('previewSplitNonManifoldEdges / applyRepairPreview', () => {
     expect(op.inputHashes).toEqual(['hash-b']);
     expect(op.outputHashes).toEqual([applied.contentHash]);
     expect(applied.stats.manifoldEdges).toBe(true);
+  });
+});
+
+describe('previewSplitNonManifoldVertices / applyRepairPreview', () => {
+  it('previews resolving a bowtie vertex, then applies it: repair-split-non-manifold-vertices journaled', async () => {
+    // Two closed tetrahedron-like fans sharing ONLY apex vertex 0 — a
+    // bowtie vertex, same construction as packages/kernel/src/repair/
+    // repair.test-fixtures.ts's `singleBowtieMesh` (duplicated here per
+    // this file's own scope — the algorithm itself is covered at the
+    // kernel level).
+    function apexFan(positions: number[], apex: number, base: ReadonlyArray<readonly [number, number, number]>): number[] {
+      const baseIndex = positions.length / 3;
+      for (const p of base) positions.push(p[0], p[1], p[2]);
+      const [b0, b1, b2] = [baseIndex, baseIndex + 1, baseIndex + 2];
+      return [apex, b0, b1, apex, b2, b0, apex, b1, b2, b0, b2, b1];
+    }
+    const positionsList: number[] = [0, 0, 0];
+    const indicesList: number[] = [
+      ...apexFan(positionsList, 0, [[1, 0, 0], [0, 1, 0], [0, 0, 1]]),
+      ...apexFan(positionsList, 0, [[-1, 0, 0], [0, -1, 0], [0, 0, -1]]),
+    ];
+    const positions = Float64Array.from(positionsList);
+    const indices = Uint32Array.from(indicesList);
+
+    registerMesh('hash-e', positions, indices);
+    caseStore.addSceneNode('hash-e', 'prepDie');
+    const record = caseStore.getMeshRecord('hash-e')!;
+
+    const preview = await previewSplitNonManifoldVertices(record);
+    expect(preview.report.nonManifoldVertexCountBefore).toBe(1);
+    expect(preview.report.duplicatedVertexCount).toBe(1);
+    expect(preview.report.nonManifoldVertexCountAfter).toBe(0);
+
+    const applied = await applyRepairPreview(preview);
+    const doc = useCaseStore.getState().document;
+    const op = doc.history[0]!;
+    expect(op.name).toBe('repair-split-non-manifold-vertices');
+    expect(op.inputHashes).toEqual(['hash-e']);
+    expect(op.outputHashes).toEqual([applied.contentHash]);
+    expect(op.outputHashes[0]).not.toBe('hash-e');
+    expect(op.params).toMatchObject({ nonManifoldVertexCountBefore: 1, duplicatedVertexCount: 1 });
   });
 });
 

@@ -1,7 +1,8 @@
 // apps/client/src/engine/repair.ts
 //
-// Orchestrates the 3 repair operations (Task 8: removeComponents,
-// splitNonManifoldEdges, fillSmallHoles) as a PREVIEW/APPLY pair, mirroring
+// Orchestrates the repair operations (Task 8: removeComponents,
+// splitNonManifoldEdges, fillSmallHoles; Task 11: splitNonManifoldVertices —
+// "bowtie" split) as a PREVIEW/APPLY pair, mirroring
 // importer.ts's "compute first, journal only on explicit user action"
 // pattern (see importer.ts's unit-rescale confirmation flow) — but simpler,
 // since a repair never needs a confirmation DIALOG mid-pipeline: the repair
@@ -27,6 +28,7 @@ import {
   type RemoveComponentsSelector,
   type FillSmallHolesReport,
   type SplitNonManifoldEdgesReport,
+  type SplitNonManifoldVerticesReport,
 } from '@dqcad/kernel-workers';
 
 // Re-exported so apps/client/src/ui/RepairPanel.tsx — which may depend on
@@ -41,13 +43,15 @@ import { caseStore } from './caseStore';
 import type { EngineMeshRecord } from './meshStore';
 import { getPool } from './workers';
 
-export type RepairKind = 'removeComponents' | 'splitNonManifoldEdges' | 'fillSmallHoles';
+export type RepairKind = 'removeComponents' | 'splitNonManifoldEdges' | 'splitNonManifoldVertices' | 'fillSmallHoles';
 
 /** Journal `Operation.name` per repair kind — matches this task's brief
- * verbatim ("repair-remove-components" etc.). */
+ * verbatim ("repair-remove-components" etc.; Task 11 adds
+ * "repair-split-non-manifold-vertices"). */
 const OPERATION_NAME: Record<RepairKind, string> = {
   removeComponents: 'repair-remove-components',
   splitNonManifoldEdges: 'repair-split-non-manifold-edges',
+  splitNonManifoldVertices: 'repair-split-non-manifold-vertices',
   fillSmallHoles: 'repair-fill-small-holes',
 };
 
@@ -73,13 +77,22 @@ export interface SplitNonManifoldEdgesPreview extends RepairPreviewBase {
   report: SplitNonManifoldEdgesReport;
 }
 
+export interface SplitNonManifoldVerticesPreview extends RepairPreviewBase {
+  kind: 'splitNonManifoldVertices';
+  report: SplitNonManifoldVerticesReport;
+}
+
 export interface FillSmallHolesPreview extends RepairPreviewBase {
   kind: 'fillSmallHoles';
   options: FillSmallHolesOptions;
   report: FillSmallHolesReport;
 }
 
-export type RepairPreview = RemoveComponentsPreview | SplitNonManifoldEdgesPreview | FillSmallHolesPreview;
+export type RepairPreview =
+  | RemoveComponentsPreview
+  | SplitNonManifoldEdgesPreview
+  | SplitNonManifoldVerticesPreview
+  | FillSmallHolesPreview;
 
 /** Runs `removeComponents` (packages/kernel/src/repair/removeComponents.ts)
  * as a worker job against a COPY of `record`'s master buffers — safe to call
@@ -122,6 +135,29 @@ export async function previewSplitNonManifoldEdges(record: EngineMeshRecord): Pr
   );
   return {
     kind: 'splitNonManifoldEdges',
+    contentHashBefore: record.contentHash,
+    positions: result.positions,
+    indices: result.indices,
+    statsBefore: result.statsBefore,
+    statsAfter: result.statsAfter,
+    report: result.report,
+  };
+}
+
+/** Runs `splitNonManifoldVertices`
+ * (packages/kernel/src/repair/splitNonManifoldVertices.ts, Task 11 —
+ * "bowtie" split) as a worker job — see `previewRemoveComponents`'s doc for
+ * the copy-buffer/no-side-effect contract. */
+export async function previewSplitNonManifoldVertices(record: EngineMeshRecord): Promise<SplitNonManifoldVerticesPreview> {
+  const positions = record.positions.slice();
+  const indices = record.indices.slice();
+  const result = await getPool().run(
+    'repairSplitNonManifoldVertices',
+    { positions, indices },
+    { transfer: [positions.buffer, indices.buffer] },
+  );
+  return {
+    kind: 'splitNonManifoldVertices',
     contentHashBefore: record.contentHash,
     positions: result.positions,
     indices: result.indices,
@@ -175,6 +211,11 @@ function paramsFor(preview: RepairPreview): Record<string, unknown> {
         nonManifoldEdgeCountBefore: preview.report.nonManifoldEdgeCountBefore,
         duplicatedVertexCount: preview.report.duplicatedVertexCount,
       };
+    case 'splitNonManifoldVertices':
+      return {
+        nonManifoldVertexCountBefore: preview.report.nonManifoldVertexCountBefore,
+        duplicatedVertexCount: preview.report.duplicatedVertexCount,
+      };
     case 'fillSmallHoles':
       return {
         maxBoundaryEdges: preview.report.maxBoundaryEdges,
@@ -189,7 +230,8 @@ function paramsFor(preview: RepairPreview): Record<string, unknown> {
  * Commits an already-computed `preview` (from one of the `preview*`
  * functions above): hashes the result mesh, appends a journal `Operation`
  * (`repair-remove-components` / `repair-split-non-manifold-edges` /
- * `repair-fill-small-holes`, per `OPERATION_NAME`), and replaces the scene
+ * `repair-split-non-manifold-vertices` / `repair-fill-small-holes`, per
+ * `OPERATION_NAME`), and replaces the scene
  * mesh via `caseStore.applyRepair` (render copy refreshed, old buffers/BVH
  * released if unreferenced — see that method's doc). This is the ONLY
  * function in this module that mutates the case — the UI's per-repair

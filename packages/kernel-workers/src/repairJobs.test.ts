@@ -97,6 +97,46 @@ describe('WorkerPool — repairSplitNonManifoldEdges', () => {
   });
 });
 
+describe('WorkerPool — repairSplitNonManifoldVertices', () => {
+  it('resolves a bowtie vertex (2 fans sharing only the apex), transfers buffers, and reports before/after stats', async () => {
+    const pool = createPool({ size: 1 });
+    // Two closed tetrahedron-like fans sharing ONLY apex vertex 0 — same
+    // construction as packages/kernel/src/repair/repair.test-fixtures.ts's
+    // `singleBowtieMesh` (duplicated here, not imported, per this file's own
+    // "worker wiring only, not the algorithm" scope — the algorithm itself
+    // is covered at the kernel level, packages/kernel/src/repair/
+    // splitNonManifoldVertices.test.ts).
+    function apexFan(positions: number[], apex: number, base: ReadonlyArray<readonly [number, number, number]>): number[] {
+      const baseIndex = positions.length / 3;
+      for (const p of base) positions.push(p[0], p[1], p[2]);
+      const [b0, b1, b2] = [baseIndex, baseIndex + 1, baseIndex + 2];
+      return [apex, b0, b1, apex, b2, b0, apex, b1, b2, b0, b2, b1];
+    }
+    const positionsList: number[] = [0, 0, 0];
+    const indicesList: number[] = [
+      ...apexFan(positionsList, 0, [[1, 0, 0], [0, 1, 0], [0, 0, 1]]),
+      ...apexFan(positionsList, 0, [[-1, 0, 0], [0, -1, 0], [0, 0, -1]]),
+    ];
+    const positions = Float64Array.from(positionsList);
+    const indices = Uint32Array.from(indicesList);
+    const sourceBuffer = positions.buffer;
+
+    const fractions: number[] = [];
+    const result = await pool.run(
+      'repairSplitNonManifoldVertices',
+      { positions, indices },
+      { transfer: [positions.buffer, indices.buffer], onProgress: (f) => fractions.push(f) },
+    );
+
+    expect(sourceBuffer.byteLength).toBe(0); // moved, not copied
+    expect(fractions).toEqual([0, 1]);
+    expect(result.report.nonManifoldVertexCountBefore).toBe(1);
+    expect(result.report.duplicatedVertexCount).toBe(1);
+    expect(result.report.nonManifoldVertexCountAfter).toBe(0);
+    expect(result.positions).toHaveLength(8 * 3);
+  });
+});
+
 describe('WorkerPool — repairFillSmallHoles', () => {
   it('fills a single-triangle hole, transfers buffers, and reports before/after stats', async () => {
     const pool = createPool({ size: 1 });

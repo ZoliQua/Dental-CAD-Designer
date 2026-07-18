@@ -1,10 +1,12 @@
 // packages/kernel/src/repair — user-approved, journaled mesh repair
-// operations (Task 8): removeComponents, splitNonManifoldEdges,
+// operations (Task 8, extended by Task 11's splitNonManifoldVertices):
+// removeComponents, splitNonManifoldEdges, splitNonManifoldVertices,
 // fillSmallHoles. Every function here is pure (never mutates its input,
 // always returns a fresh `IndexedMesh` + a journal-ready report) — see each
 // file's module doc for its algorithm.
 export { removeComponents } from './removeComponents.ts';
 export { splitNonManifoldEdges } from './splitNonManifoldEdges.ts';
+export { splitNonManifoldVertices } from './splitNonManifoldVertices.ts';
 export { fillSmallHoles } from './fillSmallHoles.ts';
 export {
   DEFAULT_MAX_BOUNDARY_EDGES,
@@ -20,4 +22,6 @@ export {
   type SkippedHoleReason,
   type SplitNonManifoldEdgesReport,
   type SplitNonManifoldEdgesResult,
+  type SplitNonManifoldVerticesReport,
+  type SplitNonManifoldVerticesResult,
 } from './types.ts';

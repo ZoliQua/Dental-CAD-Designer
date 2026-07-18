@@ -5,6 +5,8 @@ import type { IndexedMesh } from '../mesh/types.ts';
 import { edgeKey } from '../mesh/edgeKey.ts';
 import { buildEdgeMap } from '../intake/topology.ts';
 
+type Vec3 = readonly [number, number, number];
+
 /** Unit cube (edge length 1), corner at `offset`, 8 vertices / 12 triangles,
  * CCW-from-outside winding — same construction as kernel-workers/src/jobs/misc.ts's
  * `unitCubeMesh` test fixture, duplicated here (rather than imported) since
@@ -66,6 +68,78 @@ export function removeTriangleNeighborhood(mesh: IndexedMesh, seedTriangle: numb
     kept.push(mesh.indices[b]!, mesh.indices[b + 1]!, mesh.indices[b + 2]!);
   }
   return { positions: mesh.positions, indices: Uint32Array.from(kept) };
+}
+
+/**
+ * One closed "fan" — a small tetrahedron-like shell around `apex` (3 side
+ * triangles + a base cap) built from 3 FRESH base positions appended to
+ * `positions` — the winding (side faces `[apex,b0,b1]`, `[apex,b2,b0]`,
+ * `[apex,b1,b2]`, base `[b0,b2,b1]`) is the SAME verified CCW-from-outside
+ * pattern `halfedge/halfedge.test-fixtures.ts`'s `tetrahedronMesh` uses
+ * (that file's doc: "FIXED ... signedVolumeMm3 > 0"), reused here purely
+ * for its known-correct per-edge winding consistency (this fixture doesn't
+ * care about the resulting solid's actual volume/sign). Gluing 2+ fans at
+ * the SAME `apex` vertex index (with otherwise-disjoint base vertices) is
+ * this file's `singleBowtieMesh`/`doubleBowtieMesh` construction — TEST-ONLY
+ * fixtures for `splitNonManifoldVertices.test.ts` (and mirrored, per this
+ * module's own convention, into `scripts/kernel-ops-lib.ts` for the golden
+ * suite). */
+function apexFan(positions: number[], apex: number, base: readonly [Vec3, Vec3, Vec3]): number[] {
+  const baseIndex = positions.length / 3;
+  for (const p of base) positions.push(p[0], p[1], p[2]);
+  const b0 = baseIndex;
+  const b1 = baseIndex + 1;
+  const b2 = baseIndex + 2;
+  return [apex, b0, b1, apex, b2, b0, apex, b1, b2, b0, b2, b1];
+}
+
+/** A single bowtie vertex (index 0): 2 closed fans (see `apexFan`) sharing
+ * ONLY their apex — `findNonManifoldVertices` reports vertex 0 with
+ * `fanCount: 2`. Every edge in this mesh has degree <= 2 (each fan is its
+ * own small closed, oriented manifold shell); only the VERTEX is
+ * non-manifold. */
+export function singleBowtieMesh(): IndexedMesh {
+  const positions: number[] = [0, 0, 0]; // apex = vertex 0
+  const indices: number[] = [
+    ...apexFan(positions, 0, [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ]),
+    ...apexFan(positions, 0, [
+      [-1, 0, 0],
+      [0, -1, 0],
+      [0, 0, -1],
+    ]),
+  ];
+  return { positions: Float64Array.from(positions), indices: Uint32Array.from(indices) };
+}
+
+/** A "double" bowtie vertex (index 0): 3 closed fans sharing ONLY their
+ * apex — `findNonManifoldVertices` reports vertex 0 with `fanCount: 3`,
+ * exercising `splitNonManifoldVertices`' multi-fan (not just the binary
+ * 2-fan case) duplicate-per-extra-fan logic: TWO new vertices should be
+ * created (one per non-first fan), not one. */
+export function doubleBowtieMesh(): IndexedMesh {
+  const positions: number[] = [0, 0, 0];
+  const indices: number[] = [
+    ...apexFan(positions, 0, [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ]),
+    ...apexFan(positions, 0, [
+      [-1, 0, 0],
+      [0, -1, 0],
+      [0, 0, -1],
+    ]),
+    ...apexFan(positions, 0, [
+      [2, 0, 0],
+      [0, 2, 0],
+      [0, 0, 2],
+    ]),
+  ];
+  return { positions: Float64Array.from(positions), indices: Uint32Array.from(indices) };
 }
 
 /** Concatenates two independent `IndexedMesh`es into one (vertex indices of
