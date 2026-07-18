@@ -70,8 +70,11 @@ export interface EngineMeshRecord {
     positions: Float64Array;
     indices: Uint32Array;
     renderPositions: Float32Array;
-    /** Realized max QEM error of the decimation, mm — carried for the dev
-     * panel/debugging (see @dqcad/kernel's decimate.ts `@errorBound`). */
+    /** Realized max QEM error of the decimation, mm (see @dqcad/kernel's
+     * decimate.ts `@errorBound`) — carried on the record for a future
+     * display consumer; as of this task NO UI reads it (StatusBar's LOD
+     * toggle shows only mode + build status, not this value — there is no
+     * dev-panel LOD-quality readout yet). */
     maxErrorMm: number;
   };
 }

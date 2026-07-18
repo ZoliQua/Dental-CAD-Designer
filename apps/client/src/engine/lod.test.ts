@@ -15,14 +15,18 @@ import { createHash } from 'node:crypto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { IntakeReport, MeshStats } from '@dqcad/kernel-workers';
 import { useLodStore } from '../state/lodStore';
+import { useToolStore } from '../state/toolStore';
 import { caseStore } from './caseStore';
 import { lodEngine } from './lod';
 import {
   RENDER_LOD_TRIANGLE_BUDGET,
   RENDER_LOD_TARGET_FRACTION,
+  MIN_LOD_FORCE_TRIANGLE_COUNT,
   lodTargetTriangleCount,
   shouldUseLod,
 } from './lodPolicy';
+import { toolManager } from './ToolManager';
+import { resetBvhCacheForTests } from './workers';
 
 const EMPTY_REPORT: IntakeReport = { weldEpsilonMm: 1e-6, steps: [] };
 
@@ -110,9 +114,66 @@ async function waitForLodBuild(contentHash: string, timeoutMs = 30_000): Promise
   }
 }
 
+/** Translates `mesh` by `(dx, dy, dz)` mm — used to place a second sphere
+ * offset from the origin (this file's "measurement pick safety" tests). */
+function translateMesh(
+  mesh: { positions: Float64Array; indices: Uint32Array },
+  dx: number,
+  dy: number,
+  dz: number,
+): { positions: Float64Array; indices: Uint32Array } {
+  const positions = new Float64Array(mesh.positions.length);
+  for (let v = 0; v < mesh.positions.length / 3; v++) {
+    positions[v * 3] = mesh.positions[v * 3]! + dx;
+    positions[v * 3 + 1] = mesh.positions[v * 3 + 1]! + dy;
+    positions[v * 3 + 2] = mesh.positions[v * 3 + 2]! + dz;
+  }
+  return { positions, indices: mesh.indices };
+}
+
+/** Registers an arbitrary mesh (not necessarily `uvSphere(10, ...)`, unlike
+ * `registerSphereNode`) as a scene node and returns its SceneNode id — its
+ * bbox is computed directly from `positions` so an OFFSET mesh (see
+ * `translateMesh`) still gets a correct `stats.bbox`. */
+function registerMeshNode(
+  contentHash: string,
+  mesh: { positions: Float64Array; indices: Uint32Array },
+): string {
+  let minX = Infinity;
+  let minY = Infinity;
+  let minZ = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  let maxZ = -Infinity;
+  for (let v = 0; v < mesh.positions.length / 3; v++) {
+    const x = mesh.positions[v * 3]!;
+    const y = mesh.positions[v * 3 + 1]!;
+    const z = mesh.positions[v * 3 + 2]!;
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (z < minZ) minZ = z;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+    if (z > maxZ) maxZ = z;
+  }
+  caseStore.registerImportedMesh({
+    contentHash,
+    name: `${contentHash}.stl`,
+    format: 'stl',
+    positions: mesh.positions,
+    indices: mesh.indices,
+    stats: statsForBbox([minX, minY, minZ], [maxX, maxY, maxZ]),
+    report: EMPTY_REPORT,
+    operations: [],
+  });
+  return caseStore.addSceneNode(contentHash, 'situ').id;
+}
+
 beforeEach(() => {
   caseStore.resetForTests();
   lodEngine.resetForTests();
+  toolManager.resetForTests();
+  resetBvhCacheForTests();
 });
 
 describe('lodPolicy — threshold logic (unit)', () => {
@@ -122,11 +183,17 @@ describe('lodPolicy — threshold logic (unit)', () => {
     expect(shouldUseLod('auto', RENDER_LOD_TRIANGLE_BUDGET + 1)).toBe(true);
   });
 
-  it("'on' forces the LOD regardless of size; 'off' never uses it", () => {
-    expect(shouldUseLod('on', 10)).toBe(true);
+  it("'on' forces the LOD for any real mesh above the floor, regardless of the render budget; 'off' never uses it", () => {
+    expect(shouldUseLod('on', MIN_LOD_FORCE_TRIANGLE_COUNT + 1)).toBe(true);
     expect(shouldUseLod('on', RENDER_LOD_TRIANGLE_BUDGET * 10)).toBe(true);
     expect(shouldUseLod('off', 10)).toBe(false);
     expect(shouldUseLod('off', RENDER_LOD_TRIANGLE_BUDGET * 10)).toBe(false);
+  });
+
+  it("'on' floors at MIN_LOD_FORCE_TRIANGLE_COUNT: trivially small meshes are never force-decimated (fix batch item 1b)", () => {
+    expect(shouldUseLod('on', MIN_LOD_FORCE_TRIANGLE_COUNT)).toBe(false);
+    expect(shouldUseLod('on', MIN_LOD_FORCE_TRIANGLE_COUNT - 1)).toBe(false);
+    expect(shouldUseLod('on', 0)).toBe(false);
   });
 
   it('lodTargetTriangleCount is the target fraction, capped at the budget', () => {
@@ -222,4 +289,71 @@ describe('lodEngine — build + render-copy selection', () => {
     }
     expect(caseStore.getMeshRecord('lod-sphere-removed')).toBeUndefined();
   });
+});
+
+describe('measurement pick safety — candidate-mesh mis-selection (Phase 2 Task 10 fix batch, item 1)', () => {
+  it(
+    "resolves to the TRUE nearest full-res surface even when a farther, heavily-LOD-decimated mesh is listed FIRST in the candidate set",
+    { timeout: 60_000 },
+    async () => {
+      // Two spheres (radius 10mm) stacked on Z with a real gap between them,
+      // so a straight-down ray unambiguously hits `near`'s surface (z in
+      // [-10, 10]) long before it could ever reach `far`'s (z in [-40, -20]):
+      const near = uvSphere(10, 32, 32);
+      const far = translateMesh(uvSphere(10, 32, 32), 0, 0, -30);
+      const nodeNearId = registerMeshNode('pick-safety-near', near);
+      const nodeFarId = registerMeshNode('pick-safety-far', far);
+
+      // Force a real, aggressive LOD onto the FARTHER mesh — this models the
+      // render copy an OLD, buggy single-candidate Three.js raycast would
+      // have consulted to pick "the" candidate mesh (its silhouette can
+      // bulge/shrink relative to the true surface — see engine/lod.ts's
+      // module doc). The new design never looks at LOD/render geometry for
+      // this decision at all, so its presence/shape must have ZERO effect
+      // on the outcome below.
+      useLodStore.getState().setMode('on');
+      lodEngine.syncLodBuilds();
+      await waitForLodBuild('pick-safety-far');
+      const farRecord = caseStore.getMeshRecord('pick-safety-far')!;
+      expect(farRecord.lod).toBeDefined();
+      expect(farRecord.lod!.indices.length / 3).toBeLessThan(far.indices.length / 3); // genuinely decimated
+      useLodStore.getState().setMode('off'); // back to full-res display; irrelevant to picking either way
+
+      // `candidateNodeIds` deliberately lists the WRONG (farther) mesh
+      // FIRST, and off-axis (not through the exact pole vertex) so the ray
+      // cleanly hits one triangle face on each sphere — exactly the
+      // unordered/unfiltered candidate set SceneManager.pickAtClientPosition
+      // now always reports (every visible node, see `MeasurePickCandidate`'s
+      // doc), and exactly the case an old "trust Three.js's first hit"
+      // design could have gotten wrong.
+      toolManager.startTool('pointToPoint');
+      await toolManager.handlePick({
+        candidateNodeIds: [nodeFarId, nodeNearId],
+        rayOrigin: [2, 1, 100],
+        rayDirection: [0, 0, -1],
+      });
+      expect(useToolStore.getState().pendingPointCount).toBe(1);
+
+      // Second pick (also on `near`, order reversed this time) just to
+      // finalize the pointToPoint measurement so the first pick's resolved
+      // point/mesh is inspectable afterwards.
+      await toolManager.handlePick({
+        candidateNodeIds: [nodeNearId, nodeFarId],
+        rayOrigin: [-2, -1, 100],
+        rayDirection: [0, 0, -1],
+      });
+
+      const measurements = caseStore.getDocument().measurements;
+      expect(measurements).toHaveLength(1);
+      const firstPickZ = measurements[0]!.points[0]!.position[2];
+      // `near`'s surface near (x=2, y=1) is close to z=+9.7 (sqrt(100-4-1));
+      // `far`'s nearest possible surface point is at z=-20. A resolution
+      // against the wrong (farther, LOD'd) mesh would land near z<=-20 —
+      // asserting comfortably above that (and within `near`'s own range)
+      // proves the TRUE nearest full-res surface won, not the misleading
+      // candidate-order/LOD'd one.
+      expect(firstPickZ).toBeGreaterThan(5);
+      expect(firstPickZ).toBeLessThanOrEqual(10 + 1e-9);
+    },
+  );
 });

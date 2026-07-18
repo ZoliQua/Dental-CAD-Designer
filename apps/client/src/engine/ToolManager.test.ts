@@ -4,6 +4,16 @@
 // wiring), not geometry — the geometry itself (raycast/closestPoint
 // correctness) is already covered by packages/kernel/src/bvh's property/
 // analytic tests and packages/kernel-workers/src/bvhJobs.test.ts.
+//
+// Every `handlePick` call below passes a single-element `candidateNodeIds`
+// (this file only ever registers one candidate mesh per pick), simulating
+// what SceneManager reports when only one mesh is visible/plausible — see
+// `MeasurePickRequest`'s doc. The MULTI-candidate resolution property (the
+// Phase 2 Task 10 fix batch's central correctness fix: given several
+// candidates, `handlePick` keeps only the globally nearest TRUE Float64
+// surface hit, immune to LOD silhouette mismatch and candidate order) is
+// covered by lod.test.ts's "measurement pick safety" describe block, which
+// needs the LOD-build machinery this file doesn't otherwise use.
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { IntakeReport, MeshStats } from '@dqcad/kernel-workers';
 import type { MeshRole, Vec3 } from '@dqcad/shared-types';
@@ -72,12 +82,12 @@ describe('ToolManager — pointToPoint', () => {
     toolManager.startTool('pointToPoint');
     expect(useToolStore.getState().activeTool).toBe('pointToPoint');
 
-    const pick1: MeasurePickRequest = { nodeId: nodeA, ...downwardRayAt(0, 0) };
+    const pick1: MeasurePickRequest = { candidateNodeIds: [nodeA], ...downwardRayAt(0, 0) };
     await toolManager.handlePick(pick1);
     expect(useToolStore.getState().pendingPointCount).toBe(1);
     expect(useCaseStore.getState().document.measurements).toHaveLength(0);
 
-    const pick2: MeasurePickRequest = { nodeId: nodeB, ...downwardRayAt(0, 0) };
+    const pick2: MeasurePickRequest = { candidateNodeIds: [nodeB], ...downwardRayAt(0, 0) };
     await toolManager.handlePick(pick2);
 
     // Tool auto-resets to idle once the measurement completes.
@@ -94,14 +104,14 @@ describe('ToolManager — pointToPoint', () => {
 
   it('ignores picks when no tool is active', async () => {
     const nodeA = registerQuadNode('mesh-a', 0);
-    await toolManager.handlePick({ nodeId: nodeA, ...downwardRayAt(0, 0) });
+    await toolManager.handlePick({ candidateNodeIds: [nodeA], ...downwardRayAt(0, 0) });
     expect(useCaseStore.getState().document.measurements).toHaveLength(0);
   });
 
   it('cancelTool discards in-progress picks without recording a measurement', async () => {
     const nodeA = registerQuadNode('mesh-a', 0);
     toolManager.startTool('pointToPoint');
-    await toolManager.handlePick({ nodeId: nodeA, ...downwardRayAt(0, 0) });
+    await toolManager.handlePick({ candidateNodeIds: [nodeA], ...downwardRayAt(0, 0) });
     expect(useToolStore.getState().pendingPointCount).toBe(1);
 
     toolManager.cancelTool();
@@ -109,7 +119,7 @@ describe('ToolManager — pointToPoint', () => {
     expect(useToolStore.getState().pendingPointCount).toBe(0);
 
     // A stray pick after cancelling (no active tool) has no effect.
-    await toolManager.handlePick({ nodeId: nodeA, ...downwardRayAt(1, 1) });
+    await toolManager.handlePick({ candidateNodeIds: [nodeA], ...downwardRayAt(1, 1) });
     expect(useCaseStore.getState().document.measurements).toHaveLength(0);
   });
 });
@@ -120,11 +130,11 @@ describe('ToolManager — pointToSurface', () => {
     const nodeB = registerQuadNode('mesh-b', 5);
 
     toolManager.startTool('pointToSurface');
-    await toolManager.handlePick({ nodeId: nodeA, ...downwardRayAt(3, -2) }); // pick on A at (3, -2, 0)
+    await toolManager.handlePick({ candidateNodeIds: [nodeA], ...downwardRayAt(3, -2) }); // pick on A at (3, -2, 0)
     // Second pick lands anywhere on B — its exact click position is
     // discarded; what matters is the closest point on B's WHOLE surface to
     // the first pick, which for a parallel flat quad is directly above it.
-    await toolManager.handlePick({ nodeId: nodeB, ...downwardRayAt(7, 6) });
+    await toolManager.handlePick({ candidateNodeIds: [nodeB], ...downwardRayAt(7, 6) });
 
     const measurements = useCaseStore.getState().document.measurements;
     expect(measurements).toHaveLength(1);
@@ -140,9 +150,9 @@ describe('ToolManager — angle', () => {
     const nodeA = registerQuadNode('mesh-a', 0);
 
     toolManager.startTool('angle');
-    await toolManager.handlePick({ nodeId: nodeA, ...downwardRayAt(-5, -5) });
-    await toolManager.handlePick({ nodeId: nodeA, ...downwardRayAt(5, -5) }); // vertex
-    await toolManager.handlePick({ nodeId: nodeA, ...downwardRayAt(5, 5) });
+    await toolManager.handlePick({ candidateNodeIds: [nodeA], ...downwardRayAt(-5, -5) });
+    await toolManager.handlePick({ candidateNodeIds: [nodeA], ...downwardRayAt(5, -5) }); // vertex
+    await toolManager.handlePick({ candidateNodeIds: [nodeA], ...downwardRayAt(5, 5) });
 
     const measurements = useCaseStore.getState().document.measurements;
     expect(measurements).toHaveLength(1);
@@ -156,7 +166,7 @@ describe('ToolManager — angle', () => {
 describe('ToolManager — stale pick handling', () => {
   it('silently ignores a pick against a nodeId that no longer exists', async () => {
     toolManager.startTool('pointToPoint');
-    await toolManager.handlePick({ nodeId: 'not-a-real-node', ...downwardRayAt(0, 0) });
+    await toolManager.handlePick({ candidateNodeIds: ['not-a-real-node'], ...downwardRayAt(0, 0) });
     expect(useToolStore.getState().pendingPointCount).toBe(0);
     expect(useCaseStore.getState().document.measurements).toHaveLength(0);
   });

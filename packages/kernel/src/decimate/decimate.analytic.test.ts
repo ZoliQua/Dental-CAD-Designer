@@ -21,17 +21,30 @@ import { decimateMesh } from './decimate.ts';
 const SPHERE_RADIUS_MM = 10;
 
 /**
- * Empirically-calibrated safety factor between `result.maxErrorMm` (the QEM
- * heuristic bound — sum of squared distances to ACCUMULATED triangle
- * PLANES, not the true bounded surface) and the actual measured Euclidean
- * deviation from the original mesh's surface (BVH-checked). On a smoothly
- * curved analytic shape like a sphere, a vertex's quadric mixes several
- * non-coplanar original-triangle planes whose common near-intersection sits
- * slightly outside the actual (curved, bounded) surface — this factor
- * absorbs that documented gap. Re-derive/re-measure if this test's shape or
- * subdivision level changes materially.
+ * Safety factor between `result.maxErrorMm` (the QEM heuristic bound — sum
+ * of squared distances to ACCUMULATED triangle PLANES, not the true bounded
+ * surface) and the actual measured Euclidean deviation from the original
+ * mesh's surface (BVH-checked). On a smoothly curved analytic shape like a
+ * sphere, a vertex's quadric mixes several non-coplanar original-triangle
+ * planes whose common near-intersection sits slightly outside the actual
+ * (curved, bounded) surface — this factor absorbs that documented gap.
+ *
+ * MEASURED (not merely "empirically calibrated" — the actual numbers this
+ * test's fixture/target ratio produces, via an icosphere-subdivision probe,
+ * r=10mm, target = 20% of input triangles, same as this test):
+ *   subdiv 2 (320 -> 64 tri):   maxDeviationMm / maxErrorMm = 0.0833
+ *   subdiv 3 (1280 -> 256 tri): maxDeviationMm / maxErrorMm = 0.0834  <- this test's exact fixture
+ *   subdiv 4 (5120 -> 1024 tri): maxDeviationMm / maxErrorMm = 0.0461
+ * True ratio for THIS test's configuration is ~0.08, matching the doc's
+ * prior "measured true ratio ~0.05-0.08" note. `0.25` is ~3x that measured
+ * worst case (0.0834 x 3 ~= 0.25) — enough margin to absorb reasonable
+ * fixture/RNG-free variation without being so loose (the OLD factor of `6`,
+ * i.e. ~72x the measured ratio) that a systematically-worse collapse-position
+ * regression (e.g. 10x more true deviation than today, still far under the
+ * old bound) would silently pass. Re-derive/re-measure if this test's shape,
+ * radius, or subdivision/target-fraction changes materially.
  */
-const QEM_TO_TRUE_DEVIATION_SAFETY_FACTOR = 6;
+const QEM_TO_TRUE_DEVIATION_SAFETY_FACTOR = 0.25;
 
 /**
  * First-order volume-change bound (divergence theorem): if every point of a
@@ -74,6 +87,25 @@ describe('decimateMesh — analytic: sphere decimated to 20%', () => {
     expect(maxDeviationMm).toBeLessThanOrEqual(
       result.maxErrorMm * QEM_TO_TRUE_DEVIATION_SAFETY_FACTOR + 1e-6,
     );
+
+    // --- Lower-bound sanity (this test's slack shouldn't hide a broken
+    // metric that trivially satisfies the upper bound above). ---
+    // A `closestPoint` query that's silently broken (e.g. always returns the
+    // query point itself, or always the same triangle) would report a
+    // spuriously small/zero deviation and still pass the upper-bound check
+    // above — this floor catches that class of bug.
+    expect(maxDeviationMm).toBeGreaterThan(0);
+    // `result.maxErrorMm` itself, pinned to an order-of-magnitude band around
+    // the measured value for THIS exact fixture (icosphere r=10mm, subdiv 3,
+    // 1280 -> 256 triangles: measured maxErrorMm ~= 11.58mm — see this file's
+    // `QEM_TO_TRUE_DEVIATION_SAFETY_FACTOR` doc for the probe). Catches a
+    // gross regression (e.g. a units/scale bug, or a quadric no longer
+    // accumulating correctly) that shifts `maxErrorMm` by an order of
+    // magnitude in EITHER direction while still passing the ratio check
+    // above (which is scale-invariant and so can't catch that class of bug
+    // on its own).
+    expect(result.maxErrorMm).toBeGreaterThan(1);
+    expect(result.maxErrorMm).toBeLessThan(100);
 
     // --- Volume: decimation's OWN contribution, isolated from the
     // icosphere's pre-existing tessellation-vs-analytic-sphere gap. ---

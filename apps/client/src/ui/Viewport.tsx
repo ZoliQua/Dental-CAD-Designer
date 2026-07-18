@@ -69,7 +69,7 @@ function buildRenderNodes(): RenderNode[] {
 function handleMeasurePick(pick: MeasurePickCandidate): void {
   const worldOffset = caseStore.getRenderWorldOffset();
   const worldRay = toWorldRay(pick, worldOffset);
-  void toolManager.handlePick({ nodeId: pick.nodeId, ...worldRay });
+  void toolManager.handlePick({ candidateNodeIds: pick.candidateNodeIds, ...worldRay });
 }
 
 export function Viewport() {

@@ -18,8 +18,12 @@ import { create } from 'zustand';
  *  - 'auto' (default): meshes above the engine triangle budget
  *    (engine/lod.ts's `RENDER_LOD_TRIANGLE_BUDGET`) render their LOD copy
  *    once built; everything else renders full-res.
- *  - 'on': every mesh renders its LOD copy (built on demand, whatever its
- *    size) — for inspecting LOD quality on meshes below the budget.
+ *  - 'on': every mesh above `engine/lodPolicy.ts`'s
+ *    `MIN_LOD_FORCE_TRIANGLE_COUNT` floor renders its LOD copy (built on
+ *    demand) — for inspecting LOD quality on meshes below the render
+ *    budget. Trivially small meshes (at/under that floor) are excluded even
+ *    when forced on: decimating a handful of triangles buys nothing and
+ *    only risks a near-degenerate result (Phase 2 Task 10 fix batch).
  *  - 'off': every mesh renders full-res, even above the budget — for
  *    comparing against / bypassing a suspect LOD.
  */

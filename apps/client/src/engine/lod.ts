@@ -19,18 +19,44 @@
 //   - `caseStore.getRenderNodes()` is the ONLY reader of any
 //     `renderPositions`/`renderIndices` buffer in the whole client (grep
 //     confirms) and feeds ONLY SceneManager's display path.
-//   - Picking/measuring: SceneManager's Float32 raycast is candidate-finding
-//     only; ToolManager.handlePick ALWAYS re-casts via the `raycastMesh`/
+//   - Picking/measuring: ToolManager.handlePick ALWAYS resolves the
+//     authoritative mesh AND point via the `raycastMesh`/
 //     `measurePointToSurface` worker jobs against `record.positions`/
 //     `record.indices` (the Float64 masters — see `ensureBvhBuilt`'s call
-//     site in ToolManager.ts). With an LOD render copy active, the
-//     candidate ray comes from a click on the LOD surface, but the
-//     authoritative Float64 raycast still runs against the FULL-RES mesh —
-//     a hit lands exactly on the true surface; a silhouette-edge miss is
-//     dropped, the same (documented) way it already is for the Float32
-//     full-res render copy (ToolManager.ts's "render-copy rounding" note —
-//     an LOD widens that edge band from float-rounding scale to
-//     `maxErrorMm` scale, but never changes what a SUCCESSFUL pick means).
+//     site in ToolManager.ts). PRIOR to the Phase 2 Task 10 fix batch, this
+//     module's doc claimed that was sufficient on its own — it was NOT, in a
+//     multi-mesh scene: SceneManager used to pick a SINGLE candidate nodeId
+//     from a Three.js raycast against the (possibly LOD-decimated) render
+//     copies, and ToolManager re-cast the click ray ONLY against that one
+//     candidate's Float64 master. An LOD's decimated silhouette can differ
+//     enough from its true surface (bulge outward and steal a hit that
+//     really belongs to a neighboring mesh, or shrink inward and miss
+//     entirely) that the SINGLE chosen candidate could be the WRONG mesh —
+//     "the authoritative raycast still runs against the full-res mesh" was
+//     true but irrelevant if it ran against the full-res version of the
+//     WRONG mesh: a legitimate-looking hit on the wrong surface, silently.
+//     Fixed (SceneManager.ts's `MeasurePickCandidate` doc, ToolManager.ts's
+//     module doc): SceneManager no longer resolves a winning candidate at
+//     all — every visible node id is reported, and ToolManager.handlePick
+//     re-casts the SAME ray against EVERY candidate's Float64 master,
+//     keeping only the globally nearest TRUE hit. This never consults any
+//     render/LOD geometry for the decision, so it is immune to LOD
+//     silhouette mismatch by construction, and immune to candidate ORDER
+//     (a wrong/extra candidate's own true raycast simply misses or loses to
+//     the real target on distance).
+//     Residual risk (unavoidable, documented — not LOD-specific): a
+//     silhouette-edge MISS is still possible, at the scale of ordinary
+//     Float64-vs-click-ray geometric grazing (a ray that just barely grazes
+//     a true edge/vertex) — this is the same, much smaller-scale case
+//     ToolManager.ts's "render-copy rounding" note already covers; it drops
+//     the pick (the user tries again), it never resolves to a wrong mesh.
+//     Ordinary click-to-select (`onSelect`, NOT measurement) still uses the
+//     cheap Three.js/render-copy raycast against a SINGLE nearest hit and so
+//     can still silently highlight the "wrong" (LOD-silhouette-nearest)
+//     mesh in a dense overlap — accepted as lower-stakes (a highlight the
+//     user visually corrects with another click, not a stored numeric
+//     value) and out of this fix batch's scope, which is specifically about
+//     measurement's silently-wrong VALUES.
 //   - Sections (engine/section.ts), heatmaps (engine/heatmap.ts), curvature
 //     (engine/curvature.ts), repairs (engine/repair.ts), and export
 //     serialization all `.slice()` `record.positions`/`record.indices` —
@@ -57,6 +83,7 @@ import { useLodStore, type LodBuildStatus } from '../state/lodStore';
 export {
   RENDER_LOD_TRIANGLE_BUDGET,
   RENDER_LOD_TARGET_FRACTION,
+  MIN_LOD_FORCE_TRIANGLE_COUNT,
   shouldUseLod,
   lodTargetTriangleCount,
 } from './lodPolicy';
