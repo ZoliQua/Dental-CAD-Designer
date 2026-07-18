@@ -106,6 +106,28 @@ export {
 } from './curvature/index.ts';
 
 export {
+  computePseudonormals,
+  NonWatertightMeshError,
+  signedClosestPoint,
+  classifyBarycentricFeature,
+  SDF_BARYCENTRIC_EPSILON,
+  sdfGridDims,
+  markCandidateCells,
+  computeSdfGridSlice,
+  sampleSdfGrid,
+  MAX_SDF_GRID_CELLS,
+  SdfGridTooLargeError,
+  type Pseudonormals,
+  type SignedClosestPointResult,
+  type BarycentricFeature,
+  type SdfGridBbox,
+  type SdfGridOptions,
+  type SdfGridDims,
+  type SampleSdfGridOptions,
+  type SampleSdfGridResult,
+} from './sdf/index.ts';
+
+export {
   removeComponents,
   splitNonManifoldEdges,
   fillSmallHoles,

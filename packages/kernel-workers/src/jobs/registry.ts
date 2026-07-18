@@ -26,6 +26,7 @@
 //   jobs/misc.ts       echoMesh, longTask, manifoldSmoke, rescaleMesh,
 //                      serializeMeshStl, hashMesh
 //   jobs/geodesic.ts   geodesicPath, snapPolyline (Phase 2 Task 4)
+//   jobs/sdf.ts        buildSdf, signedClosestPoint, sampleSdfGrid (Phase 2 Task 6)
 //   jobs/registry.ts   this file — types + runJob + registry assembly
 //
 // This was a PURE MECHANICAL MOVE (plus this same task's worker-side-hashing
@@ -111,6 +112,28 @@ export {
 
 import { distanceHeatmap, type DistanceHeatmapPayload, type DistanceHeatmapResult } from './heatmap.ts';
 export type { DistanceHeatmapPayload, DistanceHeatmapResult };
+
+import {
+  buildSdf,
+  signedClosestPointJob,
+  sampleSdfGridJob,
+  SdfNotCachedError,
+  type BuildSdfPayload,
+  type BuildSdfResult,
+  type SignedClosestPointPayload,
+  type SignedClosestPointResult,
+  type SampleSdfGridPayload,
+  type SampleSdfGridResult,
+} from './sdf.ts';
+export {
+  SdfNotCachedError,
+  type BuildSdfPayload,
+  type BuildSdfResult,
+  type SignedClosestPointPayload,
+  type SignedClosestPointResult,
+  type SampleSdfGridPayload,
+  type SampleSdfGridResult,
+};
 
 import { computeCurvatureJob, type ComputeCurvaturePayload, type ComputeCurvatureResult } from './curvature.ts';
 export type { ComputeCurvaturePayload, ComputeCurvatureResult };
@@ -219,6 +242,9 @@ export interface JobPayloadMap {
   measurePointToSurface: MeasurePointToSurfacePayload;
   raycastMesh: RaycastMeshPayload;
   distanceHeatmap: DistanceHeatmapPayload;
+  buildSdf: BuildSdfPayload;
+  signedClosestPoint: SignedClosestPointPayload;
+  sampleSdfGrid: SampleSdfGridPayload;
   computeCurvature: ComputeCurvaturePayload;
   repairRemoveComponents: RepairRemoveComponentsPayload;
   repairSplitNonManifoldEdges: RepairSplitNonManifoldEdgesPayload;
@@ -245,6 +271,9 @@ export interface JobResultMap {
   measurePointToSurface: MeasurePointToSurfaceResult;
   raycastMesh: RaycastMeshResult;
   distanceHeatmap: DistanceHeatmapResult;
+  buildSdf: BuildSdfResult;
+  signedClosestPoint: SignedClosestPointResult;
+  sampleSdfGrid: SampleSdfGridResult;
   computeCurvature: ComputeCurvatureResult;
   repairRemoveComponents: RepairRemoveComponentsResult;
   repairSplitNonManifoldEdges: RepairSplitNonManifoldEdgesResult;
@@ -278,6 +307,9 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   measurePointToSurface,
   raycastMesh,
   distanceHeatmap,
+  buildSdf,
+  signedClosestPoint: signedClosestPointJob,
+  sampleSdfGrid: sampleSdfGridJob,
   computeCurvature: computeCurvatureJob,
   repairRemoveComponents,
   repairSplitNonManifoldEdges,
