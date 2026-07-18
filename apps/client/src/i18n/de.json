@@ -32,7 +32,13 @@
     "manifoldSmokeTestButton": "Manifold-Test ausführen",
     "manifoldSmokeTestRunning": "Manifold: läuft…",
     "manifoldSmokeTestSuccess": "Manifold: ✓ Volumen {{volume}}",
-    "manifoldSmokeTestFailure": "Manifold: ✗ fehlgeschlagen"
+    "manifoldSmokeTestFailure": "Manifold: ✗ fehlgeschlagen",
+    "lodMode": {
+      "auto": "LOD: automatisch",
+      "on": "LOD: erzwungen an",
+      "off": "LOD: aus"
+    },
+    "lodBuilding": "LOD wird erstellt ({{count}})…"
   },
   "import": {
     "dropzoneTitle": "STL- oder PLY-Dateien hierher ziehen",

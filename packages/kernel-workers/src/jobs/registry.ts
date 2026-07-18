@@ -28,6 +28,7 @@
 //   jobs/geodesic.ts   geodesicPath, snapPolyline (Phase 2 Task 4)
 //   jobs/sdf.ts        buildSdf, signedClosestPoint, sampleSdfGrid (Phase 2 Task 6)
 //   jobs/offset.ts     offsetMesh (Phase 2 Task 7)
+//   jobs/decimate.ts   decimateMesh (Phase 2 Task 10 — render LODs)
 //   jobs/registry.ts   this file — types + runJob + registry assembly
 //
 // This was a PURE MECHANICAL MOVE (plus this same task's worker-side-hashing
@@ -141,6 +142,9 @@ export type { ComputeCurvaturePayload, ComputeCurvatureResult };
 
 import { offsetMeshJob, type OffsetMeshPayload, type OffsetMeshResult } from './offset.ts';
 export type { OffsetMeshPayload, OffsetMeshResult };
+
+import { decimateMeshJob, type DecimateMeshPayload, type DecimateMeshResult } from './decimate.ts';
+export type { DecimateMeshPayload, DecimateMeshResult };
 
 import {
   undercutScanJob,
@@ -260,6 +264,7 @@ export interface JobPayloadMap {
   signedClosestPoint: SignedClosestPointPayload;
   sampleSdfGrid: SampleSdfGridPayload;
   offsetMesh: OffsetMeshPayload;
+  decimateMesh: DecimateMeshPayload;
   undercutScan: UndercutScanPayload;
   undercutScanBatch: UndercutScanBatchPayload;
   computeCurvature: ComputeCurvaturePayload;
@@ -292,6 +297,7 @@ export interface JobResultMap {
   signedClosestPoint: SignedClosestPointResult;
   sampleSdfGrid: SampleSdfGridResult;
   offsetMesh: OffsetMeshResult;
+  decimateMesh: DecimateMeshResult;
   undercutScan: UndercutScanResult;
   undercutScanBatch: UndercutScanBatchResult;
   computeCurvature: ComputeCurvatureResult;
@@ -331,6 +337,7 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   signedClosestPoint: signedClosestPointJob,
   sampleSdfGrid: sampleSdfGridJob,
   offsetMesh: offsetMeshJob,
+  decimateMesh: decimateMeshJob,
   undercutScan: undercutScanJob,
   undercutScanBatch: undercutScanBatchJob,
   computeCurvature: computeCurvatureJob,

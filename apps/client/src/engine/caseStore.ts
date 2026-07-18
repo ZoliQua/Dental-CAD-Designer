@@ -22,6 +22,8 @@ import type {
 } from '@dqcad/shared-types';
 import type { MeshStats } from '@dqcad/kernel-workers';
 import { createEmptyCaseDocument, useCaseStore } from '../state/caseStore';
+import { useLodStore } from '../state/lodStore';
+import { shouldUseLod } from './lodPolicy';
 import { MeshStore, type EngineMeshRecord, type RegisterMeshInput } from './meshStore';
 import type { RenderNode } from './renderNode';
 import { releaseBvhForMesh } from './workers';
@@ -215,13 +217,26 @@ class CaseStoreEngine {
    * read-only display projection, not a validation point. */
   getRenderNodes(): RenderNode[] {
     const nodes: RenderNode[] = [];
+    // LOD selection (Phase 2 Task 10): a node whose mesh is above the
+    // render triangle budget (or whose LOD is force-enabled — see
+    // state/lodStore.ts's `LodMode`) renders its decimated LOD copy ONCE
+    // one has been built (engine/lod.ts); until then — and always, in
+    // 'off'/below-budget cases — the full-res render copy is used. This is
+    // strictly a choice between two RENDER copies: the Float64 kernel
+    // masters are untouched either way, and every non-display consumer
+    // (picking/measuring/sections/heatmaps/exports) reads the masters —
+    // see engine/lod.ts's module doc for the consumer-by-consumer
+    // verification.
+    const lodMode = useLodStore.getState().mode;
     for (const node of this.document.scene) {
       const record = this.meshStore.get(node.meshId);
       if (!record) continue;
+      const lod = record.lod;
+      const useLod = lod !== undefined && shouldUseLod(lodMode, record.indices.length / 3);
       nodes.push({
         id: node.id,
-        positions: record.renderPositions,
-        indices: record.renderIndices,
+        positions: useLod ? lod.renderPositions : record.renderPositions,
+        indices: useLod ? lod.indices : record.renderIndices,
         visible: node.visible,
         opacity: node.opacity,
         role: node.role,

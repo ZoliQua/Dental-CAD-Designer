@@ -5,10 +5,21 @@ import { useTranslation } from 'react-i18next';
 // reads the outcome back from the store.
 import { runManifoldSmokeTest, runWorkerSmokeTest } from '../engine/workers';
 import { useAppStore } from '../state/appStore';
+import { useLodStore, type LodMode } from '../state/lodStore';
+
+/** The dev LOD toggle cycles auto -> on -> off -> auto (see
+ * state/lodStore.ts's `LodMode` for what each does). */
+const NEXT_LOD_MODE: Record<LodMode, LodMode> = { auto: 'on', on: 'off', off: 'auto' };
 
 export function StatusBar() {
   const { t } = useTranslation();
   const engineReady = useAppStore((state) => state.engineReady);
+  const lodMode = useLodStore((state) => state.mode);
+  const setLodMode = useLodStore((state) => state.setMode);
+  const lodBuildStatus = useLodStore((state) => state.buildStatus);
+  const lodBuildingCount = Object.values(lodBuildStatus).filter(
+    (status) => status === 'building',
+  ).length;
   const workerSmokeTestStatus = useAppStore((state) => state.workerSmokeTestStatus);
   const workerSmokeTestTriangleCount = useAppStore((state) => state.workerSmokeTestTriangleCount);
   const manifoldSmokeTestStatus = useAppStore((state) => state.manifoldSmokeTestStatus);
@@ -74,6 +85,21 @@ export function StatusBar() {
           {t('statusBar.manifoldSmokeTestButton')}
         </button>
         <span data-testid="manifold-smoke-test-status">{manifoldStatusLabel}</span>
+      </span>
+      <span className="status-bar__lod">
+        <button
+          type="button"
+          className="status-bar__lod-button"
+          data-testid="lod-mode-toggle"
+          onClick={() => setLodMode(NEXT_LOD_MODE[lodMode])}
+        >
+          {t(`statusBar.lodMode.${lodMode}`)}
+        </button>
+        {lodBuildingCount > 0 ? (
+          <span data-testid="lod-building-status">
+            {t('statusBar.lodBuilding', { count: lodBuildingCount })}
+          </span>
+        ) : null}
       </span>
     </footer>
   );

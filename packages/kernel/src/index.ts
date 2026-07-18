@@ -234,6 +234,27 @@ export {
 } from './spline/index.ts';
 
 export {
+  decimateMesh,
+  beginDecimation,
+  zeroQuadric,
+  planeQuadric,
+  triangleQuadric,
+  addQuadric,
+  addQuadricInPlace,
+  quadricError,
+  solveOptimalPosition,
+  DEGENERATE_NORMAL_LENGTH_SQ_EPSILON,
+  QUADRIC_SOLVE_SINGULARITY_EPSILON,
+  edgeCollapseIsManifoldSafe,
+  collapseWouldDuplicateTriangle,
+  oneRingNeighbors,
+  type DecimateMeshOptions,
+  type DecimateMeshResult,
+  type DecimationSession,
+  type Quadric,
+} from './decimate/index.ts';
+
+export {
   undercutScan,
   undercutScanBatch,
   undercutScanRange,

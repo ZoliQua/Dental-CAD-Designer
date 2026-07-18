@@ -32,7 +32,13 @@
     "manifoldSmokeTestButton": "Manifold teszt futtatása",
     "manifoldSmokeTestRunning": "Manifold: fut…",
     "manifoldSmokeTestSuccess": "Manifold: ✓ térfogat {{volume}}",
-    "manifoldSmokeTestFailure": "Manifold: ✗ sikertelen"
+    "manifoldSmokeTestFailure": "Manifold: ✗ sikertelen",
+    "lodMode": {
+      "auto": "LOD: automatikus",
+      "on": "LOD: kényszerítve be",
+      "off": "LOD: ki"
+    },
+    "lodBuilding": "LOD készítése ({{count}})…"
   },
   "import": {
     "dropzoneTitle": "Húzza ide az STL vagy PLY fájlokat",
