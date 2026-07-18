@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildHalfedge, findNonManifoldVertices } from '../halfedge/build.ts';
 import { assertValidTopology } from '../halfedge/validate.ts';
-import { unitCubeMesh, singleBowtieMesh, doubleBowtieMesh } from './repair.test-fixtures.ts';
+import { unitCubeMesh, singleBowtieMesh, doubleBowtieMesh, openFanBowtieMesh } from './repair.test-fixtures.ts';
 import { splitNonManifoldVertices } from './splitNonManifoldVertices.ts';
 
 describe('splitNonManifoldVertices — single bowtie', () => {
@@ -93,6 +93,28 @@ describe('splitNonManifoldVertices — double bowtie (3 fans)', () => {
     const b = splitNonManifoldVertices(mesh);
     expect(Array.from(a.mesh.positions)).toEqual(Array.from(b.mesh.positions));
     expect(Array.from(a.mesh.indices)).toEqual(Array.from(b.mesh.indices));
+  });
+});
+
+describe('splitNonManifoldVertices — open-fan bowtie (boundary vertex, two OPEN fans)', () => {
+  it('detects the bowtie up front (fanCount 2), the apex itself being a boundary vertex in both fans', () => {
+    const bowties = findNonManifoldVertices(openFanBowtieMesh());
+    expect(bowties).toEqual([{ vertex: 0, fanCount: 2 }]);
+  });
+
+  it('splits correctly (1 duplicate) and resolves the bowtie', () => {
+    const mesh = openFanBowtieMesh();
+    const { mesh: result, report } = splitNonManifoldVertices(mesh);
+    expect(report.nonManifoldVertexCountBefore).toBe(1);
+    expect(report.duplicatedVertexCount).toBe(1);
+    expect(report.nonManifoldVertexCountAfter).toBe(0);
+    expect(findNonManifoldVertices(result)).toHaveLength(0);
+  });
+
+  it('the split mesh builds valid halfedge topology (buildHalfedge + assertValidTopology)', () => {
+    const { mesh: result } = splitNonManifoldVertices(openFanBowtieMesh());
+    const hm = buildHalfedge(result);
+    expect(() => assertValidTopology(hm)).not.toThrow();
   });
 });
 

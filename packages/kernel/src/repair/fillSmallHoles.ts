@@ -33,6 +33,24 @@
 // special-casing), so this remains a documented, honest limitation rather
 // than a silent one.
 //
+// ## Bowtie-adjacent context — loud refusal, not silent degrade (Fix batch)
+//
+// curvatureFill.ts's solve silently under-weights a Laplacian row whose
+// BOUNDARY LOOP or CONTEXT vertex is itself a bowtie vertex (its one-ring
+// within the local patch+context mesh is incomplete, but `buildHalfedge`
+// does not reject it — see that file's former "Known, documented,
+// out-of-scope limitation" note). Per this codebase's no-silent-degradation
+// rule, that gap is now closed HERE, upstream of ever calling
+// `solveCurvaturePatch`: `findNonManifoldVertices` runs once per call
+// (cheap, purely combinatorial), and any loop whose boundary+context vertex
+// set (`loopBoundaryAndContextVertexIds` below — the exact same node set
+// curvatureFill.ts's local mesh builds) contains a bowtie vertex is
+// REFUSED — same skip-and-report shape as `tooManyEdges`/`tooLargeArea`/
+// `degenerate` above, reason `'bowtie-adjacent'`, naming the offending
+// vertex id(s) (`SkippedHole.bowtieVertexIndices`) and pointing at
+// `splitNonManifoldVertices.ts` as the fix (see types.ts's doc on that
+// reason). Unaffected loops on the same mesh still fill normally.
+//
 // ## Boundary-loop walk direction
 //
 // Each boundary edge {a, b} has exactly one incident triangle, which
@@ -83,6 +101,7 @@
 import type { IndexedMesh } from '../mesh/types.ts';
 import { buildEdgeMap, type EdgeEntry } from '../intake/topology.ts';
 import { countsOf } from '../intake/report.ts';
+import { findNonManifoldVertices } from '../halfedge/build.ts';
 import { solveCurvaturePatch } from './curvatureFill.ts';
 import {
   DEFAULT_MAX_BOUNDARY_EDGES,
@@ -314,12 +333,51 @@ function edgeKey(a: number, b: number): string {
   return a < b ? `${a},${b}` : `${b},${a}`;
 }
 
+/** A loop's "boundary+context vertex set" — the loop's own boundary-loop
+ * vertices, plus every corner of every ORIGINAL triangle incident to any of
+ * them (the loop's one-ring "context" beyond the hole, per curvatureFill.ts's
+ * module doc's CONTEXT definition). This is exactly the node set that
+ * function's local patch+context mesh builds — computed here, before ANY
+ * ear-clip/fan vertex exists, purely from `vertexTriangles` (built once,
+ * shared across every loop this call processes) so the bowtie-adjacency
+ * check below never has to build the local mesh just to ask the question. */
+function loopBoundaryAndContextVertexIds(
+  mesh: IndexedMesh,
+  loop: readonly number[],
+  vertexTriangles: ReadonlyMap<number, readonly number[]>,
+): Set<number> {
+  const ids = new Set<number>(loop);
+  for (const v of loop) {
+    const incident = vertexTriangles.get(v);
+    if (!incident) continue;
+    for (const t of incident) {
+      const base = t * 3;
+      ids.add(mesh.indices[base]!);
+      ids.add(mesh.indices[base + 1]!);
+      ids.add(mesh.indices[base + 2]!);
+    }
+  }
+  return ids;
+}
+
 export function fillSmallHoles(mesh: IndexedMesh, options: FillSmallHolesOptions = {}): FillSmallHolesResult {
   const maxBoundaryEdges = options.maxBoundaryEdges ?? DEFAULT_MAX_BOUNDARY_EDGES;
   const maxAreaMm2 = options.maxAreaMm2 ?? null;
 
   const edges = buildEdgeMap(mesh);
   const loops = findBoundaryLoops(mesh, edges);
+
+  // Bowtie-adjacent-context refusal (Fix batch, post-Task-11 — see
+  // curvatureFill.ts's "Known, documented, out-of-scope limitation" section
+  // and types.ts's `'bowtie-adjacent'` doc): a loop whose boundary+context
+  // vertex set includes a bowtie vertex would silently under-weight that
+  // vertex's Laplacian row in the curvature-continuity solve rather than
+  // failing loudly — refused below instead, before ever reaching
+  // `solveCurvaturePatch`. Run ONCE per call (O(triangle count), cheap —
+  // `findNonManifoldVertices` is purely combinatorial), only when there is
+  // at least one loop to check against it (a fully watertight mesh has
+  // nothing to fill, so nothing to gate).
+  const bowtieVertexIds = loops.length > 0 ? new Set(findNonManifoldVertices(mesh).map((b) => b.vertex)) : new Set<number>();
 
   const positions: number[] = Array.from(mesh.positions);
   const indices: number[] = Array.from(mesh.indices);
@@ -416,6 +474,20 @@ export function fillSmallHoles(mesh: IndexedMesh, options: FillSmallHolesOptions
     if (maxAreaMm2 !== null && areaMm2 > maxAreaMm2) {
       loopsSkipped.push({ boundaryEdgeCount, areaMm2, reason: 'tooLargeArea', sampleVertexIndex: loop[0]! });
       continue;
+    }
+    if (bowtieVertexIds.size > 0) {
+      const contextIds = loopBoundaryAndContextVertexIds(mesh, loop, vertexTriangles);
+      const bowtieHits = [...bowtieVertexIds].filter((v) => contextIds.has(v)).sort((a, b) => a - b);
+      if (bowtieHits.length > 0) {
+        loopsSkipped.push({
+          boundaryEdgeCount,
+          areaMm2,
+          reason: 'bowtie-adjacent',
+          sampleVertexIndex: loop[0]!,
+          bowtieVertexIndices: bowtieHits,
+        });
+        continue;
+      }
     }
 
     const centroid = loopCentroid(mesh, loop);

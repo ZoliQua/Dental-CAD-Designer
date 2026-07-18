@@ -45,19 +45,39 @@ export function unitCubeMesh(offset: readonly [number, number, number] = [0, 0, 
  * intake/degenerate.ts's identical convention).
  */
 export function removeTriangleNeighborhood(mesh: IndexedMesh, seedTriangle: number): IndexedMesh {
+  return removeTriangleNeighborhoods(mesh, [seedTriangle]);
+}
+
+/**
+ * Generalizes `removeTriangleNeighborhood` to several seed triangles at
+ * once, all removed in a SINGLE pass against `mesh`'s ORIGINAL (fixed)
+ * triangle indices — unlike calling `removeTriangleNeighborhood`
+ * repeatedly, where each subsequent call's seed index would have to be
+ * re-expressed against the PREVIOUS call's already-compacted output. Exists
+ * for fillSmallHoles.test.ts's bowtie-adjacent-context test, which needs
+ * two independent, non-interacting holes carved from the SAME original
+ * mesh (so a vertex on one hole's rim can separately be identified and
+ * turned into a bowtie via `attachClosedFanAt` below, without disturbing
+ * the OTHER hole). Seed triangles must not share a 1-ring neighbor — not
+ * checked here (caller's responsibility), same as the singular function's
+ * implicit "seedTriangle's neighborhood is well-formed" assumption.
+ */
+export function removeTriangleNeighborhoods(mesh: IndexedMesh, seedTriangles: readonly number[]): IndexedMesh {
   const edges = buildEdgeMap(mesh);
   const vertexCount = mesh.positions.length / 3;
-  const toRemove = new Set<number>([seedTriangle]);
-  const base = seedTriangle * 3;
-  const corners = [mesh.indices[base]!, mesh.indices[base + 1]!, mesh.indices[base + 2]!];
-  for (let i = 0; i < 3; i++) {
-    const a = corners[i]!;
-    const b = corners[(i + 1) % 3]!;
-    const key = a < b ? edgeKey(a, b, vertexCount) : edgeKey(b, a, vertexCount);
-    const entry = edges.get(key);
-    if (!entry) continue;
-    for (const inc of entry.incidences) {
-      if (inc.triangle !== seedTriangle) toRemove.add(inc.triangle);
+  const toRemove = new Set<number>(seedTriangles);
+  for (const seedTriangle of seedTriangles) {
+    const base = seedTriangle * 3;
+    const corners = [mesh.indices[base]!, mesh.indices[base + 1]!, mesh.indices[base + 2]!];
+    for (let i = 0; i < 3; i++) {
+      const a = corners[i]!;
+      const b = corners[(i + 1) % 3]!;
+      const key = a < b ? edgeKey(a, b, vertexCount) : edgeKey(b, a, vertexCount);
+      const entry = edges.get(key);
+      if (!entry) continue;
+      for (const inc of entry.incidences) {
+        if (inc.triangle !== seedTriangle) toRemove.add(inc.triangle);
+      }
     }
   }
   const triangleCount = mesh.indices.length / 3;
@@ -139,6 +159,69 @@ export function doubleBowtieMesh(): IndexedMesh {
       [0, 0, 2],
     ]),
   ];
+  return { positions: Float64Array.from(positions), indices: Uint32Array.from(indices) };
+}
+
+/** A "double-open-fan" bowtie: the apex vertex (index 0) is itself a
+ * BOUNDARY vertex in BOTH of its two fans — unlike `singleBowtieMesh`/
+ * `doubleBowtieMesh` (whose fans are each a CLOSED shell via `apexFan`, so
+ * the apex has no boundary edges at all), each fan here is an OPEN
+ * 2-triangle "wedge" `[0,b0,b1]`, `[0,b1,b2]` (edge `(0,b1)` interior,
+ * shared by both; edges `(0,b0)` and `(0,b2)` boundary) — the apex has
+ * exactly one boundary-edge PAIR per wedge. `findNonManifoldVertices` still
+ * reports `vertex: 0, fanCount: 2` (the two wedges share only the apex,
+ * exactly like the closed-fan fixtures above), but — unlike those fixtures
+ * — each wedge independently contributes a valid (non-pinched) 4-vertex
+ * boundary loop `0 -> b0 -> b1 -> b2 -> 0` through the apex. This is
+ * TEST-ONLY, for `splitNonManifoldVertices.test.ts`'s "boundary vertex with
+ * two open fans" case (Fix batch minor (a)) — it exercises the split
+ * ALGORITHM on an apex that is itself boundary, which the closed-fan
+ * fixtures above never do; the closely-related "hole rim touches a bowtie
+ * vertex elsewhere on the mesh" scenario `fillSmallHoles.ts`'s new
+ * `'bowtie-adjacent'` skip reason guards against is exercised separately in
+ * fillSmallHoles.test.ts via `attachClosedFanAt` below (a real sphere hole
+ * rim, not this synthetic 2-triangle wedge). */
+export function openFanBowtieMesh(): IndexedMesh {
+  const positions: number[] = [0, 0, 0]; // apex = vertex 0
+  function openWedge(base: readonly [Vec3, Vec3, Vec3]): number[] {
+    const baseIndex = positions.length / 3;
+    for (const p of base) positions.push(p[0], p[1], p[2]);
+    const [b0, b1, b2] = [baseIndex, baseIndex + 1, baseIndex + 2];
+    return [0, b0, b1, 0, b1, b2];
+  }
+  const indices: number[] = [
+    ...openWedge([
+      [1, 0, 0],
+      [0, 1, 0],
+      [1, 1, 0],
+    ]),
+    ...openWedge([
+      [-1, 0, 0],
+      [0, -1, 0],
+      [-1, -1, 0],
+    ]),
+  ];
+  return { positions: Float64Array.from(positions), indices: Uint32Array.from(indices) };
+}
+
+/** Appends a single closed `apexFan` (see that function's doc) to an
+ * EXISTING mesh, reusing `apex` as one of `mesh`'s OWN existing vertex
+ * indices (rather than a fresh one) — this is what makes `apex` a bowtie:
+ * the appended fan shares ONLY that one vertex with the rest of `mesh` (no
+ * shared edges, fresh base vertices), the same "two closed fans meeting
+ * only at their apex" convention `singleBowtieMesh` uses, except here the
+ * FIRST fan is `mesh`'s own pre-existing geometry at `apex` — which may
+ * itself be a boundary vertex, e.g. a hole's rim (see
+ * fillSmallHoles.test.ts's bowtie-adjacent-context test) — rather than
+ * another freshly-built closed fan. New triangles are appended AFTER
+ * `mesh`'s own (so `apex`'s pre-existing incident triangles always have the
+ * LOWEST triangle indices at that vertex, and therefore keep the original
+ * vertex id after `splitNonManifoldVertices` — see that file's
+ * "first-fan-keeps-original" convention). */
+export function attachClosedFanAt(mesh: IndexedMesh, apex: number, base: readonly [Vec3, Vec3, Vec3]): IndexedMesh {
+  const positions = Array.from(mesh.positions);
+  const indices = Array.from(mesh.indices);
+  indices.push(...apexFan(positions, apex, base));
   return { positions: Float64Array.from(positions), indices: Uint32Array.from(indices) };
 }
 

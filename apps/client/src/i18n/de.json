@@ -254,7 +254,7 @@
       "title": "Kleine Löcher schließen",
       "description": "Schließt kleine Randschleifen mit einem krümmungsstetigen Flicken, der der umgebenden Oberfläche folgt. Größere Löcher werden abgelehnt, nicht gefüllt.",
       "summary": "Füllt {{filled}} von {{found}} Loch/Löchern",
-      "skippedSummary": "{{count}} Loch/Löcher abgelehnt (zu groß für ein sicheres Füllen)",
+      "skippedSummary": "{{count}} Loch/Löcher abgelehnt (zu groß/fehlerhaft geformt oder durch eine Schmetterlingsecke blockiert – zuerst Schmetterlingsecken trennen)",
       "noneToFill": "Keine Löcher gefunden."
     }
   }

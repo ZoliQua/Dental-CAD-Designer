@@ -141,8 +141,23 @@ export const DEFAULT_MAX_BOUNDARY_EDGES = 32;
  * to (near) zero length — e.g. a collinear or otherwise geometrically
  * degenerate loop, which ear-clipping cannot meaningfully triangulate. Rare
  * in practice (real scan boundaries are never perfectly collinear) but
- * handled defensively rather than left to throw. */
-export type SkippedHoleReason = 'tooManyEdges' | 'tooLargeArea' | 'degenerate';
+ * handled defensively rather than left to throw.
+ *
+ * `bowtie-adjacent` (Fix batch, post-Task-11): the loop's boundary-plus-
+ * context vertex set (its own boundary-loop vertices, plus every vertex of
+ * every original triangle incident to one of them — exactly
+ * curvatureFill.ts's local-mesh node set) contains a bowtie vertex
+ * (`findNonManifoldVertices`, halfedge/build.ts). This is the loud refusal
+ * for the gap that function's module doc used to leave silent: filling such
+ * a loop anyway would silently under-weight that vertex's Laplacian row
+ * (its one-ring within the local patch+context mesh is incomplete because
+ * `buildHalfedge` does not reject bowtie vertices), producing a
+ * curvature-continuity result that is quietly WORSE than reported rather
+ * than refused. `SkippedHole.bowtieVertexIndices` names the offending
+ * vertex id(s); the fix is `splitNonManifoldVertices.ts` — run it first,
+ * then re-run `fillSmallHoles` (see fillSmallHoles.test.ts's end-to-end
+ * "bowtie-adjacent" test for exactly this workflow). */
+export type SkippedHoleReason = 'tooManyEdges' | 'tooLargeArea' | 'degenerate' | 'bowtie-adjacent';
 
 export interface SkippedHole {
   boundaryEdgeCount: number;
@@ -152,6 +167,14 @@ export interface SkippedHole {
    * highlight roughly where the refused hole is without this report having
    * to carry the whole loop. */
   sampleVertexIndex: number;
+  /** Populated ONLY when `reason` is `'bowtie-adjacent'` — every bowtie
+   * vertex id (ascending) found in this loop's boundary+context vertex set
+   * (see that reason's doc above). Deliberately OPTIONAL (absent, not
+   * `undefined`-valued, for every other reason) so a mesh with no bowties
+   * — e.g. this package's own golden fixture — serializes this report
+   * byte-identically to before this field existed; JSON.stringify drops an
+   * absent key exactly like an `undefined`-valued one. */
+  bowtieVertexIndices?: readonly number[];
 }
 
 export interface FillSmallHolesReport {

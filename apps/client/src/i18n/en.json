@@ -254,7 +254,7 @@
       "title": "Fill small holes",
       "description": "Closes small boundary loops with a curvature-continuous patch that follows the surrounding surface. Larger holes are refused, not filled.",
       "summary": "Fills {{filled}} of {{found}} hole(s)",
-      "skippedSummary": "{{count}} hole(s) refused (too large to fill safely)",
+      "skippedSummary": "{{count}} hole(s) refused (too large/malformed, or blocked by a bowtie vertex — split bowtie vertices first)",
       "noneToFill": "No holes found."
     }
   }

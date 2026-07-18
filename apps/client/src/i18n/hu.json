@@ -254,7 +254,7 @@
       "title": "Kis lyukak kitöltése",
       "description": "Görbület-folytonos folttal zárja le a kis határhurkokat, amely követi a környező felületet. A nagyobb lyukakat elutasítja, nem tölti ki.",
       "summary": "{{found}} lyukból {{filled}} kitöltve",
-      "skippedSummary": "{{count}} lyuk elutasítva (túl nagy a biztonságos kitöltéshez)",
+      "skippedSummary": "{{count}} lyuk elutasítva (túl nagy/hibás alakú, vagy csokornyakkendő-csúcs blokkolja – előbb válassza szét a csokornyakkendő-csúcsokat)",
       "noneToFill": "Nem található lyuk."
     }
   }

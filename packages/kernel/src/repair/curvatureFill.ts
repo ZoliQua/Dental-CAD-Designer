@@ -94,17 +94,20 @@
 // watertight/manifold, just not curvature-continuous for that specific
 // loop; `FillSmallHolesReport.curvatureFallbackLoopCount` surfaces this).
 //
-// **Known, documented, out-of-scope limitation**: if a BOUNDARY LOOP or
-// CONTEXT vertex is itself a bowtie vertex (`findNonManifoldVertices`,
-// halfedge/build.ts), its one-ring within the local mesh can be
-// INCOMPLETE-but-not-rejected (buildHalfedge does not reject bowtie
-// vertices — see that function's doc), silently under-weighting that row's
-// energy term rather than failing loudly. This is the same "bowtie
-// vertices are Task 11 territory" gap `fillSmallHoles.ts`'s Phase 1 code
-// already carried; Task 11's OWN `splitNonManifoldVertices` (see that
-// file) is the fix, and a caller that runs it before `fillSmallHoles` (the
-// natural repair order — see apps/client/src/ui/RepairPanel.tsx) never
-// exercises this gap in practice.
+// **Bowtie-adjacent context — closed upstream (Fix batch, post-Task-11)**:
+// if a BOUNDARY LOOP or CONTEXT vertex is itself a bowtie vertex
+// (`findNonManifoldVertices`, halfedge/build.ts), its one-ring within the
+// local mesh can be INCOMPLETE-but-not-rejected (`buildHalfedge` does not
+// reject bowtie vertices — see that function's doc), silently
+// under-weighting that row's energy term rather than failing loudly. This
+// function itself still has no defense against that (it trusts its caller's
+// loop/context inputs) — the fix lives in the CALLER: `fillSmallHoles.ts`
+// now runs `findNonManifoldVertices` once per call and REFUSES (skips, with
+// reason `'bowtie-adjacent'`) any loop whose boundary+context vertex set
+// contains a bowtie vertex, so `solveCurvaturePatch` is never actually
+// invoked with one — see that file's "Bowtie-adjacent context" module-doc
+// section. `splitNonManifoldVertices.ts` remains the underlying fix a user
+// applies to un-refuse such a loop.
 //
 // @approximation This is a LINEARIZED thin-plate energy (cotan-weighted
 // graph bi-Laplacian, not a true continuous PDE solve) over a FIXED patch
@@ -121,9 +124,14 @@ import { computeCotanWeights } from '../curvature/cotan.ts';
 type Vec3 = readonly [number, number, number];
 
 /** Diagonal stabilizer added to `C^T C` before solving — see this file's
- * module doc "Solver" section. mm^-2-ish units (matches the cotan weights'
- * own dimensionless-per-mm^0 scale closely enough that this is negligible
- * against any real patch's actual diagonal terms). */
+ * module doc "Solver" section. Dimensional analysis: a cotan weight is
+ * cos(angle)/sin(angle), i.e. a dot product divided by a cross-product
+ * magnitude — both length^2 (mm^2) for a mesh embedded in mm — so the mm^2
+ * factors cancel and every weight is UNITLESS; `C^T C`'s entries (sums of
+ * products of such weights) are therefore unitless too, and this constant,
+ * added directly to that unitless diagonal, is correctly unitless as well —
+ * negligible against any real patch's actual diagonal terms regardless of
+ * the patch's physical size. */
 const REGULARIZATION_EPS = 1e-9;
 
 export interface CurvaturePatchInput {
