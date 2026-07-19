@@ -27,6 +27,7 @@ import { useLodStore } from '../state/lodStore';
 import { shouldUseLod } from './lodPolicy';
 import { MeshStore, type EngineMeshRecord, type RegisterMeshInput } from './meshStore';
 import type { RenderNode } from './renderNode';
+import { renderFrameTransform } from './sceneTransform';
 import { releaseBvhForMesh } from './workers';
 
 /** Identity 4x4 (column-major, per SceneNode's doc) — every newly imported
@@ -231,6 +232,43 @@ class CaseStoreEngine {
     this.publish();
   }
 
+  /**
+   * Phase 3 Task 3: commits the alignment tool's EXPLICITLY user-confirmed
+   * result — replaces `nodeId`'s `SceneNode.transform` with `transform`
+   * (a WORLD-frame column-major 16, `icpRegister`'s output) and appends
+   * `operation` (name `'alignment-apply'`) to the journal in the SAME
+   * atomic publish (CLAUDE.md invariant 3: "journal everything
+   * destructive"). No other SceneNode/mesh state changes — unlike
+   * `applyRepair`, this never produces a NEW mesh (the geometry itself is
+   * untouched; only where it's DRAWN moves), so there is no
+   * `outputHashes[0]` mesh to register and no measurement-staleness
+   * clearing to do (a `Measurement`'s points are frozen WORLD-space
+   * snapshots already anchored to the transform-carrying `SceneNode` at
+   * pick time — see `MeasurementPoint`'s doc; they remain valid, since
+   * re-deriving a render-frame point from a `SceneNode.transform` is
+   * exactly what `getRenderNodes()`/`renderFrameTransform` already do for
+   * ANY node, transform included).
+   *
+   * @throws {Error} if no SceneNode with id `nodeId` exists — mirrors
+   * `updateRestoration`'s "loud failure on a caller programming error"
+   * stance (unlike e.g. `removeMeasurement`'s tolerant-of-a-stale-id style,
+   * which is for USER-driven races, not this method's caller — see
+   * engine/alignment.ts's `confirm()`, the only caller, which always holds
+   * a freshly-read `srcNodeId` from its own store).
+   */
+  applyAlignment(nodeId: string, transform: readonly number[], operation: Operation): void {
+    const exists = this.document.scene.some((node) => node.id === nodeId);
+    if (!exists) {
+      throw new Error(`applyAlignment: no SceneNode registered for id ${nodeId}`);
+    }
+    this.document = {
+      ...this.document,
+      scene: this.document.scene.map((node) => (node.id === nodeId ? { ...node, transform } : node)),
+      history: [...this.document.history, operation],
+    };
+    this.publish();
+  }
+
   /** Render-ready data for every current SceneNode, resolved against
    * `meshStore`'s Float32 render copies (see meshStore.ts's module doc) —
    * consumed by ui/Viewport.tsx to feed SceneManager's minimal mesh
@@ -251,6 +289,7 @@ class CaseStoreEngine {
     // see engine/lod.ts's module doc for the consumer-by-consumer
     // verification.
     const lodMode = useLodStore.getState().mode;
+    const worldOffset = this.meshStore.getWorldOffset();
     for (const node of this.document.scene) {
       const record = this.meshStore.get(node.meshId);
       if (!record) continue;
@@ -263,6 +302,11 @@ class CaseStoreEngine {
         visible: node.visible,
         opacity: node.opacity,
         role: node.role,
+        // Phase 3 Task 3: converts node.transform (WORLD frame) into THIS
+        // render frame — see engine/sceneTransform.ts's module doc. Every
+        // node stays at identity until the alignment tool ever writes a
+        // non-identity SceneNode.transform (applyAlignment below).
+        transform: renderFrameTransform(node.transform, worldOffset),
       });
     }
     return nodes;

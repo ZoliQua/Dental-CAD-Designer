@@ -14,8 +14,12 @@
  * housekeeping): metadata-only again — the standalone intake/curvature/
  * offset goldens (test-fixtures/{intake,curvature,offset}/*.golden.json)
  * gained kernelVersion (+manifoldVersion for offset) fields; every hash
- * unchanged. */
-export const KERNEL_VERSION = '0.2.2';
+ * unchanged. 0.3.0 (Phase 3 Task 3): NEW op — the register/ module
+ * (coarseAlignFromPointTriples + icpRefine/icpRefineIteration) — minor
+ * bump per the undercutScan (0.0.0 -> 0.1.0) precedent for a brand-new op;
+ * the kernel-ops golden gained one new pinned entry ("icpRegister"), every
+ * other entry unchanged. */
+export const KERNEL_VERSION = '0.3.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -284,3 +288,32 @@ export {
   type UndercutScanRangeOutput,
   type UndercutScanRangeStats,
 } from './undercut/index.ts';
+
+export {
+  coarseAlignFromPointTriples,
+  DegenerateTripleError,
+  COINCIDENT_POINT_EPSILON_MM,
+  COLLINEAR_SIN_SQ_EPSILON,
+  icpRefine,
+  icpRefineIteration,
+  ICP_ABSOLUTE_RMS_CONVERGED_FLOOR_MM,
+  DEFAULT_MAX_ITERATIONS,
+  DEFAULT_CONVERGENCE_REL_TOL,
+  DEFAULT_OUTLIER_REJECTION_FRACTION,
+  samplePointsOnMesh,
+  mulberry32,
+  IDENTITY_MAT4,
+  composeRigid,
+  applyMat4ToPoint,
+  multiplyMat4,
+  invertRigidMat4,
+  type CoarseAlignResult,
+  type DegenerateTripleReason,
+  type IcpRefineOptions,
+  type IcpRefineResult,
+  type IcpIterationResult,
+  type SamplePointsResult,
+  type Rng,
+  type Mat4,
+  type Mat3,
+} from './register/index.ts';

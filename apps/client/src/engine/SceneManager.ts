@@ -239,6 +239,22 @@ const SECTION_OUTLINE_RENDER_ORDER = 9;
 const SECTION_CAP_COLOR = new Color(0x2ee6a6);
 const SECTION_CAP_OPACITY = 0.55;
 
+// Alignment ghost preview (Phase 3 Task 3): a translucent, distinct-color
+// ("ghost") overlay of the SRC mesh at the candidate transform ICP just
+// computed — rendered WITHOUT touching the canonical SceneNode/entry at all
+// (`setAlignmentPreview` below never writes `entry.mesh.matrix` or any
+// caseStore state; it's a purely additive, engine-local overlay object,
+// same "extra visual state independent of RenderNode sync" pattern as the
+// cross-section outline/cap above). A violet/magenta distinct from the
+// measurement overlay's amber, the section overlay's cyan-green, and the
+// selection highlight's blue.
+const ALIGNMENT_PREVIEW_COLOR = new Color(0xc44dff);
+const ALIGNMENT_PREVIEW_OPACITY = 0.45;
+/** Above every mesh/wireframe renderOrder but below the measurement/section
+ * HUD overlays (10/9) — a preview should read as "part of the 3D scene",
+ * not a HUD element. */
+const ALIGNMENT_PREVIEW_RENDER_ORDER = 3;
+
 interface ThemeColors {
   background: ColorRepresentation;
   gridMain: ColorRepresentation;
@@ -418,6 +434,11 @@ export class SceneManager {
    * create/recreate (new entries, shading-preset material swaps). */
   private activeClipPlane: Plane | null = null;
 
+  /** Alignment ghost preview (Phase 3 Task 3) — see `setAlignmentPreview`'s
+   * doc and the `ALIGNMENT_PREVIEW_*` constants above. `null` when no
+   * preview is active. */
+  private alignmentPreview: { nodeId: string; mesh: Mesh; material: MeshBasicMaterial } | null = null;
+
   private projectionMode: CameraProjection;
   private shadingPreset: ShadingPreset;
   private wireframeEnabled: boolean;
@@ -575,6 +596,12 @@ export class SceneManager {
       }
       entry.visible = node.visible;
       entry.mesh.visible = node.visible;
+      // Unconditional every sync (cheap — 16 numbers), same "always mark
+      // dirty" stance `updateEntryGeometry`'s position-attribute doc takes,
+      // for the same reason: nothing here reliably detects "did node.transform
+      // change" via reference equality alone (a fresh RenderNode is built by
+      // caseStore.getRenderNodes() on every publish regardless).
+      entry.mesh.matrix.fromArray(node.transform);
       this.applyOpacity(entry, node.opacity);
       this.applyColors(entry, node);
       entry.wireframeMesh.visible = this.wireframeEnabled && node.visible;
@@ -602,6 +629,15 @@ export class SceneManager {
 
     const mesh = new Mesh(geometry, material);
     mesh.name = node.id;
+    // Phase 3 Task 3 (alignment): this mesh's placement is driven entirely
+    // by `RenderNode.transform` (`applyTransform` below sets `mesh.matrix`
+    // directly every sync) — NOT Three's position/quaternion/scale ->
+    // matrix auto-derivation, which would silently overwrite it. `false`
+    // here disables only THAT auto-derivation; `matrixWorldAutoUpdate`
+    // (Three's separate, still-default-true flag) still recomputes
+    // `matrixWorld = parent.matrixWorld * mesh.matrix` every render, so no
+    // extra bookkeeping is needed to make a `matrix` update actually paint.
+    mesh.matrixAutoUpdate = false;
 
     const wireframeGeometry = new WireframeGeometry(geometry);
     const wireframeMaterial = new LineBasicMaterial({
@@ -813,6 +849,72 @@ export class SceneManager {
     } else {
       entry.material.color.copy(entry.baseColor);
     }
+  }
+
+  // ---------------------------------------------------------------------
+  // Alignment ghost preview (Phase 3 Task 3)
+  // ---------------------------------------------------------------------
+
+  /**
+   * Shows (or clears, via `null`) a translucent "ghost" copy of SceneNode
+   * `preview.nodeId`'s CURRENT geometry at a CANDIDATE render-frame
+   * transform — this is engine/alignment.ts's coarse+ICP result BEFORE the
+   * user has clicked "Confirm". Deliberately does NOT touch
+   * `this.meshEntries.get(preview.nodeId)`'s own `mesh.matrix` (the
+   * CANONICAL entry stays exactly where `RenderNode.transform` — i.e. the
+   * still-unconfirmed `SceneNode.transform` — puts it, per
+   * `syncRenderNodes`) — the ghost is a SEPARATE `Mesh` object, sharing the
+   * live entry's `BufferGeometry` (Three.js supports multiple `Mesh`
+   * objects referencing one shared geometry; no duplication needed) with
+   * its OWN matrix and a translucent material, added directly to the
+   * scene root. `preview.transform` must already be in THIS SceneManager's
+   * RENDER frame (same "engine computes, SceneManager just renders what
+   * it's given" contract as `setSectionClipPlane` — engine/alignment.ts is
+   * responsible for the world-to-render conversion via
+   * engine/sceneTransform.ts's `renderFrameTransform`, exactly like
+   * `getRenderNodes()` does for every ordinary node).
+   *
+   * A no-op (not an error) if `preview.nodeId` has no live mesh entry (the
+   * node was removed from the scene mid-preview) — the caller
+   * (engine/alignment.ts) always clears the preview before that can matter
+   * in practice, but this stays defensive rather than throwing mid-render.
+   */
+  setAlignmentPreview(preview: { nodeId: string; transform: readonly number[] } | null): void {
+    if (!preview) {
+      this.clearAlignmentPreview();
+      return;
+    }
+    const entry = this.meshEntries.get(preview.nodeId);
+    if (!entry) {
+      this.clearAlignmentPreview();
+      return;
+    }
+    if (!this.alignmentPreview || this.alignmentPreview.nodeId !== preview.nodeId) {
+      this.clearAlignmentPreview();
+      const material = new MeshBasicMaterial({
+        color: ALIGNMENT_PREVIEW_COLOR,
+        transparent: true,
+        opacity: ALIGNMENT_PREVIEW_OPACITY,
+        depthWrite: false,
+        side: DoubleSide,
+      });
+      const mesh = new Mesh(entry.geometry, material);
+      mesh.matrixAutoUpdate = false;
+      mesh.renderOrder = ALIGNMENT_PREVIEW_RENDER_ORDER;
+      this.scene.add(mesh);
+      this.alignmentPreview = { nodeId: preview.nodeId, mesh, material };
+    }
+    this.alignmentPreview.mesh.matrix.fromArray(preview.transform);
+  }
+
+  private clearAlignmentPreview(): void {
+    if (!this.alignmentPreview) return;
+    this.scene.remove(this.alignmentPreview.mesh);
+    this.alignmentPreview.material.dispose();
+    // NOT `this.alignmentPreview.mesh.geometry.dispose()` — that geometry is
+    // SHARED with the live mesh entry (see `setAlignmentPreview`'s doc);
+    // disposing it here would break the real, still-visible mesh.
+    this.alignmentPreview = null;
   }
 
   // ---------------------------------------------------------------------
@@ -1306,6 +1408,11 @@ export class SceneManager {
     window.removeEventListener('keydown', this.handleKeyDown);
     this.resizeObserver.disconnect();
     this.controls.dispose();
+    // Explicit (not relying on disposeObject3DTree's blanket traversal
+    // below, which WOULD also reach this mesh/material since it's a direct
+    // scene child) — clears `this.alignmentPreview` itself so nothing holds
+    // a dangling reference; harmless if already cleared.
+    this.clearAlignmentPreview();
     // Every geometry/material still attached to the scene graph — mesh
     // entries (incl. wireframe overlays) and the grid — see
     // disposeObject3DTree's doc for why this also fixes the Phase 0

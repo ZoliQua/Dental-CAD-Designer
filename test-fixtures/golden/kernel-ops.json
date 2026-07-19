@@ -1,5 +1,5 @@
 {
-  "kernelVersion": "0.2.1",
+  "kernelVersion": "0.3.0",
   "manifoldVersion": "3.5.1",
   "notes": [
     "Runtime budget: every param here is chosen to keep this suite fast (target: whole suite well under the ~2 min CI budget) — see scripts/kernel-ops-lib.ts's module doc for each choice.",
@@ -10,7 +10,8 @@
     "Repair-op fixtures are small, hand-built, seeded-damage meshes (not committed files) — see scripts/kernel-ops-lib.ts for their exact construction.",
     "Phase 2 Task 11 (KERNEL_VERSION 0.2.0): repairFillSmallHoles' hash CHANGED (curvature-continuity thin-plate solve replaces the Phase 1 fixed-lambda Laplacian relax as the default path — see packages/kernel/src/repair/fillSmallHoles.ts). repairSplitNonManifoldVertices is a NEW pinned entry (bowtie-vertex split). Every other op entry is UNCHANGED by this bump — see docs/CHANGELOG-kernel.md.",
     "undercutScan (Phase 2 Task 9) uses 'corners' sampling (the more expensive, more conservative policy) at a single fixed direction — see packages/kernel/src/undercut/undercutScan.ts for the sign convention and depth semantics.",
-    "KERNEL_VERSION 0.2.1 (Fix batch, post-Task-12): metadata-only bump — this file gained the manifoldVersion field (recording the installed manifold-3d WASM package version alongside kernelVersion) and packages/kernel/package.json now pins manifold-3d to an EXACT version (was ^3.5.1). Every op hash is BYTE-IDENTICAL to 0.2.0 — verified via the regeneration diff — this bump exists solely to move the metadata-only golden-file change through the same bump+changelog discipline every other golden change goes through, per docs/CHANGELOG-kernel.md."
+    "KERNEL_VERSION 0.2.1 (Fix batch, post-Task-12): metadata-only bump — this file gained the manifoldVersion field (recording the installed manifold-3d WASM package version alongside kernelVersion) and packages/kernel/package.json now pins manifold-3d to an EXACT version (was ^3.5.1). Every op hash is BYTE-IDENTICAL to 0.2.0 — verified via the regeneration diff — this bump exists solely to move the metadata-only golden-file change through the same bump+changelog discipline every other golden change goes through, per docs/CHANGELOG-kernel.md.",
+    "icpRegister (Phase 3 Task 3, KERNEL_VERSION 0.3.0): NEW pinned entry — arch-case-01 bite0 (src) vs upperjaw (dst), identity initial transform (verified via bbox overlap: same acquisition session, already a valid coarse init), outlierRejectionFraction 0.85 (measured necessary for this partial-overlap real pair — see the op's own inline comment above). Every other op entry is UNCHANGED by this bump."
   ],
   "ops": [
     {
@@ -270,6 +271,25 @@
         "triangleCount": 384,
         "undercutTriangleCount": 178,
         "maxDepthMm": 11.166528467912103
+      }
+    },
+    {
+      "id": "icpRegister",
+      "op": "icpRefine",
+      "fixture": "arch-case-01 bite0 (src, post-intake) vs arch-case-01 upperjaw (dst, post-intake), identity initial transform",
+      "params": {
+        "sampleCount": 3000,
+        "seed": 20260715,
+        "maxIterations": 60,
+        "outlierRejectionFraction": 0.85,
+        "initial": "identity"
+      },
+      "hash": "798e654abbe7bdacfae8e8a5450d72d95d2b3067a863f23f37ad3c907096df1d",
+      "meta": {
+        "rmsMm": 0.008282300401543426,
+        "inlierFraction": 0.15,
+        "iterations": 10,
+        "converged": true
       }
     }
   ]

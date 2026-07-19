@@ -292,5 +292,29 @@
       "skippedSummary": "{{count}} agujero(s) rechazado(s) (demasiado grande/mal formado, o bloqueado por un vértice de corbatín – separe primero los vértices de corbatín)",
       "noneToFill": "No se encontraron agujeros."
     }
+  },
+  "alignment": {
+    "panelTitle": "Alineación",
+    "needsTwoMeshes": "Añada al menos dos mallas a la escena para alinearlas.",
+    "meshSrcLabel": "Malla a mover",
+    "meshDstLabel": "Malla objetivo",
+    "selectPlaceholder": "Elegir malla…",
+    "startButton": "Iniciar selección",
+    "cancelButton": "Cancelar",
+    "pickInstruction": "Par {{picked}} de 3 – haga clic en la malla {{side}}",
+    "readyInstruction": "3 pares seleccionados – listo para ejecutar.",
+    "sideSrc": "móvil",
+    "sideDst": "objetivo",
+    "runButton": "Ejecutar alineación",
+    "running": "Alineando…",
+    "runError": "La alineación falló: {{message}}",
+    "rmsLabel": "RMS",
+    "inlierLabel": "Inliers",
+    "iterationsLabel": "Iteraciones",
+    "convergedYes": "Convergió",
+    "convergedNo": "No convergió",
+    "confirmButton": "Confirmar",
+    "confirmHelp": "Aplica la transformación a la malla móvil y la registra en el historial.",
+    "cancelPreviewButton": "Descartar"
   }
 }

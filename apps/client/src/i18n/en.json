@@ -292,5 +292,29 @@
       "skippedSummary": "{{count}} hole(s) refused (too large/malformed, or blocked by a bowtie vertex — split bowtie vertices first)",
       "noneToFill": "No holes found."
     }
+  },
+  "alignment": {
+    "panelTitle": "Alignment",
+    "needsTwoMeshes": "Add at least two meshes to the scene to align them.",
+    "meshSrcLabel": "Mesh to move",
+    "meshDstLabel": "Target mesh",
+    "selectPlaceholder": "Choose mesh…",
+    "startButton": "Start picking",
+    "cancelButton": "Cancel",
+    "pickInstruction": "Pair {{picked}} of 3 — click on the {{side}} mesh",
+    "readyInstruction": "3 pairs picked — ready to run.",
+    "sideSrc": "moving",
+    "sideDst": "target",
+    "runButton": "Run alignment",
+    "running": "Aligning…",
+    "runError": "Alignment failed: {{message}}",
+    "rmsLabel": "RMS",
+    "inlierLabel": "Inliers",
+    "iterationsLabel": "Iterations",
+    "convergedYes": "Converged",
+    "convergedNo": "Did not converge",
+    "confirmButton": "Confirm",
+    "confirmHelp": "Applies the transform to the moving mesh and journals it.",
+    "cancelPreviewButton": "Discard"
   }
 }

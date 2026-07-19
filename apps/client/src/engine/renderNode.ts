@@ -35,4 +35,14 @@ export interface RenderNode {
    * a buffer sized to match `positions` exactly; SceneManager does not
    * re-validate the length. */
   colors?: Float32Array;
+  /** Render-frame column-major 4x4 (Phase 3 Task 3: alignment) — the SAME
+   * `SceneNode.transform` convention, converted from the WORLD/case frame
+   * into THIS render frame by `engine/sceneTransform.ts`'s
+   * `renderFrameTransform` (accounting for `meshStore.ts`'s
+   * `getWorldOffset()` re-centering — see that module's doc for why a
+   * naive direct application would be wrong). SceneManager applies this via
+   * `mesh.matrix` (`matrixAutoUpdate = false`), never by mutating
+   * `positions` — identity for every mesh until Task 3's alignment tool
+   * ever writes a non-identity `SceneNode.transform`. */
+  transform: readonly number[];
 }

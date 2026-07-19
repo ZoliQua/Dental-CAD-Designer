@@ -171,6 +171,15 @@ import {
 export type { GeodesicPathPayload, GeodesicPathResult, SnapPolylinePayload, SnapPolylineResult, SurfacePointPayload };
 
 import {
+  icpRegisterJob,
+  DegenerateTripleError,
+  type CoarsePointPair,
+  type IcpRegisterPayload,
+  type IcpRegisterResult,
+} from './register.ts';
+export { DegenerateTripleError, type CoarsePointPair, type IcpRegisterPayload, type IcpRegisterResult };
+
+import {
   affectedSpanIndices,
   fitSurfaceSpline,
   fitSurfaceSplineSpan,
@@ -283,6 +292,7 @@ export interface JobPayloadMap {
   snapPolyline: SnapPolylinePayload;
   fitSurfaceSpline: FitSurfaceSplinePayload;
   fitSurfaceSplineSpan: FitSurfaceSplineSpanPayload;
+  icpRegister: IcpRegisterPayload;
 }
 
 export interface JobResultMap {
@@ -317,6 +327,7 @@ export interface JobResultMap {
   snapPolyline: SnapPolylineResult;
   fitSurfaceSpline: FitSurfaceSplineResult;
   fitSurfaceSplineSpan: FitSurfaceSplineSpanResult;
+  icpRegister: IcpRegisterResult;
 }
 
 export type JobName = keyof JobPayloadMap;
@@ -358,6 +369,7 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   snapPolyline,
   fitSurfaceSpline,
   fitSurfaceSplineSpan,
+  icpRegister: icpRegisterJob,
 };
 
 const noopContext: JobContext = {

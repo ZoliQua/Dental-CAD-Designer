@@ -64,6 +64,10 @@ export {
   type SnapPolylinePayload,
   type SnapPolylineResult,
   type SurfacePointPayload,
+  DegenerateTripleError,
+  type CoarsePointPair,
+  type IcpRegisterPayload,
+  type IcpRegisterResult,
 } from './jobs/registry.js';
 export { meshBuffers, type MeshBuffersPayload, type MeshBuffersResult } from './transfer.js';
 // MeshStats/IntakeReport/Bbox: re-exported here (rather than only living on
@@ -92,6 +96,14 @@ export type {
   SectionToSvgOptions,
 } from '@dqcad/kernel';
 export { DEFAULT_MAX_BOUNDARY_EDGES } from '@dqcad/kernel';
+// `IDENTITY_MAT4` (Phase 3 Task 3): the register/ module's identity
+// column-major 4x4 (SceneNode.transform convention) — re-exported so
+// apps/client/src/engine/alignment.ts can pass it as `icpRegister`'s
+// `initialTransform` (the "both scans already share a coordinate frame"
+// case — see @dqcad/kernel's icpRefine.ts module doc) without importing
+// `@dqcad/kernel` itself. A plain constant, not geometry compute — same
+// "re-export what engine legitimately needs" precedent as `sectionToSvg`.
+export { IDENTITY_MAT4 } from '@dqcad/kernel';
 // `sectionToSvg` (Task 10): a pure, dependency-free function (see kernel's
 // section/svg.ts's module doc) re-exported here so apps/client/src/engine —
 // which cannot import `@dqcad/kernel` directly — can render an SVG export

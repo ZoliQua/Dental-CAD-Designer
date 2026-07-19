@@ -292,5 +292,29 @@
       "skippedSummary": "{{count}} Loch/Löcher abgelehnt (zu groß/fehlerhaft geformt oder durch eine Schmetterlingsecke blockiert – zuerst Schmetterlingsecken trennen)",
       "noneToFill": "Keine Löcher gefunden."
     }
+  },
+  "alignment": {
+    "panelTitle": "Ausrichtung",
+    "needsTwoMeshes": "Fügen Sie mindestens zwei Netze zur Szene hinzu, um sie auszurichten.",
+    "meshSrcLabel": "Zu verschiebendes Netz",
+    "meshDstLabel": "Zielnetz",
+    "selectPlaceholder": "Netz wählen…",
+    "startButton": "Auswahl starten",
+    "cancelButton": "Abbrechen",
+    "pickInstruction": "Paar {{picked}} von 3 – auf das {{side}} Netz klicken",
+    "readyInstruction": "3 Paare ausgewählt – bereit zum Ausführen.",
+    "sideSrc": "bewegliche",
+    "sideDst": "Ziel-",
+    "runButton": "Ausrichtung ausführen",
+    "running": "Wird ausgerichtet…",
+    "runError": "Ausrichtung fehlgeschlagen: {{message}}",
+    "rmsLabel": "RMS",
+    "inlierLabel": "Inlier-Anteil",
+    "iterationsLabel": "Iterationen",
+    "convergedYes": "Konvergiert",
+    "convergedNo": "Nicht konvergiert",
+    "confirmButton": "Bestätigen",
+    "confirmHelp": "Wendet die Transformation auf das bewegte Netz an und protokolliert sie.",
+    "cancelPreviewButton": "Verwerfen"
   }
 }

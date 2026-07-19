@@ -62,6 +62,8 @@ import {
   fillSmallHoles,
   analyzeMesh,
   undercutScan,
+  icpRefine,
+  IDENTITY_MAT4,
   type IndexedMesh,
   type SurfaceSpline,
 } from '@dqcad/kernel';
@@ -127,6 +129,7 @@ function intakeStlFixture(relPath: string): IndexedMesh {
 
 const SPHERE_R5_PATH = 'test-fixtures/synthetic/sphere-r5.stl';
 const ARCH_UPPERJAW_PATH = 'test-fixtures/real-scans/arch-case-01/arch-case-01-upperjaw.stl';
+const ARCH_BITE0_PATH = 'test-fixtures/real-scans/arch-case-01/arch-case-01-bite0.stl';
 const STANDIN_DIE_PATH = 'test-fixtures/standin-scans/standin-prep-die.stl';
 const BOOLEAN_PAIR_A_PATH = 'test-fixtures/synthetic/boolean-pair-a.stl';
 const BOOLEAN_PAIR_B_PATH = 'test-fixtures/synthetic/boolean-pair-b.stl';
@@ -643,6 +646,72 @@ export async function computeKernelOpsSnapshot(): Promise<KernelOpsSnapshot> {
     });
   }
 
+  // --- 16. icpRegister (Phase 3 Task 3) ----------------------------------
+  // Real fixture PAIR: arch-case-01 bite0 (src, 108665 post-intake
+  // triangles) vs. upperjaw (dst, 250128 post-intake triangles) — same
+  // acquisition session, per this task's report ("bbox overlap check:
+  // both scans already share the scanner's own coordinate frame"), so
+  // `initial` is IDENTITY_MAT4, not a coarse-align step (a real cross-
+  // session/cross-modality pair would need `coarseAlignFromPointTriples`
+  // first — exercised on synthetic data by
+  // packages/kernel/src/register/kabsch.analytic.test.ts).
+  //
+  // `outlierRejectionFraction: 0.85` (keep only the CLOSEST 15% of
+  // samples) — MEASURED, not guessed: a bite scan only touches upperjaw's
+  // surface at the occlusal CONTACT points (this task's brief: "they
+  // OVERLAP in the tooth surfaces"); most of bite0's own surface (its
+  // non-contact facets, and any lower-arch geometry a bite registration
+  // scan also captures) has NO genuine correspondence on upperjaw at all.
+  // Empirically (see this task's report): the default 10%-rejection
+  // budget plateaus/drifts at ~2.4mm RMS (never converges — the 90%
+  // "inlier" set is dominated by structurally non-corresponding points);
+  // 85% rejection converges cleanly to single-digit-micron RMS in <20
+  // iterations. This is the SAME parameter a real UI alignment run would
+  // need to tune for a partial-overlap pair — recorded here, honestly, as
+  // measured fact, not asserted against a pre-conceived target.
+  {
+    const bite0Mesh = intakeStlFixture(ARCH_BITE0_PATH);
+    const upperjawMesh = intakeStlFixture(ARCH_UPPERJAW_PATH);
+    const upperjawBvh = buildBvh(upperjawMesh);
+    const sampleCount = 3000;
+    const seed = 20260715;
+    const maxIterations = 60;
+    const outlierRejectionFraction = 0.85;
+    const result = icpRefine(bite0Mesh, upperjawMesh, upperjawBvh, IDENTITY_MAT4, {
+      sampleCount,
+      seed,
+      maxIterations,
+      outlierRejectionFraction,
+    });
+    if (!result.converged) {
+      throw new Error(
+        `kernel-ops golden: icpRegister (bite0 -> upperjaw) did not converge within ${maxIterations} iterations ` +
+          `(rmsMm=${result.rmsMm}, inlierFraction=${result.inlierFraction}) — investigate before regenerating`,
+      );
+    }
+    ops.push({
+      id: 'icpRegister',
+      op: 'icpRefine',
+      fixture: 'arch-case-01 bite0 (src, post-intake) vs arch-case-01 upperjaw (dst, post-intake), identity initial transform',
+      params: { sampleCount, seed, maxIterations, outlierRejectionFraction, initial: 'identity' },
+      hash: sha256Of(
+        Float64Array.from(result.transform),
+        JSON.stringify({
+          rmsMm: result.rmsMm,
+          inlierFraction: result.inlierFraction,
+          iterations: result.iterations,
+          converged: result.converged,
+        }),
+      ),
+      meta: {
+        rmsMm: result.rmsMm,
+        inlierFraction: result.inlierFraction,
+        iterations: result.iterations,
+        converged: result.converged,
+      },
+    });
+  }
+
   return {
     kernelVersion: KERNEL_VERSION,
     manifoldVersion: getInstalledManifoldVersion(),
@@ -656,6 +725,7 @@ export async function computeKernelOpsSnapshot(): Promise<KernelOpsSnapshot> {
       'Phase 2 Task 11 (KERNEL_VERSION 0.2.0): repairFillSmallHoles\' hash CHANGED (curvature-continuity thin-plate solve replaces the Phase 1 fixed-lambda Laplacian relax as the default path — see packages/kernel/src/repair/fillSmallHoles.ts). repairSplitNonManifoldVertices is a NEW pinned entry (bowtie-vertex split). Every other op entry is UNCHANGED by this bump — see docs/CHANGELOG-kernel.md.',
       'undercutScan (Phase 2 Task 9) uses \'corners\' sampling (the more expensive, more conservative policy) at a single fixed direction — see packages/kernel/src/undercut/undercutScan.ts for the sign convention and depth semantics.',
       'KERNEL_VERSION 0.2.1 (Fix batch, post-Task-12): metadata-only bump — this file gained the manifoldVersion field (recording the installed manifold-3d WASM package version alongside kernelVersion) and packages/kernel/package.json now pins manifold-3d to an EXACT version (was ^3.5.1). Every op hash is BYTE-IDENTICAL to 0.2.0 — verified via the regeneration diff — this bump exists solely to move the metadata-only golden-file change through the same bump+changelog discipline every other golden change goes through, per docs/CHANGELOG-kernel.md.',
+      'icpRegister (Phase 3 Task 3, KERNEL_VERSION 0.3.0): NEW pinned entry — arch-case-01 bite0 (src) vs upperjaw (dst), identity initial transform (verified via bbox overlap: same acquisition session, already a valid coarse init), outlierRejectionFraction 0.85 (measured necessary for this partial-overlap real pair — see the op\'s own inline comment above). Every other op entry is UNCHANGED by this bump.',
     ],
     ops,
   };

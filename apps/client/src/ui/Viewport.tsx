@@ -2,6 +2,7 @@
 // a plain DOM container via useRef+useEffect and disposes it on unmount.
 // No Three.js imports here; all render objects live in src/engine/.
 import { useEffect, useRef } from 'react';
+import { alignmentEngine } from '../engine/alignment';
 import { caseStore } from '../engine/caseStore';
 import { curvatureEngine } from '../engine/curvature';
 import { heatmapEngine } from '../engine/heatmap';
@@ -12,6 +13,7 @@ import { sectionEngine } from '../engine/section';
 import { SceneManager, type MeasurePickCandidate } from '../engine/SceneManager';
 import { toolManager } from '../engine/ToolManager';
 import { registerActiveSceneManager } from '../engine/viewerController';
+import { useAlignmentStore } from '../state/alignmentStore';
 import { useAppStore } from '../state/appStore';
 import { useCaseStore } from '../state/caseStore';
 import { useCurvatureStore } from '../state/curvatureStore';
@@ -60,16 +62,31 @@ function buildRenderNodes(): RenderNode[] {
 
 /** SceneManager's own `onMeasurePick` reports a ray in ITS render frame
  * (Float32-safe, re-centered — see SceneManager.ts's `MeasurePickCandidate`
- * doc); ToolManager.ts always re-casts against the Float64 WORLD-frame mesh
- * (this task's brief's central correctness requirement), so every pick is
+ * doc); ToolManager.ts/alignmentEngine both always re-cast against the
+ * Float64 WORLD-frame mesh (the measurement tool's brief's central
+ * correctness requirement, reused verbatim by the alignment tool's own
+ * picking — see engine/alignment.ts's `handlePick` doc), so every pick is
  * converted back to world coordinates here, at the one place that bridges
  * the two (mirroring how `syncRenderNodes`'s render nodes and this same
  * conversion, in the other direction, both live in engine/meshStore.ts's
- * `getWorldOffset()`). */
+ * `getWorldOffset()`).
+ *
+ * Routes to EITHER `toolManager.handlePick` (a measurement tool active) OR
+ * `alignmentEngine.handlePick` (alignment is mid-picking) — never both.
+ * SceneManager itself has no notion of "which tool"; it just reports
+ * 'measure'-mode clicks the same way regardless (see `setInteractionMode`'s
+ * call site below), and this function is the one place that decides who
+ * consumes them, same "engine decides, SceneManager stays generic" split as
+ * every other interaction-mode consumer in this file. */
 function handleMeasurePick(pick: MeasurePickCandidate): void {
   const worldOffset = caseStore.getRenderWorldOffset();
   const worldRay = toWorldRay(pick, worldOffset);
-  void toolManager.handlePick({ candidateNodeIds: pick.candidateNodeIds, ...worldRay });
+  const request = { candidateNodeIds: pick.candidateNodeIds, ...worldRay };
+  if (useAlignmentStore.getState().phase === 'pickingPairs') {
+    void alignmentEngine.handlePick(request);
+    return;
+  }
+  void toolManager.handlePick(request);
 }
 
 export function Viewport() {
@@ -87,6 +104,7 @@ export function Viewport() {
   const shadingPreset = useViewerStore((state) => state.shadingPreset);
   const wireframeEnabled = useViewerStore((state) => state.wireframeEnabled);
   const activeMeasurementTool = useToolStore((state) => state.activeTool);
+  const alignmentPhase = useAlignmentStore((state) => state.phase);
   const heatmapVisible = useHeatmapStore((state) => state.visible);
   const heatmapStatus = useHeatmapStore((state) => state.status);
   const heatmapRange = useHeatmapStore((state) => state.range);
@@ -202,8 +220,12 @@ export function Viewport() {
   }, [wireframeEnabled]);
 
   useEffect(() => {
-    sceneManagerRef.current?.setInteractionMode(activeMeasurementTool ? 'measure' : 'select');
-  }, [activeMeasurementTool]);
+    // Alignment picking reuses the SAME 'measure' interaction mode as the
+    // measurement tools (candidate-set + ray reporting) — see
+    // `handleMeasurePick`'s doc for how the two are told apart.
+    const measureModeActive = Boolean(activeMeasurementTool) || alignmentPhase === 'pickingPairs';
+    sceneManagerRef.current?.setInteractionMode(measureModeActive ? 'measure' : 'select');
+  }, [activeMeasurementTool, alignmentPhase]);
 
   return (
     <div className="viewport" ref={containerRef}>

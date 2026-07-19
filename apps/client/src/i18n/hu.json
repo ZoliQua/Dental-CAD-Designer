@@ -292,5 +292,29 @@
       "skippedSummary": "{{count}} lyuk elutasítva (túl nagy/hibás alakú, vagy csokornyakkendő-csúcs blokkolja – előbb válassza szét a csokornyakkendő-csúcsokat)",
       "noneToFill": "Nem található lyuk."
     }
+  },
+  "alignment": {
+    "panelTitle": "Illesztés",
+    "needsTwoMeshes": "Adjon hozzá legalább két hálót a jelenethez az illesztéshez.",
+    "meshSrcLabel": "Mozgatandó háló",
+    "meshDstLabel": "Célháló",
+    "selectPlaceholder": "Válasszon hálót…",
+    "startButton": "Kijelölés indítása",
+    "cancelButton": "Mégse",
+    "pickInstruction": "{{picked}}. pár a 3-ból – kattintson a(z) {{side}} hálóra",
+    "readyInstruction": "3 pár kijelölve – futtatásra kész.",
+    "sideSrc": "mozgó",
+    "sideDst": "cél",
+    "runButton": "Illesztés futtatása",
+    "running": "Illesztés folyamatban…",
+    "runError": "Az illesztés sikertelen: {{message}}",
+    "rmsLabel": "RMS",
+    "inlierLabel": "Illeszkedő pontok",
+    "iterationsLabel": "Iterációk",
+    "convergedYes": "Konvergált",
+    "convergedNo": "Nem konvergált",
+    "confirmButton": "Megerősítés",
+    "confirmHelp": "Alkalmazza a transzformációt a mozgatott hálóra, és naplózza azt.",
+    "cancelPreviewButton": "Elvetés"
   }
 }
