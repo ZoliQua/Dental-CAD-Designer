@@ -1,58 +1,5 @@
 # Kernel Changelog
 
-## [0.3.0] — Phase 3 Task 3: rigid registration (coarseAlignFromPointTriples + icpRefine)
-
-Adds `packages/kernel/src/register/` — `coarseAlignFromPointTriples` (closed-form
-Kabsch/Horn rigid alignment from exactly 3 point correspondences, via
-eigen-decomposition of the 3x3 cross-covariance's `H^T H` rather than a
-general SVD routine — see that file's module doc for why this is provably
-equivalent to the reflection-corrected Kabsch solution for the N=3 minimal
-case) and `icpRefine`/`icpRefineIteration` (point-to-plane ICP, per-triangle
-dst normals, seeded deterministic sampling, distance-percentile outlier
-rejection, a direct 6x6 dense solve per iteration, exact-Rodrigues delta
-composition — see icpRefine.ts's module doc for the full algorithm and its
-local-minimum `@errorBound` caveat). No existing op's algorithm or output
-changed — the kernel-ops golden file changed only by GAINING one new pinned
-entry, `"icpRegister"` (same "pure addition, still needs the bump" precedent
-as [0.1.0]'s `undercutScan` entry below — `scripts/check-golden-version-gate.ts`
-has no addition-only exemption).
-
-**Real-fixture golden**: arch-case-01 `bite0` (src, 108665 post-intake
-triangles — a bite-registration scan) vs. `upperjaw` (dst, 250128 post-intake
-triangles), `IDENTITY_MAT4` as the initial transform (verified, not assumed:
-both scans' bounding boxes already substantially overlap at identity — they
-come from the same acquisition session and share the scanner's own
-coordinate frame; a cross-session/cross-modality pair would need
-`coarseAlignFromPointTriples` first, which is exercised separately, on
-synthetic data with a known ground truth, by
-`packages/kernel/src/register/kabsch.analytic.test.ts`).
-
-Measured, not assumed: with this repo's DEFAULT `outlierRejectionFraction`
-(0.1, keep the closest 90%), this real pair does NOT converge — RMS
-plateaus/drifts around 2.4mm over 30 iterations. Investigated (not papered
-over): a bite-registration scan's surface only genuinely CORRESPONDS to the
-upper arch at the occlusal CONTACT points (this task's brief: "they overlap
-in the tooth surfaces") — most of `bite0`'s own surface (non-contact facets,
-and any lower-arch geometry a bite scan also captures) has no real match on
-`upperjaw` at all, so the "inlier" 90% is dominated by structurally
-non-corresponding points that the linearized solve cannot satisfy
-simultaneously with the genuine contact points. Raising
-`outlierRejectionFraction` to 0.85 (keep only the closest 15%) — the
-parameter pinned in this golden entry — converges cleanly to **RMS 8.3
-microns**, `inlierFraction: 0.15`, in 10 iterations. This is reported as a
-measured fact about this real fixture, not asserted against a pre-conceived
-target; see `scripts/kernel-ops-lib.ts`'s `icpRegister` op entry for the
-full derivation and `.superpowers/sdd/p3-task-3-report.md` for the
-before/after trace.
-
-Every OTHER kernel-ops golden entry (intake, curvature, geodesicPath,
-fitSurfaceSpline, sampleSdfGrid, offsetMesh [+ pre-cleanup soup],
-union/subtract/intersect, sectionMesh, every repair op, undercutScan) is
-BYTE-IDENTICAL across this bump — verified via `npx tsx
-scripts/generate-kernel-goldens.ts`'s regeneration diff, which touched only
-the `kernelVersion` field, the `notes` array, and the new `"icpRegister"`
-entry.
-
 ## Policy
 
 `packages/kernel/src/index.ts`'s `KERNEL_VERSION` and every golden-fixture
@@ -111,6 +58,59 @@ flag — investigate, don't regenerate").
    (it double-runs every op and refuses to write a non-reproducible result —
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
+
+## [0.3.0] — Phase 3 Task 3: rigid registration (coarseAlignFromPointTriples + icpRefine)
+
+Adds `packages/kernel/src/register/` — `coarseAlignFromPointTriples` (closed-form
+Kabsch/Horn rigid alignment from exactly 3 point correspondences, via
+eigen-decomposition of the 3x3 cross-covariance's `H^T H` rather than a
+general SVD routine — see that file's module doc for why this is provably
+equivalent to the reflection-corrected Kabsch solution for the N=3 minimal
+case) and `icpRefine`/`icpRefineIteration` (point-to-plane ICP, per-triangle
+dst normals, seeded deterministic sampling, distance-percentile outlier
+rejection, a direct 6x6 dense solve per iteration, exact-Rodrigues delta
+composition — see icpRefine.ts's module doc for the full algorithm and its
+local-minimum `@errorBound` caveat). No existing op's algorithm or output
+changed — the kernel-ops golden file changed only by GAINING one new pinned
+entry, `"icpRegister"` (same "pure addition, still needs the bump" precedent
+as [0.1.0]'s `undercutScan` entry below — `scripts/check-golden-version-gate.ts`
+has no addition-only exemption).
+
+**Real-fixture golden**: arch-case-01 `bite0` (src, 108665 post-intake
+triangles — a bite-registration scan) vs. `upperjaw` (dst, 250128 post-intake
+triangles), `IDENTITY_MAT4` as the initial transform (verified, not assumed:
+both scans' bounding boxes already substantially overlap at identity — they
+come from the same acquisition session and share the scanner's own
+coordinate frame; a cross-session/cross-modality pair would need
+`coarseAlignFromPointTriples` first, which is exercised separately, on
+synthetic data with a known ground truth, by
+`packages/kernel/src/register/kabsch.analytic.test.ts`).
+
+Measured, not assumed: with this repo's DEFAULT `outlierRejectionFraction`
+(0.1, keep the closest 90%), this real pair does NOT converge — RMS
+plateaus/drifts around 2.4mm over 30 iterations. Investigated (not papered
+over): a bite-registration scan's surface only genuinely CORRESPONDS to the
+upper arch at the occlusal CONTACT points (this task's brief: "they overlap
+in the tooth surfaces") — most of `bite0`'s own surface (non-contact facets,
+and any lower-arch geometry a bite scan also captures) has no real match on
+`upperjaw` at all, so the "inlier" 90% is dominated by structurally
+non-corresponding points that the linearized solve cannot satisfy
+simultaneously with the genuine contact points. Raising
+`outlierRejectionFraction` to 0.85 (keep only the closest 15%) — the
+parameter pinned in this golden entry — converges cleanly to **RMS 8.3
+microns**, `inlierFraction: 0.15`, in 10 iterations. This is reported as a
+measured fact about this real fixture, not asserted against a pre-conceived
+target; see `scripts/kernel-ops-lib.ts`'s `icpRegister` op entry for the
+full derivation and `.superpowers/sdd/p3-task-3-report.md` for the
+before/after trace.
+
+Every OTHER kernel-ops golden entry (intake, curvature, geodesicPath,
+fitSurfaceSpline, sampleSdfGrid, offsetMesh [+ pre-cleanup soup],
+union/subtract/intersect, sectionMesh, every repair op, undercutScan) is
+BYTE-IDENTICAL across this bump — verified via `npx tsx
+scripts/generate-kernel-goldens.ts`'s regeneration diff, which touched only
+the `kernelVersion` field, the `notes` array, and the new `"icpRegister"`
+entry.
 
 ## [0.2.2] — Phase 3 Task 1 housekeeping: kernelVersion/manifoldVersion metadata on the standalone intake/curvature/offset goldens (metadata only, no hash change)
 
