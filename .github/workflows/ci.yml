@@ -83,6 +83,34 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Get Playwright version
+        # Keys the cache below on the exact installed browser-driver
+        # version (from node_modules, post `npm ci`) rather than e.g.
+        # hashing package-lock.json, so a lockfile change that doesn't
+        # touch @playwright/test's resolved version doesn't needlessly
+        # bust the cache, and a version bump always does.
+        id: playwright-version
+        run: echo "version=$(npx playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+
+      - name: Install Playwright browsers
+        # MUST run before "Unit tests" below: `npm test` now includes
+        # apps/client/vitest.config.ts's browser-mode `client-dom` project
+        # (Phase 2 Task 12, provider: 'playwright'), which drives a real
+        # Chromium instance — a fresh runner with no browsers installed
+        # hard-fails that project (and therefore the whole `npm test` step)
+        # if this step runs any later, e.g. its previous position just
+        # before "E2E tests" below. `--with-deps` still installs Chromium's
+        # OS-level dependencies via apt every run (not cached), but the
+        # cache step above skips the actual browser binary download on a
+        # cache hit.
+        run: npx playwright install --with-deps chromium
+
       - name: Unit tests
         run: npm test
 
@@ -128,9 +156,6 @@ jobs:
         # above; they're still typechecked by the "Typecheck" step (root
         # tsconfig.json's `include` covers `test/`).
         run: npm run test:golden
-
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
 
       - name: E2E tests (smoke + phase1)
         # playwright.config.ts's webServer boots `npm run dev` (client +

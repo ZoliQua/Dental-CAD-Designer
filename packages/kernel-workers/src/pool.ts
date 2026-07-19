@@ -310,6 +310,35 @@ function isJobCancelledError(error: unknown): error is Error {
  * bounded by "at most one extra hop" (the generic waiter still gets served
  * by the very next release of ANY OTHER worker).
  *
+ * ### Trade-off: queue-on-target is a head-of-line hazard, by design
+ *
+ * "Queue, never steal" (above) has a direct consequence worth calling out
+ * explicitly: a SLOW job running on a given `affinityKey`'s target worker
+ * delays every LATER call for that same key, even ones that would otherwise
+ * be cheap cache hits — they sit in `targetedWaiters` behind the slow job
+ * for as long as it runs, with no escape hatch (no timeout, no fallback to
+ * a different worker, no stealing). Two unrelated calls that happen to
+ * share a key are therefore only as responsive as the slowest thing ever
+ * queued on that key's worker. This is accepted deliberately: the
+ * alternative (falling back to an idle worker when the target is busy)
+ * would silently turn a cache hit into a cache miss — recomputed from
+ * scratch on a worker with no cache entry — which is a correctness-
+ * adjacent footgun (a wrong-but-plausible-looking answer, or at best a
+ * silent perf cliff with no error) that this API is designed to make
+ * impossible to hit by accident. Determinism/cache-correctness wins over
+ * latency here, on purpose.
+ *
+ * Phase 3 mitigation path (not implemented here): if this head-of-line
+ * delay becomes a real problem for a given job family, the fix is a SECOND
+ * affinity worker per hash — i.e. `affinityTargets` mapping each key to a
+ * small set of candidate worker ids (an "affinity group") instead of
+ * exactly one, with the cache-bearing job itself responsible for either
+ * replicating its cache to every worker in the group or accepting an
+ * occasional real miss on the non-primary member. That is a bigger change
+ * (touches the cache-population contract in jobs/bvh.ts et al., not just
+ * this routing layer) and is out of scope for Phase 2's Task 12 — flagged
+ * here as the documented forward path rather than attempted speculatively.
+ *
  * Every existing invariant this pool's tests harden (abort/destroy races,
  * crash eviction, spawn self-healing, FIFO fairness for non-affinity calls)
  * is unchanged for calls that don't pass `affinityKey` — the fast path

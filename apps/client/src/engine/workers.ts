@@ -53,6 +53,13 @@ export function getPool(): WorkerPool {
 // one — see RunJobOptions.affinityKey's "queue, not steal" doc), while
 // DIFFERENT contentHashes can now run their BVH work on DIFFERENT workers
 // in parallel instead of all serializing through one dedicated worker.
+//
+// Head-of-line trade-off: a slow measurement/heatmap job for a given mesh
+// delays every LATER measurement call for that SAME mesh (queued behind it
+// on its affinity-routed worker, never stolen or rerouted) — see pool.ts's
+// class doc, "Trade-off: queue-on-target is a head-of-line hazard, by
+// design", for the full reasoning and the Phase 3 mitigation path (affinity
+// groups / a second worker per hash).
 
 /** contentHashes already confirmed built on their (affinity-routed) worker —
  * an in-memory mirror of that worker's own `bvhCache` (jobs/bvh.ts) so
