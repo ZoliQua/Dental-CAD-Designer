@@ -10,6 +10,7 @@ const boundaryElements = [
   { type: 'kernel', pattern: 'packages/kernel/**' },
   { type: 'io', pattern: 'packages/io/**' },
   { type: 'cad-pipeline', pattern: 'packages/cad-pipeline/**' },
+  { type: 'clinical-profiles', pattern: 'packages/clinical-profiles/**' },
   { type: 'shared-types', pattern: 'packages/shared-types/**' },
 ];
 
@@ -56,8 +57,14 @@ export default tseslint.config(
             {
               from: { element: { types: 'engine' } },
               allow: {
-                to: { element: { types: { anyOf: ['kernel-workers', 'state', 'shared-types'] } } },
+                to: {
+                  element: { types: { anyOf: ['kernel-workers', 'state', 'shared-types', 'clinical-profiles'] } },
+                },
               },
+            },
+            {
+              from: { element: { types: 'clinical-profiles' } },
+              allow: { to: { element: { types: 'shared-types' } } },
             },
             {
               from: { element: { types: 'state' } },

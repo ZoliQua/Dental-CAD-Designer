@@ -84,6 +84,40 @@
     "situ": "Situ",
     "gingiva": "Gingiva"
   },
+  "restoration": {
+    "panelTitle": "Restaurationen",
+    "empty": "Noch keine Restaurationen.",
+    "type": {
+      "crown": "Krone",
+      "bridge": "Brücke",
+      "inlay": "Inlay",
+      "onlay": "Onlay"
+    },
+    "chart": {
+      "abutment": "Pfeiler",
+      "pontic": "Brückenglied"
+    },
+    "form": {
+      "newTitle": "Neue Restauration",
+      "editingTitle": "Restauration bearbeiten",
+      "typeLabel": "Restaurationstyp",
+      "phase5Note": "Phase 5",
+      "contiguity": {
+        "gap": "Diese Brücke überspringt einen Zahn — wählen Sie auch die dazwischenliegenden Zähne aus, oder teilen Sie sie in separate Restaurationen auf.",
+        "mixed-arch": "Eine Brücke kann nicht Ober- und Unterkiefer gleichzeitig umfassen — wählen Sie Zähne nur aus einem Kiefer."
+      },
+      "targetScanLabel": "Ziel-Scan",
+      "targetScanPlaceholder": "Scan auswählen…",
+      "noTargetScans": "Fügen Sie zuerst einen Präparations- oder Kieferscan zur Szene hinzu.",
+      "createButton": "Restauration erstellen",
+      "saveButton": "Änderungen speichern",
+      "cancelButton": "Abbrechen"
+    },
+    "list": {
+      "editButton": "Bearbeiten",
+      "deleteButton": "Löschen"
+    }
+  },
   "viewer": {
     "view": {
       "groupLabel": "Standardansichten",

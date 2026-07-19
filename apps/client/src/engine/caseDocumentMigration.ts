@@ -132,7 +132,16 @@ function migrateRestorations(
       marginLineCount++;
       anchorCount += migrated.anchors.length;
     }
-    return { ...legacy, marginLines };
+    // `pontics`/`targetNodeId` (Phase 3 Task 2) did not exist on a real
+    // schemaVersion-1 restoration — a v1 document predates the wizard that
+    // introduced them, so `legacy` (typed as if they were always present,
+    // per this file's existing "cast anyway" pattern) will actually lack
+    // these keys at runtime. Backfill explicit, documented defaults rather
+    // than silently spreading `undefined` through: `pontics: []` (no bridge
+    // pontic marking existed pre-Task-2) and `targetNodeId: null` (no target
+    // scan was ever recorded pre-Task-2 either — see `Restoration.targetNodeId`'s
+    // doc, shared-types).
+    return { ...legacy, pontics: legacy.pontics ?? [], targetNodeId: legacy.targetNodeId ?? null, marginLines };
   });
   return { restorations, stats: { restorationCount: legacyRestorations.length, marginLineCount, anchorCount } };
 }

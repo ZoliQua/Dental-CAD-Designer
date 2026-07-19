@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { IntakeReport, MeshStats } from '@dqcad/kernel-workers';
-import type { Measurement, Operation } from '@dqcad/shared-types';
+import type { Measurement, Operation, Restoration } from '@dqcad/shared-types';
 import { useCaseStore } from '../state/caseStore';
 import { caseStore } from './caseStore';
 
@@ -577,5 +577,101 @@ describe('caseStore.loadDocument (Task 11)', () => {
     // registered from this test's own setup, not because loadDocument did
     // anything to it).
     expect(caseStore.meshStore.has('hash-a')).toBe(true);
+  });
+});
+
+// caseStore-level restoration CRUD mechanics (Phase 3 Task 2) — the
+// higher-level "build the Restoration/Operation values" orchestration lives
+// in engine/restorations.ts (restorations.test.ts); this section only
+// exercises caseStore's own commit/journal/publish/selection contract, using
+// hand-built fixtures directly (mirrors this file's existing style for
+// registerImportedMesh/applyRepair above).
+function fixtureRestoration(overrides: Partial<Restoration> = {}): Restoration {
+  return {
+    id: 'restoration-1',
+    type: 'crown',
+    teeth: [11],
+    pontics: [],
+    targetNodeId: null,
+    marginLines: {},
+    insertionAxis: [0, 0, 1],
+    params: {
+      cementGapMm: 0.05,
+      marginalGapMm: 0.02,
+      spacerStartMm: 0.8,
+      minWallThicknessMm: 0.5,
+      proximalContactPenetrationMm: 0.02,
+      occlusalContactMm: 0,
+    },
+    stages: {},
+    qc: null,
+    ...overrides,
+  };
+}
+
+function fixtureOp(name: string, params: Record<string, unknown> = {}): Operation {
+  return {
+    id: `op-${name}`,
+    name,
+    params,
+    inputHashes: [],
+    outputHashes: [],
+    kernelVersion: '0.0.0',
+    timestamp: new Date().toISOString(),
+  };
+}
+
+describe('caseStore.addRestoration / updateRestoration / removeRestoration', () => {
+  it('addRestoration appends the restoration and journals the Operation, publishing to useCaseStore', () => {
+    const restoration = fixtureRestoration();
+    caseStore.addRestoration(restoration, fixtureOp('restoration-create', { restorationId: restoration.id }));
+
+    const doc = useCaseStore.getState().document;
+    expect(doc.restorations).toEqual([restoration]);
+    expect(doc.history).toHaveLength(1);
+    expect(doc.history[0]!.name).toBe('restoration-create');
+    expect(caseStore.getDocument()).toBe(doc);
+  });
+
+  it('updateRestoration replaces the restoration by id and journals the Operation', () => {
+    const restoration = fixtureRestoration();
+    caseStore.addRestoration(restoration, fixtureOp('restoration-create'));
+
+    const updated = { ...restoration, teeth: [12] as const };
+    caseStore.updateRestoration(updated, fixtureOp('restoration-update', { teeth: [12] }));
+
+    const doc = useCaseStore.getState().document;
+    expect(doc.restorations).toEqual([updated]);
+    expect(doc.history).toHaveLength(2);
+    expect(doc.history[1]!.name).toBe('restoration-update');
+  });
+
+  it('updateRestoration throws for an id with no existing restoration', () => {
+    const restoration = fixtureRestoration({ id: 'does-not-exist' });
+    expect(() => caseStore.updateRestoration(restoration, fixtureOp('restoration-update'))).toThrow(
+      /no restoration registered/,
+    );
+  });
+
+  it('removeRestoration drops the restoration, journals the Operation, and clears a matching selection', () => {
+    const restoration = fixtureRestoration();
+    caseStore.addRestoration(restoration, fixtureOp('restoration-create'));
+    caseStore.setSelectedRestorationId(restoration.id);
+
+    caseStore.removeRestoration(restoration.id, fixtureOp('restoration-delete', { restorationId: restoration.id }));
+
+    const doc = useCaseStore.getState().document;
+    expect(doc.restorations).toEqual([]);
+    expect(doc.history).toHaveLength(2);
+    expect(doc.history[1]!.name).toBe('restoration-delete');
+    expect(caseStore.getSelectedRestorationId()).toBeNull();
+    expect(useCaseStore.getState().selectedRestorationId).toBeNull();
+  });
+
+  it('removeRestoration is tolerant of an id that no longer exists (still journals)', () => {
+    expect(() =>
+      caseStore.removeRestoration('never-existed', fixtureOp('restoration-delete')),
+    ).not.toThrow();
+    expect(useCaseStore.getState().document.history).toHaveLength(1);
   });
 });

@@ -84,6 +84,40 @@
     "situ": "Situ",
     "gingiva": "Íny"
   },
+  "restoration": {
+    "panelTitle": "Pótlások",
+    "empty": "Még nincs pótlás.",
+    "type": {
+      "crown": "Korona",
+      "bridge": "Híd",
+      "inlay": "Inlay",
+      "onlay": "Onlay"
+    },
+    "chart": {
+      "abutment": "Pillér",
+      "pontic": "Pontik"
+    },
+    "form": {
+      "newTitle": "Új pótlás",
+      "editingTitle": "Pótlás szerkesztése",
+      "typeLabel": "Pótlás típusa",
+      "phase5Note": "5. fázis",
+      "contiguity": {
+        "gap": "A híd kihagy egy fogat — jelölje ki a köztes fogakat is, vagy bontsa külön pótlásokra.",
+        "mixed-arch": "Egy híd nem terjedhet ki a felső és alsó állcsontra egyszerre — csak egy fogsorból válasszon fogakat."
+      },
+      "targetScanLabel": "Célszkennelés",
+      "targetScanPlaceholder": "Válasszon szkennelést…",
+      "noTargetScans": "Először adjon a jelenethez csonk/munkamodell vagy állcsont szkennelést.",
+      "createButton": "Pótlás létrehozása",
+      "saveButton": "Változtatások mentése",
+      "cancelButton": "Mégse"
+    },
+    "list": {
+      "editButton": "Szerkesztés",
+      "deleteButton": "Törlés"
+    }
+  },
   "viewer": {
     "view": {
       "groupLabel": "Standard nézetek",

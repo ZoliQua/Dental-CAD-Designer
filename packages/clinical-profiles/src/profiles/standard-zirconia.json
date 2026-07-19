@@ -1,0 +1,19 @@
+{
+  "id": "standard-zirconia",
+  "version": "1.0.0",
+  "label": "Standard Zirconia (monolithic)",
+  "restorationParams": {
+    "cementGapMm": 0.05,
+    "marginalGapMm": 0.02,
+    "spacerStartMm": 0.8,
+    "minWallThicknessMm": 0.5,
+    "proximalContactPenetrationMm": 0.02,
+    "occlusalContactMm": 0
+  },
+  "connectorAreaMm2": {
+    "posteriorMm2": 9,
+    "anteriorMm2": 7
+  },
+  "undercutBlockoutThresholdMm": 0,
+  "checksum": "41bf7fb506a9a9af8c6f6e7dd3b698a1a87c1020844e722cf7e855b1cfee849d"
+}

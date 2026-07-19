@@ -8,6 +8,8 @@ describe('CaseDocument', () => {
     id: 'restoration-1',
     type: 'crown',
     teeth: [upperLeftFirstMolar],
+    pontics: [],
+    targetNodeId: 'node-1',
     marginLines: {
       [upperLeftFirstMolar]: {
         anchors: [

@@ -84,6 +84,40 @@
     "situ": "In situ",
     "gingiva": "Encía"
   },
+  "restoration": {
+    "panelTitle": "Restauraciones",
+    "empty": "Aún no hay restauraciones.",
+    "type": {
+      "crown": "Corona",
+      "bridge": "Puente",
+      "inlay": "Inlay",
+      "onlay": "Onlay"
+    },
+    "chart": {
+      "abutment": "Pilar",
+      "pontic": "Póntico"
+    },
+    "form": {
+      "newTitle": "Nueva restauración",
+      "editingTitle": "Editar restauración",
+      "typeLabel": "Tipo de restauración",
+      "phase5Note": "Fase 5",
+      "contiguity": {
+        "gap": "Este puente omite un diente — seleccione también los dientes intermedios, o divídalo en restauraciones separadas.",
+        "mixed-arch": "Un puente no puede abarcar el maxilar superior e inferior a la vez — seleccione dientes de una sola arcada."
+      },
+      "targetScanLabel": "Escaneo objetivo",
+      "targetScanPlaceholder": "Elegir escaneo…",
+      "noTargetScans": "Primero añada un escaneo de preparación/muñón o de arcada a la escena.",
+      "createButton": "Crear restauración",
+      "saveButton": "Guardar cambios",
+      "cancelButton": "Cancelar"
+    },
+    "list": {
+      "editButton": "Editar",
+      "deleteButton": "Eliminar"
+    }
+  },
   "viewer": {
     "view": {
       "groupLabel": "Vistas estándar",

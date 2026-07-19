@@ -11,6 +11,7 @@ import { CurvaturePanel } from './CurvaturePanel';
 import { ImportPanel } from './ImportPanel';
 import { MeasurementPanel } from './MeasurementPanel';
 import { RepairPanel } from './RepairPanel';
+import { RestorationWizard } from './RestorationWizard';
 import { SectionPanel } from './SectionPanel';
 import { SurfaceDistancePanel } from './SurfaceDistancePanel';
 import { useCaseStore } from '../state/caseStore';
@@ -36,6 +37,7 @@ export function Sidebar() {
           ))}
         </ul>
       )}
+      <RestorationWizard />
       <MeasurementPanel />
       <SurfaceDistancePanel />
       <CurvaturePanel />

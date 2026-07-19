@@ -84,6 +84,40 @@
     "situ": "Situ",
     "gingiva": "Gingiva"
   },
+  "restoration": {
+    "panelTitle": "Restorations",
+    "empty": "No restorations yet.",
+    "type": {
+      "crown": "Crown",
+      "bridge": "Bridge",
+      "inlay": "Inlay",
+      "onlay": "Onlay"
+    },
+    "chart": {
+      "abutment": "Abutment",
+      "pontic": "Pontic"
+    },
+    "form": {
+      "newTitle": "New restoration",
+      "editingTitle": "Edit restoration",
+      "typeLabel": "Restoration type",
+      "phase5Note": "Phase 5",
+      "contiguity": {
+        "gap": "This bridge skips a tooth — select every tooth in between, or split into separate restorations.",
+        "mixed-arch": "A bridge cannot span the upper and lower jaws — select teeth from one arch only."
+      },
+      "targetScanLabel": "Target scan",
+      "targetScanPlaceholder": "Choose a scan…",
+      "noTargetScans": "Add a prep/die or jaw scan to the scene first.",
+      "createButton": "Create restoration",
+      "saveButton": "Save changes",
+      "cancelButton": "Cancel"
+    },
+    "list": {
+      "editButton": "Edit",
+      "deleteButton": "Delete"
+    }
+  },
   "viewer": {
     "view": {
       "groupLabel": "Standard views",

@@ -1125,3 +1125,205 @@ body {
   opacity: 0.5;
   border-color: var(--color-border);
 }
+
+/* Restoration wizard (Phase 3 Task 2) --------------------------------- */
+
+.restoration-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.6rem 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.restoration-panel__title {
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.restoration-panel__empty {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.restoration-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.restoration-list__row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 0.78rem;
+}
+
+.restoration-list__row--selected {
+  border-color: var(--color-accent);
+}
+
+.restoration-list__type {
+  color: var(--color-text-muted);
+  min-width: 3.5rem;
+}
+
+.restoration-list__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  flex: 1;
+}
+
+.restoration-chip {
+  display: inline-block;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-accent);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.72rem;
+}
+
+.restoration-chip--pontic {
+  border-style: dashed;
+  color: var(--color-text-muted);
+}
+
+.restoration-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.4rem;
+  border: 1px dashed var(--color-border);
+  border-radius: 4px;
+}
+
+.restoration-form__title {
+  font-size: 0.78rem;
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.restoration-form__type-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.restoration-form__type-button {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.restoration-form__type-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.restoration-form__type-button--active {
+  background: var(--color-accent);
+  color: var(--color-bg);
+  border-color: var(--color-accent);
+}
+
+.restoration-form__type-note {
+  font-size: 0.68rem;
+}
+
+.restoration-form__contiguity-warning {
+  font-size: 0.75rem;
+  color: #e0a552;
+  margin: 0;
+}
+
+.restoration-form__no-targets {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin: 0.15rem 0 0;
+}
+
+.restoration-form__target {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.restoration-form__actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.fdi-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.fdi-chart__row {
+  display: grid;
+  grid-template-columns: repeat(16, minmax(1.1rem, 1fr));
+  gap: 0.1rem;
+}
+
+.fdi-tooth {
+  font-size: 0.62rem;
+  padding: 0.15rem 0;
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 2px;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+
+.fdi-tooth--abutment {
+  background: var(--color-accent);
+  color: var(--color-bg);
+  border-color: var(--color-accent);
+}
+
+.fdi-tooth--pontic {
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--color-accent);
+}
+
+.fdi-chart__legend {
+  display: flex;
+  gap: 0.6rem;
+  font-size: 0.68rem;
+  color: var(--color-text-muted);
+}
+
+.fdi-chart__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.fdi-chart__swatch {
+  display: inline-block;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 2px;
+  border: 1px solid var(--color-accent);
+}
+
+.fdi-chart__swatch.fdi-tooth--abutment {
+  border: none;
+}

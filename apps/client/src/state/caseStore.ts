@@ -38,13 +38,22 @@ interface CaseStoreState {
    * ui/Viewport.tsx (round-trips into SceneManager's highlight) and, from
    * Task 7 on, by the measurement tools. */
   selectedNodeId: string | null;
+  /** The currently active `Restoration.id` (engine/caseStore.ts's
+   * `setSelectedRestorationId`), or `null` — same "ephemeral UI state" slice
+   * as `selectedNodeId` above, added Phase 3 Task 2 for the restoration
+   * wizard/sidebar (drives which restoration's per-tooth chips are
+   * highlighted, and which restoration later margin/axis tools operate on). */
+  selectedRestorationId: string | null;
   setDocument: (document: CaseDocument) => void;
   setSelectedNodeId: (selectedNodeId: string | null) => void;
+  setSelectedRestorationId: (selectedRestorationId: string | null) => void;
 }
 
 export const useCaseStore = create<CaseStoreState>((set) => ({
   document: createEmptyCaseDocument(),
   selectedNodeId: null,
+  selectedRestorationId: null,
   setDocument: (document) => set({ document }),
   setSelectedNodeId: (selectedNodeId) => set({ selectedNodeId }),
+  setSelectedRestorationId: (selectedRestorationId) => set({ selectedRestorationId }),
 }));

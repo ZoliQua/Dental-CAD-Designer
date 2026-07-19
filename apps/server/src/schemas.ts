@@ -158,6 +158,23 @@ const marginLineSchema = {
   },
 } as const;
 
+// The 32 valid FDI tooth codes (quadrants 1-4 x positions 1-8) — mirrors
+// shared-types' `FdiTooth` template-literal union at the JSON-Schema level
+// (AJV has no notion of a TS template-literal type, so this is written out
+// as an explicit `enum`, generated the same way the TS type derives itself:
+// quadrant x position cross product, not hand-typed digit-by-digit).
+const FDI_TOOTH_NUMBERS: readonly number[] = [1, 2, 3, 4].flatMap((quadrant) =>
+  [1, 2, 3, 4, 5, 6, 7, 8].map((position) => quadrant * 10 + position),
+);
+
+const fdiToothSchema = { type: 'integer', enum: FDI_TOOTH_NUMBERS } as const;
+
+// PLAN.md §3's parameter table — same ranges packages/clinical-profiles/src/
+// materialProfile.ts's `validateMaterialProfileShape` enforces on a material
+// PROFILE's values; enforced here too on a RESTORATION's (possibly
+// profile-derived, possibly hand-overridden — Phase 4+) own `params`, so a
+// malformed/corrupted PUT body is a 400 at the server boundary regardless of
+// where the values originated client-side.
 const restorationParamsSchema = {
   type: 'object',
   required: [
@@ -170,37 +187,103 @@ const restorationParamsSchema = {
   ],
   additionalProperties: false,
   properties: {
-    cementGapMm: { type: 'number' },
-    marginalGapMm: { type: 'number' },
-    spacerStartMm: { type: 'number' },
-    minWallThicknessMm: { type: 'number' },
-    proximalContactPenetrationMm: { type: 'number' },
-    occlusalContactMm: { type: 'number' },
+    cementGapMm: { type: 'number', minimum: 0.02, maximum: 0.12 },
+    marginalGapMm: { type: 'number', minimum: 0, maximum: 0.05 },
+    spacerStartMm: { type: 'number', minimum: 0.5, maximum: 1.0 },
+    minWallThicknessMm: { type: 'number', minimum: 0.4, maximum: 5 },
+    proximalContactPenetrationMm: { type: 'number', minimum: -0.05, maximum: 0.1 },
+    occlusalContactMm: { type: 'number', minimum: -0.2, maximum: 0.1 },
   },
 } as const;
 
+// Mirrors shared-types' `QcGateResult`/`QcReport` (Phase 3 has no producer
+// for these yet — `qc` is always `null` until a later phase's QC gates run
+// — but the shape is fully known already, so it's validated exactly, not
+// left permissive "for now").
+const qcGateResultSchema = {
+  type: 'object',
+  required: ['gate', 'passed', 'acknowledged', 'value', 'threshold', 'unit', 'message'],
+  additionalProperties: false,
+  properties: {
+    gate: { type: 'string' },
+    passed: { type: 'boolean' },
+    acknowledged: { type: 'boolean' },
+    value: { type: ['number', 'null'] },
+    threshold: { type: ['number', 'null'] },
+    unit: { type: ['string', 'null'] },
+    message: { type: 'string' },
+  },
+} as const;
+
+const qcReportSchema = {
+  type: 'object',
+  required: ['gates', 'passed', 'kernelVersion', 'profileVersion', 'journalHash'],
+  additionalProperties: false,
+  properties: {
+    gates: { type: 'array', items: qcGateResultSchema },
+    passed: { type: 'boolean' },
+    kernelVersion: { type: 'string' },
+    profileVersion: { type: 'string' },
+    journalHash: { type: 'string' },
+  },
+} as const;
+
+// Mirrors shared-types' `Restoration.stages` — 4 optional contentHash
+// strings, nothing else (no producer until Phase 4+, but the shape is fully
+// known already).
+const restorationStagesSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    innerSurface: { type: 'string' },
+    anatomyPlacement: { type: 'string' },
+    morphState: { type: 'string' },
+    finalMesh: { type: 'string' },
+  },
+} as const;
+
+// schemaVersion 2 (Phase 3 Task 2): tightened to the REAL shared-types
+// `Restoration` shape end-to-end — `pontics`/`targetNodeId` (this task's new
+// fields), `teeth` restricted to the 32 valid FDI codes, `params` bounded per
+// PLAN.md §3, and `stages`/`qc` validated against their real (if not yet
+// producible) shapes rather than left permissive. Replaces this section's
+// prior "typed to its known top-level shape but left permissive on nested
+// fields" state (Phase 1) now that Phase 3 actually produces restorations.
 const restorationSchema = {
   type: 'object',
-  required: ['id', 'type', 'teeth', 'marginLines', 'insertionAxis', 'params', 'stages', 'qc'],
+  required: [
+    'id',
+    'type',
+    'teeth',
+    'pontics',
+    'targetNodeId',
+    'marginLines',
+    'insertionAxis',
+    'params',
+    'stages',
+    'qc',
+  ],
   additionalProperties: false,
   properties: {
     id: { type: 'string' },
     type: { type: 'string', enum: ['crown', 'inlay', 'onlay', 'bridge'] },
-    teeth: { type: 'array', items: { type: 'integer' } },
+    teeth: { type: 'array', items: fdiToothSchema },
+    // Bridge-only (shared-types' `Restoration.pontics` doc) — always `[]`
+    // for crown/inlay/onlay; not cross-validated against `teeth` at the
+    // schema level (AJV can't express "subset of another property" without
+    // a keyword extension) — engine/restorations.ts's `normalizePontics` is
+    // the actual enforcement point client-side; this only bounds each entry
+    // to a real FDI code.
+    pontics: { type: 'array', items: fdiToothSchema },
+    targetNodeId: { type: ['string', 'null'] },
     // Keyed by FDI tooth number (a string in JSON) — permissive on values'
     // exact shape beyond object-ness is deliberately NOT relaxed here; each
     // present entry must still be a valid MarginLine.
     marginLines: { type: 'object', additionalProperties: marginLineSchema },
     insertionAxis: vec3Schema,
     params: restorationParamsSchema,
-    // `stages`/`qc`: Phase 3 territory (see this section's module doc) —
-    // structurally an object (or null for qc), contents unchecked here.
-    // `additionalProperties: true` matters for the RESPONSE side too:
-    // fast-json-stringify (which serializes GET's response) drops any key
-    // not explicitly declared unless a schema says it may pass arbitrary
-    // ones through.
-    stages: { type: 'object', additionalProperties: true },
-    qc: { type: ['object', 'null'], additionalProperties: true },
+    stages: restorationStagesSchema,
+    qc: { anyOf: [{ type: 'null' }, qcReportSchema] },
   },
 } as const;
 

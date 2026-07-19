@@ -12,6 +12,7 @@
 // here explicitly. This keeps every clinically-meaningful number in exactly
 // one reviewable, versionable place, per PLAN.md §3's parameter-table
 // philosophy.
+import { STANDARD_ZIRCONIA_PROFILE } from './profiles.ts';
 
 /**
  * Default voxel pitch (grid spacing, mm) for SDF-based offset surfacing of
@@ -28,3 +29,18 @@
  * (pitch/2 = 10 µm at this value).
  */
 export const DEFAULT_OFFSET_VOXEL_PITCH_MM = 0.02;
+
+/**
+ * The `RestorationParams` a freshly created `Restoration` (Phase 3 Task 2's
+ * wizard, `apps/client/src/engine/restorations.ts`) is seeded with before
+ * any per-material profile selection UI exists (Phase 4 — PLAN.md §5).
+ * Deliberately IDENTICAL to `STANDARD_ZIRCONIA_PROFILE.restorationParams`
+ * (`profiles.ts`) rather than an independent hand-copied literal — one
+ * number, one citation, zero drift risk; see
+ * PLAN.md §3's table for each field's citation (repeated verbatim on
+ * `materialProfile.ts`'s `validateMaterialProfileShape`, which is what this
+ * value is actually schema/checksum-VALIDATED against at startup — this
+ * binding is just a convenient, always-in-sync alias for the common case of
+ * "no material chosen yet, use the default").
+ */
+export const DEFAULT_RESTORATION_PARAMS = STANDARD_ZIRCONIA_PROFILE.restorationParams;

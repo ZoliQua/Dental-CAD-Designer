@@ -252,6 +252,8 @@ describe('server app', () => {
             id: 'restoration-1',
             type: 'crown',
             teeth: [16],
+            pontics: [],
+            targetNodeId: null,
             marginLines: {
               16: {
                 anchors: [
@@ -287,6 +289,174 @@ describe('server app', () => {
         url: `/api/cases/${created.id}`,
         payload: document,
       });
+      expect(response.statusCode).toBe(400);
+    });
+
+    // Phase 3 Task 2: restorationSchema tightened to the real shared-types
+    // `Restoration` shape (pontics/targetNodeId, FDI-enum teeth, PLAN.md §3
+    // param bounds, real stages/qc shapes) — this proves a full, realistic
+    // restoration (a bridge, mirroring arch-case-01's 12/11/21/22 span)
+    // round-trips through PUT then GET byte-for-byte.
+    it('round-trips a full CaseDocument with a bridge Restoration (pontics + targetNodeId) through PUT then GET', async () => {
+      const created = await app
+        .inject({ method: 'POST', url: '/api/cases', payload: { name: 'Bridge restoration case' } })
+        .then((r) => r.json() as { id: string; createdAt: string });
+
+      const document: CaseDocument = {
+        ...createEmptyCaseDocument(created.id, created.createdAt),
+        scene: [
+          {
+            id: 'node-1',
+            meshId: 'mesh-1',
+            role: 'upperJaw',
+            transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+            visible: true,
+            opacity: 1,
+          },
+        ],
+        restorations: [
+          {
+            id: 'restoration-1',
+            type: 'bridge',
+            teeth: [12, 11, 21, 22],
+            pontics: [12, 22],
+            targetNodeId: 'node-1',
+            marginLines: {},
+            insertionAxis: [0, 0, 1],
+            params: {
+              cementGapMm: 0.05,
+              marginalGapMm: 0.02,
+              spacerStartMm: 0.8,
+              minWallThicknessMm: 0.5,
+              proximalContactPenetrationMm: 0.02,
+              occlusalContactMm: 0,
+            },
+            stages: {},
+            qc: null,
+          },
+        ],
+        history: [
+          {
+            id: 'op-1',
+            name: 'restoration-create',
+            params: { restorationId: 'restoration-1' },
+            inputHashes: [],
+            outputHashes: [],
+            kernelVersion: '0.0.0',
+            timestamp: '2026-01-01T00:00:00.000Z',
+          },
+        ],
+      };
+
+      const putResponse = await app.inject({
+        method: 'PUT',
+        url: `/api/cases/${created.id}`,
+        payload: document,
+      });
+      expect(putResponse.statusCode).toBe(200);
+
+      const getResponse = await app.inject({ method: 'GET', url: `/api/cases/${created.id}` });
+      expect(getResponse.statusCode).toBe(200);
+      expect(getResponse.json()).toEqual(document);
+    });
+
+    it('rejects a Restoration.teeth entry outside the 32 valid FDI codes with 400', async () => {
+      const created = await app
+        .inject({ method: 'POST', url: '/api/cases', payload: { name: 'Bad FDI tooth' } })
+        .then((r) => r.json() as { id: string; createdAt: string });
+
+      const document: CaseDocument = {
+        ...createEmptyCaseDocument(created.id, created.createdAt),
+        restorations: [
+          {
+            id: 'restoration-1',
+            type: 'crown',
+            teeth: [99 as unknown as CaseDocument['restorations'][number]['teeth'][number]],
+            pontics: [],
+            targetNodeId: null,
+            marginLines: {},
+            insertionAxis: [0, 0, 1],
+            params: {
+              cementGapMm: 0.05,
+              marginalGapMm: 0.02,
+              spacerStartMm: 0.8,
+              minWallThicknessMm: 0.5,
+              proximalContactPenetrationMm: 0.02,
+              occlusalContactMm: 0,
+            },
+            stages: {},
+            qc: null,
+          },
+        ],
+      };
+
+      const response = await app.inject({ method: 'PUT', url: `/api/cases/${created.id}`, payload: document });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('rejects a RestorationParams field outside its PLAN.md §3 range with 400', async () => {
+      const created = await app
+        .inject({ method: 'POST', url: '/api/cases', payload: { name: 'Bad params range' } })
+        .then((r) => r.json() as { id: string; createdAt: string });
+
+      const document: CaseDocument = {
+        ...createEmptyCaseDocument(created.id, created.createdAt),
+        restorations: [
+          {
+            id: 'restoration-1',
+            type: 'crown',
+            teeth: [11],
+            pontics: [],
+            targetNodeId: null,
+            marginLines: {},
+            insertionAxis: [0, 0, 1],
+            params: {
+              cementGapMm: 0.05,
+              marginalGapMm: 0.02,
+              spacerStartMm: 5, // way outside 0.5-1.0 mm
+              minWallThicknessMm: 0.5,
+              proximalContactPenetrationMm: 0.02,
+              occlusalContactMm: 0,
+            },
+            stages: {},
+            qc: null,
+          },
+        ],
+      };
+
+      const response = await app.inject({ method: 'PUT', url: `/api/cases/${created.id}`, payload: document });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('rejects a Restoration missing the pontics/targetNodeId fields with 400', async () => {
+      const created = await app
+        .inject({ method: 'POST', url: '/api/cases', payload: { name: 'Missing new fields' } })
+        .then((r) => r.json() as { id: string; createdAt: string });
+
+      const document = {
+        ...createEmptyCaseDocument(created.id, created.createdAt),
+        restorations: [
+          {
+            id: 'restoration-1',
+            type: 'crown',
+            teeth: [11],
+            marginLines: {},
+            insertionAxis: [0, 0, 1],
+            params: {
+              cementGapMm: 0.05,
+              marginalGapMm: 0.02,
+              spacerStartMm: 0.8,
+              minWallThicknessMm: 0.5,
+              proximalContactPenetrationMm: 0.02,
+              occlusalContactMm: 0,
+            },
+            stages: {},
+            qc: null,
+          },
+        ],
+      };
+
+      const response = await app.inject({ method: 'PUT', url: `/api/cases/${created.id}`, payload: document });
       expect(response.statusCode).toBe(400);
     });
 

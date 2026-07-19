@@ -155,6 +155,27 @@ export interface Restoration {
   type: RestorationType;
   /** Bridges list all abutments and pontics. */
   teeth: readonly FdiTooth[];
+  /**
+   * Bridge-only: the subset of `teeth` that are pontics (no prep — suspended
+   * between abutments, never gets a `marginLines` entry). Every tooth in
+   * `teeth` NOT listed here is an abutment (prepped, load-bearing). Always
+   * `[]` for `crown`/`inlay`/`onlay` (single/few-tooth types with no pontic
+   * concept — Phase 3 Task 2's wizard never lets the user mark one for those
+   * types). See CLAUDE.md's domain vocabulary ("pontic", "abutment") and
+   * docs/plans/phase-3-margin-axis.md Task 2's brief ("multi-select for
+   * bridge: abutments + pontics marked distinctly").
+   */
+  pontics: readonly FdiTooth[];
+  /**
+   * The `SceneNode.id` (role `prepDie`/`upperJaw`/`lowerJaw`) this
+   * restoration's margin lines/insertion axis are resolved against — `null`
+   * until the wizard's "assign target scan" step (Phase 3 Task 2) sets it.
+   * This is the "context" `MarginAnchor`'s doc refers to ("meaningful ONLY
+   * relative to whatever mesh the OWNING Restoration currently targets for
+   * this tooth"). Same naming convention as
+   * apps/client/src/state/heatmapStore.ts's `targetNodeId`.
+   */
+  targetNodeId: string | null;
   marginLines: Partial<Record<FdiTooth, MarginLine>>;
   insertionAxis: Vec3;
   params: RestorationParams;

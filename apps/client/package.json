@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@dqcad/clinical-profiles": "*",
     "@dqcad/kernel-workers": "*",
     "i18next": "^26.3.6",
     "react": "^18.3.1",
