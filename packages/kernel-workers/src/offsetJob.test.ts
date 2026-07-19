@@ -308,6 +308,16 @@ describe('offsetMesh job', () => {
     ).rejects.toMatchObject({ name: 'TypeError' });
   });
 
+  it('rejects a pitchMm below MIN_PITCH_MM with the typed PitchTooSmallError, before any heavy work', async () => {
+    const pool = createPool({ size: 1 });
+    const { positions, indices } = icosahedronBuffers();
+    const contentHash = 'icosahedron-offset-pitch-too-small';
+    await buildBvhFor(pool, contentHash, positions, indices);
+    await expect(
+      pool.run('offsetMesh', { contentHash, distanceMm: 0.1, pitchMm: 1e-5 }),
+    ).rejects.toMatchObject({ name: 'PitchTooSmallError' });
+  });
+
   it('propagates EmptyOffsetResultError when the offset surface vanishes (inward past the inradius)', { timeout: 60_000 }, async () => {
     const pool = createPool({ size: 1 });
     const { positions, indices } = icosahedronBuffers(1);

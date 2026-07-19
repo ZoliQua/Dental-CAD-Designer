@@ -15,7 +15,14 @@ import { analyzeMesh } from '../intake/analyze.ts';
 import { weldVertices } from '../intake/weld.ts';
 import type { IndexedMesh } from '../mesh/types.ts';
 import { EDGE_TABLE, TRI_TABLE } from './mcTables.ts';
-import { marchingCubes, marchingCubesSlab, muClampEpsilon, type ScalarGrid } from './marchingCubes.ts';
+import {
+  marchingCubes,
+  marchingCubesSlab,
+  muClampEpsilon,
+  MIN_PITCH_MM,
+  PitchTooSmallError,
+  type ScalarGrid,
+} from './marchingCubes.ts';
 
 /** Analytic sphere SDF `f(p) = |p - center| - radius` sampled on a regular
  * grid — Float64 (ScalarGrid accepts it; no Float32 round-trip so the
@@ -93,6 +100,32 @@ describe('mcTables — transcription-pinning invariants (see mcTables.ts module 
       }
       expect([...used].sort((a, b) => a - b)).toEqual([...expected].sort((a, b) => a - b));
     }
+  });
+});
+
+describe('marchingCubes — MIN_PITCH_MM / PitchTooSmallError (pitch floor, see marchingCubes.ts module doc)', () => {
+  /** Minimal 2x2x2 grid (single cell) with one corner above iso=0 and the
+   * rest below it — guarantees a real edge crossing regardless of pitch, so
+   * the "accepted" case below exercises actual extraction, not just the
+   * absence of a throw. */
+  function tinyCrossingGrid(pitchMm: number): ScalarGrid {
+    const grid = new Float64Array([-1, -1, -1, -1, -1, -1, -1, 1]); // corner (1,1,1) only positive
+    return { grid, dims: [2, 2, 2], origin: [0, 0, 0], pitchMm };
+  }
+
+  it('pitchMm below MIN_PITCH_MM throws PitchTooSmallError (marchingCubes and marchingCubesSlab)', () => {
+    const tooSmall = MIN_PITCH_MM / 2;
+    const grid = tinyCrossingGrid(tooSmall);
+    expect(() => marchingCubes(grid, 0)).toThrow(PitchTooSmallError);
+    expect(() => marchingCubesSlab(grid, 0, 0)).toThrow(PitchTooSmallError);
+    expect(() => muClampEpsilon(tooSmall)).toThrow(PitchTooSmallError);
+  });
+
+  it('pitchMm exactly MIN_PITCH_MM is accepted (boundary is inclusive, ">=")', () => {
+    const grid = tinyCrossingGrid(MIN_PITCH_MM);
+    expect(() => muClampEpsilon(MIN_PITCH_MM)).not.toThrow();
+    const soup = marchingCubes(grid, 0);
+    expect(soup.triangleCount).toBeGreaterThan(0);
   });
 });
 

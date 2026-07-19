@@ -116,6 +116,8 @@ export interface MarginAnchor {
    * the one documented case where they haven't: a migrated legacy anchor). */
   position: Vec3;
   triangleIndex: number;
+  /** Producer-guaranteed: sums to ~1, each component in [0, 1] (mirrors
+   * kernel/src/geodesic/types.ts's `SurfacePoint.barycentric` doc). */
   barycentric: readonly [number, number, number];
 }
 

@@ -133,7 +133,15 @@ const marginAnchorSchema = {
   properties: {
     position: vec3Schema,
     triangleIndex: { type: 'integer' },
-    barycentric: { type: 'array', items: { type: 'number' }, minItems: 3, maxItems: 3 },
+    // Producer-guaranteed invariant (shared-types' `MarginAnchor.barycentric`
+    // doc): each weight in [0, 1] — enforced here so a malformed/out-of-range
+    // component is a 400 at the boundary rather than silently accepted.
+    barycentric: {
+      type: 'array',
+      items: { type: 'number', minimum: 0, maximum: 1 },
+      minItems: 3,
+      maxItems: 3,
+    },
   },
 } as const;
 

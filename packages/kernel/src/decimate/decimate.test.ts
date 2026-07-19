@@ -5,12 +5,13 @@
 // preservation, the QEM-solve fallback chain, and basic reduction behavior.
 // Analytic (sphere volume/deviation) and property-based (fast-check)
 // coverage live in decimate.analytic.test.ts / decimate.property.test.ts.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import { buildHalfedge } from '../halfedge/build.ts';
 import { assertValidTopology, findBoundaryLoops } from '../halfedge/index.ts';
 import { openGridPatchMesh, icosphereMesh } from '../halfedge/halfedge.test-fixtures.ts';
 import { analyzeMesh } from '../intake/analyze.ts';
-import { beginDecimation, decimateMesh } from './decimate.ts';
+import type { IndexedMesh } from '../mesh/types.ts';
+import { beginDecimation, decimateMesh, type RenderOnlyMesh } from './decimate.ts';
 import { pinchFixtureMesh } from './decimate.test-fixtures.ts';
 import { edgeCollapseIsManifoldSafe } from './linkCondition.ts';
 import { addQuadric, quadricError, solveOptimalPosition, triangleQuadric } from './quadric.ts';
@@ -236,5 +237,46 @@ describe('quadric.ts — QEM solve fallback chain', () => {
   it('a degenerate (zero-area) triangle contributes a zero quadric, never NaN/Infinity', () => {
     const q = triangleQuadric(0, 0, 0, 0, 0, 0, 1, 1, 1); // repeated vertex -> zero cross product
     expect(Array.from(q).every((v) => v === 0)).toBe(true);
+  });
+});
+
+// Compile-time-only checks (see marginLine.test.ts's expectTypeOf pattern) —
+// these assertions are no-ops at runtime; what they actually prove is
+// enforced by `npm run typecheck` (tsc), same as the @ts-expect-error below.
+// The claim under test is decimate.ts's RenderOnlyMesh doc: nesting the real
+// mesh one level down (`{ renderMesh: IndexedMesh }`, no top-level
+// positions/indices) is what makes a decimated mesh's WRAPPER rejected by
+// kernel ops at compile time — a brand field alone would not, because
+// TypeScript's structural typing lets extra properties through.
+describe('RenderOnlyMesh — compile-time rejection by kernel ops (decimate.ts module doc)', () => {
+  it('RenderOnlyMesh does not structurally match IndexedMesh', () => {
+    expectTypeOf<RenderOnlyMesh>().not.toMatchTypeOf<IndexedMesh>();
+  });
+
+  it('a RenderOnlyMesh WRAPPER cannot flow into a kernel op expecting IndexedMesh (buildHalfedge)', () => {
+    const mesh = icosphereMesh(5, 1);
+    const result = decimateMesh(mesh, { targetTriangleCount: 40 });
+    // COMPILE-TIME proof (`npm run typecheck`, tsc): result.mesh is
+    // RenderOnlyMesh, a WRAPPER with no top-level positions/indices, so it
+    // cannot structurally satisfy buildHalfedge's IndexedMesh parameter —
+    // the @ts-expect-error below is only satisfied because that assignment
+    // genuinely fails to typecheck. This is the guardrail RenderOnlyMesh
+    // exists for (its doc in decimate.ts). Note what this does NOT forbid:
+    // `.renderMesh` deliberately CAN be extracted for legitimate render use
+    // — every other test in this file calls
+    // `buildHalfedge(result.mesh.renderMesh)` (e.g. line ~55 above) without
+    // any error. Only the WRAPPER itself is rejected; the underlying mesh,
+    // reached explicitly, is not.
+    //
+    // RUNTIME proof (this repo's vitest transform strips types without
+    // checking them, so the line below still executes): wrapped in
+    // expect().toThrow() because RenderOnlyMesh really has no
+    // positions/indices at runtime either — buildHalfedge fails immediately
+    // reading `mesh.indices.length`, a real observable consequence of the
+    // shape mismatch, not just a lint nit.
+    expect(() => {
+      // @ts-expect-error — see this test's comment above.
+      buildHalfedge(result.mesh);
+    }).toThrow();
   });
 });

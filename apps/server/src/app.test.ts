@@ -240,6 +240,56 @@ describe('server app', () => {
       expect(response.statusCode).toBe(400);
     });
 
+    it('rejects a MarginAnchor.barycentric component outside [0, 1] with 400', async () => {
+      const created = await app
+        .inject({ method: 'POST', url: '/api/cases', payload: { name: 'Bad barycentric' } })
+        .then((r) => r.json() as { id: string; createdAt: string });
+
+      const document: CaseDocument = {
+        ...createEmptyCaseDocument(created.id, created.createdAt),
+        restorations: [
+          {
+            id: 'restoration-1',
+            type: 'crown',
+            teeth: [16],
+            marginLines: {
+              16: {
+                anchors: [
+                  {
+                    position: [0, 0, 0],
+                    triangleIndex: 0,
+                    // Out of range: a real barycentric weight is in [0, 1]
+                    // (shared-types' `MarginAnchor.barycentric` doc) —
+                    // 1.5 must be rejected by the schema's per-item bounds.
+                    barycentric: [1.5, -0.5, 0],
+                  },
+                ],
+                closed: false,
+              },
+            },
+            insertionAxis: [0, 0, 1],
+            params: {
+              cementGapMm: 0.05,
+              marginalGapMm: 0.03,
+              spacerStartMm: 0.5,
+              minWallThicknessMm: 0.4,
+              proximalContactPenetrationMm: 0.02,
+              occlusalContactMm: 0.03,
+            },
+            stages: {},
+            qc: null,
+          },
+        ],
+      };
+
+      const response = await app.inject({
+        method: 'PUT',
+        url: `/api/cases/${created.id}`,
+        payload: document,
+      });
+      expect(response.statusCode).toBe(400);
+    });
+
     it('rejects a body.id that disagrees with the URL :id with 400', async () => {
       const created = await app
         .inject({ method: 'POST', url: '/api/cases', payload: { name: 'Mismatched id' } })
