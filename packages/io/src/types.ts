@@ -112,7 +112,7 @@ export class MalformedSyntaxError extends IoParseError {
  * package stays independent of packages/kernel-workers (see the layer rule
  * in CLAUDE.md — kernel-workers depends on io, never the reverse), so this
  * is intentionally distinct from kernel-workers' `JobCancelledError`; the
- * `parseMeshFile` worker job (kernel-workers/src/jobs.ts) translates
+ * `parseMeshFile` worker job (kernel-workers/src/jobs/io.ts) translates
  * between the two at that boundary.
  */
 export class IoStreamCancelledError extends Error {

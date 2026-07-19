@@ -21,10 +21,12 @@ import {
   previewFillSmallHoles,
   previewRemoveComponents,
   previewSplitNonManifoldEdges,
+  previewSplitNonManifoldVertices,
   type FillSmallHolesPreview,
   type MeshStats,
   type RemoveComponentsPreview,
   type SplitNonManifoldEdgesPreview,
+  type SplitNonManifoldVerticesPreview,
 } from '../engine/repair';
 import { useCaseStore } from '../state/caseStore';
 
@@ -40,14 +42,43 @@ export function RepairPanel({ meshId }: RepairPanelProps) {
   // mutation, including a repair applied by a sibling card.
   useCaseStore((state) => state.document);
   const record = caseStore.getMeshRecord(meshId);
+
+  // Bowtie ("non-manifold vertex") detection is NOT part of `MeshStats`
+  // (unlike `componentCount`/`manifoldEdges`/`boundaryEdgeCount` above) —
+  // touching `MeshStats`'s shape would ripple into every OTHER kernel-ops
+  // golden entry that hashes `JSON.stringify(stats)` (intake, offsetMesh —
+  // see scripts/kernel-ops-lib.ts), far outside this task's fillSmallHoles-
+  // only golden-change scope. Detected instead via its own cheap preview
+  // call (same worker job the card itself uses), gating this ONE card
+  // asynchronously rather than synchronously like the other three.
+  const [bowtieCount, setBowtieCount] = useState<number | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setBowtieCount(null);
+    void (async () => {
+      const r = caseStore.getMeshRecord(meshId);
+      if (!r) return;
+      try {
+        const preview = await previewSplitNonManifoldVertices(r);
+        if (!cancelled) setBowtieCount(preview.report.nonManifoldVertexCountBefore);
+      } catch {
+        if (!cancelled) setBowtieCount(0); // detection failure — fail closed (card stays hidden), same as any other card's own error handling
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [meshId]);
+
   if (!record) return null;
 
   const { stats } = record;
   const showRemoveComponents = stats.componentCount > 1;
   const showSplitNonManifold = !stats.manifoldEdges;
+  const showSplitNonManifoldVertices = (bowtieCount ?? 0) > 0;
   const showFillHoles = stats.boundaryEdgeCount > 0;
 
-  if (!showRemoveComponents && !showSplitNonManifold && !showFillHoles) {
+  if (!showRemoveComponents && !showSplitNonManifold && !showSplitNonManifoldVertices && !showFillHoles) {
     return null;
   }
 
@@ -56,6 +87,9 @@ export function RepairPanel({ meshId }: RepairPanelProps) {
       <h3 className="repair-panel__title">{t('repair.panelTitle')}</h3>
       {showRemoveComponents && <RemoveComponentsCard key={`remove-components-${meshId}`} meshId={meshId} />}
       {showSplitNonManifold && <SplitNonManifoldEdgesCard key={`split-non-manifold-${meshId}`} meshId={meshId} />}
+      {showSplitNonManifoldVertices && (
+        <SplitNonManifoldVerticesCard key={`split-non-manifold-vertices-${meshId}`} meshId={meshId} />
+      )}
       {showFillHoles && <FillSmallHolesCard key={`fill-small-holes-${meshId}`} meshId={meshId} />}
     </div>
   );
@@ -231,6 +265,60 @@ function SplitNonManifoldEdgesCard({ meshId }: { meshId: string }) {
           ? t('repair.splitNonManifoldEdges.summary', {
               count: state.preview.report.duplicatedVertexCount,
               edges: state.preview.report.nonManifoldEdgeCountBefore,
+            })
+          : null
+      }
+    />
+  );
+}
+
+function SplitNonManifoldVerticesCard({ meshId }: { meshId: string }) {
+  const { t } = useTranslation();
+  const [state, setState] = useState<CardState<SplitNonManifoldVerticesPreview>>({ status: 'loading' });
+
+  useEffect(() => {
+    let cancelled = false;
+    setState({ status: 'loading' });
+    void (async () => {
+      const record = caseStore.getMeshRecord(meshId);
+      if (!record) return;
+      try {
+        const preview = await previewSplitNonManifoldVertices(record);
+        if (!cancelled) setState({ status: 'ready', preview });
+      } catch (error) {
+        if (!cancelled) setState({ status: 'error', message: errorMessage(error) });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [meshId]);
+
+  async function handleApply(): Promise<void> {
+    if (state.status !== 'ready') return;
+    const { preview } = state;
+    setState({ status: 'applying', preview });
+    try {
+      await applyRepairPreview(preview);
+      setState({ status: 'applied', measurementsCleared: measurementsClearedFromLastOperation() });
+    } catch (error) {
+      setState({ status: 'error', message: errorMessage(error) });
+    }
+  }
+
+  return (
+    <RepairCardShell
+      titleKey="repair.splitNonManifoldVertices.title"
+      descriptionKey="repair.splitNonManifoldVertices.description"
+      testId="repair-card-split-non-manifold-vertices"
+      state={state}
+      onApply={() => void handleApply()}
+      applyDisabled={false}
+      summary={
+        state.status === 'ready' || state.status === 'applying'
+          ? t('repair.splitNonManifoldVertices.summary', {
+              count: state.preview.report.duplicatedVertexCount,
+              vertices: state.preview.report.nonManifoldVertexCountBefore,
             })
           : null
       }

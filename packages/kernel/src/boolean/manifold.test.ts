@@ -7,7 +7,7 @@ import { NonManifoldInputError, intersect, sectionCap, subtract, union, volume }
 // Unit cube (edge length 1), corner at (offsetX, offsetY, offsetZ). Winding
 // verified directly against manifold-3d (status 'NoError', analytic volume)
 // before being used here — see the module doc in ../boolean/manifold.ts and
-// packages/kernel-workers/src/jobs.ts's unitCubeMesh for the same fixture
+// packages/kernel-workers/src/jobs/misc.ts's unitCubeMesh for the same fixture
 // (duplicated rather than shared: kernel must not depend on kernel-workers
 // — see eslint.config.js's boundaries policy — and this is 12 lines of
 // fixture data, not shared logic).

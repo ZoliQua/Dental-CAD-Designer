@@ -31,6 +31,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           lfs: true
+          # fetch-depth: 0 (full history, all branches) is required by the
+          # "Golden version gate" step below — it needs `git merge-base`
+          # against either the previous commit (push) or the PR's target
+          # branch (pull_request), which a shallow (depth-1) checkout
+          # cannot provide. See scripts/check-golden-version-gate.ts's
+          # module doc for the exact base-ref logic this enables.
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -48,11 +55,61 @@ jobs:
         # on npm's workspace postinstall ordering here.
         run: npx prisma generate --schema apps/server/prisma/schema.prisma
 
+      - name: Golden version gate
+        # CI-only merge-boundary check (scripts/check-golden-version-gate.ts):
+        # fails the build if any golden-pinned file (test-fixtures/golden/
+        # kernel-ops.json, test-fixtures/{intake,curvature,offset}/*.golden.json)
+        # changed in this push/PR WITHOUT both a KERNEL_VERSION bump
+        # (packages/kernel/src/index.ts) and a matching docs/CHANGELOG-kernel.md
+        # entry. This is the layer that catches "regenerated golden file,
+        # self-consistent, but no deliberate version bump" — a scenario the
+        # golden regression suite's live-vs-committed hash comparison
+        # (test/golden/kernel-ops.test.ts) cannot see, because a freshly
+        # regenerated golden file matches itself. Runs BEFORE the golden
+        # fixture tests below so a defeated-gate push fails fast, with an
+        # actionable message, before spending time on the full suite.
+        # No-ops (exit 0) on schedule/workflow_dispatch runs, which have no
+        # single push/PR range to diff — see the script's module doc.
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+          GITHUB_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: npx tsx scripts/check-golden-version-gate.ts
+
       - name: Typecheck
         run: npm run typecheck
 
       - name: Lint
         run: npm run lint
+
+      - name: Get Playwright version
+        # Keys the cache below on the exact installed browser-driver
+        # version (from node_modules, post `npm ci`) rather than e.g.
+        # hashing package-lock.json, so a lockfile change that doesn't
+        # touch @playwright/test's resolved version doesn't needlessly
+        # bust the cache, and a version bump always does.
+        id: playwright-version
+        run: echo "version=$(npx playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+
+      - name: Install Playwright browsers
+        # MUST run before "Unit tests" below: `npm test` now includes
+        # apps/client/vitest.config.ts's browser-mode `client-dom` project
+        # (Phase 2 Task 12, provider: 'playwright'), which drives a real
+        # Chromium instance — a fresh runner with no browsers installed
+        # hard-fails that project (and therefore the whole `npm test` step)
+        # if this step runs any later, e.g. its previous position just
+        # before "E2E tests" below. `--with-deps` still installs Chromium's
+        # OS-level dependencies via apt every run (not cached), but the
+        # cache step above skips the actual browser binary download on a
+        # cache hit.
+        run: npx playwright install --with-deps chromium
 
       - name: Unit tests
         run: npm test
@@ -72,6 +129,24 @@ jobs:
         # with an explicit "git lfs pull" message (test/golden/stl-reader.ts)
         # rather than a confusing parse error.
         #
+        # Phase 2 Task 8: this single step also covers BOTH of that task's
+        # CI mandates — the kernel-ops golden regression suite
+        # (test/golden/kernel-ops.test.ts: pinned-param op hashes vs.
+        # test-fixtures/golden/kernel-ops.json, KERNEL_VERSION-gated
+        # enforcement per docs/CHANGELOG-kernel.md) and the journal-replay
+        # harness (test/golden/journal-replay.test.ts: PLAN §6.3 "CI replays
+        # fixture journals on every commit", fast fixture subset) — both
+        # live in the same `golden` vitest project this step already runs,
+        # so no separate workflow steps are needed.
+        #
+        # Runtime-split fix-batch note: this step no longer runs
+        # test/golden/offset.test.ts's expensive clinical-pitch
+        # (DEFAULT_OFFSET_VOXEL_PITCH_MM = 0.02 mm, ~117-118 s) die golden —
+        # that test self-skips here (`it.skipIf`, RUN_CLINICAL_GOLDEN unset)
+        # and instead runs in the `perf-guard` job below. A fast coarse-pitch
+        # pin of the SAME fixture (scripts/kernel-ops-lib.ts's `offsetMesh`
+        # entry, ~2 s) stays in this step's default `golden` project run.
+        #
         # Task 12 note: test/manual/*.ts (real-scan pipeline replication
         # scripts, committed per Task 12's review carry-over — see
         # test/manual/README.md) are excluded from every Vitest project's
@@ -81,9 +156,6 @@ jobs:
         # above; they're still typechecked by the "Typecheck" step (root
         # tsconfig.json's `include` covers `test/`).
         run: npm run test:golden
-
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
 
       - name: E2E tests (smoke + phase1)
         # playwright.config.ts's webServer boots `npm run dev` (client +
@@ -115,7 +187,9 @@ jobs:
     # requestAnimationFrame heartbeat's max gap) while streaming a real
     # ~120 MB generated fixture through the full import pipeline — see that
     # file's module doc for the measurement method and the 50 ms target /
-    # 100 ms CI-gate distinction.
+    # 80 ms CI-gate distinction (tightened from 100 ms by Phase 2 Task 1's
+    # worker-side hashing fix — see docs/demos/phase-1.md's "Update — Phase
+    # 2 Task 1 re-measurement" note).
     #
     # NOT run on every push/PR: generating the fixture + reading/hashing/
     # parsing/welding ~2.5M triangles through real worker jobs takes on the
@@ -131,11 +205,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Checkout
+      - name: Checkout (with Git LFS)
         uses: actions/checkout@v4
-        # No `lfs: true` — the perf fixture is generated on demand
-        # (scripts/generate-large-fixture.ts), not stored in LFS, and this
-        # job's own e2e spec doesn't touch any other LFS-backed fixture.
+        with:
+          # lfs: true — the perf e2e fixture itself is generated on demand
+          # (scripts/generate-large-fixture.ts), not stored in LFS, but this
+          # job ALSO runs the clinical-pitch offset golden below
+          # (RUN_CLINICAL_GOLDEN=1), which needs the real (LFS-backed)
+          # test-fixtures/standin-scans/standin-prep-die.stl content, not a
+          # pointer file.
+          lfs: true
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -149,8 +228,61 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate --schema apps/server/prisma/schema.prisma
 
+      - name: Clinical-pitch offset golden (RUN_CLINICAL_GOLDEN)
+        # test/golden/offset.test.ts's die-at-DEFAULT_OFFSET_VOXEL_PITCH_MM
+        # (0.02 mm) golden — ~117-118 s, moved off the every-push golden
+        # suite (see that file's module doc "Runtime split") onto this
+        # weekly/on-demand job, same rationale as the e2e perf-guard check
+        # below: a slow-moving regression, not something that needs
+        # catching within seconds of the causing commit. The default
+        # `npm run test:golden` suite still pins the SAME fixture at a
+        # coarse pitch (scripts/kernel-ops-lib.ts's `offsetMesh` entry) on
+        # every push/PR.
+        env:
+          RUN_CLINICAL_GOLDEN: '1'
+        run: npx vitest run --project golden test/golden/offset.test.ts
+
+      - name: Offset PHASE ACCEPTANCE (RUN_OFFSET_ACCEPTANCE)
+        # packages/kernel/src/offset/offsetMesh.test.ts's icosphere ±50 µm @
+        # clinical-pitch acceptance tests (Phase 2's literal offset
+        # criterion) — moved off the every-push `kernel` project (Task 12
+        # fix for full-suite timing flakiness under CPU contention: these
+        # ~1-2 min-in-isolation tests were observed hogging enough CPU in
+        # the default parallel `npm test` run to blow OTHER files' timing
+        # budgets/default timeouts as noisy-neighbor collateral damage — see
+        # that test file's module doc). Same weekly/on-demand cadence as the
+        # clinical offset golden above.
+        run: npm run test:offset-acceptance
+
+      - name: 5M-triangle NFR evidence (RUN_LARGE_FIXTURE)
+        # test/golden/halfedge-intake.perf.test.ts's parse -> intake ->
+        # buildHalfedge -> validate -> buildBvh -> heatmap(self) chain at
+        # 2.5M AND 5M triangle scale (PLAN §7's "handle meshes up to ~5M
+        # triangles" NFR — see docs/demos/phase-2.md's "5M-triangle NFR
+        # evidence" section for the measured timings/RSS this job is meant
+        # to keep honest over time). `npm run test:perf-halfedge` generates
+        # both on-demand fixtures itself (scripts/generate-large-fixture.ts,
+        # plain + `--5m`) before running — no Git LFS involved, same as the
+        # e2e perf fixture below. Same weekly/on-demand cadence as every
+        # other check in this job: multi-minute, slow-moving-regression
+        # territory, not a per-push gate.
+        run: npm run test:perf-halfedge
+
       - name: Generate the ~120 MB perf fixture
         run: npm run fixtures:generate-large
+
+      - name: Get Playwright version
+        # Same cache-keying rationale as the main `ci` job's identically
+        # named step above — keyed on the resolved @playwright/test version
+        # (post `npm ci`) rather than the lockfile hash.
+        id: playwright-version
+        run: echo "version=$(npx playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium

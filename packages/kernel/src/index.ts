@@ -6,8 +6,12 @@
 // kernel-workers' manifoldSmoke job), which requires literal `.ts`
 // specifiers rather than this repo's usual `.js` suffix.
 
-/** Kernel package version, surfaced through the server health check. Bumped as the kernel evolves. */
-export const KERNEL_VERSION = '0.0.0';
+/** Kernel package version, surfaced through the server health check. Bumped as the kernel evolves.
+ * See docs/CHANGELOG-kernel.md for what changed at each bump — 0.2.0
+ * (Phase 2 Task 11): fillSmallHoles' curvature-continuity upgrade. 0.2.1
+ * (Fix batch, post-Task-12): metadata-only — golden file gained a recorded
+ * manifoldVersion field; no kernel-ops hash changed. */
+export const KERNEL_VERSION = '0.2.1';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -18,6 +22,7 @@ export {
   volume,
   surfaceArea,
   sectionCap,
+  cleanupMesh,
   NonManifoldInputError,
 } from './boolean/manifold.ts';
 
@@ -69,8 +74,84 @@ export {
 } from './bvh/index.ts';
 
 export {
+  buildHalfedge,
+  prevHalfedge,
+  findNonManifoldVertices,
+  NonManifoldEdgeError,
+  assertValidTopology,
+  debugAssertValidTopology,
+  halfedgeDebugAssertionsEnabled,
+  destinationVertex,
+  nextOutgoingHalfedge,
+  forEachOutgoingHalfedge,
+  oneRingOutgoingHalfedges,
+  oneRingVertices,
+  oneRingFaces,
+  forEachFaceHalfedge,
+  faceVertices,
+  faceNeighbors,
+  findBoundaryLoops,
+  computeEulerCharacteristic,
+  computeGenus,
+  type NonManifoldEdgeInfo,
+  type NonManifoldVertexReport,
+  type EulerCharacteristic,
+  type HalfedgeMesh,
+} from './halfedge/index.ts';
+
+export {
+  cotangentAtVertex,
+  cotangentOpposite,
+  computeCotanWeights,
+  triangleVoronoiAreas,
+  computeMixedVoronoiAreas,
+  computeVertexNormals,
+  computeCurvature,
+  type CurvatureResult,
+} from './curvature/index.ts';
+
+export {
+  computePseudonormals,
+  NonWatertightMeshError,
+  signedClosestPoint,
+  classifyBarycentricFeature,
+  SDF_BARYCENTRIC_EPSILON,
+  sdfGridDims,
+  markCandidateCells,
+  computeSdfGridSlice,
+  sampleSdfGrid,
+  MAX_SDF_GRID_CELLS,
+  SdfGridTooLargeError,
+  type Pseudonormals,
+  type SignedClosestPointResult,
+  type BarycentricFeature,
+  type SdfGridBbox,
+  type SdfGridOptions,
+  type SdfGridDims,
+  type SampleSdfGridOptions,
+  type SampleSdfGridResult,
+} from './sdf/index.ts';
+
+export {
+  marchingCubes,
+  marchingCubesSlab,
+  muClampEpsilon,
+  offsetMesh,
+  offsetGridSpec,
+  offsetErrorBoundMm,
+  maxAbsCoordOf,
+  OFFSET_BAND_MARGIN_PITCHES,
+  EmptyOffsetResultError,
+  type ScalarGrid,
+  type MarchingCubesSoup,
+  type OffsetMeshOptions,
+  type OffsetMeshResult,
+} from './offset/index.ts';
+
+export {
   removeComponents,
   splitNonManifoldEdges,
+  splitNonManifoldVertices,
   fillSmallHoles,
   DEFAULT_MAX_BOUNDARY_EDGES,
   type ComponentInfo,
@@ -85,6 +166,8 @@ export {
   type SkippedHoleReason,
   type SplitNonManifoldEdgesReport,
   type SplitNonManifoldEdgesResult,
+  type SplitNonManifoldVerticesReport,
+  type SplitNonManifoldVerticesResult,
 } from './repair/index.ts';
 
 export {
@@ -103,3 +186,92 @@ export {
   type SectionSvgPolyline,
   type SectionToSvgOptions,
 } from './section/index.ts';
+
+export {
+  evaluateSurfacePoint,
+  surfacePointFromClosestPoint,
+  snapToSurface,
+  surfacePointDistanceSquared,
+  triangleVertexIndices,
+  vertexIndexIfExact,
+  VERTEX_EXACT_BARYCENTRIC_EPSILON,
+  NoCorridorError,
+  dualGraphDijkstra,
+  geodesicPath,
+  GEODESIC_MAX_ITERATIONS,
+  GEODESIC_REL_TOL,
+  snapPolylineGeodesic,
+  resnapPolylineAnchor,
+  type SurfacePoint,
+  type GeodesicPathResult,
+  type GeodesicOptions,
+  type SnappedPolyline,
+} from './geodesic/index.ts';
+
+export {
+  ARC_LENGTH_SUBSTEPS,
+  MIN_CONTROL_POINT_SEPARATION_MM,
+  affectedSpanIndices,
+  centripetalKnots,
+  evaluateSpan,
+  evenlySpacedPoints,
+  fitCatmullRomSpline,
+  integrateArcLength,
+  lerpVec3,
+  polylineLength,
+  resampleCatmullRomSpan,
+  spanCountOf,
+  spanRole,
+  validateControlPoints,
+  SURFACE_SPLINE_MAX_ITERATIONS,
+  SURFACE_SPLINE_REL_TOL,
+  fitSurfaceSpline,
+  fitSurfaceSplineSpan,
+  refitSurfaceSplineControlPoint,
+  resampleSurfaceSpline,
+  fromMarginLine,
+  toMarginLine,
+  type ArcLengthTable,
+  type CatmullRomFitResult,
+  type CatmullRomSpan,
+  type SurfaceSpline,
+  type SurfaceSplineOptions,
+  type SurfaceSplineSpan,
+  type MarginLineLike,
+} from './spline/index.ts';
+
+export {
+  decimateMesh,
+  beginDecimation,
+  zeroQuadric,
+  planeQuadric,
+  triangleQuadric,
+  addQuadric,
+  addQuadricInPlace,
+  quadricError,
+  solveOptimalPosition,
+  DEGENERATE_NORMAL_LENGTH_SQ_EPSILON,
+  QUADRIC_SOLVE_SINGULARITY_EPSILON,
+  edgeCollapseIsManifoldSafe,
+  collapseWouldDuplicateTriangle,
+  oneRingNeighbors,
+  type DecimateMeshOptions,
+  type DecimateMeshResult,
+  type DecimationSession,
+  type Quadric,
+} from './decimate/index.ts';
+
+export {
+  undercutScan,
+  undercutScanBatch,
+  undercutScanRange,
+  RAY_ORIGIN_BIAS_MM,
+  UNDERCUT_BOUNDARY_EPSILON,
+  type UndercutSamplingPolicy,
+  type UndercutScanOptions,
+  type UndercutScanBatchOptions,
+  type UndercutScanResult,
+  type UndercutTriangleRange,
+  type UndercutScanRangeOutput,
+  type UndercutScanRangeStats,
+} from './undercut/index.ts';

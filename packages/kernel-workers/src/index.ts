@@ -1,7 +1,8 @@
 // packages/kernel-workers — worker pool infrastructure (Comlink, transferables,
 // cancellation, progress) for running geometry jobs off the UI thread, in
 // both browser (Web Worker) and Node (worker_threads). See pool.ts for the
-// WorkerPool implementation and jobs.ts for the job registry.
+// WorkerPool implementation and jobs/registry.ts for the job registry (split
+// into jobs/*.ts per-domain modules — see that file's module doc).
 export {
   WorkerPool,
   JobCancelledError,
@@ -43,15 +44,26 @@ export {
   type RaycastMeshResult,
   type DistanceHeatmapPayload,
   type DistanceHeatmapResult,
+  type ComputeCurvaturePayload,
+  type ComputeCurvatureResult,
   type RepairRemoveComponentsPayload,
   type RepairRemoveComponentsResult,
   type RepairSplitNonManifoldEdgesPayload,
   type RepairSplitNonManifoldEdgesResult,
+  type RepairSplitNonManifoldVerticesPayload,
+  type RepairSplitNonManifoldVerticesResult,
   type RepairFillSmallHolesPayload,
   type RepairFillSmallHolesResult,
   type SectionMeshPayload,
   type SectionMeshResult,
-} from './jobs.js';
+  type HashMeshPayload,
+  type HashMeshResult,
+  type GeodesicPathPayload,
+  type GeodesicPathResult,
+  type SnapPolylinePayload,
+  type SnapPolylineResult,
+  type SurfacePointPayload,
+} from './jobs/registry.js';
 export { meshBuffers, type MeshBuffersPayload, type MeshBuffersResult } from './transfer.js';
 // MeshStats/IntakeReport/Bbox: re-exported here (rather than only living on
 // IntakeMeshResult's field types) so apps/client/src/engine — which cannot
@@ -70,6 +82,7 @@ export type {
   RemoveComponentsSelector,
   RepairCounts,
   SplitNonManifoldEdgesReport,
+  SplitNonManifoldVerticesReport,
   FillSmallHolesOptions,
   FillSmallHolesReport,
   SkippedHole,

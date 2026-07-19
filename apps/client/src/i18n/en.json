@@ -32,7 +32,13 @@
     "manifoldSmokeTestButton": "Run manifold smoke test",
     "manifoldSmokeTestRunning": "Manifold: running…",
     "manifoldSmokeTestSuccess": "Manifold: ✓ volume {{volume}}",
-    "manifoldSmokeTestFailure": "Manifold: ✗ failed"
+    "manifoldSmokeTestFailure": "Manifold: ✗ failed",
+    "lodMode": {
+      "auto": "LOD: auto",
+      "on": "LOD: forced on",
+      "off": "LOD: off"
+    },
+    "lodBuilding": "Building LOD ({{count}})…"
   },
   "import": {
     "dropzoneTitle": "Drag & drop STL or PLY files here",
@@ -141,6 +147,26 @@
     "rangeManual": "Apply range",
     "rangeAuto": "Auto range"
   },
+  "curvature": {
+    "panelTitle": "Curvature",
+    "needsMesh": "Add a mesh to the scene to view its curvature.",
+    "meshLabel": "Mesh",
+    "selectPlaceholder": "Choose mesh…",
+    "fieldLabel": "Field",
+    "fieldMean": "Mean (H)",
+    "fieldGaussian": "Gaussian (K)",
+    "runButton": "Run",
+    "running": "Computing…",
+    "errorLabel": "Curvature failed: {{message}}",
+    "statsMin": "Min",
+    "statsMax": "Max",
+    "statsMean": "Mean",
+    "showToggle": "Show curvature",
+    "legendTitle": "Legend",
+    "unitPerMm": "mm⁻¹",
+    "unitPerMm2": "mm⁻²",
+    "rangeAuto": "Auto range"
+  },
   "section": {
     "panelTitle": "Cross-section",
     "needsMesh": "Add a mesh to the scene to take a cross-section.",
@@ -219,11 +245,16 @@
       "description": "Duplicates vertices on edges shared by more than 2 triangles so every edge has at most 2.",
       "summary": "Duplicates {{count}} vertex/vertices across {{edges}} non-manifold edge(s)"
     },
+    "splitNonManifoldVertices": {
+      "title": "Split bowtie vertices",
+      "description": "Duplicates vertices where two or more triangle fans meet only at a single point, so each fan gets its own vertex.",
+      "summary": "Duplicates {{count}} vertex/vertices across {{vertices}} bowtie vertex/vertices"
+    },
     "fillSmallHoles": {
       "title": "Fill small holes",
-      "description": "Closes small boundary loops with a smooth (not curvature-continuous) patch. Larger holes are refused, not filled.",
+      "description": "Closes small boundary loops with a curvature-continuous patch that follows the surrounding surface. Larger holes are refused, not filled.",
       "summary": "Fills {{filled}} of {{found}} hole(s)",
-      "skippedSummary": "{{count}} hole(s) refused (too large to fill safely)",
+      "skippedSummary": "{{count}} hole(s) refused (too large/malformed, or blocked by a bowtie vertex — split bowtie vertices first)",
       "noneToFill": "No holes found."
     }
   }

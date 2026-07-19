@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import type { CaseDocument } from '@dqcad/shared-types';
+import { KERNEL_VERSION } from '@dqcad/kernel';
 import { buildApp } from './app.js';
 import { createEmptyCaseDocument } from './case-document.js';
 
@@ -36,7 +37,12 @@ describe('server app', () => {
     expect(response.json()).toEqual({
       status: 'ok',
       version: packageJson.version,
-      kernelVersion: '0.0.0',
+      // Asserted against the LIVE @dqcad/kernel export, not a hardcoded
+      // literal — a hardcoded '0.0.0' here would break on every legitimate
+      // KERNEL_VERSION bump (Phase 2 Task 9's undercutScan golden addition
+      // is the first one) for a reason unrelated to what this test actually
+      // checks (that /api/health echoes the kernel's real version string).
+      kernelVersion: KERNEL_VERSION,
     });
   });
 

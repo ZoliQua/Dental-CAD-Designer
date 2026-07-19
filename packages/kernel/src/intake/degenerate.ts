@@ -94,10 +94,19 @@ export interface DropDegenerateResult {
  * not a copy — avoiding a gratuitous full-buffer copy (72 MB for a 1M-
  * triangle mesh) when nothing about the vertex buffer actually changed.
  * `indices` is always a freshly allocated `Uint32Array`.
+ *
+ * Accumulation (Phase 2 Task 2 intake scalability rebuild): surviving
+ * triangle indices are written directly into a preallocated `Uint32Array`
+ * sized to the worst case (`triangleCountBefore * 3` — dropping can only
+ * ever keep as many triangles as went in), trimmed to the actual count with
+ * one `.slice()` at the end — never a plain `number[]` accumulated via
+ * `.push()` + `Uint32Array.from()` (see weld.ts's matching doc for why this
+ * matters at multi-million-triangle scale).
  */
 export function dropDegenerateTriangles(mesh: IndexedMesh): DropDegenerateResult {
   const triangleCountBefore = mesh.indices.length / 3;
-  const kept: number[] = [];
+  const keptIndices = new Uint32Array(triangleCountBefore * 3);
+  let keptTriangleCount = 0;
   let degenerateCount = 0;
   let duplicateIndexCount = 0;
 
@@ -109,13 +118,17 @@ export function dropDegenerateTriangles(mesh: IndexedMesh): DropDegenerateResult
       continue;
     }
     const base = t * 3;
-    kept.push(mesh.indices[base]!, mesh.indices[base + 1]!, mesh.indices[base + 2]!);
+    const dst = keptTriangleCount * 3;
+    keptIndices[dst] = mesh.indices[base]!;
+    keptIndices[dst + 1] = mesh.indices[base + 1]!;
+    keptIndices[dst + 2] = mesh.indices[base + 2]!;
+    keptTriangleCount++;
   }
 
   return {
-    mesh: { positions: mesh.positions, indices: Uint32Array.from(kept) },
+    mesh: { positions: mesh.positions, indices: keptIndices.slice(0, keptTriangleCount * 3) },
     triangleCountBefore,
-    triangleCountAfter: kept.length / 3,
+    triangleCountAfter: keptTriangleCount,
     degenerateCount,
     duplicateIndexCount,
   };

@@ -18,7 +18,7 @@
 // per-worker-CACHED BVH — see engine/workers.ts's module doc), the
 // `sectionMesh` job takes the mesh buffers directly and does one bounded
 // pass over the whole mesh with no cross-call cache to keep warm (see
-// kernel-workers' jobs.ts `sectionMesh` job doc) — there is no "build once,
+// kernel-workers' jobs/section.ts `sectionMesh` job doc) — there is no "build once,
 // query many times on the SAME worker" requirement here, so pinning it to a
 // single-worker pool would only serialize section runs against every other
 // measurement pool user for no correctness benefit. A case with multiple

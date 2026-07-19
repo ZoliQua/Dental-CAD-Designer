@@ -9,7 +9,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { writeStlBinary } from '@dqcad/io';
 import { JobCancelledError, WorkerPool } from './pool.js';
-import type { IntakeMeshPayload } from './jobs.js';
+import type { IntakeMeshPayload } from './jobs/registry.js';
 
 const pools: WorkerPool[] = [];
 
@@ -28,7 +28,7 @@ const CUBE_CORNERS: ReadonlyArray<readonly [number, number, number]> = [
   [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
 ];
 
-// Outward-wound unit cube (verified winding — same fixture as jobs.ts's
+// Outward-wound unit cube (verified winding — same fixture as jobs/misc.ts's
 // unitCubeMesh / manifold.test.ts).
 const CUBE_TRIANGLES: ReadonlyArray<readonly [number, number, number]> = [
   [0, 2, 1], [0, 3, 2],
@@ -106,7 +106,7 @@ describe('WorkerPool — intakeMesh: indexed payload', () => {
   });
 
   it('reports the same [0.25, 0.5, 0.75, 1] progress sequence as the soup case, even with the weld stage skipped', async () => {
-    // jobs.ts's INTAKE_STAGE_FRACTIONS doc: "When the weld stage is skipped
+    // jobs/intake.ts's INTAKE_STAGE_FRACTIONS doc: "When the weld stage is skipped
     // (indexed input) progress starts at the same first checkpoint anyway
     // ... keeping the fraction sequence identical for both input kinds so UI
     // progress bars behave the same regardless of source format." This test

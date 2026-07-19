@@ -108,23 +108,46 @@ export type Theme = 'dark' | 'light';
 
 /** 'select': the existing click-pick-a-SceneNode behavior (`onSelect`).
  * 'measure': a measurement tool (engine/ToolManager.ts) is active — clicks
- * report a candidate mesh + world-space ray via `onMeasurePick` INSTEAD of
- * selecting a node (see `SceneManagerOptions.onMeasurePick`'s doc for why a
- * ray, not a point). */
+ * report every visible candidate mesh + a world-space ray via
+ * `onMeasurePick` INSTEAD of selecting a node (see
+ * `SceneManagerOptions.onMeasurePick`'s and `MeasurePickCandidate`'s docs
+ * for why a ray + candidate SET, not a single resolved point/mesh). */
 export type InteractionMode = 'select' | 'measure';
 
-/** What a measurement-mode click reports — SceneManager's Float32 render-
- * copy raycast only ever picks the candidate mesh/ray CHEAPLY; the
- * authoritative Float64 pick point is always computed afterwards by
- * ToolManager.ts via a worker job (this task's brief's central correctness
- * requirement — see ToolManager.ts's module doc). `rayOrigin`/`rayDirection`
- * are in THIS SceneManager's render frame (Float32-safe, re-centered at the
- * case bbox centroid — meshStore.ts's `getWorldOffset()`) — the caller
- * (ui/Viewport.tsx) is responsible for adding that offset back before
- * handing the ray to ToolManager, exactly as it already does for
- * `RenderNode`/mesh positions. */
+/** What a measurement-mode click reports.
+ *
+ * `candidateNodeIds` is EVERY currently visible SceneNode id — NOT a single
+ * "the" candidate mesh (Phase 2 Task 10 fix batch, item 1: "LOD
+ * candidate-mesh mis-selection can silently measure the wrong surface").
+ * Earlier this field was a single `nodeId` chosen by intersecting the click
+ * ray against the (possibly LOD-decimated) Float32 render copies and taking
+ * Three.js's nearest hit — in a multi-mesh scene that's only an
+ * APPROXIMATION of which mesh the ray truly hits first: an LOD's silhouette
+ * can bulge outward (stealing a hit that really belongs to a neighboring
+ * mesh) or shrink inward (missing a hit — and therefore missing that mesh
+ * from any single-candidate result — entirely) relative to the true Float64
+ * surface. Picking a single "nearest" candidate from that approximation and
+ * trusting it is exactly the bug: `ToolManager.handlePick` used to re-cast
+ * ONLY against that one candidate's Float64 master, so a wrong candidate
+ * produced a legitimate-looking hit on the WRONG mesh, silently.
+ *
+ * The fix: this class no longer tries to pick a winner at all. It reports
+ * every visible node — cheap and always correct as an upper bound, since a
+ * mesh not in this list truly cannot be visible under the cursor — and
+ * `ToolManager.handlePick` re-casts the SAME ray against EVERY candidate's
+ * Float64 master (via the `raycastMesh` worker job) and keeps only the
+ * globally nearest TRUE intersection. This never touches render/LOD
+ * geometry for the authoritative decision, so it is immune to any LOD
+ * silhouette mismatch by construction (see engine/lod.ts's module doc for
+ * the residual — much smaller scale — risk that remains).
+ *
+ * `rayOrigin`/`rayDirection` are in THIS SceneManager's render frame
+ * (Float32-safe, re-centered at the case bbox centroid — meshStore.ts's
+ * `getWorldOffset()`) — the caller (ui/Viewport.tsx) is responsible for
+ * adding that offset back before handing the ray to ToolManager, exactly as
+ * it already does for `RenderNode`/mesh positions. */
 export interface MeasurePickCandidate {
-  nodeId: string;
+  candidateNodeIds: readonly string[];
   rayOrigin: readonly [number, number, number];
   rayDirection: readonly [number, number, number];
 }
@@ -1017,28 +1040,39 @@ export class SceneManager {
       -(((clientY - rect.top) / rect.height) * 2 - 1),
     );
     this.raycaster.setFromCamera(ndc, this.activeCamera);
-    const pickableMeshes = [...this.meshEntries.values()]
-      .filter((entry) => entry.visible)
-      .map((entry) => entry.mesh);
-    const hits = this.raycaster.intersectObjects(pickableMeshes, false);
-    const hitId = hits.length > 0 ? hits[0]!.object.name : null;
 
     if (this.interactionMode === 'measure') {
+      // Deliberately NOT a Three.js/render-copy intersection test — see
+      // `MeasurePickCandidate`'s doc for why picking a single "nearest"
+      // candidate from the (possibly LOD-decimated) render geometry is
+      // exactly the bug this reports around. Every visible node id is
+      // reported; ToolManager.handlePick re-casts against every one of
+      // their Float64 masters and keeps the globally nearest TRUE hit.
       // Measurement mode has no "click empty space to deselect" analogue —
-      // a miss is simply ignored (see `SceneManagerOptions.onMeasurePick`'s
+      // a miss (no visible mesh at all, or every candidate's true raycast
+      // misses) is simply ignored (see `SceneManagerOptions.onMeasurePick`'s
       // doc). The reported ray is `this.raycaster.ray`'s own origin/direction
       // (already exactly what `setFromCamera` computed for this click, in
       // THIS SceneManager's render frame) — no separate re-derivation needed.
-      if (hitId) {
+      const candidateNodeIds = [...this.meshEntries.entries()]
+        .filter(([, entry]) => entry.visible)
+        .map(([id]) => id);
+      if (candidateNodeIds.length > 0) {
         const { origin, direction } = this.raycaster.ray;
         this.onMeasurePick?.({
-          nodeId: hitId,
+          candidateNodeIds,
           rayOrigin: [origin.x, origin.y, origin.z],
           rayDirection: [direction.x, direction.y, direction.z],
         });
       }
       return;
     }
+
+    const pickableMeshes = [...this.meshEntries.values()]
+      .filter((entry) => entry.visible)
+      .map((entry) => entry.mesh);
+    const hits = this.raycaster.intersectObjects(pickableMeshes, false);
+    const hitId = hits.length > 0 ? hits[0]!.object.name : null;
     this.onSelect?.(hitId);
   }
 

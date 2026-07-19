@@ -134,7 +134,7 @@ Replaces the placeholder scene. All Three.js inside `apps/client/src/engine/`:
 
 ### Deviations (Phase 1)
 
-- Hole filling ships smooth-but-not-curvature-continuous in Phase 1 (documented at the API); curvature-continuous upgrade lands with the Phase 2 curvature machinery. QC gates (Phase 4+) treat filled regions like any other geometry.
+- Hole filling ships smooth-but-not-curvature-continuous in Phase 1 (documented at the API); curvature-continuous upgrade lands with the Phase 2 curvature machinery. QC gates (Phase 4+) treat filled regions like any other geometry. **Retired in Phase 2 Task 11** — see `docs/CHANGELOG-kernel.md`'s `[0.2.0]` entry.
 
 **Verify:** lint/typecheck/test green. Commit.
 

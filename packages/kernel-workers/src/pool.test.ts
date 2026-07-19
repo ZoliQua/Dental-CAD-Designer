@@ -4,7 +4,7 @@
 // bundling+running the client dev smoke panel (see apps/client/src/engine/
 // workers.ts) since jsdom doesn't implement real Web Workers.
 import { afterEach, describe, expect, it } from 'vitest';
-import type { JobName } from './jobs.js';
+import type { JobName } from './jobs/registry.js';
 import {
   JobCancelledError,
   PoolDestroyedError,
@@ -94,7 +94,7 @@ describe('WorkerPool — longTask progress', () => {
     // one this `run()` call's own result travels over, so nothing about
     // postMessage ordering alone would guarantee `fractions` already holds
     // the final `1` by the time `run()` resolves above. What makes it
-    // deterministic is jobs.ts's `runJob` dispatcher explicitly awaiting
+    // deterministic is jobs/registry.ts's `runJob` dispatcher explicitly awaiting
     // every progress delivery (including this job's last one) before it
     // lets its own result go out — see runJob's "Progress delivery ordering
     // contract" doc comment and pool.ts's `RunJobOptions.onProgress` doc for
@@ -258,7 +258,7 @@ describe('WorkerPool — worker crash', () => {
   it('rejects the in-flight run() with WorkerCrashedError, and a later run() on the same pool succeeds (dead worker not recycled)', async () => {
     const pool = createPool({ size: 1 });
 
-    // '__test_crashWorker__' is a TEST-ONLY job (see jobs.ts's
+    // '__test_crashWorker__' is a TEST-ONLY job (see jobs/registry.ts's
     // testOnlyRegistry doc comment) that calls process.exit(1) inside the
     // worker — genuinely killing the worker thread, unlike a normal thrown
     // error (which Comlink would just turn into an ordinary rejection). It
@@ -270,6 +270,33 @@ describe('WorkerPool — worker crash', () => {
     // Pool size is 1: this can only succeed if the crashed worker was
     // evicted (not returned to `idle`) and a fresh replacement was spawned.
     const result = await pool.run('longTask', { iterations: 5 });
+    expect(result.sum).toBe(10);
+  });
+
+  it('a GENERIC (non-affinity) job queued behind a crashing job completes on a respawned worker, not a hang (Fix batch: handleWorkerCrash previously never re-served this.waiters)', async () => {
+    // size: 1 — the only worker is occupied by the crashing job, so `queued`
+    // below is provably parked in the pool-wide generic `this.waiters` FIFO
+    // (there is no other worker it could have been routed to).
+    const pool = createPool({ size: 1 });
+
+    // No `await` between this and `queued` below: '__test_crashWorker__'
+    // synchronously claims the sole worker inside acquireWorker()'s
+    // idle/spawn branch before this call's first real `await`, so `queued`
+    // is guaranteed to see the pool already at capacity and land in the
+    // Waiter branch — mirroring the existing "affinity-crash-while-queued"
+    // test's back-to-back-calls idiom (see the affinity describe block
+    // below), just without an affinityKey.
+    const crashing = pool.run('__test_crashWorker__' as JobName, { iterations: 1 });
+    const queued = pool.run('longTask', { iterations: 5 });
+
+    await expect(crashing).rejects.toBeInstanceOf(WorkerCrashedError);
+
+    // Before this fix, `queued` would hang forever: handleWorkerCrash()
+    // spliced the dead slot out (freeing capacity) but never triggered a
+    // fresh spawn on the generic waiters' behalf, and releaseWorker() itself
+    // early-returns for a crashed worker, so nothing else would ever drain
+    // `this.waiters`.
+    const result = await queued;
     expect(result.sum).toBe(10);
   });
 });
@@ -381,6 +408,282 @@ describe('WorkerPool — queueing', () => {
       iterationCounts.map((iterations) => pool.run('longTask', { iterations })),
     );
 
+    results.forEach((result, i) => {
+      const n = iterationCounts[i]!;
+      expect(result.sum).toBe((n * (n - 1)) / 2);
+    });
+  });
+});
+
+describe('WorkerPool — affinity routing (RunJobOptions.affinityKey)', () => {
+  it('routes two sequential calls with the SAME affinityKey to the SAME worker, proving per-worker cache locality on a multi-worker pool', async () => {
+    // size: 4 — large enough that, absent affinity, two sequential IDLE
+    // acquisitions have no guarantee of landing on the same worker (idle.pop()
+    // is LIFO over whichever workers happen to be idle). buildBvh/
+    // measurePointToSurface are the real per-worker-cache jobs this feature
+    // exists for; using them directly (rather than echoMesh/longTask) proves
+    // the actual cache-hit behavior, not just "same worker instance".
+    const pool = createPool({ size: 4 });
+    const { positions, indices } = buildDeterministicMesh(50);
+    const contentHash = 'affinity-same-key';
+
+    await pool.run(
+      'buildBvh',
+      { contentHash, positions, indices },
+      { affinityKey: contentHash },
+    );
+
+    // Occupy other workers first so a NON-affinity-aware pick would have
+    // every incentive to pick a different (idle) worker instead: spin up 3
+    // more workers with unrelated jobs, release them back to idle, so the
+    // pool's `idle` LIFO stack has several OTHER candidates sitting on top
+    // of the buildBvh worker by the time measurePointToSurface runs below.
+    await Promise.all([
+      pool.run('longTask', { iterations: 5 }),
+      pool.run('longTask', { iterations: 5 }),
+      pool.run('longTask', { iterations: 5 }),
+    ]);
+
+    // If this landed on a DIFFERENT worker than buildBvh above, it would
+    // reject with BvhNotCachedError (that worker's own bvhCache never saw
+    // this contentHash) — succeeding proves affinity routing worked.
+    const measured = await pool.run(
+      'measurePointToSurface',
+      { contentHash, point: [0, 0, 0] },
+      { affinityKey: contentHash },
+    );
+    expect(measured.distance).toBeGreaterThanOrEqual(0);
+  });
+
+  it('a busy affinity target is QUEUED for specifically (not stolen from, not routed to a different idle worker)', async () => {
+    // A deterministic (non-timing-based) proof, using the real cache-bearing
+    // buildBvh/measurePointToSurface jobs so misrouting is observable as a
+    // hard error (BvhNotCachedError) rather than inferred from timing: if
+    // the affinity-routed call below were WRONGLY handed the pool's other
+    // idle worker instead of queueing for the busy target, that worker
+    // never had `buildBvh` called for this contentHash and would reject
+    // immediately.
+    const pool = createPool({ size: 2 });
+    const { positions, indices } = buildDeterministicMesh(50);
+    const key = 'affinity-busy-target';
+
+    // Establishes worker W (one of the pool's two workers) as `key`'s
+    // affinity target, with a real cached BVH.
+    await pool.run(
+      'buildBvh',
+      { contentHash: key, positions, indices },
+      { affinityKey: key },
+    );
+
+    // Occupy W again with a slow job under the SAME affinityKey —
+    // deterministically confirmed "started running" via its first progress
+    // callback before the affinity-routed call below is issued, so this is
+    // provably a busy-target scenario, not a race against W still being
+    // idle. (longTask is a different job name than buildBvh, but affinity
+    // routing keys off WORKER identity, not job name — see pool.ts's
+    // `acquireWorker`.)
+    let observedProgress = false;
+    let resolveStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      resolveStarted = resolve;
+    });
+    const slowRun = pool.run(
+      'longTask',
+      { iterations: 2_000_000 },
+      {
+        affinityKey: key,
+        onProgress: (fraction) => {
+          if (!observedProgress && fraction > 0) {
+            observedProgress = true;
+            resolveStarted();
+          }
+        },
+      },
+    );
+    await started;
+
+    // The pool's SECOND worker is idle and would happily serve a
+    // non-affinity-aware pick — but this call asks for `key`'s target (W,
+    // busy) specifically. Queueing for W (not stealing, not falling back to
+    // the idle worker) means it can only succeed once W finishes `slowRun`
+    // AND still has the cache — i.e. this resolving successfully (not
+    // rejecting with BvhNotCachedError) is the actual proof.
+    const measured = await pool.run(
+      'measurePointToSurface',
+      { contentHash: key, point: [0, 0, 0] },
+      { affinityKey: key },
+    );
+    expect(measured.distance).toBeGreaterThanOrEqual(0);
+
+    const slowResult = await slowRun;
+    expect(slowResult.sum).toBe((2_000_000 * 1_999_999) / 2);
+  });
+
+  it('a stale affinity target (worker crashed) falls back to a fresh acquisition instead of hanging', async () => {
+    const pool = createPool({ size: 1 });
+    const key = 'affinity-stale-target';
+
+    // '__test_crashWorker__' genuinely kills the worker thread (see the
+    // "WorkerPool — worker crash" describe block above) — this establishes
+    // (then immediately invalidates) `key`'s affinity target.
+    await expect(
+      pool.run('__test_crashWorker__' as JobName, { iterations: 1 }, { affinityKey: key }),
+    ).rejects.toBeInstanceOf(WorkerCrashedError);
+
+    // A later call with the SAME key must not hang waiting for the dead
+    // worker — it should fall through to a fresh spawn and succeed.
+    const result = await pool.run('longTask', { iterations: 5 }, { affinityKey: key });
+    expect(result.sum).toBe(10);
+  });
+
+  it('an affinity-targeted wait is abortable while queued, without affecting the target worker or the pool', async () => {
+    const pool = createPool({ size: 1 });
+    const key = 'affinity-abort-while-queued';
+
+    await pool.run('longTask', { iterations: 1 }, { affinityKey: key });
+
+    const first = pool.run('longTask', { iterations: 200_000 }, { affinityKey: key });
+    const controller = new AbortController();
+    const second = pool.run(
+      'longTask',
+      { iterations: 10 },
+      { affinityKey: key, signal: controller.signal },
+    );
+    controller.abort();
+
+    await expect(second).rejects.toBeInstanceOf(JobCancelledError);
+    const firstResult = await first;
+    expect(firstResult.sum).toBe((200_000 * 199_999) / 2);
+
+    // Pool (and the affinity target) remain usable afterward.
+    const after = await pool.run('longTask', { iterations: 5 }, { affinityKey: key });
+    expect(after.sum).toBe(10);
+  });
+
+  it('destroy() rejects an in-flight affinity-targeted wait with PoolDestroyedError', async () => {
+    const pool = createPool({ size: 1 });
+    const key = 'affinity-destroy-while-queued';
+
+    await pool.run('longTask', { iterations: 1 }, { affinityKey: key });
+
+    const holdWorker = pool.run('longTask', { iterations: 500_000 }, { affinityKey: key });
+    // Give the pool a tick to actually start `holdWorker` on the worker
+    // before queueing the targeted waiter behind it — otherwise this could
+    // race `holdWorker` for the worker itself (both would just be ordinary
+    // FIFO/targeted acquisitions with no meaningful destroy-while-queued
+    // race to exercise). At this point the `queued` call below is
+    // guaranteed to be a TARGETED wait (the only worker is busy running
+    // `holdWorker`).
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const queued = pool.run('longTask', { iterations: 5 }, { affinityKey: key });
+    const destroyPromise = pool.destroy();
+
+    await expect(queued).rejects.toBeInstanceOf(PoolDestroyedError);
+    await expect(holdWorker).rejects.toBeInstanceOf(PoolDestroyedError);
+    await destroyPromise;
+  });
+
+  it('a job queued behind a busy affinity target rejects with WorkerCrashedError (not a hang) when the target crashes mid-queue, and the affinity mapping is cleaned', async () => {
+    // size: 2 — mirrors the "busy affinity target" test above: a second,
+    // idle worker sits in the pool the whole time, so a passing result
+    // proves the queued call stayed parked on the (crashing) target rather
+    // than ever being handed the other, healthy worker.
+    const pool = createPool({ size: 2 });
+    const key = 'affinity-crash-while-queued';
+
+    // Establishes worker W as `key`'s affinity target (idle afterward).
+    await pool.run('longTask', { iterations: 1 }, { affinityKey: key });
+
+    // Occupies W with the genuine-crash test job, under the SAME
+    // affinityKey so it's provably routed to W (not the pool's other idle
+    // worker). No `await` between this and the `queued` call below: W is
+    // synchronously removed from `idle` inside acquireWorker()'s
+    // idle-hit branch (see pool.ts) before this call's first real
+    // `await`, so the very next synchronous call already sees W as "live
+    // but not idle" (busy) and queues for it — mirroring the existing
+    // "still QUEUED" cancellation test's back-to-back-calls idiom, rather
+    // than relying on a `setTimeout` to *probably* have started the crash
+    // job.
+    const crashing = pool.run(
+      '__test_crashWorker__' as JobName,
+      { iterations: 1 },
+      { affinityKey: key },
+    );
+
+    // Queues specifically for W (busy) rather than being routed to the
+    // pool's other, idle worker or falling into the generic FIFO queue.
+    const queued = pool.run('longTask', { iterations: 5 }, { affinityKey: key });
+
+    // W genuinely dies (process.exit inside the worker) while `queued` is
+    // still parked in `targetedWaiters` for it — handleWorkerCrash() must
+    // reject BOTH the in-flight crashing job AND the targeted waiter
+    // behind it; before this fix's regression coverage, only the former
+    // was exercised.
+    await expect(crashing).rejects.toBeInstanceOf(WorkerCrashedError);
+    await expect(queued).rejects.toBeInstanceOf(WorkerCrashedError);
+
+    // Mapping cleaned: a later call with the same key doesn't hang trying
+    // to route to (or wait on) the now-dead W — it's treated as fresh and
+    // succeeds via a live worker.
+    const after = await pool.run('longTask', { iterations: 5 }, { affinityKey: key });
+    expect(after.sum).toBe(10);
+  });
+
+  it('affinityKey whose FIRST spawn attempt fails: no bogus mapping is recorded, and a later call with the same key spawns and routes normally once the seam heals', async () => {
+    let shouldFail = true;
+    const pool = createPool({
+      size: 1,
+      spawnWorkerOverride: (onCrash) => {
+        if (shouldFail) {
+          shouldFail = false;
+          return Promise.reject(new Error('simulated worker construction failure'));
+        }
+        return spawnWorker(onCrash);
+      },
+    });
+    const key = 'affinity-spawn-construction-failure';
+
+    // First call for `key`: no existing affinity target yet, so
+    // acquireWorker() falls straight into the SPAWN branch — which fails
+    // via the seam above. Because this rejects before acquireWorker()
+    // ever resolves, run()'s `this.affinityTargets.set(affinityKey,
+    // worker.id)` line (only reached AFTER a successful acquisition, past
+    // both the destroyed/aborted rechecks) never runs: no mapping is
+    // recorded for a worker that never came to exist.
+    await expect(
+      pool.run('longTask', { iterations: 5 }, { affinityKey: key }),
+    ).rejects.toThrow(/simulated worker construction failure/);
+
+    // A later call with the SAME key must not hang waiting on a bogus
+    // target (there is none) — it's treated as a fresh acquisition, spawns
+    // a real worker (the seam only failed once), and succeeds. This
+    // establishes `key`'s REAL affinity target for the first time.
+    const result = await pool.run('longTask', { iterations: 5 }, { affinityKey: key });
+    expect(result.sum).toBe(10);
+
+    // And that real target is now genuinely used for affinity routing: on
+    // this size-1 pool, a cache-bearing measurePointToSurface call under
+    // the same key can only succeed by landing on the SAME worker that
+    // built the BVH — proving the earlier failed spawn attempt left no
+    // dangling or incorrect mapping that could misroute (or hang) a call
+    // made after the seam healed.
+    const { positions, indices } = buildDeterministicMesh(50);
+    await pool.run('buildBvh', { contentHash: key, positions, indices }, { affinityKey: key });
+    const measured = await pool.run(
+      'measurePointToSurface',
+      { contentHash: key, point: [0, 0, 0] },
+      { affinityKey: key },
+    );
+    expect(measured.distance).toBeGreaterThanOrEqual(0);
+  });
+
+  it('no affinityKey: existing idle/spawn/FIFO-waiter behavior is completely unaffected (regression guard)', async () => {
+    const pool = createPool({ size: 2 });
+    const iterationCounts = [10, 20, 30, 40];
+    const results = await Promise.all(
+      iterationCounts.map((iterations) => pool.run('longTask', { iterations })),
+    );
     results.forEach((result, i) => {
       const n = iterationCounts[i]!;
       expect(result.sum).toBe((n * (n - 1)) / 2);

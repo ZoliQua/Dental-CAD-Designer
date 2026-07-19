@@ -8,8 +8,8 @@
 // `.ts`-extension relative imports (not this repo's usual `.js` suffix,
 // contrast packages/shared-types): this module is reachable via NATIVE Node
 // module resolution, not just bundler/vitest resolution — kernel-workers'
-// manifoldSmoke job (packages/kernel-workers/src/jobs.ts) imports
-// '@dqcad/kernel', and worker-entry.node.ts loads jobs.ts directly through
+// manifoldSmoke job (packages/kernel-workers/src/jobs/misc.ts) imports
+// '@dqcad/kernel', and worker-entry.node.ts loads jobs/registry.ts directly through
 // Node's own loader (no bundler in between) inside a worker_threads worker.
 // Node's native TS type-stripping resolves relative specifiers by their
 // literal extension — it does NOT map a `.js` specifier to a sibling `.ts`
@@ -101,10 +101,14 @@ export function initManifold(): Promise<ManifoldToplevel> {
  * `Mesh` (Float32 vertProperties) — the input side of manifold-3d's WASM
  * boundary.
  *
- * @errorBound This is the ONE documented Float64→Float32 exception in the
- * kernel (docs/plans/phase-0-foundation.md Global Constraints: "the
+ * @errorBound This is ONE of TWO documented Float64→Float32 exceptions in
+ * the kernel (docs/plans/phase-0-foundation.md Global Constraints: "the
  * manifold-3d WASM boundary converts Float64→Float32; the wrapper documents
- * this as an error bound"). Casting a Float64 coordinate to Float32 rounds
+ * this as an error bound") — the other is the SDF grid's Float32 storage
+ * boundary (`packages/kernel/src/sdf/grid.ts`'s module doc, "Grid storage:
+ * Float32, not Float64"), which documents its own, separately-derived error
+ * budget; the two are independent boundaries, not the same exception cited
+ * twice. Casting a Float64 coordinate to Float32 rounds
  * it to Float32's ~7 significant decimal digits (machine epsilon
  * 2^-23 ≈ 1.19e-7), bounding the RELATIVE error introduced by this cast to
  * ~1.2e-7. At the mm scale used throughout this kernel, that is at most
@@ -228,6 +232,28 @@ export async function volume(mesh: IndexedMesh): Promise<number> {
  * {@link NonManifoldInputError} if `mesh` is not watertight. */
 export async function surfaceArea(mesh: IndexedMesh): Promise<number> {
   return withManifold(mesh, (manifold) => manifold.surfaceArea());
+}
+
+/**
+ * Manifold cleanup pass (Phase 2 Task 7's offset pipeline, step 3): round-
+ * trips `mesh` through a manifold-3d `Manifold` construction and back. The
+ * construction VALIDATES the mesh is an oriented 2-manifold (rejecting with
+ * {@link NonManifoldInputError} otherwise) and — per manifold-3d's
+ * documented constructor behavior — "will collapse degenerate triangles and
+ * unnecessary vertices", so the returned mesh can differ from the input in
+ * both vertex positions (Float32 boundary, below) and topology
+ * (degenerate-sliver collapse). Callers needing post-cleanup facts must
+ * re-run `analyzeMesh` on the RESULT (offsetMesh.ts does).
+ *
+ * @errorBound Inherits {@link toManifoldMesh}'s documented Float64→Float32
+ * boundary: each coordinate is rounded once to Float32 (relative error
+ * ≤ ~1.2e-7; ≤ 1.2e-7 * |coordinate| mm absolute) on the way in and widened
+ * exactly on the way out. No other positional change is introduced — the
+ * collapse step removes degenerate topology, it does not smooth or move
+ * surviving vertices beyond that cast.
+ */
+export async function cleanupMesh(mesh: IndexedMesh): Promise<IndexedMesh> {
+  return withManifold(mesh, (manifold) => fromManifoldMesh(manifold.getMesh()));
 }
 
 // ---------------------------------------------------------------------------

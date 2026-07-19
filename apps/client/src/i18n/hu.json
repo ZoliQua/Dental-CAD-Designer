@@ -32,7 +32,13 @@
     "manifoldSmokeTestButton": "Manifold teszt futtatása",
     "manifoldSmokeTestRunning": "Manifold: fut…",
     "manifoldSmokeTestSuccess": "Manifold: ✓ térfogat {{volume}}",
-    "manifoldSmokeTestFailure": "Manifold: ✗ sikertelen"
+    "manifoldSmokeTestFailure": "Manifold: ✗ sikertelen",
+    "lodMode": {
+      "auto": "LOD: automatikus",
+      "on": "LOD: kényszerítve be",
+      "off": "LOD: ki"
+    },
+    "lodBuilding": "LOD készítése ({{count}})…"
   },
   "import": {
     "dropzoneTitle": "Húzza ide az STL vagy PLY fájlokat",
@@ -141,6 +147,26 @@
     "rangeManual": "Tartomány alkalmazása",
     "rangeAuto": "Automatikus tartomány"
   },
+  "curvature": {
+    "panelTitle": "Görbület",
+    "needsMesh": "Adjon a jelenethez egy hálót a görbület megtekintéséhez.",
+    "meshLabel": "Háló",
+    "selectPlaceholder": "Válasszon hálót…",
+    "fieldLabel": "Mező",
+    "fieldMean": "Átlagos (H)",
+    "fieldGaussian": "Gauss-féle (K)",
+    "runButton": "Futtatás",
+    "running": "Számítás…",
+    "errorLabel": "A görbület számítása sikertelen: {{message}}",
+    "statsMin": "Min",
+    "statsMax": "Max",
+    "statsMean": "Átlag",
+    "showToggle": "Görbület megjelenítése",
+    "legendTitle": "Jelmagyarázat",
+    "unitPerMm": "mm⁻¹",
+    "unitPerMm2": "mm⁻²",
+    "rangeAuto": "Automatikus tartomány"
+  },
   "section": {
     "panelTitle": "Keresztmetszet",
     "needsMesh": "Adjon hálót a jelenethez a keresztmetszet elkészítéséhez.",
@@ -219,11 +245,16 @@
       "description": "Megkettőzi a csúcsokat a 2-nél több háromszög által megosztott éleken, hogy minden él legfeljebb 2 háromszöghöz tartozzon.",
       "summary": "{{count}} csúcs megkettőzve {{edges}} nem sokaság élen"
     },
+    "splitNonManifoldVertices": {
+      "title": "Csokornyakkendő-csúcsok szétválasztása",
+      "description": "Megkettőzi azokat a csúcsokat, ahol két vagy több háromszög-legyező csak egyetlen pontban találkozik, hogy minden legyező saját csúcsot kapjon.",
+      "summary": "{{count}} csúcs megkettőzve {{vertices}} csokornyakkendő-csúcson"
+    },
     "fillSmallHoles": {
       "title": "Kis lyukak kitöltése",
-      "description": "Sima (nem görbület-folytonos) folttal zárja le a kis határhurkokat. A nagyobb lyukakat elutasítja, nem tölti ki.",
+      "description": "Görbület-folytonos folttal zárja le a kis határhurkokat, amely követi a környező felületet. A nagyobb lyukakat elutasítja, nem tölti ki.",
       "summary": "{{found}} lyukból {{filled}} kitöltve",
-      "skippedSummary": "{{count}} lyuk elutasítva (túl nagy a biztonságos kitöltéshez)",
+      "skippedSummary": "{{count}} lyuk elutasítva (túl nagy/hibás alakú, vagy csokornyakkendő-csúcs blokkolja – előbb válassza szét a csokornyakkendő-csúcsokat)",
       "noneToFill": "Nem található lyuk."
     }
   }

@@ -17,7 +17,7 @@ import * as Comlink from 'comlink';
 // doc comment above) — see tsconfig.base.json's allowImportingTsExtensions
 // comment for why.
 import nodeEndpoint from './comlink-node-adapter.ts';
-import { runJob } from './jobs.ts';
+import { runJob } from './jobs/registry.ts';
 
 if (!parentPort) {
   throw new Error(

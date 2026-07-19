@@ -7,6 +7,7 @@
 // doc in types.ts).
 
 import type { IndexedMesh } from '../mesh/types.ts';
+import { assertSafeVertexCountForEdgeKey, edgeKey } from '../mesh/edgeKey.ts';
 
 /** One triangle's incidence on an undirected edge {a, b} (a < b by vertex
  * index — the edge's "canonical" orientation). `directed` records whether
@@ -27,18 +28,31 @@ export interface EdgeEntry {
 
 /** Builds the undirected-edge -> incident-triangle map for every triangle
  * in `mesh`. An edge's `incidences.length` is its degree: 1 = boundary, 2 =
- * ordinary manifold-interior edge, >2 = non-manifold. Map key is a plain
- * string (`"${a},${b}"`, `a < b`) — simple and fast enough at the vertex
- * counts intake deals with; see weld.ts's matching note on why string keys
- * are an acceptable tradeoff here. */
-export function buildEdgeMap(mesh: IndexedMesh): Map<string, EdgeEntry> {
-  const edges = new Map<string, EdgeEntry>();
+ * ordinary manifold-interior edge, >2 = non-manifold.
+ *
+ * **Map key** (Phase 2 Task 2 intake scalability rebuild): an integer
+ * `edgeKey(a, b, vertexCount)` (`../mesh/edgeKey.ts`), not the earlier
+ * `` `${a},${b}` `` string — a `Map<number, EdgeEntry>` avoids allocating and
+ * hashing a fresh string on every one of a mesh's ~1.5 * triangleCount edge
+ * visits, which measurably dominated `buildEdgeMap`'s cost at the
+ * multi-million-triangle scale this project's NFR targets (PLAN.md §7); see
+ * `edgeKey.ts`'s doc for the integer bound this relies on. Every caller
+ * (`connectedComponents`, `countEdgeDegrees`, and every repair/orient/
+ * analyze module that consumes this map) only ever calls `.values()` on the
+ * result, never looks a specific edge up by its own reconstructed key, so
+ * this is a pure internal-representation change — output (`EdgeEntry.a`/
+ * `.b`/`.incidences`, iteration order) is identical to the string-keyed
+ * version bit-for-bit. */
+export function buildEdgeMap(mesh: IndexedMesh): Map<number, EdgeEntry> {
+  const edges = new Map<number, EdgeEntry>();
   const triangleCount = mesh.indices.length / 3;
+  const vertexCount = mesh.positions.length / 3;
+  assertSafeVertexCountForEdgeKey(vertexCount, 'buildEdgeMap');
 
   function addEdge(u: number, v: number, triangle: number): void {
     const a = Math.min(u, v);
     const b = Math.max(u, v);
-    const key = `${a},${b}`;
+    const key = edgeKey(a, b, vertexCount);
     const directed = u === a;
     let entry = edges.get(key);
     if (!entry) {
@@ -126,7 +140,7 @@ export interface ConnectedComponents {
  * PROPAGATION is restricted to degree-2 edges even though its NOTION OF
  * COMPONENT, via this function, is not).
  */
-export function connectedComponents(mesh: IndexedMesh, edges: Map<string, EdgeEntry>): ConnectedComponents {
+export function connectedComponents(mesh: IndexedMesh, edges: Map<number, EdgeEntry>): ConnectedComponents {
   const triangleCount = mesh.indices.length / 3;
   const uf = new UnionFind(triangleCount);
 
@@ -161,7 +175,7 @@ export interface EdgeDegreeCounts {
 
 /** Tallies edges by degree across the whole edge map — see `EdgeEntry`'s
  * doc for what each degree means. */
-export function countEdgeDegrees(edges: Map<string, EdgeEntry>): EdgeDegreeCounts {
+export function countEdgeDegrees(edges: Map<number, EdgeEntry>): EdgeDegreeCounts {
   let boundaryEdgeCount = 0;
   let manifoldInteriorEdgeCount = 0;
   let nonManifoldEdgeCount = 0;

@@ -2,7 +2,7 @@
 // infrastructure. Spawns a small, bounded pool of workers — browser Web
 // Workers or Node worker_threads Workers, picked at runtime by
 // isNodeRuntime() — reuses them across jobs, and layers progress reporting
-// and cooperative cancellation on top of jobs.ts's `runJob` dispatcher via
+// and cooperative cancellation on top of jobs/registry.ts's `runJob` dispatcher via
 // Comlink.
 //
 // Environment split: the two `new Worker(new URL('./worker-entry.*.ts',
@@ -20,7 +20,13 @@
 // needs to resolve it eagerly; Vite externalizes the bare specifier to an
 // inert stub, which is never reached at runtime in a browser.
 import * as Comlink from 'comlink';
-import { JobCancelledError, type JobName, type JobPayloadMap, type JobResultMap, type RunJob } from './jobs.js';
+import {
+  JobCancelledError,
+  type JobName,
+  type JobPayloadMap,
+  type JobResultMap,
+  type RunJob,
+} from './jobs/registry.js';
 
 export { JobCancelledError };
 
@@ -30,7 +36,7 @@ export interface RunJobOptions {
   transfer?: Transferable[];
   /**
    * Progress delivery ordering guarantee: every call the job makes to
-   * `ctx.progress(...)` (jobs.ts) is guaranteed to have already reached
+   * `ctx.progress(...)` (jobs/registry.ts) is guaranteed to have already reached
    * `onProgress` — i.e. this callback has actually run for it — by the time
    * this `run()` call's returned promise settles (resolves OR rejects),
    * including the job's final progress event, if any. Callers may safely
@@ -38,7 +44,7 @@ export interface RunJobOptions {
    * the job's true final state" (e.g. a UI progress bar reading 100% exactly
    * when its "done" handler fires) without racing the job's own resolution.
    *
-   * This is enforced centrally by jobs.ts's `runJob` dispatcher (see its
+   * This is enforced centrally by jobs/registry.ts's `runJob` dispatcher (see its
    * "Progress delivery ordering contract" doc comment), not by this pool
    * itself — `onProgress` here is `Comlink.proxy()`-wrapped and handed
    * straight to the worker, which invokes it over its own dedicated
@@ -53,9 +59,48 @@ export interface RunJobOptions {
   /** Cooperative cancellation: aborting rejects the returned promise with
    * JobCancelledError. If the job is still queued (pool saturated), the
    * rejection is immediate — it never gets a worker. If the job is already
-   * running, the worker notices at its next chunk boundary (see jobs.ts's
+   * running, the worker notices at its next chunk boundary (see jobs/misc.ts's
    * longTask doc comment) — not necessarily instantly. */
   signal?: AbortSignal;
+  /**
+   * Opt-in cache-affinity hint (Phase 2 Task 12): when set, `run()` tries to
+   * route this job to the SAME worker a previous `run()` call with the same
+   * `affinityKey` landed on, instead of any idle worker. This exists for
+   * jobs/bvh.ts, jobs/sdf.ts, and jobs/geodesic.ts's per-worker caches
+   * (BVH / pseudonormals / halfedge, all keyed by a mesh's `contentHash` —
+   * see their module docs), where a cache built on worker A is invisible to
+   * worker B: without affinity, "build once, query many times" only holds
+   * by luck (or, previously, by pinning the caller to a dedicated
+   * `size: 1` pool — see engine/workers.ts's retired `getMeasurementPool`).
+   *
+   * Semantics:
+   *  - First call with a given `affinityKey`: routed by the pool's normal
+   *    rules (idle worker, or spawn, or generic FIFO queue) — whichever
+   *    worker it lands on becomes that key's target for future calls.
+   *  - Later call with the SAME `affinityKey`, target worker IDLE: goes
+   *    straight to that worker (bypasses the normal idle-pool LIFO pick).
+   *  - Later call with the SAME `affinityKey`, target worker BUSY (running
+   *    another job): QUEUES specifically for that worker — it does NOT
+   *    fall back to a different idle worker or spawn a new one, even if
+   *    the pool has spare capacity. This is a deliberate choice ("queue,
+   *    not steal" — see WorkerPool's class doc for the full reasoning):
+   *    handing the job to a different worker would silently defeat the
+   *    entire point of asking for affinity (a cache miss, recomputed from
+   *    scratch, with no error — a correctness-adjacent footgun this API is
+   *    designed to make impossible to hit by accident).
+   *  - Target worker CRASHED (or otherwise no longer part of the pool)
+   *    since it was recorded: the stale mapping is dropped and this call is
+   *    treated as a fresh "first call" for that key (may spawn/idle-pick/
+   *    queue-generically) — the caller's own job-level error handling (e.g.
+   *    a `BvhNotCachedError`) is what surfaces the lost cache, same as
+   *    today; this option only affects worker *selection*, never payload
+   *    semantics.
+   *
+   * Not a general-purpose scheduler feature: this is slot ROUTING only, no
+   * priority/preemption/work-stealing. A caller with no affinity need never
+   * pass this and observes the pool's pre-existing behavior unchanged.
+   */
+  affinityKey?: string;
 }
 
 /**
@@ -84,6 +129,12 @@ export class WorkerCrashedError extends Error {
 }
 
 interface PooledWorker {
+  /** Stable per-worker identity for affinity routing (RunJobOptions.
+   * affinityKey) — assigned once at spawn time (allocateWorkerId()) and
+   * never reused, even after this worker terminates/crashes, so a stale
+   * affinity mapping can never be confused with a DIFFERENT, later worker
+   * that happens to occupy the same array slot. */
+  id: number;
   remote: Comlink.Remote<RunJob>;
   terminate: () => Promise<void>;
   /** Set once this worker has crashed (or exited abnormally). A crashed
@@ -140,6 +191,19 @@ function isNodeRuntime(): boolean {
 
 type OnWorkerCrash = (worker: PooledWorker, error: Error) => void;
 
+/** Monotonic counter backing PooledWorker.id — see that field's doc. Shared
+ * across every WorkerPool instance in this JS context (module-level, not
+ * per-pool): affinity mappings only ever compare an id against workers
+ * spawned by the SAME pool instance (this.slots/this.idle), so ids being
+ * globally unique rather than per-pool-unique changes nothing observable —
+ * it just means a fresh pool's first worker isn't necessarily id 0. */
+let nextWorkerId = 0;
+function allocateWorkerId(): number {
+  const id = nextWorkerId;
+  nextWorkerId += 1;
+  return id;
+}
+
 async function spawnNodeWorker(onCrash: OnWorkerCrash): Promise<PooledWorker> {
   const [{ Worker: NodeWorker }, { default: nodeEndpoint }] = await Promise.all([
     import('node:worker_threads'),
@@ -147,6 +211,7 @@ async function spawnNodeWorker(onCrash: OnWorkerCrash): Promise<PooledWorker> {
   ]);
   const worker = new NodeWorker(new URL('./worker-entry.node.ts', import.meta.url));
   const pooled: PooledWorker = {
+    id: allocateWorkerId(),
     remote: Comlink.wrap<RunJob>(nodeEndpoint(worker)),
     terminate: async () => {
       await worker.terminate();
@@ -174,6 +239,7 @@ function spawnBrowserWorker(onCrash: OnWorkerCrash): PooledWorker {
     type: 'module',
   });
   const pooled: PooledWorker = {
+    id: allocateWorkerId(),
     remote: Comlink.wrap<RunJob>(worker),
     terminate: async () => {
       worker.terminate();
@@ -207,6 +273,76 @@ function isJobCancelledError(error: unknown): error is Error {
  * once all workers are busy; workers are never torn down between jobs
  * (including cancelled ones) — only `destroy()` terminates them, and a
  * worker crash evicts just that one worker (see `handleWorkerCrash`).
+ *
+ * ## Affinity routing (Phase 2 Task 12)
+ *
+ * `run(jobName, payload, { affinityKey })` lets a caller opt in to sticky
+ * worker routing — see `RunJobOptions.affinityKey`'s doc for the full
+ * per-call contract. Internally this is two small additions layered on top
+ * of the pre-existing idle/spawn/waiter machinery, deliberately NOT a
+ * replacement for it:
+ *
+ *  - `affinityTargets: Map<affinityKey, workerId>` — remembers which worker
+ *    last served a given key. Written in `run()` once a worker is actually
+ *    committed to a job (never in `acquireWorker()` itself, so an aborted-
+ *    before-start or destroyed-mid-acquire call never records a mapping for
+ *    a job that never ran).
+ *  - `targetedWaiters: Map<workerId, Waiter[]>` — a PER-WORKER FIFO queue,
+ *    separate from the pool-wide `waiters` FIFO. Used only when an
+ *    affinity-routed call's target worker exists but is currently busy: the
+ *    call queues here instead of either (a) joining the generic `waiters`
+ *    queue, which could hand it ANY worker, defeating affinity, or (b)
+ *    forcibly stealing the target from whatever job is running on it, which
+ *    this pool has no mechanism for (and would break the "a worker finishes
+ *    the job it started" invariant every other race-hardening test here
+ *    relies on). "Queue on the target, never steal" was the explicit design
+ *    choice for the documented open question ("fallback when target worker
+ *    busy — queue vs steal") — see `RunJobOptions.affinityKey`'s doc.
+ *
+ * `releaseWorker()` checks `targetedWaiters` for the worker being released
+ * BEFORE the generic `waiters` queue — a targeted waiter can ONLY ever be
+ * satisfied by that exact worker (any other release is useless to it),
+ * whereas a generic waiter can be satisfied by any worker, including this
+ * one on some LATER release — so preferring the targeted waiter here trades
+ * away nothing a generic waiter could have gotten another way. This is a
+ * deliberate, documented fairness trade-off: an affinity-routed job can
+ * jump ahead of a longer-waiting non-affinity job for one specific worker,
+ * bounded by "at most one extra hop" (the generic waiter still gets served
+ * by the very next release of ANY OTHER worker).
+ *
+ * ### Trade-off: queue-on-target is a head-of-line hazard, by design
+ *
+ * "Queue, never steal" (above) has a direct consequence worth calling out
+ * explicitly: a SLOW job running on a given `affinityKey`'s target worker
+ * delays every LATER call for that same key, even ones that would otherwise
+ * be cheap cache hits — they sit in `targetedWaiters` behind the slow job
+ * for as long as it runs, with no escape hatch (no timeout, no fallback to
+ * a different worker, no stealing). Two unrelated calls that happen to
+ * share a key are therefore only as responsive as the slowest thing ever
+ * queued on that key's worker. This is accepted deliberately: the
+ * alternative (falling back to an idle worker when the target is busy)
+ * would silently turn a cache hit into a cache miss — recomputed from
+ * scratch on a worker with no cache entry — which is a correctness-
+ * adjacent footgun (a wrong-but-plausible-looking answer, or at best a
+ * silent perf cliff with no error) that this API is designed to make
+ * impossible to hit by accident. Determinism/cache-correctness wins over
+ * latency here, on purpose.
+ *
+ * Phase 3 mitigation path (not implemented here): if this head-of-line
+ * delay becomes a real problem for a given job family, the fix is a SECOND
+ * affinity worker per hash — i.e. `affinityTargets` mapping each key to a
+ * small set of candidate worker ids (an "affinity group") instead of
+ * exactly one, with the cache-bearing job itself responsible for either
+ * replicating its cache to every worker in the group or accepting an
+ * occasional real miss on the non-primary member. That is a bigger change
+ * (touches the cache-population contract in jobs/bvh.ts et al., not just
+ * this routing layer) and is out of scope for Phase 2's Task 12 — flagged
+ * here as the documented forward path rather than attempted speculatively.
+ *
+ * Every existing invariant this pool's tests harden (abort/destroy races,
+ * crash eviction, spawn self-healing, FIFO fairness for non-affinity calls)
+ * is unchanged for calls that don't pass `affinityKey` — the fast path
+ * (`idle.pop()`) is untouched, and affinity only intercepts BEFORE it.
  */
 export class WorkerPool {
   private readonly size: number;
@@ -216,6 +352,12 @@ export class WorkerPool {
   private readonly activeRuns = new Set<ActiveRun>();
   private destroyed = false;
   private readonly spawnWorkerImpl: (onCrash: OnWorkerCrash) => Promise<PooledWorker>;
+  /** affinityKey -> the worker id that last served it. See the class doc's
+   * "Affinity routing" section. */
+  private readonly affinityTargets = new Map<string, number>();
+  /** worker id -> FIFO of calls waiting specifically for THAT worker (an
+   * affinity-routed call whose target was busy). See the class doc. */
+  private readonly targetedWaiters = new Map<number, Waiter[]>();
 
   constructor(opts?: {
     size?: number;
@@ -247,6 +389,8 @@ export class WorkerPool {
       throw new JobCancelledError();
     }
 
+    const affinityKey = opts?.affinityKey;
+
     // Abortable while queued: acquireWorker() itself rejects with
     // JobCancelledError (and dequeues the waiter) if `signal` fires before a
     // worker becomes available — see its Waiter-branch below. This is what
@@ -256,7 +400,7 @@ export class WorkerPool {
     // Abortable while a brand-new worker is still spawning: acquireWorker()'s
     // spawn branch is abort-aware the same way (below), so a signal that
     // fires before the spawn settles rejects this await too.
-    const worker = await this.acquireWorker(signal);
+    const worker = await this.acquireWorker(signal, affinityKey);
 
     // acquireWorker() can resolve here even though the world moved on while
     // it was pending — neither `destroy()` nor an abort actually stops a
@@ -278,6 +422,14 @@ export class WorkerPool {
       // leaked.
       this.releaseWorker(worker);
       throw new JobCancelledError();
+    }
+
+    // Commit the affinity mapping only once this call is actually going to
+    // use `worker` (past both bail-out checks above) — see the class doc's
+    // "Affinity routing" section for why this is done here, not inside
+    // acquireWorker().
+    if (affinityKey !== undefined) {
+      this.affinityTargets.set(affinityKey, worker.id);
     }
 
     let cancelled = false;
@@ -327,6 +479,18 @@ export class WorkerPool {
     }
   }
 
+  /**
+   * Always resolves, even with jobs queued or in flight (see pool.test.ts's
+   * destroy-related tests). Rejects every affected `run()` call with
+   * `PoolDestroyedError` BEFORE actually terminating the underlying
+   * worker(s) below — see jobs/registry.ts's `runJob` TSDoc, "Pool-
+   * destruction progress-flush race" section, for why an in-flight job's
+   * own `runJob` (running inside the worker being terminated) can
+   * legitimately still be mid-await when its caller already observed this
+   * rejection, and why that's safe (no leaked timer/promise — the
+   * worker's entire JS context is what actually resolves it, via
+   * `worker.terminate()` below).
+   */
   async destroy(): Promise<void> {
     this.destroyed = true;
 
@@ -334,6 +498,17 @@ export class WorkerPool {
     for (const waiter of pendingWaiters) {
       waiter.reject(new PoolDestroyedError('WorkerPool: destroyed while a job was queued'));
     }
+
+    // Same treatment for affinity-targeted waiters (see the class doc's
+    // "Affinity routing" section) — without this they'd hang forever, since
+    // their target worker is about to be terminated below and will never
+    // call releaseWorker() again.
+    const pendingTargetedWaiters = [...this.targetedWaiters.values()].flat();
+    this.targetedWaiters.clear();
+    for (const waiter of pendingTargetedWaiters) {
+      waiter.reject(new PoolDestroyedError('WorkerPool: destroyed while a job was queued'));
+    }
+    this.affinityTargets.clear();
 
     // Unstick any in-flight run() calls — without this, their
     // `worker.remote(...)` promise would simply hang forever once the
@@ -363,9 +538,35 @@ export class WorkerPool {
     );
   }
 
-  private async acquireWorker(signal?: AbortSignal): Promise<PooledWorker> {
+  private async acquireWorker(signal?: AbortSignal, affinityKey?: string): Promise<PooledWorker> {
     if (this.destroyed) {
       throw new PoolDestroyedError('WorkerPool: pool has been destroyed');
+    }
+
+    if (affinityKey !== undefined) {
+      const targetId = this.affinityTargets.get(affinityKey);
+      if (targetId !== undefined) {
+        const idleIndex = this.idle.findIndex((worker) => worker.id === targetId);
+        if (idleIndex !== -1) {
+          // Target is idle right now — take THAT specific worker, not
+          // whatever `idle.pop()` would have picked.
+          const [worker] = this.idle.splice(idleIndex, 1);
+          return worker!;
+        }
+        const targetIsLive = this.slots.some((slot) => slot.worker?.id === targetId);
+        if (targetIsLive) {
+          // Target exists but is busy (running another job) — queue
+          // specifically for it rather than falling through to idle-pick/
+          // spawn/generic-wait (see the class doc's "Affinity routing"
+          // section: "queue, never steal").
+          return this.acquireTargetedWorker(targetId, signal);
+        }
+        // Target no longer exists (crashed and evicted since it was
+        // recorded) — the mapping is stale. Drop it and fall through to
+        // treat this call as a fresh, non-targeted acquisition; run() will
+        // record a new mapping once this resolves.
+        this.affinityTargets.delete(affinityKey);
+      }
     }
 
     const idleWorker = this.idle.pop();
@@ -488,6 +689,56 @@ export class WorkerPool {
   }
 
   /**
+   * Queues a caller for a SPECIFIC (already-spawned, currently busy)
+   * worker's next release — the "target worker busy" branch of affinity
+   * routing (see the class doc). Mirrors the generic Waiter branch at the
+   * bottom of `acquireWorker()` (same abort-registration/cleanup shape,
+   * same "resolve/reject cleans up its own listener" contract) but keys off
+   * `targetedWaiters.get(targetId)` instead of the pool-wide `this.waiters`
+   * array — released by `releaseWorker()` (checked before the generic
+   * queue) or drained by `destroy()`/`handleWorkerCrash()`, never by
+   * `spawnForWaiters()` (a targeted waiter never triggered a spawn of its
+   * own — spawning a DIFFERENT worker cannot satisfy it).
+   */
+  private acquireTargetedWorker(targetId: number, signal?: AbortSignal): Promise<PooledWorker> {
+    return new Promise<PooledWorker>((resolve, reject) => {
+      let onAbort: (() => void) | undefined;
+      const waiter: Waiter = {
+        resolve: (worker) => {
+          if (onAbort) signal?.removeEventListener('abort', onAbort);
+          resolve(worker);
+        },
+        reject: (error) => {
+          if (onAbort) signal?.removeEventListener('abort', onAbort);
+          reject(error);
+        },
+      };
+      if (signal) {
+        onAbort = () => {
+          const list = this.targetedWaiters.get(targetId);
+          if (list) {
+            const index = list.indexOf(waiter);
+            if (index !== -1) {
+              list.splice(index, 1);
+            }
+            if (list.length === 0) {
+              this.targetedWaiters.delete(targetId);
+            }
+          }
+          waiter.reject(new JobCancelledError());
+        };
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
+      const list = this.targetedWaiters.get(targetId);
+      if (list) {
+        list.push(waiter);
+      } else {
+        this.targetedWaiters.set(targetId, [waiter]);
+      }
+    });
+  }
+
+  /**
    * Self-heals `this.waiters` after a spawn attempt (the original one in
    * acquireWorker(), or a previous call to this method) rejected and freed
    * up capacity. Called with the dead slot already spliced out of
@@ -559,6 +810,19 @@ export class WorkerPool {
     if (this.destroyed || worker.crashed) {
       return;
     }
+    // Targeted (affinity) waiters for THIS worker take priority over the
+    // generic FIFO — see the class doc's "Affinity routing" section for the
+    // fairness argument (a targeted waiter has no other worker that could
+    // ever satisfy it; a generic waiter does).
+    const targeted = this.targetedWaiters.get(worker.id);
+    if (targeted && targeted.length > 0) {
+      const nextTargeted = targeted.shift()!;
+      if (targeted.length === 0) {
+        this.targetedWaiters.delete(worker.id);
+      }
+      nextTargeted.resolve(worker);
+      return;
+    }
     const nextWaiter = this.waiters.shift();
     if (nextWaiter) {
       nextWaiter.resolve(worker);
@@ -573,6 +837,23 @@ export class WorkerPool {
    * Evicts it from `idle`/`slots` so it's never handed out again, and
    * rejects whatever job was running on it so that job's `run()` doesn't
    * hang forever waiting for a response that will never arrive.
+   *
+   * Liveness (Fix batch): a crash only ever rejects the ACTIVE run on the
+   * dead worker and any TARGETED (affinity) waiters parked specifically for
+   * it — see the two blocks below. It does NOT touch the pool-wide generic
+   * `this.waiters` FIFO, and dropping the slot above frees a capacity unit
+   * but does not itself spawn a replacement. Left at that, a generic
+   * (non-affinity) waiter queued behind a job that then crashes its worker
+   * would simply never be re-served: on a `size: 1` pool in particular,
+   * `this.slots.length < this.size` becomes true again, but nothing ever
+   * acts on it, since a fresh spawn is only ever triggered from
+   * `acquireWorker()`'s own spawn branch or from `spawnForWaiters()` — and a
+   * waiter that's already parked in `this.waiters` calls neither. That is
+   * exactly `spawnForWaiters()`'s job (see its own doc — it exists
+   * specifically to self-heal `this.waiters` after capacity frees up
+   * post-spawn-failure); a worker crash frees capacity the same way a spawn
+   * failure does, so the fix is to call it here too, after the slot has
+   * been spliced out above (`spawnForWaiters()`'s own precondition).
    */
   private handleWorkerCrash(worker: PooledWorker, error: Error): void {
     if (worker.crashed) {
@@ -601,5 +882,30 @@ export class WorkerPool {
         this.activeRuns.delete(activeRun);
       }
     }
+
+    // This worker can never call releaseWorker() again — reject anyone
+    // specifically queued for it (see the class doc's "Affinity routing"
+    // section) rather than leaving them hanging forever, and drop any
+    // affinityKey -> this-worker mapping so a later run() with that same
+    // key is treated as fresh (spawns/idle-picks/queues generically) rather
+    // than perpetually finding a dead "live" target.
+    const targeted = this.targetedWaiters.get(worker.id);
+    if (targeted) {
+      this.targetedWaiters.delete(worker.id);
+      for (const waiter of targeted) {
+        waiter.reject(crashError);
+      }
+    }
+    for (const [key, id] of this.affinityTargets) {
+      if (id === worker.id) {
+        this.affinityTargets.delete(key);
+      }
+    }
+
+    // Re-serve the generic FIFO now that capacity has freed up (see this
+    // method's doc) — mirrors acquireWorker()'s own spawn-failure handling.
+    // A no-op if `this.waiters` is empty or the pool was already destroyed
+    // (spawnForWaiters() checks both itself).
+    this.spawnForWaiters();
   }
 }

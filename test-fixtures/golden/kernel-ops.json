@@ -1,0 +1,276 @@
+{
+  "kernelVersion": "0.2.1",
+  "manifoldVersion": "3.5.1",
+  "notes": [
+    "Runtime budget: every param here is chosen to keep this suite fast (target: whole suite well under the ~2 min CI budget) — see scripts/kernel-ops-lib.ts's module doc for each choice.",
+    "offsetMesh uses pitchMm=0.1 (coarse) here, NOT DEFAULT_OFFSET_VOXEL_PITCH_MM=0.02 — the clinical-default-pitch acceptance golden lives separately in test/golden/offset.test.ts (~119 s on this same die fixture).",
+    "sampleSdfGrid uses pitchMm=0.5, bandMm=1 (coarse) — ALWAYS passes bandMm per this repo's banded-sampling convention.",
+    "union/subtract/intersect additionally assert a LOOSE (~3.6%) volume-vs-analytic bound against the committed boolean-pair-a/b fixtures (subdivisions=3) — the TIGHT 0.1% acceptance budget is proven separately, on finer in-memory spheres, by packages/kernel/src/boolean/manifold.analytic.test.ts.",
+    "offsetMesh-preCleanupSoup is a SECONDARY hash (marching-cubes soup before weld + manifold-3d WASM cleanup) — isolates a manifold-3d WASM version/platform-only golden failure from a real SDF/marching-cubes regression (Task 7 reviewer suggestion).",
+    "Repair-op fixtures are small, hand-built, seeded-damage meshes (not committed files) — see scripts/kernel-ops-lib.ts for their exact construction.",
+    "Phase 2 Task 11 (KERNEL_VERSION 0.2.0): repairFillSmallHoles' hash CHANGED (curvature-continuity thin-plate solve replaces the Phase 1 fixed-lambda Laplacian relax as the default path — see packages/kernel/src/repair/fillSmallHoles.ts). repairSplitNonManifoldVertices is a NEW pinned entry (bowtie-vertex split). Every other op entry is UNCHANGED by this bump — see docs/CHANGELOG-kernel.md.",
+    "undercutScan (Phase 2 Task 9) uses 'corners' sampling (the more expensive, more conservative policy) at a single fixed direction — see packages/kernel/src/undercut/undercutScan.ts for the sign convention and depth semantics.",
+    "KERNEL_VERSION 0.2.1 (Fix batch, post-Task-12): metadata-only bump — this file gained the manifoldVersion field (recording the installed manifold-3d WASM package version alongside kernelVersion) and packages/kernel/package.json now pins manifold-3d to an EXACT version (was ^3.5.1). Every op hash is BYTE-IDENTICAL to 0.2.0 — verified via the regeneration diff — this bump exists solely to move the metadata-only golden-file change through the same bump+changelog discipline every other golden change goes through, per docs/CHANGELOG-kernel.md."
+  ],
+  "ops": [
+    {
+      "id": "intake",
+      "op": "intake",
+      "fixture": "arch-case-01 upperjaw (real scan STL)",
+      "params": {},
+      "hash": "1382310d505628c229181c7c12ca181f2eb9a0e7ec0b154bbb4a79ecd8f2bd72",
+      "meta": {
+        "triangleCount": 250128,
+        "watertight": false
+      }
+    },
+    {
+      "id": "curvature",
+      "op": "computeCurvature",
+      "fixture": "arch-case-01 upperjaw (post-intake)",
+      "params": {},
+      "hash": "6a7a205ea7368d1cdef8d695c5fee3f545784707ef0ceec1668ac1e9af12d603",
+      "meta": {
+        "vertexCount": 126377
+      }
+    },
+    {
+      "id": "geodesicPath",
+      "op": "geodesicPath",
+      "fixture": "sphere-r5 (post-intake), fixed endpoints (5,0,0)->(-4,1,1)",
+      "params": {
+        "startAmbient": [
+          5,
+          0,
+          0
+        ],
+        "endAmbient": [
+          -4,
+          1,
+          1
+        ]
+      },
+      "hash": "60961fa6d12f6ff3bb0c100453aeeee8bf7d3e722748dfadc54767bb161ed978",
+      "meta": {
+        "length": 14.014268249264292,
+        "iterations": 0,
+        "converged": true,
+        "pointCount": 78
+      }
+    },
+    {
+      "id": "fitSurfaceSpline",
+      "op": "fitSurfaceSpline",
+      "fixture": "sphere-r5 (post-intake), 4 fixed cardinal control points, closed",
+      "params": {
+        "points": [
+          [
+            5,
+            0,
+            0
+          ],
+          [
+            0,
+            5,
+            0
+          ],
+          [
+            -5,
+            0,
+            0
+          ],
+          [
+            0,
+            -5,
+            0
+          ]
+        ],
+        "closed": true,
+        "pointsPerMm": 3
+      },
+      "hash": "a0e2d83e790caed2863e2f494e912e33a0ee520cf9441b41861cc3b7cf5a86a1",
+      "meta": {
+        "spanCount": 4,
+        "converged": true,
+        "maxAmbientDeviationMm": 0.5789613406798372
+      }
+    },
+    {
+      "id": "sampleSdfGrid",
+      "op": "sampleSdfGrid",
+      "fixture": "sphere-r5 (post-intake), own bbox",
+      "params": {
+        "pitchMm": 0.5,
+        "bandMm": 1
+      },
+      "hash": "03440bf65090ae9af4040fa003692545e18809786d1a71366e4a5bb3657507ef",
+      "meta": {
+        "dims": [
+          21,
+          21,
+          21
+        ],
+        "cellCount": 9261
+      }
+    },
+    {
+      "id": "offsetMesh",
+      "op": "offsetMesh",
+      "fixture": "standin-prep-die (post-intake)",
+      "params": {
+        "distanceMm": 0.05,
+        "pitchMm": 0.1
+      },
+      "hash": "6a89b92add6923f9f565aefd3e09da1e2ae3d9770027f2bb73d803ed608021e1",
+      "meta": {
+        "triangleCount": 74412,
+        "errorBoundMm": 0.050102463300000004
+      }
+    },
+    {
+      "id": "offsetMesh-preCleanupSoup",
+      "op": "marchingCubes (offsetMesh stage 2, before weld + manifold-3d cleanup)",
+      "fixture": "standin-prep-die (post-intake)",
+      "params": {
+        "distanceMm": 0.05,
+        "pitchMm": 0.1
+      },
+      "hash": "4bc9b4252c1e2934cce7ddc945843418b5a1d1529ef0f372cf6dc10251ab5980",
+      "meta": {
+        "triangleCount": 74412
+      }
+    },
+    {
+      "id": "union",
+      "op": "union",
+      "fixture": "boolean-pair-a + boolean-pair-b (committed STL, subdivisions=3)",
+      "params": {},
+      "hash": "b69802cb9169ef8247675eb11d29eefa3433584750fc93a85ff3e9f5f64bf325",
+      "meta": {
+        "volumeMm3": 189.39097229894998,
+        "analyticVolumeMm3": 190.8517537055799,
+        "relativeError": 0.007654010918251391
+      }
+    },
+    {
+      "id": "subtract",
+      "op": "subtract",
+      "fixture": "boolean-pair-a + boolean-pair-b (committed STL, subdivisions=3)",
+      "params": {},
+      "hash": "d020dfe1fb9a6f18117dd37cf53cfe93162482751eb6a3e6596bff570ba69af7",
+      "meta": {
+        "volumeMm3": 77.26697045431342,
+        "analyticVolumeMm3": 77.75441817634737,
+        "relativeError": 0.006269067835198959
+      }
+    },
+    {
+      "id": "intersect",
+      "op": "intersect",
+      "fixture": "boolean-pair-a + boolean-pair-b (committed STL, subdivisions=3)",
+      "params": {},
+      "hash": "56b908bbda2af22f4364e0888e29442078e75640156d1887e2d43db5d4957f37",
+      "meta": {
+        "volumeMm3": 34.85703140443018,
+        "analyticVolumeMm3": 35.34291735288517,
+        "relativeError": 0.013747760084534384
+      }
+    },
+    {
+      "id": "sectionMesh",
+      "op": "sectionMesh",
+      "fixture": "sphere-r5 (post-intake)",
+      "params": {
+        "plane": {
+          "point": [
+            0,
+            0,
+            0
+          ],
+          "normal": [
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      "hash": "6e1f1a313a99ac4eb7a862250a7f4e79e5813a9e8e9b841f2459ff6b2a4f0578",
+      "meta": {
+        "polylineCount": 1
+      }
+    },
+    {
+      "id": "repairRemoveComponents",
+      "op": "removeComponents",
+      "fixture": "unit cube + 1 stray far-away triangle (seeded 2-component damage)",
+      "params": {
+        "selector": {
+          "mode": "minTriangles",
+          "minTriangles": 2
+        }
+      },
+      "hash": "254d89abfb9391bbaacde20505d3b5bb774dc77cf8fee6c941e72bd617d21752",
+      "meta": {
+        "removedComponentIds": [
+          1
+        ],
+        "keptComponentIds": [
+          0
+        ]
+      }
+    },
+    {
+      "id": "repairSplitNonManifoldEdges",
+      "op": "splitNonManifoldEdges",
+      "fixture": "unit cube with triangle 0 duplicated (seeded non-manifold-edge damage)",
+      "params": {},
+      "hash": "ce4f43d15e0eed6ecd7dd42accf78fa150e28de25e1e22bdddf67738b2bf4c5c",
+      "meta": {
+        "nonManifoldEdgeCountBefore": 3,
+        "duplicatedVertexCount": 3
+      }
+    },
+    {
+      "id": "repairSplitNonManifoldVertices",
+      "op": "splitNonManifoldVertices",
+      "fixture": "two closed tetrahedron-like fans sharing only their apex vertex (seeded bowtie-vertex damage, fanCount 2)",
+      "params": {},
+      "hash": "75cffa289a0dcd812d551a232ca529801fe8dd113666036d149c23e614b771f1",
+      "meta": {
+        "nonManifoldVertexCountBefore": 1,
+        "duplicatedVertexCount": 1
+      }
+    },
+    {
+      "id": "repairFillSmallHoles",
+      "op": "fillSmallHoles",
+      "fixture": "unit cube with triangle 0 removed (seeded 3-edge-boundary-loop damage)",
+      "params": {},
+      "hash": "ef748e1ea5ca6358c270af5a7d5ed5cf556bbcae3b4e1926638b4e247036fdef",
+      "meta": {
+        "loopsFound": 1,
+        "loopsFilled": 1,
+        "curvatureFallbackLoopCount": 0
+      }
+    },
+    {
+      "id": "undercutScan",
+      "op": "undercutScan",
+      "fixture": "standin-prep-die (post-intake)",
+      "params": {
+        "direction": [
+          0.2,
+          -0.4,
+          0.9
+        ],
+        "sampling": "corners"
+      },
+      "hash": "e151d52921d41176d5293fbaea86c6b6633c6176639bfa32abdcebeb52c9c918",
+      "meta": {
+        "triangleCount": 384,
+        "undercutTriangleCount": 178,
+        "maxDepthMm": 11.166528467912103
+      }
+    }
+  ]
+}

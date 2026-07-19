@@ -13,6 +13,10 @@ scans/
 playwright-report/
 test-results/
 coverage/
+# Phase 2 Task 12: client-dom (vitest browser mode) auto-captured
+# failure screenshots — regenerated on demand by a failing test, never
+# committed (same rationale as playwright-report/test-results above).
+__screenshots__/
 # Task 11: content-addressed mesh file storage (apps/server/src/mesh-storage.ts)
 # — uploaded scan bytes, never committed.
 apps/server/data/

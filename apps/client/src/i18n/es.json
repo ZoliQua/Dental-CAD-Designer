@@ -32,7 +32,13 @@
     "manifoldSmokeTestButton": "Ejecutar prueba de manifold",
     "manifoldSmokeTestRunning": "Manifold: en ejecución…",
     "manifoldSmokeTestSuccess": "Manifold: ✓ volumen {{volume}}",
-    "manifoldSmokeTestFailure": "Manifold: ✗ falló"
+    "manifoldSmokeTestFailure": "Manifold: ✗ falló",
+    "lodMode": {
+      "auto": "LOD: automático",
+      "on": "LOD: forzado activado",
+      "off": "LOD: desactivado"
+    },
+    "lodBuilding": "Creando LOD ({{count}})…"
   },
   "import": {
     "dropzoneTitle": "Arrastra y suelta archivos STL o PLY aquí",
@@ -141,6 +147,26 @@
     "rangeManual": "Aplicar rango",
     "rangeAuto": "Rango automático"
   },
+  "curvature": {
+    "panelTitle": "Curvatura",
+    "needsMesh": "Añade una malla a la escena para ver su curvatura.",
+    "meshLabel": "Malla",
+    "selectPlaceholder": "Elige una malla…",
+    "fieldLabel": "Campo",
+    "fieldMean": "Media (H)",
+    "fieldGaussian": "Gaussiana (K)",
+    "runButton": "Ejecutar",
+    "running": "Calculando…",
+    "errorLabel": "Error en la curvatura: {{message}}",
+    "statsMin": "Mín",
+    "statsMax": "Máx",
+    "statsMean": "Media",
+    "showToggle": "Mostrar curvatura",
+    "legendTitle": "Leyenda",
+    "unitPerMm": "mm⁻¹",
+    "unitPerMm2": "mm⁻²",
+    "rangeAuto": "Rango automático"
+  },
   "section": {
     "panelTitle": "Sección transversal",
     "needsMesh": "Añada una malla a la escena para obtener una sección transversal.",
@@ -219,11 +245,16 @@
       "description": "Duplica los vértices en bordes compartidos por más de 2 triángulos para que cada borde tenga como máximo 2.",
       "summary": "Duplica {{count}} vértice(s) en {{edges}} borde(s) no variedad"
     },
+    "splitNonManifoldVertices": {
+      "title": "Separar vértices de corbatín",
+      "description": "Duplica los vértices donde dos o más abanicos de triángulos se encuentran solo en un punto, para que cada abanico tenga su propio vértice.",
+      "summary": "Duplica {{count}} vértice(s) en {{vertices}} vértice(s) de corbatín"
+    },
     "fillSmallHoles": {
       "title": "Rellenar agujeros pequeños",
-      "description": "Cierra bucles de contorno pequeños con un parche suave (no continuo en curvatura). Los agujeros más grandes se rechazan, no se rellenan.",
+      "description": "Cierra bucles de contorno pequeños con un parche continuo en curvatura que sigue la superficie circundante. Los agujeros más grandes se rechazan, no se rellenan.",
       "summary": "Rellena {{filled}} de {{found}} agujero(s)",
-      "skippedSummary": "{{count}} agujero(s) rechazado(s) (demasiado grande para rellenar con seguridad)",
+      "skippedSummary": "{{count}} agujero(s) rechazado(s) (demasiado grande/mal formado, o bloqueado por un vértice de corbatín – separe primero los vértices de corbatín)",
       "noneToFill": "No se encontraron agujeros."
     }
   }

@@ -54,6 +54,29 @@ export interface EngineMeshRecord {
    * `record.renderIndices` alongside `record.renderPositions` without
    * having to know they happen to be the identical array. */
   renderIndices: Uint32Array;
+  /** Optional RENDER-ONLY LOD copy (Phase 2 Task 10) — present once
+   * engine/lod.ts's `decimateMesh` worker job has completed for this mesh.
+   * `lod.positions` are the decimated Float64 world-frame vertices (kept in
+   * Float64 so `recenterAll()` below can recompute the Float32
+   * `renderPositions` against any FUTURE world offset without accumulating
+   * rounding — exactly the same master->render relationship the full-res
+   * pair above has). HARD INVARIANT (this task's brief): this is a
+   * separate, derived copy — the Float64 `positions`/`indices` masters
+   * above are NEVER replaced or mutated by any LOD operation, and nothing
+   * outside SceneManager's render path ever consumes these buffers
+   * (picking/measuring/sections/heatmaps/exports all read the masters —
+   * verified consumer-by-consumer in engine/lod.ts's module doc). */
+  lod?: {
+    positions: Float64Array;
+    indices: Uint32Array;
+    renderPositions: Float32Array;
+    /** Realized max QEM error of the decimation, mm (see @dqcad/kernel's
+     * decimate.ts `@errorBound`) — carried on the record for a future
+     * display consumer; as of this task NO UI reads it (StatusBar's LOD
+     * toggle shows only mode + build status, not this value — there is no
+     * dev-panel LOD-quality readout yet). */
+    maxErrorMm: number;
+  };
 }
 
 export interface RegisterMeshInput {
@@ -126,6 +149,32 @@ export class MeshStore {
     }
   }
 
+  /**
+   * Attaches a RENDER-ONLY LOD copy to an existing record (Phase 2 Task 10
+   * — see `EngineMeshRecord.lod`'s doc and engine/lod.ts for who computes
+   * it). The record's Float64 master `positions`/`indices` are untouched —
+   * this only ever ADDS a derived render copy. A no-op (returns `false`) if
+   * `contentHash` is no longer registered (the mesh was removed while its
+   * LOD job was in flight — the stale result is simply dropped, mirroring
+   * engine/heatmap.ts's stale-async-result convention). The LOD's Float32
+   * render copy is computed against the CURRENT world offset, and
+   * `recenterAll()` keeps it in sync with every later membership change,
+   * exactly like the full-res render copy.
+   */
+  setLod(contentHash: string, lod: { positions: Float64Array; indices: Uint32Array; maxErrorMm: number }): boolean {
+    const record = this.records.get(contentHash);
+    if (!record) return false;
+    const renderPositions = new Float32Array(lod.positions.length);
+    const [ox, oy, oz] = this.worldOffset;
+    for (let v = 0; v < lod.positions.length / 3; v++) {
+      renderPositions[v * 3] = lod.positions[v * 3]! - ox;
+      renderPositions[v * 3 + 1] = lod.positions[v * 3 + 1]! - oy;
+      renderPositions[v * 3 + 2] = lod.positions[v * 3 + 2]! - oz;
+    }
+    record.lod = { positions: lod.positions, indices: lod.indices, renderPositions, maxErrorMm: lod.maxErrorMm };
+    return true;
+  }
+
   /** TEST-ONLY: drops every record without recomputing anything (there's
    * nothing left to recenter). */
   clear(): void {
@@ -173,6 +222,18 @@ export class MeshStore {
         record.renderPositions[v * 3] = record.positions[v * 3]! - centroidX;
         record.renderPositions[v * 3 + 1] = record.positions[v * 3 + 1]! - centroidY;
         record.renderPositions[v * 3 + 2] = record.positions[v * 3 + 2]! - centroidZ;
+      }
+      // The LOD render copy (if any) shares the same origin as every other
+      // render copy — recomputed from its own Float64 LOD positions, never
+      // by shifting the Float32 values (which would accumulate rounding).
+      const lod = record.lod;
+      if (lod) {
+        const lodVertexCount = lod.positions.length / 3;
+        for (let v = 0; v < lodVertexCount; v++) {
+          lod.renderPositions[v * 3] = lod.positions[v * 3]! - centroidX;
+          lod.renderPositions[v * 3 + 1] = lod.positions[v * 3 + 1]! - centroidY;
+          lod.renderPositions[v * 3 + 2] = lod.positions[v * 3 + 2]! - centroidZ;
+        }
       }
     }
   }
