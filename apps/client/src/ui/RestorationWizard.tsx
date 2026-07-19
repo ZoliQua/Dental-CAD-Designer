@@ -59,8 +59,13 @@ function draftFromRestoration(restoration: Restoration): Draft {
     editingId: restoration.id,
     type: restoration.type,
     teeth: restoration.teeth,
-    pontics: restoration.pontics,
-    targetNodeId: restoration.targetNodeId,
+    // `?? []`/`?? null` belt-and-braces: every load path now backfills
+    // these (engine/caseDocumentMigration.ts's schemaVersion-2 restoration-
+    // field backfill), so this should never actually be needed — kept
+    // cheap and defensive at this render boundary anyway, since it was
+    // exactly this line's missing-field crash that motivated that fix.
+    pontics: restoration.pontics ?? [],
+    targetNodeId: restoration.targetNodeId ?? null,
   };
 }
 
@@ -288,7 +293,7 @@ function RestorationRow({
         {restoration.teeth.map((tooth) => (
           <span
             key={tooth}
-            className={`restoration-chip${restoration.pontics.includes(tooth) ? ' restoration-chip--pontic' : ''}`}
+            className={`restoration-chip${(restoration.pontics ?? []).includes(tooth) ? ' restoration-chip--pontic' : ''}`}
             data-testid={`restoration-chip-${tooth}`}
           >
             {tooth}

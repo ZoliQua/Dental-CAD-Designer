@@ -193,16 +193,132 @@ export function migrateCaseDocumentV1ToV2(legacy: LegacyCaseDocumentV1): CaseDoc
   };
 }
 
+// ---------------------------------------------------------------------------
+// schemaVersion-2 restoration-field backfill (Phase 3 Task 2 review fix)
+// ---------------------------------------------------------------------------
+//
+// `Restoration.pontics`/`targetNodeId` (shared-types) were introduced by
+// Phase 3 Task 2 as REQUIRED fields — but Task 1 already shipped
+// schemaVersion 2 (this file's v1 -> v2 `MarginLine` migration above)
+// *without* them, and the server never rejects an old row's already-stored
+// JSON on GET (this module's top doc). So a case saved between Task 1 and
+// Task 2 is tagged schemaVersion 2 on disk yet its restorations genuinely
+// lack `pontics`/`targetNodeId` at runtime — not `undefined`-valued, the
+// keys are simply absent from the JSON. Without this backfill that document
+// loads fine at the `CaseDocument` type level (nothing here re-validates
+// the GET response — same "untyped, cast anyway" situation the v1 migration
+// document above), but crashes the very first render that touches
+// `restoration.pontics` (ui/RestorationWizard.tsx) and then 400s the next
+// save once the server's tightened schema (apps/server/src/schemas.ts)
+// rejects the still-missing fields.
+//
+// Fix mirrors the v1 migration's shape: detect the missing keys, backfill
+// documented defaults, journal it. Unlike the v1 migration (branched on
+// `schemaVersion`), this is detected by FIELD PRESENCE, which is what makes
+// it naturally exactly-once: once a document has been backfilled (and, via
+// persistence.ts's `openCase` "wasMigrated" save-back — the same reference-
+// inequality signal this function relies on below), every restoration DOES
+// have both keys, so `restorationNeedsTask2Backfill` is false on every
+// subsequent load and this whole path is skipped — no history-scanning
+// needed to avoid a double journal entry.
+//
+// Defaults (matching `migrateRestorations`'s reasoning above, and
+// `Restoration.pontics`/`targetNodeId`'s own docs, shared-types):
+//   - `pontics: []` — no bridge pontic marking existed before Task 2; `[]`
+//     is also the correct steady-state value for crown/inlay/onlay, so this
+//     is never a lossy guess for those types, only an honest "never marked"
+//     for a pre-Task-2 bridge.
+//   - `targetNodeId: null` — no restoration had a target scan mapping
+//     before Task 2 either. `null` is not a placeholder invented for this
+//     migration: it is the SAME "no target scan assigned yet" state
+//     `RestorationWizard.tsx`'s own `emptyDraft()` starts a brand-new
+//     restoration in (`canSubmit` there requires `targetNodeId !== null`
+//     before a restoration can even be created) — so a backfilled
+//     restoration lands in a state the wizard already treats as valid and
+//     recoverable ("finish assigning a target scan"), not a novel one.
+
+/** A schemaVersion-2 `Restoration` as it could exist on disk for a document
+ * saved between Phase 3 Task 1 (shipped schemaVersion 2) and Task 2 (added
+ * `pontics`/`targetNodeId` to that SAME schemaVersion as required fields,
+ * with no migration — see this module's "schemaVersion-2 restoration-field
+ * backfill" doc above). `pontics`/`targetNodeId` are optional here
+ * specifically to model "key absent from the JSON", which `Restoration`'s
+ * own (current, required) shape cannot express. */
+interface RawRestorationV2 extends Omit<Restoration, 'pontics' | 'targetNodeId'> {
+  readonly pontics?: readonly FdiTooth[];
+  readonly targetNodeId?: string | null;
+}
+
+function restorationNeedsTask2Backfill(restoration: RawRestorationV2): boolean {
+  return !('pontics' in restoration) || !('targetNodeId' in restoration);
+}
+
+function backfillRestorationFields(restoration: RawRestorationV2): Restoration {
+  return { ...restoration, pontics: restoration.pontics ?? [], targetNodeId: restoration.targetNodeId ?? null };
+}
+
+/**
+ * Backfills `pontics`/`targetNodeId` on any schemaVersion-2 `CaseDocument`
+ * restoration that predates their introduction (Phase 3 Task 2) — see this
+ * module's "schemaVersion-2 restoration-field backfill" doc above. Returns
+ * `document` BY REFERENCE, unchanged, when every restoration already has
+ * both fields (the common case, and the only case once any given document
+ * has been backfilled once) — `migrateCaseDocumentIfNeeded`'s callers (e.g.
+ * persistence.ts's `openCase`) rely on that reference identity as their
+ * "was this migrated" signal, same convention as `migrateCaseDocumentV1ToV2`.
+ */
+function backfillV2RestorationFieldsIfNeeded(document: CaseDocument): CaseDocument {
+  const rawRestorations = document.restorations as readonly RawRestorationV2[];
+  if (!rawRestorations.some(restorationNeedsTask2Backfill)) {
+    return document;
+  }
+
+  let backfilledRestorationCount = 0;
+  const restorations = rawRestorations.map((restoration): Restoration => {
+    if (!restorationNeedsTask2Backfill(restoration)) {
+      return restoration as Restoration;
+    }
+    backfilledRestorationCount += 1;
+    return backfillRestorationFields(restoration);
+  });
+
+  const migrationOperation: Operation = {
+    id: crypto.randomUUID(),
+    name: 'migrate-backfill-restoration-fields',
+    params: {
+      schemaVersion: 2,
+      change: 'Restoration.pontics/targetNodeId backfilled (added as REQUIRED fields to schemaVersion 2 by ' +
+        'Phase 3 Task 2, with no migration at the time)',
+      restorationCount: rawRestorations.length,
+      backfilledRestorationCount,
+      note:
+        'pontics defaulted to [] (no bridge pontic marking existed before this field; also the correct ' +
+        'steady-state value for crown/inlay/onlay); targetNodeId defaulted to null (no target-scan mapping ' +
+        'existed before this field — the same "no target assigned" state RestorationWizard.tsx\'s own ' +
+        'emptyDraft() starts a new restoration in).',
+    },
+    inputHashes: [],
+    outputHashes: [],
+    kernelVersion: KERNEL_VERSION,
+    timestamp: new Date().toISOString(),
+  };
+
+  return { ...document, restorations, history: [...document.history, migrationOperation] };
+}
+
 /**
  * Entry point for every document-load path (currently: persistence.ts's
  * `openCase`) — accepts whatever `GET /api/cases/:id` actually returned
  * (untyped: the server does not validate its own GET response shape, see
- * this module's top doc), migrates a schemaVersion-1 document, and passes a
- * schemaVersion-2 document through unchanged. Any OTHER `schemaVersion`
- * value is a hard error (never silently coerced) — this repo has never had
- * a schemaVersion other than 1 or 2, so anything else means either
- * corrupted data or a FUTURE schema version this client build predates,
- * neither of which this function can safely guess how to handle.
+ * this module's top doc), migrates a schemaVersion-1 document, backfills a
+ * schemaVersion-2 document missing Task 2's restoration fields (this
+ * module's "schemaVersion-2 restoration-field backfill" doc above), and
+ * passes an already-complete schemaVersion-2 document through unchanged
+ * (by reference). Any OTHER `schemaVersion` value is a hard error (never
+ * silently coerced) — this repo has never had a schemaVersion other than 1
+ * or 2, so anything else means either corrupted data or a FUTURE schema
+ * version this client build predates, neither of which this function can
+ * safely guess how to handle.
  *
  * @throws {TypeError} if `raw` isn't even an object.
  * @throws {Error} if `raw.schemaVersion` is neither `1` nor `2`.
@@ -213,7 +329,7 @@ export function migrateCaseDocumentIfNeeded(raw: unknown): CaseDocument {
   }
   const schemaVersion = (raw as { schemaVersion?: unknown }).schemaVersion;
   if (schemaVersion === 2) {
-    return raw as CaseDocument;
+    return backfillV2RestorationFieldsIfNeeded(raw as CaseDocument);
   }
   if (schemaVersion === 1) {
     return migrateCaseDocumentV1ToV2(raw as LegacyCaseDocumentV1);

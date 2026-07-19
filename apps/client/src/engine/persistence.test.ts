@@ -576,6 +576,157 @@ describe('CaseDocument.schemaVersion 1 -> 2 migration (Phase 3 Task 1)', () => {
   });
 });
 
+describe('CaseDocument schemaVersion-2 restoration-field backfill (Phase 3 Task 2 review fix)', () => {
+  // A schemaVersion-2 restoration as it could exist on disk from a case
+  // saved between Task 1 (shipped schemaVersion 2) and Task 2 (added
+  // `pontics`/`targetNodeId` to that SAME schemaVersion as required
+  // fields, with no migration at the time) — the keys are genuinely ABSENT
+  // from the JSON, not `undefined`-valued (mirrors the v1 fixture above's
+  // "never constructible as a real CaseDocument" cast).
+  function legacyV2RestorationWithoutTask2Fields(): Record<string, unknown> {
+    return {
+      id: 'restoration-1',
+      type: 'crown',
+      teeth: [26],
+      marginLines: {},
+      insertionAxis: [0, 0, 1],
+      params: {
+        cementGapMm: 0.05,
+        marginalGapMm: 0.02,
+        spacerStartMm: 0.75,
+        minWallThicknessMm: 0.5,
+        proximalContactPenetrationMm: 0.02,
+        occlusalContactMm: 0,
+      },
+      stages: {},
+      qc: null,
+    };
+  }
+
+  function v2DocumentWith(id: string, restorations: readonly Record<string, unknown>[]): Record<string, unknown> {
+    return {
+      id,
+      schemaVersion: 2,
+      createdAt: '2025-06-01T00:00:00.000Z',
+      meshes: [],
+      scene: [],
+      restorations,
+      measurements: [],
+      history: [],
+      settings: { materialProfileId: 'zirconia-default', profileVersion: '1.0.0' },
+    };
+  }
+
+  it('(a) backfills a legacy v2 restoration missing pontics/targetNodeId, journals it exactly once, and the next save passes server validation', async () => {
+    const legacyDocument = v2DocumentWith('v2-case-1', [legacyV2RestorationWithoutTask2Fields()]);
+    server.cases.set('v2-case-1', {
+      id: 'v2-case-1',
+      name: 'Legacy v2 case',
+      createdAt: legacyDocument['createdAt'] as string,
+      updatedAt: legacyDocument['createdAt'] as string,
+      schemaVersion: 2,
+      document: legacyDocument as unknown as CaseDocument,
+    });
+
+    // Loads without throwing (this is the sidebar-render crash site the
+    // finding describes — ui/RestorationWizard.tsx's
+    // `restoration.pontics.includes`).
+    await expect(openCase('v2-case-1', 'Legacy v2 case')).resolves.toBeUndefined();
+
+    const loaded = useCaseStore.getState().document;
+    expect(loaded.schemaVersion).toBe(2);
+    expect(loaded.restorations[0]?.pontics).toEqual([]);
+    expect(loaded.restorations[0]?.targetNodeId).toBeNull();
+
+    // Journaled, not silent (CLAUDE.md invariant 5).
+    const backfillOps = loaded.history.filter((op) => op.name === 'migrate-backfill-restoration-fields');
+    expect(backfillOps).toHaveLength(1);
+    expect(backfillOps[0]?.params['backfilledRestorationCount']).toBe(1);
+
+    // The migration is itself persisted as part of loading (same
+    // "wasMigrated" save-back as the v1 migration) — server now has the
+    // complete, schema-valid document.
+    expect(usePersistenceStore.getState().status).toBe('saved');
+    const savedRow = server.cases.get('v2-case-1')!;
+    expect((savedRow.document!.restorations[0] as unknown as Record<string, unknown>)['pontics']).toEqual([]);
+    expect((savedRow.document!.restorations[0] as unknown as Record<string, unknown>)['targetNodeId']).toBeNull();
+
+    // Next save (e.g. a real user edit) passes the tightened server schema
+    // (apps/server/src/schemas.ts requires both fields) — exercised here by
+    // just calling save() again; a schema-rejecting PUT would surface as a
+    // thrown error / status 'error'.
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockClear();
+    await save();
+    expect(fetchMock).not.toHaveBeenCalled(); // already in sync — genuine no-op, not a hidden failure
+
+    // Reloading again does NOT re-journal (exactly-once semantics: the
+    // fields are now genuinely present, so the field-presence check finds
+    // nothing left to backfill).
+    caseStore.resetForTests();
+    resetPersistenceForTests();
+    await openCase('v2-case-1', 'Legacy v2 case');
+    const reloaded = useCaseStore.getState().document;
+    expect(reloaded.history.filter((op) => op.name === 'migrate-backfill-restoration-fields')).toHaveLength(1);
+    expect(usePersistenceStore.getState().status).toBe('saved');
+  });
+
+  it('(b) leaves a fresh v2 document with pontics/targetNodeId already present untouched — no backfill op, no re-save', async () => {
+    const freshDocument = v2DocumentWith('v2-case-2', [
+      { ...legacyV2RestorationWithoutTask2Fields(), pontics: [], targetNodeId: null },
+    ]);
+    server.cases.set('v2-case-2', {
+      id: 'v2-case-2',
+      name: 'Fresh v2 case',
+      createdAt: freshDocument['createdAt'] as string,
+      updatedAt: freshDocument['createdAt'] as string,
+      schemaVersion: 2,
+      document: freshDocument as unknown as CaseDocument,
+    });
+
+    await openCase('v2-case-2', 'Fresh v2 case');
+
+    const loaded = useCaseStore.getState().document;
+    expect(loaded.history).toHaveLength(0);
+    expect(loaded.restorations[0]?.pontics).toEqual([]);
+    expect(loaded.restorations[0]?.targetNodeId).toBeNull();
+    // Not migrated: openCase's own "wasMigrated" branch never fired, so no
+    // extra save() round trip beyond the (only) GET.
+    const putCalls = vi
+      .mocked(fetch)
+      .mock.calls.filter(([, init]) => (init?.method ?? 'GET').toUpperCase() === 'PUT');
+    expect(putCalls).toHaveLength(0);
+    expect(usePersistenceStore.getState().status).toBe('saved');
+  });
+
+  it('(c) round-trip byte-identity after backfill: reloading the persisted, backfilled document is identical to what was saved', async () => {
+    const legacyDocument = v2DocumentWith('v2-case-3', [
+      legacyV2RestorationWithoutTask2Fields(),
+      { ...legacyV2RestorationWithoutTask2Fields(), id: 'restoration-2', type: 'bridge', teeth: [26, 27, 28] },
+    ]);
+    server.cases.set('v2-case-3', {
+      id: 'v2-case-3',
+      name: 'Round-trip v2 case',
+      createdAt: legacyDocument['createdAt'] as string,
+      updatedAt: legacyDocument['createdAt'] as string,
+      schemaVersion: 2,
+      document: legacyDocument as unknown as CaseDocument,
+    });
+
+    await openCase('v2-case-3', 'Round-trip v2 case');
+    const savedDocument = useCaseStore.getState().document;
+
+    caseStore.resetForTests();
+    resetPersistenceForTests();
+    await openCase('v2-case-3', 'Round-trip v2 case');
+    const reloadedDocument = useCaseStore.getState().document;
+
+    expect(reloadedDocument).toEqual(savedDocument);
+    expect(reloadedDocument.restorations).toEqual(savedDocument.restorations);
+    expect(reloadedDocument.history.map((op) => op.id)).toEqual(savedDocument.history.map((op) => op.id));
+  });
+});
+
 describe('openCase atomic swap on failure', () => {
   it('leaves the previous case\'s document AND meshes fully intact (and renderable) when a mesh fetch fails partway through', async () => {
     const caseA = await createSavedCase('Case A', ['a-hash']);
