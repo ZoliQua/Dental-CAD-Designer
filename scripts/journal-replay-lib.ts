@@ -32,12 +32,12 @@
 // covered by test/golden/intake.test.ts's own goldens, whose fixtures keep
 // their original files on disk (unlike a real deployed case).
 //
-// `unit-rescale` and the 3 `repair-*` operations have no such caveat —
+// `unit-rescale` and the 4 `repair-*` operations have no such caveat —
 // their kernel effects (`rescaleMesh`: multiply positions by a factor;
-// `removeComponents`/`splitNonManifoldEdges`/`fillSmallHoles`: pure
-// functions of an already-in-memory `IndexedMesh`) never touch a lossy file
-// boundary at all, so their replay is a straightforward fresh recomputation
-// from the SAME recorded inputs.
+// `removeComponents`/`splitNonManifoldEdges`/`fillSmallHoles`/
+// `splitNonManifoldVertices`: pure functions of an already-in-memory
+// `IndexedMesh`) never touch a lossy file boundary at all, so their replay
+// is a straightforward fresh recomputation from the SAME recorded inputs.
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -52,6 +52,7 @@ import {
   removeComponents,
   splitNonManifoldEdges,
   fillSmallHoles,
+  splitNonManifoldVertices,
   type IndexedMesh,
 } from '@dqcad/kernel';
 import type { Operation } from '@dqcad/shared-types';
@@ -122,6 +123,49 @@ function removeTriangleZero(mesh: IndexedMesh): IndexedMesh {
   return { positions: mesh.positions, indices: mesh.indices.subarray(3) };
 }
 
+/** Turns vertex 0 into a bowtie: glues a brand-new, otherwise-disjoint
+ * closed tetrahedral fan onto it, reusing vertex 0 as that fan's apex —
+ * same "share only the apex" construction as
+ * packages/kernel/src/repair/repair.test-fixtures.ts's `apexFan`/
+ * `singleBowtieMesh` (re-derived locally, not imported, per this file's
+ * module doc), just placed far away (same `+1000`-offset convention as
+ * `addFarAwayStrayTriangle` above) so the new fan's base vertices can never
+ * accidentally coincide with anything already in `mesh`. `findNonManifoldVertices`
+ * then reports vertex 0 with `fanCount: 2` (its pre-existing fan + this
+ * one) — exactly the input `splitNonManifoldVertices` exists to repair. */
+function attachBowtieFanAtVertexZero(mesh: IndexedMesh): IndexedMesh {
+  const apex = 0;
+  const apexX = mesh.positions[0]!;
+  const apexY = mesh.positions[1]!;
+  const apexZ = mesh.positions[2]!;
+  const offset = 1000;
+  const baseIndex = mesh.positions.length / 3;
+  const b0 = baseIndex;
+  const b1 = baseIndex + 1;
+  const b2 = baseIndex + 2;
+
+  const positions = new Float64Array(mesh.positions.length + 9);
+  positions.set(mesh.positions, 0);
+  positions.set(
+    [
+      apexX + offset, apexY, apexZ,
+      apexX, apexY + offset, apexZ,
+      apexX, apexY, apexZ + offset,
+    ],
+    mesh.positions.length,
+  );
+
+  // Closed tetrahedron over (apex, b0, b1, b2) — consistent outward winding,
+  // apex vertex REUSED (not duplicated) so it becomes a bowtie, mirroring
+  // `apexFan`'s exact triangle layout.
+  const newTriangles = [apex, b0, b1, apex, b2, b0, apex, b1, b2, b0, b2, b1];
+  const indices = new Uint32Array(mesh.indices.length + newTriangles.length);
+  indices.set(mesh.indices, 0);
+  indices.set(newTriangles, mesh.indices.length);
+
+  return { positions, indices };
+}
+
 // ---------------------------------------------------------------------------
 // Recorded journal shape
 // ---------------------------------------------------------------------------
@@ -151,7 +195,7 @@ const FORCED_RESCALE_FACTOR = 2.54; // arbitrary but fixed — see recordJournal
 
 /**
  * Records a scripted case journal on `fixtureRelPath` (a committed STL
- * fixture): import -> unit-rescale -> 3 chained repair ops. See this file's
+ * fixture): import -> unit-rescale -> 4 chained repair ops. See this file's
  * module doc for exactly what "replay" proves for each operation kind.
  *
  * `includeRescaleAndRepair`: arch-case-01 upperjaw (a real, open scan) gets
@@ -305,6 +349,33 @@ export function recordJournal(fixtureRelPath: string, fixtureLabel: string, incl
     },
   });
   currentMesh = afterFillResult.mesh;
+
+  // --- repair-split-non-manifold-vertices (seeded: vertex 0 turned into a
+  // bowtie by gluing on a disjoint fan) ------------------------------------
+  const beforeSplitVertices = attachBowtieFanAtVertexZero(currentMesh);
+  const inputHashSplitVertices = hashMeshContent(beforeSplitVertices.positions, beforeSplitVertices.indices);
+  const afterSplitVerticesResult = splitNonManifoldVertices(beforeSplitVertices);
+  const outputHashSplitVertices = hashMeshContent(
+    afterSplitVerticesResult.mesh.positions,
+    afterSplitVerticesResult.mesh.indices,
+  );
+  operations.push({
+    id: `${fixtureLabel}-repair-split-non-manifold-vertices`,
+    name: 'repair-split-non-manifold-vertices',
+    params: { fixture: fixtureLabel },
+    inputHashes: [inputHashSplitVertices],
+    outputHashes: [outputHashSplitVertices],
+    kernelVersion: KERNEL_VERSION,
+    timestamp,
+  });
+  replaySteps.push({
+    operationIndex: 5,
+    recompute: () => {
+      const fresh = splitNonManifoldVertices(beforeSplitVertices);
+      return hashMeshContent(fresh.mesh.positions, fresh.mesh.indices);
+    },
+  });
+  currentMesh = afterSplitVerticesResult.mesh;
 
   return { fixtureLabel, operations, replaySteps, finalMesh: currentMesh };
 }

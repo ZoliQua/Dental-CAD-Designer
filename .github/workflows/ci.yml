@@ -254,8 +254,35 @@ jobs:
         # clinical offset golden above.
         run: npm run test:offset-acceptance
 
+      - name: 5M-triangle NFR evidence (RUN_LARGE_FIXTURE)
+        # test/golden/halfedge-intake.perf.test.ts's parse -> intake ->
+        # buildHalfedge -> validate -> buildBvh -> heatmap(self) chain at
+        # 2.5M AND 5M triangle scale (PLAN §7's "handle meshes up to ~5M
+        # triangles" NFR — see docs/demos/phase-2.md's "5M-triangle NFR
+        # evidence" section for the measured timings/RSS this job is meant
+        # to keep honest over time). `npm run test:perf-halfedge` generates
+        # both on-demand fixtures itself (scripts/generate-large-fixture.ts,
+        # plain + `--5m`) before running — no Git LFS involved, same as the
+        # e2e perf fixture below. Same weekly/on-demand cadence as every
+        # other check in this job: multi-minute, slow-moving-regression
+        # territory, not a per-push gate.
+        run: npm run test:perf-halfedge
+
       - name: Generate the ~120 MB perf fixture
         run: npm run fixtures:generate-large
+
+      - name: Get Playwright version
+        # Same cache-keying rationale as the main `ci` job's identically
+        # named step above — keyed on the resolved @playwright/test version
+        # (post `npm ci`) rather than the lockfile hash.
+        id: playwright-version
+        run: echo "version=$(npx playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium

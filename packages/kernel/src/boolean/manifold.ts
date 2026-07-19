@@ -101,10 +101,14 @@ export function initManifold(): Promise<ManifoldToplevel> {
  * `Mesh` (Float32 vertProperties) — the input side of manifold-3d's WASM
  * boundary.
  *
- * @errorBound This is the ONE documented Float64→Float32 exception in the
- * kernel (docs/plans/phase-0-foundation.md Global Constraints: "the
+ * @errorBound This is ONE of TWO documented Float64→Float32 exceptions in
+ * the kernel (docs/plans/phase-0-foundation.md Global Constraints: "the
  * manifold-3d WASM boundary converts Float64→Float32; the wrapper documents
- * this as an error bound"). Casting a Float64 coordinate to Float32 rounds
+ * this as an error bound") — the other is the SDF grid's Float32 storage
+ * boundary (`packages/kernel/src/sdf/grid.ts`'s module doc, "Grid storage:
+ * Float32, not Float64"), which documents its own, separately-derived error
+ * budget; the two are independent boundaries, not the same exception cited
+ * twice. Casting a Float64 coordinate to Float32 rounds
  * it to Float32's ~7 significant decimal digits (machine epsilon
  * 2^-23 ≈ 1.19e-7), bounding the RELATIVE error introduced by this cast to
  * ~1.2e-7. At the mm scale used throughout this kernel, that is at most

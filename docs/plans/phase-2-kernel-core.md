@@ -8,7 +8,7 @@ Decomposition of PLAN.md Phase 2 into dispatchable tasks. Branch: `phase-2-kerne
 
 ## Global Constraints (bind every task)
 
-- **Float64 everywhere** in kernel/io/pipeline math. Float32 only in engine render copies + the documented manifold WASM boundary.
+- **Float64 everywhere** in kernel/io/pipeline math. Float32 only in engine render copies + the kernel's two documented Float64→Float32 boundaries (manifold-3d WASM I/O, `packages/kernel/src/boolean/manifold.ts`; SDF grid storage, `packages/kernel/src/sdf/grid.ts`) — each with its own `@errorBound`-derived budget.
 - **Tests first, analytic first.** Every new kernel algorithm lands with (1) property-based tests (fast-check, seeded) and (2) an analytic golden case (sphere/cylinder/torus closed forms) BEFORE any real-scan fixture use. This is CLAUDE.md's "Geometry work" rule — reviewers verify order of evidence, not just presence.
 - **`@errorBound` TSDoc** on every approximating algorithm (SDF offset, marching cubes, geodesic method, spline projection, decimation), stating the bound and its derivation. Where user-relevant, the bound is surfaced in results (structs carry `errorBoundMm`).
 - **Determinism:** bit-identical outputs for identical inputs; deterministic tie-breaking documented wherever floating-point ties are possible; no Math.random/Date.now in compute paths; hash-based determinism tests on every op.

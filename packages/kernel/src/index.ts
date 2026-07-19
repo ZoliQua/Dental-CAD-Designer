@@ -8,8 +8,10 @@
 
 /** Kernel package version, surfaced through the server health check. Bumped as the kernel evolves.
  * See docs/CHANGELOG-kernel.md for what changed at each bump — 0.2.0
- * (Phase 2 Task 11): fillSmallHoles' curvature-continuity upgrade. */
-export const KERNEL_VERSION = '0.2.0';
+ * (Phase 2 Task 11): fillSmallHoles' curvature-continuity upgrade. 0.2.1
+ * (Fix batch, post-Task-12): metadata-only — golden file gained a recorded
+ * manifoldVersion field; no kernel-ops hash changed. */
+export const KERNEL_VERSION = '0.2.1';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {

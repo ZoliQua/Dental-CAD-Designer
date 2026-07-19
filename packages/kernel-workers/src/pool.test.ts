@@ -272,6 +272,33 @@ describe('WorkerPool — worker crash', () => {
     const result = await pool.run('longTask', { iterations: 5 });
     expect(result.sum).toBe(10);
   });
+
+  it('a GENERIC (non-affinity) job queued behind a crashing job completes on a respawned worker, not a hang (Fix batch: handleWorkerCrash previously never re-served this.waiters)', async () => {
+    // size: 1 — the only worker is occupied by the crashing job, so `queued`
+    // below is provably parked in the pool-wide generic `this.waiters` FIFO
+    // (there is no other worker it could have been routed to).
+    const pool = createPool({ size: 1 });
+
+    // No `await` between this and `queued` below: '__test_crashWorker__'
+    // synchronously claims the sole worker inside acquireWorker()'s
+    // idle/spawn branch before this call's first real `await`, so `queued`
+    // is guaranteed to see the pool already at capacity and land in the
+    // Waiter branch — mirroring the existing "affinity-crash-while-queued"
+    // test's back-to-back-calls idiom (see the affinity describe block
+    // below), just without an affinityKey.
+    const crashing = pool.run('__test_crashWorker__' as JobName, { iterations: 1 });
+    const queued = pool.run('longTask', { iterations: 5 });
+
+    await expect(crashing).rejects.toBeInstanceOf(WorkerCrashedError);
+
+    // Before this fix, `queued` would hang forever: handleWorkerCrash()
+    // spliced the dead slot out (freeing capacity) but never triggered a
+    // fresh spawn on the generic waiters' behalf, and releaseWorker() itself
+    // early-returns for a crashed worker, so nothing else would ever drain
+    // `this.waiters`.
+    const result = await queued;
+    expect(result.sum).toBe(10);
+  });
 });
 
 describe('WorkerPool — spawn construction failure', () => {

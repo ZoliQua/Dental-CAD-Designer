@@ -213,8 +213,12 @@ export interface SurfaceSplineSpan {
   /** Re-projection passes actually performed — see this module's "Iterate"
    * doc. Always ≥ 1: the convergence check compares consecutive passes, so
    * even a span whose first projection already meets `relativeTolerance`
-   * reports 1 (the pass that confirmed it). Same convention as
-   * `geodesicPath.ts` — see `converged`'s doc. */
+   * reports 1 (the pass that confirmed it). NOTE this is the OPPOSITE
+   * counting convention from `geodesic/types.ts`'s `GeodesicPathResult.
+   * iterations` (0 if the very first pass was already locally taut) — the
+   * two fields are not directly comparable despite the similar name; only
+   * `converged`'s PASS/FAIL semantics (below) match across the two
+   * modules. */
   readonly iterations: number;
   /** `true` if re-projection genuinely converged (relative length change
    * below tolerance on some pass, or nothing left to project — e.g. a

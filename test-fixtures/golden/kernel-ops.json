@@ -1,5 +1,6 @@
 {
-  "kernelVersion": "0.2.0",
+  "kernelVersion": "0.2.1",
+  "manifoldVersion": "3.5.1",
   "notes": [
     "Runtime budget: every param here is chosen to keep this suite fast (target: whole suite well under the ~2 min CI budget) — see scripts/kernel-ops-lib.ts's module doc for each choice.",
     "offsetMesh uses pitchMm=0.1 (coarse) here, NOT DEFAULT_OFFSET_VOXEL_PITCH_MM=0.02 — the clinical-default-pitch acceptance golden lives separately in test/golden/offset.test.ts (~119 s on this same die fixture).",
@@ -8,7 +9,8 @@
     "offsetMesh-preCleanupSoup is a SECONDARY hash (marching-cubes soup before weld + manifold-3d WASM cleanup) — isolates a manifold-3d WASM version/platform-only golden failure from a real SDF/marching-cubes regression (Task 7 reviewer suggestion).",
     "Repair-op fixtures are small, hand-built, seeded-damage meshes (not committed files) — see scripts/kernel-ops-lib.ts for their exact construction.",
     "Phase 2 Task 11 (KERNEL_VERSION 0.2.0): repairFillSmallHoles' hash CHANGED (curvature-continuity thin-plate solve replaces the Phase 1 fixed-lambda Laplacian relax as the default path — see packages/kernel/src/repair/fillSmallHoles.ts). repairSplitNonManifoldVertices is a NEW pinned entry (bowtie-vertex split). Every other op entry is UNCHANGED by this bump — see docs/CHANGELOG-kernel.md.",
-    "undercutScan (Phase 2 Task 9) uses 'corners' sampling (the more expensive, more conservative policy) at a single fixed direction — see packages/kernel/src/undercut/undercutScan.ts for the sign convention and depth semantics."
+    "undercutScan (Phase 2 Task 9) uses 'corners' sampling (the more expensive, more conservative policy) at a single fixed direction — see packages/kernel/src/undercut/undercutScan.ts for the sign convention and depth semantics.",
+    "KERNEL_VERSION 0.2.1 (Fix batch, post-Task-12): metadata-only bump — this file gained the manifoldVersion field (recording the installed manifold-3d WASM package version alongside kernelVersion) and packages/kernel/package.json now pins manifold-3d to an EXACT version (was ^3.5.1). Every op hash is BYTE-IDENTICAL to 0.2.0 — verified via the regeneration diff — this bump exists solely to move the metadata-only golden-file change through the same bump+changelog discipline every other golden change goes through, per docs/CHANGELOG-kernel.md."
   ],
   "ops": [
     {

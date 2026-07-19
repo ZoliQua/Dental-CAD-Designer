@@ -60,6 +60,7 @@ describe('journal replay — scripted case journals reproduce every output hash'
       'repair-remove-components',
       'repair-split-non-manifold-edges',
       'repair-fill-small-holes',
+      'repair-split-non-manifold-vertices',
     ]);
     const archJournal = journals.find((j) => j.fixtureLabel === 'arch-case-01-upperjaw')!;
     expect(archJournal.operations.map((op) => op.name)).toEqual(['import-mesh']);

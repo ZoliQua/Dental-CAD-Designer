@@ -50,7 +50,12 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { KERNEL_VERSION } from '@dqcad/kernel';
-import { computeKernelOpsSnapshot, repoRoot, type KernelOpsSnapshot } from '../../scripts/kernel-ops-lib.ts';
+import {
+  computeKernelOpsSnapshot,
+  getInstalledManifoldVersion,
+  repoRoot,
+  type KernelOpsSnapshot,
+} from '../../scripts/kernel-ops-lib.ts';
 import { checkGoldenSnapshot } from './goldenEnforcement.ts';
 
 const goldenPath = join(repoRoot, 'test-fixtures', 'golden', 'kernel-ops.json');
@@ -107,6 +112,27 @@ describe('kernel-ops golden regression suite', () => {
     const golden = JSON.parse(readFileSync(goldenPath, 'utf8')) as KernelOpsSnapshot;
     expect(typeof golden.kernelVersion).toBe('string');
     expect(golden.kernelVersion.length).toBeGreaterThan(0);
+  });
+
+  it('the committed golden file\'s recorded manifoldVersion matches the ACTUALLY INSTALLED manifold-3d package (Fix batch item 3)', () => {
+    // Distinct from (and checked BEFORE, conceptually) the per-op hash
+    // comparison above: a mismatch here means "you're running against a
+    // different manifold-3d build than this golden file was generated
+    // with" — a more specific, more actionable diagnosis than letting every
+    // boolean/repair op's hash fail individually with no obvious common
+    // cause. See scripts/kernel-ops-lib.ts's `manifoldVersion` doc and
+    // docs/CHANGELOG-kernel.md's [0.2.1] entry.
+    const golden = JSON.parse(readFileSync(goldenPath, 'utf8')) as KernelOpsSnapshot;
+    const installedManifoldVersion = getInstalledManifoldVersion();
+    expect(first.manifoldVersion).toBe(installedManifoldVersion); // sanity: the live snapshot always reports the version it actually ran against
+    expect(
+      installedManifoldVersion,
+      `installed manifold-3d (${installedManifoldVersion}) does not match the version this golden file was generated ` +
+        `with (${golden.manifoldVersion}) — this can produce spurious per-op hash failures above that look like a ` +
+        `kernel regression but are actually a manifold-3d WASM build difference. Fix: either install the pinned ` +
+        `manifold-3d version (packages/kernel/package.json), or regenerate the golden file deliberately (bump ` +
+        `KERNEL_VERSION + docs/CHANGELOG-kernel.md, same discipline as any other golden change).`,
+    ).toBe(golden.manifoldVersion);
   });
 
   it('is deterministic: a second full run in THIS process is hash-identical to the first (double-run determinism)', () => {

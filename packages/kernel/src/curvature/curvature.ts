@@ -80,7 +80,7 @@
 // curvature.property.test.ts), never masking a real, resolvable
 // elliptic/hyperbolic distinction.
 //
-// ## Boundary policy — flag-and-exclude (this task's brief)
+// ## Boundary (and bowtie) policy — flag-and-exclude (this task's brief)
 //
 // A boundary vertex (touches at least one halfedge with no twin) has no
 // well-defined one-ring "interior" area to divide by using the interior
@@ -102,7 +102,25 @@
 // or a near-zero area (which would otherwise produce Infinity/NaN or a
 // wildly unstable value) — see the `if (!(area > 0))` check at this
 // function's per-vertex loop below.
-import { buildHalfedge, destinationVertex, forEachOutgoingHalfedge } from '../halfedge/index.ts';
+//
+// A BOWTIE vertex (`findNonManifoldVertices`, halfedge/build.ts — two or
+// more otherwise-manifold triangle fans meeting only at a single point, with
+// no shared edge) gets the SAME "0, flagged" treatment, for the same
+// underlying reason: it has no single well-defined one-ring. Concretely,
+// `forEachOutgoingHalfedge` (iterate.ts) only walks ONE fan/wing of a bowtie
+// vertex (see that function's own "Caveat" doc) while the mixed-area/angle-
+// sum passes below accumulate over ALL of a vertex's incident triangles
+// (every wing) — left unhandled, that mismatch would silently produce a
+// plausible-looking, non-NaN, WRONG H at a bowtie vertex (the Laplacian sum
+// missing one or more wings' contributions while the area/angle-defect
+// denominator still includes them), with nothing to flag it as untrustworthy.
+// `buildHalfedge` does not reject bowtie vertices (only non-manifold EDGES
+// — see that function's doc), so this can't be caught upstream; it must be
+// detected and excluded here. `findNonManifoldVertices` is a purely
+// combinatorial, `O(triangles)` check independent of the `HalfedgeMesh`
+// build (see its own doc) — cheap enough to always run, and correctness-
+// critical rather than optional.
+import { buildHalfedge, destinationVertex, findNonManifoldVertices, forEachOutgoingHalfedge } from '../halfedge/index.ts';
 import type { HalfedgeMesh } from '../halfedge/types.ts';
 import type { IndexedMesh } from '../mesh/types.ts';
 import type { Vec3 } from '../bvh/geometry.ts';
@@ -183,6 +201,12 @@ export function computeCurvature(mesh: IndexedMesh, hm: HalfedgeMesh = buildHalf
   }
   for (let v = 0; v < vertexCount; v++) {
     if (hm.vertexHalfedge[v]! === -1) isBoundary[v] = 1;
+  }
+  // Bowtie vertices — see this file's module doc, "Boundary policy" section
+  // — get the same flag-and-exclude treatment as true boundary vertices,
+  // for the same reason: no single well-defined one-ring to sum over.
+  for (const { vertex } of findNonManifoldVertices(mesh)) {
+    isBoundary[vertex] = 1;
   }
 
   const mixedArea = computeMixedVoronoiAreas(hm, mesh);

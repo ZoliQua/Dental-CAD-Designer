@@ -10,6 +10,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "manifold-3d": "^3.5.1"
+    "manifold-3d": "3.5.1"
   }
 }

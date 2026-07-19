@@ -59,6 +59,61 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.2.1] — Fix batch (post-Task-12): pin manifold-3d + record its version in goldens (metadata only, no hash change)
+
+Two related, purely-mechanical changes, ZERO numerical difference in any
+kernel-ops golden entry:
+
+1. **`packages/kernel/package.json`: `manifold-3d` dependency pinned to an
+   EXACT version, `3.5.1`** (was `^3.5.1`). This repo's booleans/repairs go
+   through the `manifold-3d` WASM wrapper
+   (`packages/kernel/src/boolean/manifold.ts`) — unlike this kernel's own
+   code, a `manifold-3d` upgrade is an external numerics change this repo
+   doesn't control, and a caret range meant `npm install` could silently
+   pull a newer `manifold-3d` patch/minor release (with its own WASM
+   binary, its own numerics) without that being visible anywhere as a
+   deliberate, reviewed decision. Pinning exactly makes any future
+   `manifold-3d` bump an explicit, single-line diff instead of an ambient
+   `npm install` side effect.
+2. **`scripts/kernel-ops-lib.ts`'s `KernelOpsSnapshot` gained a
+   `manifoldVersion` field** (`getInstalledManifoldVersion()`, reading the
+   ACTUALLY INSTALLED `manifold-3d/package.json`'s version at generation/
+   test time — not just trusting the pinned string above, so a
+   `package.json`/`node_modules` drift is caught as a real mismatch), so
+   `test-fixtures/golden/kernel-ops.json` now records WHICH `manifold-3d`
+   build produced its committed hashes, alongside `kernelVersion`.
+   `test/golden/kernel-ops.test.ts` gained a dedicated assertion that the
+   live installed `manifold-3d` version matches the committed golden's
+   recorded `manifoldVersion`, with a clear "you're testing against a
+   different manifold-3d build than this golden file was generated with"
+   message on mismatch — distinct from (and in addition to) the existing
+   per-op hash-vs-`kernelVersion` enforcement
+   (`test/golden/goldenEnforcement.ts`), since a `manifoldVersion` mismatch
+   is diagnosable BEFORE looking at any individual op's hash.
+
+**Why this needed a `KERNEL_VERSION` bump at all** (adding a metadata field
+with every hash unchanged still counts, per this repo's golden-version
+gate — `scripts/check-golden-version-gate.ts` triggers on ANY diff to
+`test-fixtures/golden/kernel-ops.json`, not just a hash diff): the simpler
+alternative (teaching the gate script to special-case "only
+manifoldVersion/metadata changed, all hashes identical" as exempt) was
+considered and rejected — it would add a second, narrower exemption path to
+a mechanism whose entire value is "one rule, no exceptions to remember",
+for a bump this cheap to do properly. Doing a real, if patch-level, version
+bump instead is simpler, more honest (the committed golden file's own
+`kernelVersion` field genuinely changed, so recording that fact via the
+normal mechanism is just... correct), and exercises the bump+regenerate+
+changelog workflow end to end for a third time (after 0.1.0's undercut fix
+and 0.2.0's Task 11 repair upgrades), which is itself useful confidence
+that the workflow holds up for a "boring" change, not just algorithmic
+ones.
+
+Regenerated via `npx tsx scripts/generate-kernel-goldens.ts` and diffed
+against the pre-bump file: every op's `hash` and `meta` field is
+BYTE-IDENTICAL; only `kernelVersion` (`0.2.0` -> `0.2.1`), the new
+`manifoldVersion` field, and the notes array (documenting this bump, see
+above) changed.
+
 ## [0.2.0] — Phase 2 Task 11: repair upgrades — curvature-continuous hole fill + bowtie split
 
 Two changes, one real golden diff:

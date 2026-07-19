@@ -69,6 +69,43 @@ import {
 export const repoRoot = fileURLToPath(new URL('../', import.meta.url));
 
 // ---------------------------------------------------------------------------
+// manifold-3d version (Fix batch, item 3): booleans/repairs go through the
+// manifold-3d WASM wrapper (packages/kernel/src/boolean/manifold.ts) —
+// unlike KERNEL_VERSION, a manifold-3d upgrade is an EXTERNAL dependency
+// change this repo doesn't control the numerics of, and the golden suite
+// exercises it directly (union/subtract/intersect, cleanupMesh via
+// splitNonManifoldEdges/fillSmallHoles, ...). packages/kernel/package.json
+// now pins manifold-3d to an EXACT version (no `^` range) specifically so
+// "which manifold-3d numerics produced this golden file" is a fact recorded
+// in the committed file itself, not just inferred from package-lock.json at
+// some later, possibly-different point in time. Read from the ACTUALLY
+// INSTALLED package (not the pinned string in package.json) so a
+// `package.json`/`node_modules` drift (e.g. a stale install) is caught as a
+// real mismatch rather than silently trusted.
+// ---------------------------------------------------------------------------
+
+export function getInstalledManifoldVersion(): string {
+  // manifold-3d's package.json does NOT expose a `"./package.json"` export
+  // subpath (only specific built-file subpaths — verified against the
+  // installed package's `exports` map), so neither `require.resolve` nor
+  // `import.meta.resolve` can target it directly — and `import.meta.resolve`
+  // itself isn't available under Vitest's Vite-SSR transform (this function
+  // is called from BOTH the plain-Node `tsx` generator script AND
+  // test/golden/kernel-ops.test.ts's Vitest run — see this file's module
+  // doc). Simplest thing that works identically in both: this is an npm
+  // WORKSPACES monorepo (single root `package-lock.json`), so `manifold-3d`
+  // is hoisted to the repo root's `node_modules` — read its `package.json`
+  // directly off `repoRoot`, same convention as this file's own
+  // `readFixtureBytes` resolving everything off `repoRoot`.
+  const manifoldPackageJsonPath = join(repoRoot, 'node_modules', 'manifold-3d', 'package.json');
+  const parsed = JSON.parse(readFileSync(manifoldPackageJsonPath, 'utf8')) as { version?: unknown };
+  if (typeof parsed.version !== 'string' || parsed.version.length === 0) {
+    throw new Error(`kernel-ops golden: could not read a version string from ${manifoldPackageJsonPath}`);
+  }
+  return parsed.version;
+}
+
+// ---------------------------------------------------------------------------
 // Fixture loading (real, committed files — the "synthetic + arch-case-01
 // upperjaw + standin-prep-die" set named in the task brief).
 // ---------------------------------------------------------------------------
@@ -254,6 +291,13 @@ export interface KernelOpEntry {
 
 export interface KernelOpsSnapshot {
   kernelVersion: string;
+  /** The installed `manifold-3d` WASM package's version at the time this
+   * snapshot was generated/computed (`getInstalledManifoldVersion()` above)
+   * — recorded alongside `kernelVersion` so a manifold-3d upgrade that
+   * changes this suite's boolean/repair hashes is visible AS a
+   * manifold-3d-version change, not just an unexplained numeric diff. See
+   * test/golden/kernel-ops.test.ts's dedicated version-match assertion. */
+  manifoldVersion: string;
   /** Documents the runtime budget decisions above, INSIDE the committed
    * file too (brief: "document choices in the goldens JSON"). */
   notes: readonly string[];
@@ -601,6 +645,7 @@ export async function computeKernelOpsSnapshot(): Promise<KernelOpsSnapshot> {
 
   return {
     kernelVersion: KERNEL_VERSION,
+    manifoldVersion: getInstalledManifoldVersion(),
     notes: [
       'Runtime budget: every param here is chosen to keep this suite fast (target: whole suite well under the ~2 min CI budget) — see scripts/kernel-ops-lib.ts\'s module doc for each choice.',
       'offsetMesh uses pitchMm=0.1 (coarse) here, NOT DEFAULT_OFFSET_VOXEL_PITCH_MM=0.02 — the clinical-default-pitch acceptance golden lives separately in test/golden/offset.test.ts (~119 s on this same die fixture).',
@@ -610,6 +655,7 @@ export async function computeKernelOpsSnapshot(): Promise<KernelOpsSnapshot> {
       'Repair-op fixtures are small, hand-built, seeded-damage meshes (not committed files) — see scripts/kernel-ops-lib.ts for their exact construction.',
       'Phase 2 Task 11 (KERNEL_VERSION 0.2.0): repairFillSmallHoles\' hash CHANGED (curvature-continuity thin-plate solve replaces the Phase 1 fixed-lambda Laplacian relax as the default path — see packages/kernel/src/repair/fillSmallHoles.ts). repairSplitNonManifoldVertices is a NEW pinned entry (bowtie-vertex split). Every other op entry is UNCHANGED by this bump — see docs/CHANGELOG-kernel.md.',
       'undercutScan (Phase 2 Task 9) uses \'corners\' sampling (the more expensive, more conservative policy) at a single fixed direction — see packages/kernel/src/undercut/undercutScan.ts for the sign convention and depth semantics.',
+      'KERNEL_VERSION 0.2.1 (Fix batch, post-Task-12): metadata-only bump — this file gained the manifoldVersion field (recording the installed manifold-3d WASM package version alongside kernelVersion) and packages/kernel/package.json now pins manifold-3d to an EXACT version (was ^3.5.1). Every op hash is BYTE-IDENTICAL to 0.2.0 — verified via the regeneration diff — this bump exists solely to move the metadata-only golden-file change through the same bump+changelog discipline every other golden change goes through, per docs/CHANGELOG-kernel.md.',
     ],
     ops,
   };

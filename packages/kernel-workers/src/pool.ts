@@ -837,6 +837,23 @@ export class WorkerPool {
    * Evicts it from `idle`/`slots` so it's never handed out again, and
    * rejects whatever job was running on it so that job's `run()` doesn't
    * hang forever waiting for a response that will never arrive.
+   *
+   * Liveness (Fix batch): a crash only ever rejects the ACTIVE run on the
+   * dead worker and any TARGETED (affinity) waiters parked specifically for
+   * it — see the two blocks below. It does NOT touch the pool-wide generic
+   * `this.waiters` FIFO, and dropping the slot above frees a capacity unit
+   * but does not itself spawn a replacement. Left at that, a generic
+   * (non-affinity) waiter queued behind a job that then crashes its worker
+   * would simply never be re-served: on a `size: 1` pool in particular,
+   * `this.slots.length < this.size` becomes true again, but nothing ever
+   * acts on it, since a fresh spawn is only ever triggered from
+   * `acquireWorker()`'s own spawn branch or from `spawnForWaiters()` — and a
+   * waiter that's already parked in `this.waiters` calls neither. That is
+   * exactly `spawnForWaiters()`'s job (see its own doc — it exists
+   * specifically to self-heal `this.waiters` after capacity frees up
+   * post-spawn-failure); a worker crash frees capacity the same way a spawn
+   * failure does, so the fix is to call it here too, after the slot has
+   * been spliced out above (`spawnForWaiters()`'s own precondition).
    */
   private handleWorkerCrash(worker: PooledWorker, error: Error): void {
     if (worker.crashed) {
@@ -884,5 +901,11 @@ export class WorkerPool {
         this.affinityTargets.delete(key);
       }
     }
+
+    // Re-serve the generic FIFO now that capacity has freed up (see this
+    // method's doc) — mirrors acquireWorker()'s own spawn-failure handling.
+    // A no-op if `this.waiters` is empty or the pool was already destroyed
+    // (spawnForWaiters() checks both itself).
+    this.spawnForWaiters();
   }
 }

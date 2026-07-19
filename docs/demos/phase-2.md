@@ -37,9 +37,12 @@ URL, import a mesh (see `docs/demos/phase-1.md`'s import walkthrough), then:
    (`curvature-field-choice` fieldset, `curvature-field-h` /
    `curvature-field-k` radio inputs).
 3. Click **Run** (`curvature-run-button`) — the worker-side
-   `curvature`/`meanCurvature`/`gaussianCurvature` job (Task 3) computes
-   per-vertex curvature via the discrete cotan-weighted Laplace-Beltrami
-   operator, and the mesh recolors blue→white→red by value, with a
+   `computeCurvature` job (`packages/kernel-workers/src/jobs/curvature.ts`,
+   Task 3) computes per-vertex mean (H) AND Gaussian (K) curvature in one
+   call (the field choice above only selects which already-computed array
+   is displayed, not which job runs) via the discrete cotan-weighted
+   Laplace-Beltrami operator, and the mesh recolors blue→white→red by
+   value, with a
    µm⁻¹-ticked legend (`curvature-legend`) and a stats table
    (`curvature-stats`: min/max/mean).
 4. Toggle the overlay on/off (`curvature-visible-toggle`) independently of
@@ -217,12 +220,20 @@ isolated 8 GB-heap measurement run — every number below is proportionally
 higher, consistent with everything else measured in this session, not a
 regression):
 
-| Run | Fixture | parse | intake | buildHalfedge | validate | buildBvh | heatmap (self) | TOTAL | RSS peak |
+| Run | Fixture | parse | intake | buildHalfedge | validate | buildBvh | heatmap (self) | TOTAL | RSS peak\* |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 1 | 2.5M (1,258,320 verts) | 220 ms | 11.7 s | 3.5 s | 0.2 s | 14.7 s | 15.4 s | 45.7 s | 2,770 MB |
 | 1 | 5M (2,500,032 verts) | 551 ms | 27.8 s | 7.3 s | 0.4 s | 19.4 s | 39.5 s | 94.9 s | 3,220 MB |
 | 2 | 2.5M | 411 ms | 13.9 s | 4.3 s | 0.3 s | 21.8 s | 17.8 s | 58.5 s | 3,613 MB |
 | 2 | 5M | 608 ms | 26.5 s | 9.9 s | 0.4 s | 18.9 s | 40.8 s | 97.0 s | 3,808 MB |
+
+\* This is the process's absolute peak `process.memoryUsage().rss`, sampled
+at every stage boundary (`test/golden/halfedge-intake.perf.test.ts`'s
+`trackPeak()`) — NOT the before/after RSS *delta* the same test also logs
+(`console.log`'s `delta: ... MB` alongside `PEAK: ... MB`) — the two are
+different numbers (peak includes the whole process's baseline footprint;
+delta is just this test body's own incremental growth) and should not be
+conflated when comparing against another measurement.
 
 (Two of three runs shown — the third, used for the RPC-timeout fix below,
 matches the same shape: 2.5M ~27 s / 3.0 GB peak, 5M ~53-87 s / 3.7-4.3 GB

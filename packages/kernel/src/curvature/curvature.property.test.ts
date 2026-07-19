@@ -16,8 +16,9 @@ import { createHash } from 'node:crypto';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import type { IndexedMesh } from '../mesh/types.ts';
-import { buildHalfedge, computeEulerCharacteristic } from '../halfedge/index.ts';
+import { buildHalfedge, computeEulerCharacteristic, findNonManifoldVertices } from '../halfedge/index.ts';
 import { icosphereMesh, octahedronMesh, openGridPatchMesh, torusMesh } from '../halfedge/halfedge.test-fixtures.ts';
+import { singleBowtieMesh } from '../repair/repair.test-fixtures.ts';
 import { computeCurvature, type CurvatureResult } from './curvature.ts';
 
 const PROPERTY_SEED = 20260712;
@@ -209,6 +210,44 @@ describe('computeCurvature — principal curvature ordering and NaN-freedom', ()
       }
     }
     expect(boundaryCount).toBeGreaterThan(0); // sanity: the patch actually has a boundary
+  });
+
+  it('a bowtie vertex is flagged and zeroed (Fix batch: forEachOutgoingHalfedge only walks ONE wing, previously producing a plausible-but-wrong H rather than an error)', () => {
+    const mesh = singleBowtieMesh();
+    // Sanity: the fixture actually has a bowtie, at vertex 0, per its own doc.
+    const bowties = findNonManifoldVertices(mesh);
+    expect(bowties).toEqual([{ vertex: 0, fanCount: 2 }]);
+
+    const result = computeCurvature(mesh);
+
+    expect(result.isBoundary[0]).toBe(1);
+    expect(result.H[0]).toBe(0);
+    expect(result.K[0]).toBe(0);
+    expect(result.k1[0]).toBe(0);
+    expect(result.k2[0]).toBe(0);
+
+    // Neighbors (each fan's 3 base vertices, forming a closed tetrahedral
+    // shell with the apex) are untouched by the bowtie-exclusion policy:
+    // they are ordinary interior vertices of their own fan and get real,
+    // finite curvature, not flagged.
+    for (let v = 1; v < mesh.positions.length / 3; v++) {
+      expect(result.isBoundary[v]).toBe(0);
+      expect(Number.isFinite(result.H[v]!)).toBe(true);
+      expect(Number.isFinite(result.K[v]!)).toBe(true);
+      expect(Number.isFinite(result.k1[v]!)).toBe(true);
+      expect(Number.isFinite(result.k2[v]!)).toBe(true);
+    }
+
+    // Determinism: repeated runs on the same (small, fixed) mesh agree
+    // exactly — same convention as the "determinism" describe block above,
+    // spot-checked directly here rather than via the shared hash helper so
+    // this test stands alone.
+    const again = computeCurvature(mesh);
+    expect(Array.from(again.H)).toEqual(Array.from(result.H));
+    expect(Array.from(again.K)).toEqual(Array.from(result.K));
+    expect(Array.from(again.k1)).toEqual(Array.from(result.k1));
+    expect(Array.from(again.k2)).toEqual(Array.from(result.k2));
+    expect(Array.from(again.isBoundary)).toEqual(Array.from(result.isBoundary));
   });
 
   it('discriminant clamp actually engages: octahedron r=1 has a NEGATIVE raw H^2-K at every (discrete-umbilic) vertex, yet k1===k2===H with no NaN', () => {
