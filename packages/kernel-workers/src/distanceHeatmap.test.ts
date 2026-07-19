@@ -149,7 +149,10 @@ describe('distanceHeatmap — behavioral tests (unit cube)', () => {
   it('rejects with BvhNotCachedError when the target contentHash was never built on this worker', async () => {
     const pool = createPool({ size: 1 });
     await expect(
-      pool.run('distanceHeatmap', { contentHash: 'never-built', points: new Float64Array([0, 0, 0]) }),
+      pool.run('distanceHeatmap', {
+        contentHash: 'never-built',
+        points: new Float64Array([0, 0, 0]),
+      }),
     ).rejects.toMatchObject({ name: 'BvhNotCachedError' });
   });
 
@@ -209,8 +212,14 @@ describe('distanceHeatmap — behavioral tests (unit cube)', () => {
       0.5, 0.5, 3, 3, 0.5, 0.5, 0.5, 3, 0.5, -1, -1, -1, 2, 2, 2, 0, 0, 0, 1, 1, 1, 0.5, 0.5, 0.5,
     ]);
 
-    const first = await pool.run('distanceHeatmap', { contentHash: CUBE_HASH, points: points.slice() });
-    const second = await pool.run('distanceHeatmap', { contentHash: CUBE_HASH, points: points.slice() });
+    const first = await pool.run('distanceHeatmap', {
+      contentHash: CUBE_HASH,
+      points: points.slice(),
+    });
+    const second = await pool.run('distanceHeatmap', {
+      contentHash: CUBE_HASH,
+      points: points.slice(),
+    });
     expect(Array.from(second.distances)).toEqual(Array.from(first.distances));
     expect(second.min).toBe(first.min);
     expect(second.max).toBe(first.max);
@@ -253,7 +262,9 @@ interface PairSidecar {
 }
 
 function readPairSidecar(pairName: string): PairSidecar {
-  return JSON.parse(readFileSync(join(syntheticDir, `${pairName}.expected.json`), 'utf8')) as PairSidecar;
+  return JSON.parse(
+    readFileSync(join(syntheticDir, `${pairName}.expected.json`), 'utf8'),
+  ) as PairSidecar;
 }
 
 /** Phase acceptance bound (docs/plans/phase-1-import-viewer.md): "reports
@@ -364,9 +375,18 @@ describe('distanceHeatmap — ACCEPTANCE: plane-pair (flat planes, exact 17 µm 
 function buildLargeIcosphereForPerfTest(subdivisions: number): IndexedMesh {
   const t = (1 + Math.sqrt(5)) / 2;
   const raw: Array<[number, number, number]> = [
-    [-1, t, 0], [1, t, 0], [-1, -t, 0], [1, -t, 0],
-    [0, -1, t], [0, 1, t], [0, -1, -t], [0, 1, -t],
-    [t, 0, -1], [t, 0, 1], [-t, 0, -1], [-t, 0, 1],
+    [-1, t, 0],
+    [1, t, 0],
+    [-1, -t, 0],
+    [1, -t, 0],
+    [0, -1, t],
+    [0, 1, t],
+    [0, -1, -t],
+    [0, 1, -t],
+    [t, 0, -1],
+    [t, 0, 1],
+    [-t, 0, -1],
+    [-t, 0, 1],
   ];
   function normalize(v: [number, number, number]): [number, number, number] {
     const len = Math.hypot(v[0], v[1], v[2]);
@@ -374,10 +394,26 @@ function buildLargeIcosphereForPerfTest(subdivisions: number): IndexedMesh {
   }
   const vertices: Array<[number, number, number]> = raw.map(normalize);
   let faces: Array<[number, number, number]> = [
-    [0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11],
-    [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8],
-    [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9],
-    [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1],
+    [0, 11, 5],
+    [0, 5, 1],
+    [0, 1, 7],
+    [0, 7, 10],
+    [0, 10, 11],
+    [1, 5, 9],
+    [5, 11, 4],
+    [11, 10, 2],
+    [10, 7, 6],
+    [7, 1, 8],
+    [3, 9, 4],
+    [3, 4, 2],
+    [3, 2, 6],
+    [3, 6, 8],
+    [3, 8, 9],
+    [4, 9, 5],
+    [2, 4, 11],
+    [6, 2, 10],
+    [8, 6, 7],
+    [9, 8, 1],
   ];
   for (let s = 0; s < subdivisions; s++) {
     const midpointCache = new Map<string, number>();
@@ -441,6 +477,11 @@ describe('distanceHeatmap — performance smoke test', () => {
       }-triangle BVH: ${elapsedMs.toFixed(1)}ms`,
     );
     expect(result.distances.length).toBe(mesh.positions.length / 3);
-    expect(elapsedMs).toBeLessThan(10_000); // generous — see this describe block's doc
-  }, 30_000);
+    // Loosened 10_000 -> 25_000 (Phase 2 Task 12 fix for full-suite timing
+    // flakiness under CPU contention — see .superpowers/sdd/progress.md's
+    // P2 Task 11 carry-over note): smoke ceiling ("didn't hang / didn't
+    // regress by orders of magnitude"), not a latency benchmark, tolerant of
+    // sharing CPU with other heavy suites in the default `npm test` run.
+    expect(elapsedMs).toBeLessThan(25_000);
+  }, 40_000);
 });

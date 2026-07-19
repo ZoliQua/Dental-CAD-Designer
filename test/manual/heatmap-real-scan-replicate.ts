@@ -9,14 +9,19 @@
 // browser, against the real, checked-in `arch-case-01` scans (not a
 // synthetic fixture).
 //
-// A `size: 1` pool is used deliberately: `distanceHeatmap`'s target BVH is
-// cached PER WORKER (see packages/kernel-workers/src/jobs/bvh.ts's "Per-worker
-// BVH cache" doc) — `WorkerPool.run()` has no per-job worker affinity, so
-// only a pool that never has more than one worker guarantees a `buildBvh`
-// call and a later `distanceHeatmap` call for the same contentHash land on
-// the SAME worker. This is the exact reason
-// apps/client/src/engine/workers.ts's `getMeasurementWorkerPool()` is a
-// dedicated size:1 pool in the real app.
+// A `size: 1` pool is used here for simplicity (this is a standalone
+// replication script, not app code): `distanceHeatmap`'s target BVH is
+// cached PER WORKER (see packages/kernel-workers/src/jobs/bvh.ts's
+// "Per-worker BVH cache" doc), so a `buildBvh` call and a later
+// `distanceHeatmap` call for the same contentHash must land on the SAME
+// worker to hit that cache. The real app (apps/client/src/engine/
+// heatmap.ts/workers.ts) instead runs on the shared multi-worker pool and
+// passes `affinityKey: contentHash` to `WorkerPool.run()` (hash-routed slot
+// selection — see packages/kernel-workers/src/pool.ts's `RunJobOptions.
+// affinityKey` doc) so unrelated meshes' BVH work can run on different
+// workers in parallel instead of all serializing through one dedicated
+// worker; a size:1 pool achieves the same cache-locality guarantee
+// trivially (only one worker exists), which is all this script needs.
 //
 // Run: npx tsx test/manual/heatmap-real-scan-replicate.ts
 

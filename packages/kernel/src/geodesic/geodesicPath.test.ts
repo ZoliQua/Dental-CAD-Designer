@@ -23,7 +23,10 @@ import { GEODESIC_MAX_ITERATIONS, geodesicPath } from './geodesicPath.ts';
 import { evaluateSurfacePoint } from './surfacePoint.ts';
 import type { SurfacePoint } from './types.ts';
 
-function mesh(positions: readonly (readonly [number, number, number])[], indices: readonly number[]): IndexedMesh {
+function mesh(
+  positions: readonly (readonly [number, number, number])[],
+  indices: readonly number[],
+): IndexedMesh {
   const flat = new Float64Array(positions.length * 3);
   positions.forEach((p, i) => flat.set(p, i * 3));
   return { positions: flat, indices: Uint32Array.from(indices) };
@@ -150,28 +153,43 @@ describe('geodesicPath — degenerate cases', () => {
     expect(result.length).toBe(0);
   });
 
-  it('near-antipodal points on a closed sphere: converges without hanging, respects the iteration cap', () => {
-    const radius = 5;
-    const m = icosphereMesh(radius, 3);
-    const hm = buildHalfedge(m);
-    const bvh = buildBvh(m);
-    const start = { triangleIndex: 0, barycentric: [1 / 3, 1 / 3, 1 / 3] } as SurfacePoint;
-    const startPos = evaluateSurfacePoint(m, start);
-    // Project the antipodal 3D point back onto the mesh surface via BVH.
-    const antipodal = closestPoint(m, bvh, [-startPos[0], -startPos[1], -startPos[2]]);
-    const end: SurfacePoint = { triangleIndex: antipodal.triangleIndex, barycentric: antipodal.barycentric };
+  it(
+    'near-antipodal points on a closed sphere: converges without hanging, respects the iteration cap',
+    { timeout: 25_000 },
+    () => {
+      const radius = 5;
+      const m = icosphereMesh(radius, 3);
+      const hm = buildHalfedge(m);
+      const bvh = buildBvh(m);
+      const start = { triangleIndex: 0, barycentric: [1 / 3, 1 / 3, 1 / 3] } as SurfacePoint;
+      const startPos = evaluateSurfacePoint(m, start);
+      // Project the antipodal 3D point back onto the mesh surface via BVH.
+      const antipodal = closestPoint(m, bvh, [-startPos[0], -startPos[1], -startPos[2]]);
+      const end: SurfacePoint = {
+        triangleIndex: antipodal.triangleIndex,
+        barycentric: antipodal.barycentric,
+      };
 
-    const maxIterations = 6;
-    const start_ = performance.now();
-    const result = geodesicPath(m, hm, start, end, { maxIterations });
-    const elapsedMs = performance.now() - start_;
+      const maxIterations = 6;
+      const start_ = performance.now();
+      const result = geodesicPath(m, hm, start, end, { maxIterations });
+      const elapsedMs = performance.now() - start_;
 
-    expect(result.iterations).toBeLessThanOrEqual(maxIterations);
-    expect(elapsedMs).toBeLessThan(5000); // generous — "converges, no hang"
-    // Half the great-circle circumference, generously bounded.
-    expect(result.length).toBeGreaterThan(Math.PI * radius * 0.9);
-    expect(result.length).toBeLessThan(Math.PI * radius * 1.1);
-  });
+      expect(result.iterations).toBeLessThanOrEqual(maxIterations);
+      // "converges, no hang" smoke ceiling — loosened 5000 -> 20000 (Phase 2
+      // Task 12 fix for full-suite timing flakiness under CPU contention, see
+      // .superpowers/sdd/progress.md's P2 Task 11 carry-over note): this is a
+      // bounded-iteration-count algorithm (maxIterations above already caps
+      // the real work), so a wall-clock ceiling here only guards against a
+      // pathological hang, not throughput — 20s is still far below the
+      // per-test default/explicit timeout and tolerates sharing CPU with other
+      // heavy suites in the default `npm test` run.
+      expect(elapsedMs).toBeLessThan(20_000);
+      // Half the great-circle circumference, generously bounded.
+      expect(result.length).toBeGreaterThan(Math.PI * radius * 0.9);
+      expect(result.length).toBeLessThan(Math.PI * radius * 1.1);
+    },
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -192,8 +210,14 @@ describe('geodesicPath — GeodesicPathResult.converged', () => {
   const radius = 5;
   const mesh = icosphereMesh(radius, 3);
   const hm = buildHalfedge(mesh);
-  const start: SurfacePoint = { triangleIndex: 960, barycentric: [0.46768958026167806, 0.26829355180994185, 0.2640168679283801] };
-  const end: SurfacePoint = { triangleIndex: 560, barycentric: [0.5791267294121226, 0.16937583238675563, 0.25149743820112175] };
+  const start: SurfacePoint = {
+    triangleIndex: 960,
+    barycentric: [0.46768958026167806, 0.26829355180994185, 0.2640168679283801],
+  };
+  const end: SurfacePoint = {
+    triangleIndex: 560,
+    barycentric: [0.5791267294121226, 0.16937583238675563, 0.25149743820112175],
+  };
 
   it('converges naturally (well under the default cap) on a typical pair: converged === true', () => {
     const result = geodesicPath(mesh, hm, start, end);
@@ -201,7 +225,7 @@ describe('geodesicPath — GeodesicPathResult.converged', () => {
     expect(result.iterations).toBeLessThan(GEODESIC_MAX_ITERATIONS);
   });
 
-  it('a maxIterations cap set BELOW this pair\'s natural convergence point genuinely truncates: converged === false', () => {
+  it("a maxIterations cap set BELOW this pair's natural convergence point genuinely truncates: converged === false", () => {
     // With the default cap, this pair converges at iterations === 4 (see
     // the test above / the sweep this fixture was chosen from). Capping at
     // 2 forces the loop to stop while strictly more improvement was still
@@ -263,8 +287,14 @@ describe('geodesicPath — boundary behavior on an open mesh', () => {
     // Start just left of the hole, end just right of it, both at y = row 1.5.
     const startCellIndex = 1 * cols + 2; // cell (1,2), just left of the hole
     const endCellIndex = 1 * cols + 4; // cell (1,4), just right of the hole
-    const start: SurfacePoint = { triangleIndex: startCellIndex * 2, barycentric: [1 / 3, 1 / 3, 1 / 3] };
-    const end: SurfacePoint = { triangleIndex: endCellIndex * 2, barycentric: [1 / 3, 1 / 3, 1 / 3] };
+    const start: SurfacePoint = {
+      triangleIndex: startCellIndex * 2,
+      barycentric: [1 / 3, 1 / 3, 1 / 3],
+    };
+    const end: SurfacePoint = {
+      triangleIndex: endCellIndex * 2,
+      barycentric: [1 / 3, 1 / 3, 1 / 3],
+    };
 
     const result = geodesicPath(m, hm, start, end);
     const p0 = evaluateSurfacePoint(m, start);
@@ -315,7 +345,10 @@ function surfacePointArb(faceCount: number): fc.Arbitrary<SurfacePoint> {
       r1: fc.double({ min: 0, max: 1, noNaN: true }),
       r2: fc.double({ min: 0, max: 1, noNaN: true }),
     })
-    .map(({ triangleIndex, r1, r2 }) => ({ triangleIndex, barycentric: randomBarycentric(r1, r2) }));
+    .map(({ triangleIndex, r1, r2 }) => ({
+      triangleIndex,
+      barycentric: randomBarycentric(r1, r2),
+    }));
 }
 
 describe('geodesicPath — properties', () => {
@@ -381,30 +414,50 @@ describe('geodesicPath — properties', () => {
 
   it('property: NaN/Infinity-free across a mix of closed and boundary-having meshes', () => {
     const shapeArb = fc.oneof(
-      fc.record({ kind: fc.constant('icosphere' as const), subdivisions: fc.integer({ min: 1, max: 2 }) }),
+      fc.record({
+        kind: fc.constant('icosphere' as const),
+        subdivisions: fc.integer({ min: 1, max: 2 }),
+      }),
       fc.constant({ kind: 'octahedron' as const }),
-      fc.record({ kind: fc.constant('openGrid' as const), rows: fc.integer({ min: 2, max: 5 }), cols: fc.integer({ min: 2, max: 5 }) }),
+      fc.record({
+        kind: fc.constant('openGrid' as const),
+        rows: fc.integer({ min: 2, max: 5 }),
+        cols: fc.integer({ min: 2, max: 5 }),
+      }),
     );
     fc.assert(
-      fc.property(shapeArb, fc.double({ min: 0, max: 1, noNaN: true }), fc.double({ min: 0, max: 1, noNaN: true }), fc.double({ min: 0, max: 1, noNaN: true }), fc.double({ min: 0, max: 1, noNaN: true }), (desc, r1a, r2a, r1b, r2b) => {
-        const m =
-          desc.kind === 'icosphere'
-            ? icosphereMesh(5, desc.subdivisions)
-            : desc.kind === 'octahedron'
-              ? octahedronMesh(3)
-              : openGridPatchMesh(desc.rows, desc.cols);
-        const hm = buildHalfedge(m);
-        const faceCount = m.indices.length / 3;
-        const start: SurfacePoint = { triangleIndex: Math.floor(r1a * faceCount) % faceCount, barycentric: randomBarycentric(r1a, r2a) };
-        const end: SurfacePoint = { triangleIndex: Math.floor(r1b * faceCount) % faceCount, barycentric: randomBarycentric(r1b, r2b) };
-        const result = geodesicPath(m, hm, start, end);
-        expect(Number.isFinite(result.length)).toBe(true);
-        for (const sp of result.points) {
-          expect(Number.isFinite(sp.barycentric[0])).toBe(true);
-          expect(Number.isFinite(sp.barycentric[1])).toBe(true);
-          expect(Number.isFinite(sp.barycentric[2])).toBe(true);
-        }
-      }),
+      fc.property(
+        shapeArb,
+        fc.double({ min: 0, max: 1, noNaN: true }),
+        fc.double({ min: 0, max: 1, noNaN: true }),
+        fc.double({ min: 0, max: 1, noNaN: true }),
+        fc.double({ min: 0, max: 1, noNaN: true }),
+        (desc, r1a, r2a, r1b, r2b) => {
+          const m =
+            desc.kind === 'icosphere'
+              ? icosphereMesh(5, desc.subdivisions)
+              : desc.kind === 'octahedron'
+                ? octahedronMesh(3)
+                : openGridPatchMesh(desc.rows, desc.cols);
+          const hm = buildHalfedge(m);
+          const faceCount = m.indices.length / 3;
+          const start: SurfacePoint = {
+            triangleIndex: Math.floor(r1a * faceCount) % faceCount,
+            barycentric: randomBarycentric(r1a, r2a),
+          };
+          const end: SurfacePoint = {
+            triangleIndex: Math.floor(r1b * faceCount) % faceCount,
+            barycentric: randomBarycentric(r1b, r2b),
+          };
+          const result = geodesicPath(m, hm, start, end);
+          expect(Number.isFinite(result.length)).toBe(true);
+          for (const sp of result.points) {
+            expect(Number.isFinite(sp.barycentric[0])).toBe(true);
+            expect(Number.isFinite(sp.barycentric[1])).toBe(true);
+            expect(Number.isFinite(sp.barycentric[2])).toBe(true);
+          }
+        },
+      ),
       { seed: PROPERTY_SEED, numRuns: NUM_RUNS },
     );
   });

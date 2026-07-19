@@ -217,6 +217,18 @@ jobs:
           RUN_CLINICAL_GOLDEN: '1'
         run: npx vitest run --project golden test/golden/offset.test.ts
 
+      - name: Offset PHASE ACCEPTANCE (RUN_OFFSET_ACCEPTANCE)
+        # packages/kernel/src/offset/offsetMesh.test.ts's icosphere ±50 µm @
+        # clinical-pitch acceptance tests (Phase 2's literal offset
+        # criterion) — moved off the every-push `kernel` project (Task 12
+        # fix for full-suite timing flakiness under CPU contention: these
+        # ~1-2 min-in-isolation tests were observed hogging enough CPU in
+        # the default parallel `npm test` run to blow OTHER files' timing
+        # budgets/default timeouts as noisy-neighbor collateral damage — see
+        # that test file's module doc). Same weekly/on-demand cadence as the
+        # clinical offset golden above.
+        run: npm run test:offset-acceptance
+
       - name: Generate the ~120 MB perf fixture
         run: npm run fixtures:generate-large
 

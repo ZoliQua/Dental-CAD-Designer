@@ -128,7 +128,9 @@ describe('fitSurfaceSpline job', () => {
     expect(result.controlPointTriangleIndices.length).toBe(6);
     expect(result.controlPointBarycentric.length).toBe(18);
     expect(result.spanPointCounts.length).toBe(6); // closed: spanCount === controlPointCount
-    expect(Array.from(result.spanPointCounts).reduce((a, b) => a + b, 0)).toBe(result.spanTriangleIndices.length);
+    expect(Array.from(result.spanPointCounts).reduce((a, b) => a + b, 0)).toBe(
+      result.spanTriangleIndices.length,
+    );
     expect(result.spanLengths.length).toBe(6);
     for (const length of result.spanLengths) expect(length).toBeGreaterThan(0);
     expect(typeof result.converged).toBe('boolean');
@@ -142,7 +144,12 @@ describe('fitSurfaceSpline job', () => {
     await pool.run('buildBvh', { contentHash: ICO_HASH, positions, indices });
 
     const points = circlePoints(5, 6);
-    const result = await pool.run('fitSurfaceSpline', { contentHash: ICO_HASH, points, closed: false, pointsPerMm: 1 });
+    const result = await pool.run('fitSurfaceSpline', {
+      contentHash: ICO_HASH,
+      points,
+      closed: false,
+      pointsPerMm: 1,
+    });
     expect(result.spanPointCounts.length).toBe(4);
   });
 
@@ -151,14 +158,24 @@ describe('fitSurfaceSpline job', () => {
     const { positions, indices } = icosahedronBuffers();
     await pool.run('buildBvh', { contentHash: ICO_HASH, positions, indices });
     await expect(
-      pool.run('fitSurfaceSpline', { contentHash: ICO_HASH, points: new Float64Array([0, 0]), closed: false, pointsPerMm: 1 }),
+      pool.run('fitSurfaceSpline', {
+        contentHash: ICO_HASH,
+        points: new Float64Array([0, 0]),
+        closed: false,
+        pointsPerMm: 1,
+      }),
     ).rejects.toThrow(/multiple of 3/);
   });
 
   it('rejects with BvhNotCachedError when the contentHash was never built on this worker', async () => {
     const pool = createPool({ size: 1 });
     await expect(
-      pool.run('fitSurfaceSpline', { contentHash: 'never-built', points: circlePoints(4, 5), closed: true, pointsPerMm: 1 }),
+      pool.run('fitSurfaceSpline', {
+        contentHash: 'never-built',
+        points: circlePoints(4, 5),
+        closed: true,
+        pointsPerMm: 1,
+      }),
     ).rejects.toMatchObject({ name: 'BvhNotCachedError' });
   });
 
@@ -182,8 +199,18 @@ describe('fitSurfaceSpline job', () => {
     const { positions, indices } = icosahedronBuffers(5);
     await pool.run('buildBvh', { contentHash: ICO_HASH, positions, indices });
     const points = circlePoints(6, 6);
-    const a = await pool.run('fitSurfaceSpline', { contentHash: ICO_HASH, points, closed: true, pointsPerMm: 2 });
-    const b = await pool.run('fitSurfaceSpline', { contentHash: ICO_HASH, points: points.slice(), closed: true, pointsPerMm: 2 });
+    const a = await pool.run('fitSurfaceSpline', {
+      contentHash: ICO_HASH,
+      points,
+      closed: true,
+      pointsPerMm: 2,
+    });
+    const b = await pool.run('fitSurfaceSpline', {
+      contentHash: ICO_HASH,
+      points: points.slice(),
+      closed: true,
+      pointsPerMm: 2,
+    });
     expect(Array.from(b.spanTriangleIndices)).toEqual(Array.from(a.spanTriangleIndices));
     expect(Array.from(b.spanBarycentric)).toEqual(Array.from(a.spanBarycentric));
     expect(Array.from(b.spanLengths)).toEqual(Array.from(a.spanLengths));
@@ -191,7 +218,7 @@ describe('fitSurfaceSpline job', () => {
   });
 });
 
-describe('fitSurfaceSplineSpan job — locality (this task\'s brief, deliverable 3)', () => {
+describe("fitSurfaceSplineSpan job — locality (this task's brief, deliverable 3)", () => {
   it('re-fitting one span via the span job reproduces the SAME span the whole-curve job computed', async () => {
     const pool = createPool({ size: 1 });
     const { positions, indices } = icosahedronBuffers(5);
@@ -199,7 +226,12 @@ describe('fitSurfaceSplineSpan job — locality (this task\'s brief, deliverable
     const points = circlePoints(6, 6);
     const mesh: IndexedMesh = { positions, indices };
 
-    const whole = await pool.run('fitSurfaceSpline', { contentHash: ICO_HASH, points, closed: true, pointsPerMm: 2 });
+    const whole = await pool.run('fitSurfaceSpline', {
+      contentHash: ICO_HASH,
+      points,
+      closed: true,
+      pointsPerMm: 2,
+    });
 
     // Reconstruct span 2's role (prev=1, start=2, end=3, next=4) from the
     // SNAPPED (BVH-projected) control-point positions the whole-curve job
@@ -213,8 +245,15 @@ describe('fitSurfaceSplineSpan job — locality (this task\'s brief, deliverable
     // original raw pick points).
     const at = (i: number): readonly [number, number, number] => {
       const idx = ((i % 6) + 6) % 6;
-      const sp = surfacePointPayloadAt(whole.controlPointTriangleIndices, whole.controlPointBarycentric, idx);
-      return evaluateSurfacePoint(mesh, { triangleIndex: sp.triangleIndex, barycentric: sp.barycentric as [number, number, number] });
+      const sp = surfacePointPayloadAt(
+        whole.controlPointTriangleIndices,
+        whole.controlPointBarycentric,
+        idx,
+      );
+      return evaluateSurfacePoint(mesh, {
+        triangleIndex: sp.triangleIndex,
+        barycentric: sp.barycentric as [number, number, number],
+      });
     };
     const role: readonly [
       readonly [number, number, number],
@@ -222,8 +261,16 @@ describe('fitSurfaceSplineSpan job — locality (this task\'s brief, deliverable
       readonly [number, number, number],
       readonly [number, number, number],
     ] = [at(1), at(2), at(3), at(4)];
-    const startPoint = surfacePointPayloadAt(whole.controlPointTriangleIndices, whole.controlPointBarycentric, 2);
-    const endPoint = surfacePointPayloadAt(whole.controlPointTriangleIndices, whole.controlPointBarycentric, 3);
+    const startPoint = surfacePointPayloadAt(
+      whole.controlPointTriangleIndices,
+      whole.controlPointBarycentric,
+      2,
+    );
+    const endPoint = surfacePointPayloadAt(
+      whole.controlPointTriangleIndices,
+      whole.controlPointBarycentric,
+      3,
+    );
 
     const span = await pool.run('fitSurfaceSplineSpan', {
       contentHash: ICO_HASH,
@@ -278,7 +325,13 @@ describe('affectedSpanIndices — re-exported for kernel-workers-only callers (l
 // ---------------------------------------------------------------------------
 
 const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
-const upperjawStlPath = join(repoRoot, 'test-fixtures', 'real-scans', 'arch-case-01', 'arch-case-01-upperjaw.stl');
+const upperjawStlPath = join(
+  repoRoot,
+  'test-fixtures',
+  'real-scans',
+  'arch-case-01',
+  'arch-case-01-upperjaw.stl',
+);
 
 function loadUpperjawMesh(): IndexedMesh {
   const bytes = readFileSync(upperjawStlPath);
@@ -354,7 +407,12 @@ describe('fitSurfaceSpline job — performance guardrail (real upperjaw fixture,
     // PER-SEGMENT re-snap budget geodesicJobs.test.ts's perf test targets,
     // which is this module's `fitSurfaceSplineSpan` job's job) — a generous
     // guardrail well above typical measured latency, still tight enough to
-    // catch a real regression.
-    expect(fitMs).toBeLessThan(2000);
+    // catch a real regression. Loosened 2000 -> 8000 (Phase 2 Task 12 fix
+    // for full-suite timing flakiness under CPU contention — see
+    // .superpowers/sdd/progress.md's P2 Task 11 carry-over note): this is a
+    // smoke ceiling tolerant of sharing CPU with other heavy suites in the
+    // default `npm test` run, not the interactive-latency number itself
+    // (see docs/demos/phase-2.md for that).
+    expect(fitMs).toBeLessThan(8000);
   }, 30_000);
 });

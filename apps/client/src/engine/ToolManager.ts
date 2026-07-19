@@ -36,7 +36,7 @@ import type { RaycastMeshResult } from '@dqcad/kernel-workers';
 import { useToolStore } from '../state/toolStore';
 import { caseStore } from './caseStore';
 import type { EngineMeshRecord } from './meshStore';
-import { ensureBvhBuilt, getMeasurementWorkerPool } from './workers';
+import { ensureBvhBuilt, getPool } from './workers';
 
 /** How many surface points each measurement kind needs before it's complete
  * — see this module's top-of-file doc for what each pick means per kind.
@@ -159,11 +159,15 @@ class ToolManagerEngine {
       const results = await Promise.all(
         candidates.map(async (c) => ({
           candidate: c,
-          hit: await getMeasurementWorkerPool().run('raycastMesh', {
-            contentHash: c.node.meshId,
-            origin: request.rayOrigin,
-            direction: request.rayDirection,
-          }),
+          hit: await getPool().run(
+            'raycastMesh',
+            {
+              contentHash: c.node.meshId,
+              origin: request.rayOrigin,
+              direction: request.rayDirection,
+            },
+            { affinityKey: c.node.meshId },
+          ),
         })),
       );
       let best: {
@@ -195,10 +199,14 @@ class ToolManagerEngine {
         // task's brief: "point-to-surface (pick point on mesh A, target
         // mesh B)").
         const first = this.pending[0]!;
-        const closest = await getMeasurementWorkerPool().run('measurePointToSurface', {
-          contentHash: node.meshId,
-          point: first.position,
-        });
+        const closest = await getPool().run(
+          'measurePointToSurface',
+          {
+            contentHash: node.meshId,
+            point: first.position,
+          },
+          { affinityKey: node.meshId },
+        );
         this.pending.push({ nodeId: node.id, position: closest.point });
       } else {
         this.pending.push({ nodeId: node.id, position: hit.point });

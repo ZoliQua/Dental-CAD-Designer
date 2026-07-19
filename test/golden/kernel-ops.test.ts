@@ -65,12 +65,20 @@ let first: KernelOpsSnapshot;
 let second: KernelOpsSnapshot;
 let elapsedMs: number;
 
+// Hook timeout 30_000 -> 120_000 (Phase 2 Task 12 fix for full-suite timing
+// flakiness under CPU contention — see .superpowers/sdd/progress.md's P2
+// Task 11 carry-over note): this hook computes the FULL kernel-ops snapshot
+// TWICE (determinism check), and under `npm test`'s default full parallel
+// run (every other project's test files sharing the same machine's CPU,
+// including the client-dom project's real Chromium instance) that can
+// meaningfully exceed 30s even though it stays well under this file's own
+// documented "~2 min CI target" in isolation.
 beforeAll(async () => {
   const started = performance.now();
   first = await computeKernelOpsSnapshot();
   elapsedMs = performance.now() - started;
   second = await computeKernelOpsSnapshot();
-}, 30_000);
+}, 120_000);
 
 describe('kernel-ops golden regression suite', () => {
   it('every pinned kernel op matches its committed golden hash (KERNEL_VERSION-gated enforcement)', () => {

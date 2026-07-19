@@ -7,25 +7,25 @@
 // change; ui/SurfaceDistancePanel.tsx only ever reads that store and calls
 // back into this module's exported methods.
 //
-// ## Why this runs on the SAME size:1 measurement pool as point/surface picks
+// ## Why this passes affinityKey: contentHash (Phase 2 Task 12)
 //
 // The kernel-workers `distanceHeatmap` job (packages/kernel-workers/src/
 // jobs/heatmap.ts) takes only the TARGET mesh's `contentHash` — it queries against
 // whatever BVH is already cached under that hash on the worker it runs on
-// (see jobs/bvh.ts's "Per-worker BVH cache" doc). `WorkerPool.run()` has no
-// per-job worker affinity, so a `buildBvh` call and a later `distanceHeatmap`
-// call for the same contentHash are only guaranteed to reuse the SAME
-// worker's cache on a pool that never has more than one worker — this is
-// exactly why engine/workers.ts's `getMeasurementWorkerPool()` (a dedicated
-// `size: 1` pool, already used by ToolManager.ts's point/surface picks) is
-// reused here too, rather than spinning up a separate pool: `run()` below
-// always calls `ensureBvhBuilt` (which itself already skips a redundant
-// `buildBvh` round trip once a mesh's hash has been built THIS session — see
-// workers.ts's `builtBvhHashes` memo) immediately before the `distanceHeatmap`
-// call on that same pool, so the job always hits a warm cache.
+// (see jobs/bvh.ts's "Per-worker BVH cache" doc). A `buildBvh` call and a
+// later `distanceHeatmap` call for the same contentHash are only guaranteed
+// to reuse the SAME worker's cache if they're explicitly routed there — see
+// pool.ts's `RunJobOptions.affinityKey` doc. `run()` below always calls
+// `ensureBvhBuilt` first (which itself already skips a redundant `buildBvh`
+// round trip once a mesh's hash has been built THIS session — see
+// workers.ts's `builtBvhHashes` memo; both it and the `distanceHeatmap` call
+// below pass the SAME `affinityKey: targetNode.meshId`), so the job always
+// hits a warm cache on the shared pool, without needing a dedicated
+// single-worker pool the way this used to (see workers.ts's module doc for
+// the retired `getMeasurementPool`).
 import { caseStore } from './caseStore';
 import { computeAutoRange, distancesToVertexColors, type ColorRange } from './colormap';
-import { ensureBvhBuilt, getMeasurementWorkerPool } from './workers';
+import { ensureBvhBuilt, getPool } from './workers';
 import { useHeatmapStore, type HeatmapRange } from '../state/heatmapStore';
 
 /** What ui/Viewport.tsx merges into `caseStore.getRenderNodes()`'s output
@@ -80,11 +80,12 @@ class HeatmapEngine {
       if (myGeneration !== this.generation) return; // superseded while awaiting
 
       const points = sourceRecord.positions.slice();
-      const result = await getMeasurementWorkerPool().run(
+      const result = await getPool().run(
         'distanceHeatmap',
         { contentHash: targetNode.meshId, points, signed },
         {
           transfer: [points.buffer],
+          affinityKey: targetNode.meshId,
           onProgress: (fraction) => {
             if (myGeneration === this.generation) {
               useHeatmapStore.getState().setProgress(fraction);

@@ -92,16 +92,25 @@ describe('undercutScan job — behavioral tests (unit cube)', () => {
     const { positions, indices } = cubeBuffers();
     await pool.run('buildBvh', { contentHash: CUBE_HASH, positions, indices });
 
-    const defaulted = await pool.run('undercutScan', { contentHash: CUBE_HASH, direction: [0, 0, 1] });
+    const defaulted = await pool.run('undercutScan', {
+      contentHash: CUBE_HASH,
+      direction: [0, 0, 1],
+    });
     expect(defaulted.sampling).toBe('centroid');
-    const corners = await pool.run('undercutScan', { contentHash: CUBE_HASH, direction: [0, 0, 1], sampling: 'corners' });
+    const corners = await pool.run('undercutScan', {
+      contentHash: CUBE_HASH,
+      direction: [0, 0, 1],
+      sampling: 'corners',
+    });
     expect(corners.sampling).toBe('corners');
     expect(corners.maxDepthMm).toBeCloseTo(defaulted.maxDepthMm, 9); // flat cube face: identical either way
   });
 
   it('rejects with BvhNotCachedError when the target contentHash was never built on this worker', async () => {
     const pool = createPool({ size: 1 });
-    await expect(pool.run('undercutScan', { contentHash: 'never-built', direction: [0, 0, 1] })).rejects.toMatchObject({
+    await expect(
+      pool.run('undercutScan', { contentHash: 'never-built', direction: [0, 0, 1] }),
+    ).rejects.toMatchObject({
       name: 'BvhNotCachedError',
     });
   });
@@ -110,9 +119,9 @@ describe('undercutScan job — behavioral tests (unit cube)', () => {
     const pool = createPool({ size: 1 });
     const { positions, indices } = cubeBuffers();
     await pool.run('buildBvh', { contentHash: CUBE_HASH, positions, indices });
-    await expect(pool.run('undercutScan', { contentHash: CUBE_HASH, direction: [0, 0, 0] })).rejects.toThrow(
-      /non-zero-length/,
-    );
+    await expect(
+      pool.run('undercutScan', { contentHash: CUBE_HASH, direction: [0, 0, 0] }),
+    ).rejects.toThrow(/non-zero-length/);
   });
 
   it('reports per-triangle-batch progress ending at 1 and is cancellable mid-scan', async () => {
@@ -141,7 +150,11 @@ describe('undercutScan job — behavioral tests (unit cube)', () => {
     const controller = new AbortController();
     controller.abort();
     await expect(
-      pool.run('undercutScan', { contentHash: 'undercut-icosphere', direction: [0, 0, 1] }, { signal: controller.signal }),
+      pool.run(
+        'undercutScan',
+        { contentHash: 'undercut-icosphere', direction: [0, 0, 1] },
+        { signal: controller.signal },
+      ),
     ).rejects.toThrow(JobCancelledError);
   });
 
@@ -149,8 +162,14 @@ describe('undercutScan job — behavioral tests (unit cube)', () => {
     const pool = createPool({ size: 1 });
     const { positions, indices } = cubeBuffers();
     await pool.run('buildBvh', { contentHash: CUBE_HASH, positions, indices });
-    const a = await pool.run('undercutScan', { contentHash: CUBE_HASH, direction: [0.3, 0.4, 0.5] });
-    const b = await pool.run('undercutScan', { contentHash: CUBE_HASH, direction: [0.3, 0.4, 0.5] });
+    const a = await pool.run('undercutScan', {
+      contentHash: CUBE_HASH,
+      direction: [0.3, 0.4, 0.5],
+    });
+    const b = await pool.run('undercutScan', {
+      contentHash: CUBE_HASH,
+      direction: [0.3, 0.4, 0.5],
+    });
     expect(Array.from(a.undercut)).toEqual(Array.from(b.undercut));
     expect(Array.from(a.depthMm)).toEqual(Array.from(b.depthMm));
   });
@@ -173,15 +192,24 @@ describe('undercutScanBatch job — multi-direction consistency, progress, cance
     expect(batch.triangleCount).toBe(12);
 
     for (let i = 0; i < directions.length; i++) {
-      const single = await pool.run('undercutScan', { contentHash: CUBE_HASH, direction: directions[i]! });
+      const single = await pool.run('undercutScan', {
+        contentHash: CUBE_HASH,
+        direction: directions[i]!,
+      });
       const sliceStart = i * batch.triangleCount;
-      const undercutSlice = Array.from(batch.undercut.slice(sliceStart, sliceStart + batch.triangleCount));
-      const depthSlice = Array.from(batch.depthMm.slice(sliceStart, sliceStart + batch.triangleCount));
+      const undercutSlice = Array.from(
+        batch.undercut.slice(sliceStart, sliceStart + batch.triangleCount),
+      );
+      const depthSlice = Array.from(
+        batch.depthMm.slice(sliceStart, sliceStart + batch.triangleCount),
+      );
       expect(undercutSlice).toEqual(Array.from(single.undercut));
       expect(depthSlice).toEqual(Array.from(single.depthMm));
       expect(batch.undercutTriangleCounts[i]).toBe(single.undercutTriangleCount);
       expect(batch.maxDepthMmPerDirection[i]).toBeCloseTo(single.maxDepthMm, 9);
-      expect(Array.from(batch.directionUnits.slice(i * 3, i * 3 + 3))).toEqual(single.directionUnit);
+      expect(Array.from(batch.directionUnits.slice(i * 3, i * 3 + 3))).toEqual(
+        single.directionUnit,
+      );
     }
   });
 
@@ -260,9 +288,18 @@ describe('undercutScanBatch job — multi-direction consistency, progress, cance
 function buildIcosphereForTest(subdivisions: number): IndexedMesh {
   const t = (1 + Math.sqrt(5)) / 2;
   const raw: Array<[number, number, number]> = [
-    [-1, t, 0], [1, t, 0], [-1, -t, 0], [1, -t, 0],
-    [0, -1, t], [0, 1, t], [0, -1, -t], [0, 1, -t],
-    [t, 0, -1], [t, 0, 1], [-t, 0, -1], [-t, 0, 1],
+    [-1, t, 0],
+    [1, t, 0],
+    [-1, -t, 0],
+    [1, -t, 0],
+    [0, -1, t],
+    [0, 1, t],
+    [0, -1, -t],
+    [0, 1, -t],
+    [t, 0, -1],
+    [t, 0, 1],
+    [-t, 0, -1],
+    [-t, 0, 1],
   ];
   function normalize(v: [number, number, number]): [number, number, number] {
     const len = Math.hypot(v[0], v[1], v[2]);
@@ -270,10 +307,26 @@ function buildIcosphereForTest(subdivisions: number): IndexedMesh {
   }
   const vertices: Array<[number, number, number]> = raw.map(normalize);
   let faces: Array<[number, number, number]> = [
-    [0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11],
-    [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8],
-    [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9],
-    [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1],
+    [0, 11, 5],
+    [0, 5, 1],
+    [0, 1, 7],
+    [0, 7, 10],
+    [0, 10, 11],
+    [1, 5, 9],
+    [5, 11, 4],
+    [11, 10, 2],
+    [10, 7, 6],
+    [7, 1, 8],
+    [3, 9, 4],
+    [3, 4, 2],
+    [3, 2, 6],
+    [3, 6, 8],
+    [3, 8, 9],
+    [4, 9, 5],
+    [2, 4, 11],
+    [6, 2, 10],
+    [8, 6, 7],
+    [9, 8, 1],
   ];
   for (let s = 0; s < subdivisions; s++) {
     const midpointCache = new Map<string, number>();
@@ -342,7 +395,9 @@ function fibonacciHemisphereDirections(count: number): Array<readonly [number, n
 const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
 
 function readStandinPrepDie(): IndexedMesh {
-  const bytes = readFileSync(join(repoRoot, 'test-fixtures', 'standin-scans', 'standin-prep-die.stl'));
+  const bytes = readFileSync(
+    join(repoRoot, 'test-fixtures', 'standin-scans', 'standin-prep-die.stl'),
+  );
   const { soup } = parseStl(new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength));
   return intake({ kind: 'soup', soup }).mesh;
 }
@@ -361,7 +416,10 @@ describe('undercutScanBatch job — batch timing (Phase 3 interactivity signal)'
 
     const directions = fibonacciHemisphereDirections(50);
     const start = performance.now();
-    const batch = await pool.run('undercutScanBatch', { contentHash: 'standin-prep-die', directions });
+    const batch = await pool.run('undercutScanBatch', {
+      contentHash: 'standin-prep-die',
+      directions,
+    });
     const elapsedMs = performance.now() - start;
 
     console.log(
@@ -369,8 +427,18 @@ describe('undercutScanBatch job — batch timing (Phase 3 interactivity signal)'
         `hemisphere directions = ${elapsedMs.toFixed(2)}ms total (${(elapsedMs / directions.length).toFixed(3)}ms/direction)`,
     );
     expect(batch.directionCount).toBe(50);
-    expect(elapsedMs).toBeLessThan(10_000); // generous — this fixture is tiny (384 tris); see the larger synthetic case below
-  }, 30_000);
+    // Phase 2 Task 12 fix (full-suite timing flakiness under CPU contention
+    // — see .superpowers/sdd/progress.md's P2 Task 11 carry-over note): this
+    // fixture is tiny (384 tris) and normally completes in well under a
+    // second; 30s is a smoke ceiling ("didn't hang / didn't regress by
+    // orders of magnitude"), loosened from 10s specifically to tolerate
+    // sharing CPU with other heavy suites in the default `npm test` run
+    // (e.g. packages/kernel/src/offset/offsetMesh.test.ts's clinical-pitch
+    // tests, now isolated behind RUN_OFFSET_ACCEPTANCE) rather than measure
+    // real-world latency — see the larger synthetic case below and
+    // docs/demos/phase-2.md for the actual measured per-direction timing.
+    expect(elapsedMs).toBeLessThan(30_000);
+  }, 45_000);
 
   it('~50 hemisphere directions against a ~20k-triangle synthetic icosphere (more representative of a real prep scan)', async () => {
     const pool = createPool({ size: 1 });
@@ -385,7 +453,10 @@ describe('undercutScanBatch job — batch timing (Phase 3 interactivity signal)'
 
     const directions = fibonacciHemisphereDirections(50);
     const start = performance.now();
-    const batch = await pool.run('undercutScanBatch', { contentHash: 'perf-icosphere-batch', directions });
+    const batch = await pool.run('undercutScanBatch', {
+      contentHash: 'perf-icosphere-batch',
+      directions,
+    });
     const elapsedMs = performance.now() - start;
 
     let totalUndercutTriangles = 0;
@@ -397,8 +468,11 @@ describe('undercutScanBatch job — batch timing (Phase 3 interactivity signal)'
         `mean undercut fraction ${(totalUndercutTriangles / (batch.triangleCount * directions.length)).toFixed(4)}`,
     );
     expect(batch.directionCount).toBe(50);
-    expect(elapsedMs).toBeLessThan(30_000); // generous — see this task's report for the measured figure
-  }, 60_000);
+    // Same contention-tolerance rationale as the smaller fixture's test
+    // above (Phase 2 Task 12 fix) — smoke ceiling, not a latency benchmark;
+    // see docs/demos/phase-2.md for the measured figure.
+    expect(elapsedMs).toBeLessThan(90_000);
+  }, 100_000);
 
   it('determinism: hashing the flattened batch result is bit-identical across two identical runs', async () => {
     const pool = createPool({ size: 1 });
@@ -411,8 +485,14 @@ describe('undercutScanBatch job — batch timing (Phase 3 interactivity signal)'
       { transfer: [positions.buffer, indices.buffer] },
     );
     const directions = fibonacciHemisphereDirections(10);
-    const a = await pool.run('undercutScanBatch', { contentHash: 'standin-prep-die-det', directions });
-    const b = await pool.run('undercutScanBatch', { contentHash: 'standin-prep-die-det', directions });
+    const a = await pool.run('undercutScanBatch', {
+      contentHash: 'standin-prep-die-det',
+      directions,
+    });
+    const b = await pool.run('undercutScanBatch', {
+      contentHash: 'standin-prep-die-det',
+      directions,
+    });
     const hashOf = (r: typeof a): string => {
       const hash = createHash('sha256');
       hash.update(Buffer.from(r.undercut.buffer, r.undercut.byteOffset, r.undercut.byteLength));

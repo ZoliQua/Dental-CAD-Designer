@@ -24,6 +24,7 @@
     "test:e2e": "playwright test",
     "test:perf-large": "npm run fixtures:generate-large && RUN_LARGE_FIXTURE=1 vitest run --project io src/stl/large-fixture.perf.test.ts",
     "test:perf-halfedge": "npm run fixtures:generate-large && npm run fixtures:generate-large-5m && RUN_LARGE_FIXTURE=1 vitest run --project golden test/golden/halfedge-intake.perf.test.ts",
+    "test:offset-acceptance": "RUN_OFFSET_ACCEPTANCE=1 vitest run --project kernel packages/kernel/src/offset/offsetMesh.test.ts",
     "fixtures:generate": "tsx scripts/generate-fixtures.ts",
     "fixtures:generate-large": "tsx scripts/generate-large-fixture.ts",
     "fixtures:generate-large-5m": "tsx scripts/generate-large-fixture.ts --5m"
@@ -31,7 +32,11 @@
   "devDependencies": {
     "@eslint/js": "^9.19.0",
     "@playwright/test": "^1.61.1",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^22.10.0",
+    "@vitest/browser": "^3.2.7",
     "concurrently": "^10.0.3",
     "eslint": "^9.19.0",
     "eslint-import-resolver-typescript": "^4.4.5",

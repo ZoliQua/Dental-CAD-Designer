@@ -27,29 +27,35 @@ export function getPool(): WorkerPool {
 }
 
 // ---------------------------------------------------------------------------
-// Measurement pool — buildBvh / releaseBvh / measurePointToSurface /
-// raycastMesh (Task 7).
+// BVH-cache affinity — buildBvh / releaseBvh / measurePointToSurface /
+// raycastMesh / distanceHeatmap (Task 7 + Task 9).
 //
-// Deliberately a SEPARATE, `size: 1` pool from `getPool()`'s general
-// (multi-worker) geometry pool, not just another job type routed through it.
-// kernel-workers' `buildBvh`/`measurePointToSurface`/`raycastMesh` jobs cache
-// a mesh's BVH in THAT WORKER's own memory, keyed by contentHash (see
-// jobs/bvh.ts's "Per-worker BVH cache" doc) — `WorkerPool.run()` has no per-job
-// worker affinity, so on a multi-worker pool a `buildBvh` call and a later
-// `measurePointToSurface` call for the same mesh are not guaranteed to reuse
-// the same cache. Pinning every BVH-related job to a pool that only ever has
-// ONE worker makes "build once, query many times" actually hold, at the
-// (acceptable) cost of serializing measurement picks — a single interactive
-// user action, never a bulk/parallel workload in Phase 1.
-let measurementPool: WorkerPool | null = null;
+// Phase 2 Task 12: this used to be a dedicated, SEPARATE `size: 1`
+// "measurement pool" (kept apart from `getPool()`'s general multi-worker
+// geometry pool) — kernel-workers' `buildBvh`/`measurePointToSurface`/
+// `raycastMesh`/`distanceHeatmap` jobs cache a mesh's BVH in THAT WORKER's
+// own memory, keyed by contentHash (see jobs/bvh.ts's "Per-worker BVH
+// cache" doc), and `WorkerPool.run()` used to have no notion of per-job
+// worker affinity — so on a multi-worker pool a `buildBvh` call and a later
+// `measurePointToSurface` call for the same mesh were not guaranteed to
+// reuse the same cache. Pinning every BVH-related job to a pool that only
+// ever had ONE worker made "build once, query many times" hold by
+// construction, at the cost of serializing EVERY measurement/heatmap job
+// (even ones for unrelated meshes) behind that single worker.
+//
+// Now that `WorkerPool.run()` supports `RunJobOptions.affinityKey`
+// (hash-routed slot selection — see pool.ts's class doc), these jobs run on
+// the SAME shared `getPool()` as every other geometry job, passing
+// `affinityKey: contentHash`: a `buildBvh` call and a later
+// `measurePointToSurface`/`raycastMesh`/`releaseBvh`/`distanceHeatmap` call
+// for the SAME contentHash are routed to the SAME worker (queueing for that
+// specific worker if it's busy, never silently falling back to a different
+// one — see RunJobOptions.affinityKey's "queue, not steal" doc), while
+// DIFFERENT contentHashes can now run their BVH work on DIFFERENT workers
+// in parallel instead of all serializing through one dedicated worker.
 
-function getMeasurementPool(): WorkerPool {
-  measurementPool ??= new WorkerPool({ size: 1 });
-  return measurementPool;
-}
-
-/** contentHashes already confirmed built on the measurement pool's one
- * worker — an in-memory mirror of that worker's own `bvhCache` (jobs/bvh.ts) so
+/** contentHashes already confirmed built on their (affinity-routed) worker —
+ * an in-memory mirror of that worker's own `bvhCache` (jobs/bvh.ts) so
  * `ensureBvhBuilt` can skip a redundant `buildBvh` round trip for a mesh
  * already queried this session. Cleared only by `releaseBvhForMesh` (mesh
  * removed from the case) — never grows unbounded beyond "meshes currently
@@ -57,15 +63,16 @@ function getMeasurementPool(): WorkerPool {
 const builtBvhHashes = new Set<string>();
 
 /**
- * Ensures a BVH is cached (on the measurement pool's worker) for the mesh
- * identified by `contentHash`, building it via the `buildBvh` job if this is
- * the first time this session sees that hash. `positions`/`indices` should
- * be the mesh's Float64 MASTER buffers (meshStore.ts's `EngineMeshRecord`) —
- * this function `.slice()`s them before transferring the copy into the
- * worker, so the caller's master buffers are never detached (a `Transferable`
- * transfer would otherwise steal them, breaking rendering/every other
- * consumer of that same EngineMeshRecord — see jobs/bvh.ts's `BuildBvhPayload`
- * doc for the same point from the worker side).
+ * Ensures a BVH is cached (on `contentHash`'s affinity-routed worker) for
+ * the mesh identified by `contentHash`, building it via the `buildBvh` job
+ * if this is the first time this session sees that hash. `positions`/
+ * `indices` should be the mesh's Float64 MASTER buffers (meshStore.ts's
+ * `EngineMeshRecord`) — this function `.slice()`s them before transferring
+ * the copy into the worker, so the caller's master buffers are never
+ * detached (a `Transferable` transfer would otherwise steal them, breaking
+ * rendering/every other consumer of that same EngineMeshRecord — see
+ * jobs/bvh.ts's `BuildBvhPayload` doc for the same point from the worker
+ * side).
  */
 export async function ensureBvhBuilt(
   contentHash: string,
@@ -77,10 +84,10 @@ export async function ensureBvhBuilt(
   }
   const positionsCopy = positions.slice();
   const indicesCopy = indices.slice();
-  await getMeasurementPool().run(
+  await getPool().run(
     'buildBvh',
     { contentHash, positions: positionsCopy, indices: indicesCopy },
-    { transfer: [positionsCopy.buffer, indicesCopy.buffer] },
+    { transfer: [positionsCopy.buffer, indicesCopy.buffer], affinityKey: contentHash },
   );
   builtBvhHashes.add(contentHash);
 }
@@ -90,27 +97,21 @@ export async function ensureBvhBuilt(
  * `removeSceneNode` alongside `meshStore.remove` (same "last reference
  * gone" lifecycle — see that method's doc), so a removed mesh's worker-side
  * BVH doesn't outlive it for the rest of the session. Fire-and-forget and a
- * no-op if this session never built a BVH for `contentHash` (skips even
- * spawning the measurement pool's worker just to release nothing it has).
+ * no-op if this session never built a BVH for `contentHash` (skips issuing
+ * a job for nothing to release). `affinityKey: contentHash` routes this to
+ * the SAME worker `ensureBvhBuilt` used — required for the release to
+ * actually find and evict that worker's cache entry (a different worker's
+ * `bvhCache` never had it in the first place).
  */
 export function releaseBvhForMesh(contentHash: string): void {
   if (!builtBvhHashes.delete(contentHash)) {
     return;
   }
-  void getMeasurementPool()
-    .run('releaseBvh', { contentHash })
+  void getPool()
+    .run('releaseBvh', { contentHash }, { affinityKey: contentHash })
     .catch((error: unknown) => {
       console.error('releaseBvhForMesh: releaseBvh job failed', error);
     });
-}
-
-/** Exposes the measurement pool for ToolManager.ts's `buildBvh`/
- * `measurePointToSurface`/`raycastMesh` calls — kept as its own accessor
- * (rather than folding measurement jobs into `getPool()`'s callers) so the
- * "why a separate pool" reasoning above stays attached to one obvious call
- * site. */
-export function getMeasurementWorkerPool(): WorkerPool {
-  return getMeasurementPool();
 }
 
 /** TEST-ONLY: drops the "already built this session" memo so tests can

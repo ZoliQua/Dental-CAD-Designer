@@ -182,4 +182,61 @@ describe('buildBvh cache isolation across workers', () => {
       poolB.run('measurePointToSurface', { contentHash: CUBE_HASH, point: [0, 0, 0] }),
     ).rejects.toMatchObject({ name: 'BvhNotCachedError' });
   });
+
+  it('Phase 2 Task 12: on a SINGLE multi-worker pool, affinityKey: contentHash reliably hits the SAME worker\'s cache — the shared-pool replacement for a dedicated size:1 measurement pool (see engine/workers.ts)', async () => {
+    // size: 4 — several workers to actually exercise routing (a size:1
+    // pool would pass this test trivially, proving nothing about affinity
+    // itself). Runs several DIFFERENT contentHashes' build->measure/release
+    // pairs interleaved, each with its OWN affinityKey, so a naive
+    // implementation that just serialized everything onto one worker (or
+    // that ignored the key and used ordinary idle.pop()) would still be
+    // caught by at least one of these racing against each other.
+    const pool = createPool({ size: 4 });
+
+    function boxBuffers(offset: number): { positions: Float64Array; indices: Uint32Array } {
+      const { positions, indices } = cubeBuffers();
+      const shifted = positions.slice();
+      for (let i = 0; i < shifted.length; i += 3) {
+        shifted[i] = (shifted[i] ?? 0) + offset; // distinct meshes in space, same topology
+      }
+      return { positions: shifted, indices };
+    }
+
+    const hashes = ['affinity-mesh-a', 'affinity-mesh-b', 'affinity-mesh-c', 'affinity-mesh-d'];
+    await Promise.all(
+      hashes.map(async (contentHash, i) => {
+        const { positions, indices } = boxBuffers(i * 10);
+        await pool.run(
+          'buildBvh',
+          { contentHash, positions, indices },
+          { affinityKey: contentHash },
+        );
+        // Interleave a measure and a raycast for the SAME contentHash,
+        // still under its own affinityKey — both must land on whichever
+        // worker actually built this specific mesh's BVH.
+        const measured = await pool.run(
+          'measurePointToSurface',
+          { contentHash, point: [0.5 + i * 10, 0.5, 3] },
+          { affinityKey: contentHash },
+        );
+        expect(measured.distance).toBeCloseTo(2, 9);
+        const hit = await pool.run(
+          'raycastMesh',
+          { contentHash, origin: [0.5 + i * 10, 0.5, 5], direction: [0, 0, -1] },
+          { affinityKey: contentHash },
+        );
+        expect(hit.hit).toBe(true);
+        // releaseBvh MUST also be affinity-routed — otherwise it would
+        // land on an unrelated worker and silently no-op (released: false)
+        // instead of actually evicting this mesh's cache entry (mirroring
+        // engine/workers.ts's releaseBvhForMesh's real usage).
+        const released = await pool.run(
+          'releaseBvh',
+          { contentHash },
+          { affinityKey: contentHash },
+        );
+        expect(released.released).toBe(true);
+      }),
+    );
+  });
 });
