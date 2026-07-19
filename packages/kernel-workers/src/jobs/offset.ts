@@ -19,15 +19,45 @@
 // `offsetMesh` call (pinned by offsetJob.test.ts's hash-equality test).
 //
 // Progress budget (fractions of 1, approximating measured stage costs at
-// die scale where SDF sampling dominates): mesh analysis + BVH +
-// pseudonormals 0→0.05, SDF slices 0.05→0.75, MC slabs 0.75→0.90, weld
-// 0.90→0.94, manifold cleanup 0.94→0.98, final stats 0.98→1.
+// die scale where SDF sampling dominates): mesh analysis + pseudonormals
+// 0→0.05 (the BVH itself no longer counts here — see below), SDF slices
+// 0.05→0.75, MC slabs 0.75→0.90, weld 0.90→0.94, manifold cleanup
+// 0.94→0.98, final stats 0.98→1. A cache HIT (below) skips straight to 1.
+//
+// ## Per-worker result cache (Phase 3 Task 1 housekeeping: "jobs/offset.ts
+// ... stop rebuilding per call ... unify on contentHash-keyed per-worker
+// caches", following jobs/bvh.ts's `bvhCache` pattern)
+//
+// Like jobs/geodesic.ts/jobs/curvature.ts, this job takes a `contentHash`
+// (NOT the raw mesh buffers) and requires `buildBvh` to have already been
+// called for that contentHash ON THIS WORKER (jobs/bvh.ts's
+// `requireCachedBvh`) — this buys two things:
+//   1. The mesh's BVH (Stage 0's most expensive sub-step) is reused from the
+//      shared jobs/bvh.ts cache rather than rebuilt from scratch on every
+//      call — `computePseudonormals`/`analyzeMesh` are still recomputed
+//      locally (cheap relative to the BVH build, and not shared state
+//      anything else caches).
+//   2. UNLIKE curvature (a pure function of the mesh alone), an offset
+//      result depends on `distanceMm`/`pitchMm` too — `offsetCache` below is
+//      therefore keyed by `contentHash` at the outer level (so
+//      `onBvhRelease` can evict EVERY cached (distanceMm, pitchMm) variant
+//      for a released mesh in one `Map.delete`) and by `paramKey(distanceMm,
+//      pitchMm)` at the inner level. A repeat call with the SAME mesh AND
+//      the SAME distance/pitch (e.g. re-opening a cement-gap preview after
+//      toggling something unrelated) skips the ENTIRE SDF/MC/weld/cleanup
+//      pipeline — the actual "stop rebuilding" this task's brief asks for —
+//      while a call with a DIFFERENT distance/pitch for the SAME mesh still
+//      benefits from the shared BVH reuse in (1) even on a cache MISS.
+//
+// `offsetCache` stores the CANONICAL (never-transferred) result; every
+// return path clones the mesh buffers first — see `cloneMeshBuffers`'s doc
+// for why (Comlink's zero-copy transfer would otherwise detach the cache's
+// own buffers on the very first response).
 //
 // `.ts` extension: reachable from the Node worker entry's import closure —
 // see CLAUDE.md's "Import extension convention".
 import {
   analyzeMesh,
-  buildBvh,
   cleanupMesh,
   computePseudonormals,
   computeSdfGridSlice,
@@ -39,17 +69,17 @@ import {
   sdfGridDims,
   weldVertices,
   EmptyOffsetResultError,
-  type IndexedMesh,
+  MIN_PITCH_MM,
+  PitchTooSmallError,
   type MarchingCubesSoup,
   type MeshStats,
   type ScalarGrid,
 } from '@dqcad/kernel';
 import { JobCancelledError, type JobContext } from './context.ts';
-import { requireMeshPayload } from './shared.ts';
+import { onBvhRelease, requireCachedBvh } from './bvh.ts';
 
 export interface OffsetMeshPayload {
-  positions: Float64Array;
-  indices: Uint32Array;
+  contentHash: string;
   /** Offset distance, mm: positive = outward (grow), negative = inward
    * (shrink) — see @dqcad/kernel's offsetMesh.ts sign-convention doc. */
   distanceMm: number;
@@ -73,39 +103,88 @@ export interface OffsetMeshResult {
   pitchMm: number;
 }
 
+/** Per-worker cache — see this file's module doc. Outer key: contentHash
+ * (lets `onBvhRelease` evict every cached (distanceMm, pitchMm) variant for
+ * a released mesh in one `Map.delete`). Inner key: `paramKey`. */
+const offsetCache = new Map<string, Map<string, OffsetMeshResult>>();
+
+function paramKey(distanceMm: number, pitchMm: number): string {
+  return `${distanceMm}:${pitchMm}`;
+}
+
+onBvhRelease((contentHash) => {
+  offsetCache.delete(contentHash);
+});
+
+/** Clones an `OffsetMeshResult`'s transferable typed-array fields —
+ * REQUIRED before ever returning a value that came out of `offsetCache`
+ * (same reason as jobs/curvature.ts's `cloneResult`: `runJob`'s
+ * `transferablesOf` auto-transfer would otherwise detach the cache's own
+ * mesh buffers). Plain-value fields (`stats`, `errorBoundMm`, `distanceMm`,
+ * `pitchMm`) are copied by value already — no cloning needed for them. */
+function cloneCachedResult(result: OffsetMeshResult): OffsetMeshResult {
+  return {
+    positions: result.positions.slice(),
+    indices: result.indices.slice(),
+    stats: result.stats,
+    errorBoundMm: result.errorBoundMm,
+    distanceMm: result.distanceMm,
+    pitchMm: result.pitchMm,
+  };
+}
+
 /**
  * `offsetMesh` worker job — see this file's module doc for the staged
- * progress/cancellation contract and the byte-identity argument vs. the
- * kernel's own `offsetMesh`.
+ * progress/cancellation contract, the per-worker BVH-reuse + result-cache
+ * contract, and the byte-identity argument vs. the kernel's own
+ * `offsetMesh`. `buildBvh` must have been called for `payload.contentHash`
+ * on THIS worker first (jobs/bvh.ts).
  *
+ * @throws {BvhNotCachedError} (jobs/bvh.ts) if `buildBvh` was never called
+ * for `payload.contentHash` on this worker (checked only on a cache MISS —
+ * a cache HIT needs no mesh at all).
  * @throws {TypeError} for invalid `distanceMm`/`pitchMm` (checked before
- * any heavy work).
+ * any heavy work, including before the cache lookup).
  * @throws {NonWatertightMeshError} (@dqcad/kernel) for a non-closed input.
  * @throws {SdfGridTooLargeError} (@dqcad/kernel) if the grid exceeds the
  * memory guard — before any grid allocation.
  * @throws {EmptyOffsetResultError} (@dqcad/kernel) if the offset surface is
  * empty.
+ * @throws {PitchTooSmallError} (@dqcad/kernel) if `pitchMm < MIN_PITCH_MM`
+ * — checked up front, mirroring offsetMesh.ts's own fail-fast check.
  * @throws {NonManifoldInputError} (@dqcad/kernel) if the extracted surface
  * fails manifold validation (marching cubes' documented ambiguity
  * limitation).
  */
 export const offsetMeshJob = async (payload: OffsetMeshPayload, ctx: JobContext): Promise<OffsetMeshResult> => {
-  const { distanceMm, pitchMm } = payload;
+  const { contentHash, distanceMm, pitchMm } = payload;
   if (!Number.isFinite(distanceMm)) {
     throw new TypeError(`offsetMesh: distanceMm must be finite, got ${distanceMm}`);
   }
   if (!(Number.isFinite(pitchMm) && pitchMm > 0)) {
     throw new TypeError(`offsetMesh: pitchMm must be finite and > 0, got ${pitchMm}`);
   }
-  requireMeshPayload(payload.positions, payload.indices, 'offsetMesh');
-  const mesh: IndexedMesh = { positions: payload.positions, indices: payload.indices };
+  if (pitchMm < MIN_PITCH_MM) {
+    throw new PitchTooSmallError(pitchMm);
+  }
 
   if (await ctx.cancelled()) throw new JobCancelledError();
   ctx.progress(0);
 
-  // Stage 0: bbox + BVH + pseudonormals (the watertight gate).
+  const cached = offsetCache.get(contentHash)?.get(paramKey(distanceMm, pitchMm));
+  if (cached) {
+    // Cache hit: the whole point of this task's brief — skip the entire
+    // SDF/MC/weld/cleanup pipeline, pay only a cheap buffer clone.
+    ctx.progress(1);
+    return cloneCachedResult(cached);
+  }
+
+  const { mesh, bvh } = requireCachedBvh(contentHash);
+
+  // Stage 0: bbox + pseudonormals (the watertight gate) — BVH itself is
+  // reused from jobs/bvh.ts's cache (this file's module doc, point 1), not
+  // rebuilt here.
   const inputStats = analyzeMesh(mesh);
-  const bvh = buildBvh(mesh);
   const pseudonormals = computePseudonormals(mesh);
   if (await ctx.cancelled()) throw new JobCancelledError();
   ctx.progress(0.05);
@@ -160,7 +239,7 @@ export const offsetMeshJob = async (payload: OffsetMeshPayload, ctx: JobContext)
   const stats = analyzeMesh(cleaned);
   ctx.progress(1);
 
-  return {
+  const result: OffsetMeshResult = {
     positions: cleaned.positions,
     indices: cleaned.indices,
     stats,
@@ -168,4 +247,13 @@ export const offsetMeshJob = async (payload: OffsetMeshPayload, ctx: JobContext)
     distanceMm,
     pitchMm,
   };
+
+  let byParams = offsetCache.get(contentHash);
+  if (!byParams) {
+    byParams = new Map();
+    offsetCache.set(contentHash, byParams);
+  }
+  byParams.set(paramKey(distanceMm, pitchMm), result);
+
+  return cloneCachedResult(result);
 };

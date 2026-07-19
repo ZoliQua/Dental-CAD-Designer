@@ -7,9 +7,11 @@
 export {
   decimateMesh,
   beginDecimation,
+  toRenderOnlyMesh,
   type DecimateMeshOptions,
   type DecimateMeshResult,
   type DecimationSession,
+  type RenderOnlyMesh,
 } from './decimate.ts';
 export {
   zeroQuadric,

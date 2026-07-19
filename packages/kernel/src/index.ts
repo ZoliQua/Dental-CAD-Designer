@@ -10,8 +10,12 @@
  * See docs/CHANGELOG-kernel.md for what changed at each bump — 0.2.0
  * (Phase 2 Task 11): fillSmallHoles' curvature-continuity upgrade. 0.2.1
  * (Fix batch, post-Task-12): metadata-only — golden file gained a recorded
- * manifoldVersion field; no kernel-ops hash changed. */
-export const KERNEL_VERSION = '0.2.1';
+ * manifoldVersion field; no kernel-ops hash changed. 0.2.2 (Phase 3 Task 1
+ * housekeeping): metadata-only again — the standalone intake/curvature/
+ * offset goldens (test-fixtures/{intake,curvature,offset}/*.golden.json)
+ * gained kernelVersion (+manifoldVersion for offset) fields; every hash
+ * unchanged. */
+export const KERNEL_VERSION = '0.2.2';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -136,6 +140,8 @@ export {
   marchingCubes,
   marchingCubesSlab,
   muClampEpsilon,
+  MIN_PITCH_MM,
+  PitchTooSmallError,
   offsetMesh,
   offsetGridSpec,
   offsetErrorBoundMm,
@@ -237,12 +243,14 @@ export {
   type SurfaceSpline,
   type SurfaceSplineOptions,
   type SurfaceSplineSpan,
+  type MarginAnchorLike,
   type MarginLineLike,
 } from './spline/index.ts';
 
 export {
   decimateMesh,
   beginDecimation,
+  toRenderOnlyMesh,
   zeroQuadric,
   planeQuadric,
   triangleQuadric,
@@ -258,6 +266,7 @@ export {
   type DecimateMeshOptions,
   type DecimateMeshResult,
   type DecimationSession,
+  type RenderOnlyMesh,
   type Quadric,
 } from './decimate/index.ts';
 

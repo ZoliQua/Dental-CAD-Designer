@@ -34,6 +34,7 @@ export {
   type RescaleMeshPayload,
   type RescaleMeshResult,
   BvhNotCachedError,
+  SdfNotCachedError,
   type BuildBvhPayload,
   type BuildBvhResult,
   type ReleaseBvhPayload,

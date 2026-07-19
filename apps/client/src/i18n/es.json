@@ -226,6 +226,7 @@
     "panelTitle": "Reparación",
     "previewLoading": "Calculando vista previa…",
     "previewError": "Error en la vista previa de reparación: {{message}}",
+    "bowtieDetectionError": "No se pudo comprobar los vértices no variedad (bowtie): {{message}}. Es posible que la opción de reparación relacionada quede oculta.",
     "applyButton": "Aplicar",
     "applying": "Aplicando…",
     "applied": "Aplicado",

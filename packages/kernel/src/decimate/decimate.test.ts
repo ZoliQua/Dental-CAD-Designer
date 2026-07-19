@@ -52,9 +52,9 @@ describe('decimateMesh — basic reduction', () => {
     expect(result.outputTriangleCount).toBeLessThanOrEqual(target);
     expect(result.collapseCount).toBeGreaterThan(0);
     // Output is still a valid, closed 2-manifold.
-    const hm = buildHalfedge(result.mesh);
+    const hm = buildHalfedge(result.mesh.renderMesh);
     expect(() => assertValidTopology(hm)).not.toThrow();
-    const stats = analyzeMesh(result.mesh);
+    const stats = analyzeMesh(result.mesh.renderMesh);
     expect(stats.watertight).toBe(true);
     expect(stats.manifoldEdges).toBe(true);
   });
@@ -71,7 +71,7 @@ describe('decimateMesh — basic reduction', () => {
     const mesh = icosphereMesh(5, 2);
     const result = decimateMesh(mesh, { targetTriangleCount: 0 });
     expect(result.outputTriangleCount).toBeGreaterThan(0); // can't collapse a closed manifold to nothing
-    const hm = buildHalfedge(result.mesh);
+    const hm = buildHalfedge(result.mesh.renderMesh);
     expect(() => assertValidTopology(hm)).not.toThrow();
   });
 
@@ -80,7 +80,7 @@ describe('decimateMesh — basic reduction', () => {
     const bound = 0.05;
     const result = decimateMesh(mesh, { errorBoundMm: bound });
     expect(result.maxErrorMm).toBeLessThanOrEqual(bound);
-    const hm = buildHalfedge(result.mesh);
+    const hm = buildHalfedge(result.mesh.renderMesh);
     expect(() => assertValidTopology(hm)).not.toThrow();
   });
 });
@@ -111,7 +111,7 @@ describe('decimateMesh — link condition (pinch fixture)', () => {
   it('decimateMesh never produces a non-manifold result on the pinch fixture, even under maximum reduction pressure', () => {
     const mesh = pinchFixtureMesh();
     const result = decimateMesh(mesh, { targetTriangleCount: 0 });
-    const hm = buildHalfedge(result.mesh); // throws NonManifoldEdgeError if the link condition ever let a bad collapse through
+    const hm = buildHalfedge(result.mesh.renderMesh); // throws NonManifoldEdgeError if the link condition ever let a bad collapse through
     expect(() => assertValidTopology(hm)).not.toThrow();
   });
 });
@@ -140,9 +140,9 @@ describe('decimateMesh — boundary preservation', () => {
     // the EXACT same position (never touched by any collapse — see
     // decimate.ts's "Boundary policy" doc).
     const outPositionsAsKeys = new Set<string>();
-    for (let v = 0; v < result.mesh.positions.length / 3; v++) {
+    for (let v = 0; v < result.mesh.renderMesh.positions.length / 3; v++) {
       outPositionsAsKeys.add(
-        `${result.mesh.positions[v * 3]},${result.mesh.positions[v * 3 + 1]},${result.mesh.positions[v * 3 + 2]}`,
+        `${result.mesh.renderMesh.positions[v * 3]},${result.mesh.renderMesh.positions[v * 3 + 1]},${result.mesh.renderMesh.positions[v * 3 + 2]}`,
       );
     }
     for (const [, pos] of boundaryPositionsBefore) {
@@ -150,7 +150,7 @@ describe('decimateMesh — boundary preservation', () => {
     }
 
     // The boundary LOOP itself (vertex count, i.e. its length) is unchanged.
-    const afterHm = buildHalfedge(result.mesh);
+    const afterHm = buildHalfedge(result.mesh.renderMesh);
     const afterLoops = findBoundaryLoops(afterHm);
     expect(afterLoops).toHaveLength(1);
     expect(afterLoops[0]!.length).toBe(findBoundaryLoops(beforeHm)[0]!.length);
@@ -176,8 +176,8 @@ describe('beginDecimation — chunked session', () => {
     }
     const chunked = session.finish();
 
-    expect(chunked.mesh.positions).toEqual(blocking.mesh.positions);
-    expect(chunked.mesh.indices).toEqual(blocking.mesh.indices);
+    expect(chunked.mesh.renderMesh.positions).toEqual(blocking.mesh.renderMesh.positions);
+    expect(chunked.mesh.renderMesh.indices).toEqual(blocking.mesh.renderMesh.indices);
     expect(chunked.collapseCount).toBe(blocking.collapseCount);
     expect(chunked.maxErrorMm).toBe(blocking.maxErrorMm);
     expect(session.liveTriangleCount()).toBe(chunked.outputTriangleCount);
@@ -200,13 +200,13 @@ describe('beginDecimation — chunked session', () => {
     const intermediate = session.finish();
     expect(intermediate.outputTriangleCount).toBeGreaterThan(40);
     expect(intermediate.collapseCount).toBe(5);
-    const hm = buildHalfedge(intermediate.mesh);
+    const hm = buildHalfedge(intermediate.mesh.renderMesh);
     expect(() => assertValidTopology(hm)).not.toThrow();
     // The session keeps working after an early snapshot.
     session.step(Number.POSITIVE_INFINITY);
     const final = session.finish();
     expect(final.outputTriangleCount).toBeLessThanOrEqual(40);
-    expect(analyzeMesh(final.mesh).manifoldEdges).toBe(true);
+    expect(analyzeMesh(final.mesh.renderMesh).manifoldEdges).toBe(true);
   });
 });
 

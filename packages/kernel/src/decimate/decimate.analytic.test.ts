@@ -69,18 +69,18 @@ describe('decimateMesh — analytic: sphere decimated to 20%', () => {
     expect(result.outputTriangleCount).toBeLessThanOrEqual(target + 4); // link-condition/queue-exhaustion slack, see decimate.ts's boundary/target doc
     expect(result.outputTriangleCount).toBeGreaterThan(0);
 
-    const outStats = analyzeMesh(result.mesh);
+    const outStats = analyzeMesh(result.mesh.renderMesh);
     expect(outStats.watertight).toBe(true);
     expect(outStats.manifoldEdges).toBe(true);
 
     // --- Per-vertex deviation from the ORIGINAL surface (BVH-checked). ---
     const bvh = buildBvh(mesh);
     let maxDeviationMm = 0;
-    const outVertexCount = result.mesh.positions.length / 3;
+    const outVertexCount = result.mesh.renderMesh.positions.length / 3;
     for (let v = 0; v < outVertexCount; v++) {
-      const x = result.mesh.positions[v * 3]!;
-      const y = result.mesh.positions[v * 3 + 1]!;
-      const z = result.mesh.positions[v * 3 + 2]!;
+      const x = result.mesh.renderMesh.positions[v * 3]!;
+      const y = result.mesh.renderMesh.positions[v * 3 + 1]!;
+      const z = result.mesh.renderMesh.positions[v * 3 + 2]!;
       const hit = closestPoint(mesh, bvh, [x, y, z]);
       maxDeviationMm = Math.max(maxDeviationMm, hit.distance);
     }

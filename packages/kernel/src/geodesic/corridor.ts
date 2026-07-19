@@ -172,8 +172,16 @@ export class NoCorridorError extends Error {
  * faces — used by `forbiddenEdges` (`dualGraphDijkstra`) and
  * geodesicPath.ts's widening loop, which forbids the specific edge a bend
  * pinched on rather than excluding either face outright (a face can still
- * legitimately appear in a re-seeded corridor via a DIFFERENT edge). */
-export function edgeKey(a: number, b: number): string {
+ * legitimately appear in a re-seeded corridor via a DIFFERENT edge).
+ *
+ * Named `dualEdgeKey` (not plain `edgeKey`) to disambiguate from
+ * `../mesh/edgeKey.ts`'s `edgeKey` — that one is a numeric key over an
+ * undirected MESH edge (a pair of VERTEX indices); this one is a string key
+ * over an edge of the triangle DUAL graph (a pair of FACE indices). Same
+ * "canonical undirected pair" shape, different graph entirely — the
+ * distinct name prevents a reader (or a future refactor) from assuming
+ * they're interchangeable. */
+export function dualEdgeKey(a: number, b: number): string {
   return a < b ? `${a}:${b}` : `${b}:${a}`;
 }
 
@@ -183,7 +191,7 @@ export function edgeKey(a: number, b: number): string {
  * `heuristicToEnd`'s doc for the A*-style bias (`h`) added to the search
  * PRIORITY only (`dist[]`/`g` itself stays the pure unfolded distance from
  * `start` — see below). If `forbiddenEdges` is non-null, the search may
- * never cross a dual-graph edge whose `edgeKey` is a member —
+ * never cross a dual-graph edge whose `dualEdgeKey` is a member —
  * geodesicPath.ts's widening loop uses this to force a FRESH, still-simple-
  * path re-seed around a bend that pinched on a specific face-to-face
  * transition, without the bookkeeping risk of manually splicing a
@@ -266,7 +274,7 @@ export function dualGraphDijkstra(
     const neighbors = faceNeighbors(hm, f);
     for (const n of neighbors) {
       if (n === -1) continue;
-      if (forbiddenEdges && forbiddenEdges.has(edgeKey(f, n))) continue;
+      if (forbiddenEdges && forbiddenEdges.has(dualEdgeKey(f, n))) continue;
       if (visited[n]) continue;
       let candidatePlacement: FacePlacement;
       try {

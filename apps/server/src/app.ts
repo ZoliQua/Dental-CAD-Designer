@@ -143,7 +143,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
         data: {
           id,
           name: request.body.name,
-          schemaVersion: 1,
+          schemaVersion: 2,
           documentJson,
         },
       });
@@ -191,9 +191,10 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
 
   // Task 11: full-document save. `schema.body` (putCaseBodySchema, same
   // shape as caseDocumentSchema) is what enforces "schema-validated against
-  // shared-types shape, schemaVersion checked" (schemaVersion's `const: 1`
-  // in the schema rejects anything else with a 400 before this handler ever
-  // runs). `request.params.id` (the URL) is the authority for WHICH case
+  // shared-types shape, schemaVersion checked" (schemaVersion's `const: 2`
+  // in the schema rejects anything else — including a legacy schemaVersion-1
+  // document, see caseDocumentSchema's doc — with a 400 before this handler
+  // ever runs). `request.params.id` (the URL) is the authority for WHICH case
   // gets overwritten — a `body.id` that disagrees with it is almost
   // certainly a client bug (saving into the wrong case), so it's rejected
   // rather than silently trusted. `updatedAt` is maintained by Prisma's

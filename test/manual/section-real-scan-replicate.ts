@@ -59,12 +59,20 @@ async function sectionThroughZ(
     (min[1] + max[1]) / 2,
     (min[2] + max[2]) / 2,
   ];
+  // sectionMesh now takes a contentHash, not raw buffers (Phase 3 Task 1
+  // housekeeping: "jobs/section.ts stops re-sending buffers") — the mesh
+  // must be cached via buildBvh first, same precondition as
+  // measurePointToSurface/raycastMesh (jobs/bvh.ts's `requireCachedBvh`).
+  await pool.run(
+    'buildBvh',
+    { contentHash: mesh.contentHash, positions: mesh.positions.slice(), indices: mesh.indices.slice() },
+    { transfer: [] },
+  );
   const t = performance.now();
   const result = await pool.run(
     'sectionMesh',
     {
-      positions: mesh.positions.slice(),
-      indices: mesh.indices.slice(),
+      contentHash: mesh.contentHash,
       point: center,
       normal: [0, 0, 1],
       computeCap,

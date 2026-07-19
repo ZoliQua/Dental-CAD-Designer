@@ -161,6 +161,38 @@ import {
   oneRingNeighbors,
 } from './linkCondition.ts';
 
+/**
+ * A render-only mesh produced by decimation (this module's HARD INVARIANT,
+ * top-of-file doc: LOD/display only, never fed back into any other kernel
+ * geometry op). Deliberately NOT itself an `IndexedMesh` — every kernel op
+ * that consumes mesh geometry is typed `(mesh: IndexedMesh, ...) => ...`,
+ * and TypeScript's structural typing means a type that merely ADDS a brand
+ * field to `IndexedMesh`'s own `positions`/`indices` shape would still
+ * satisfy that parameter type (extra properties never block a structural
+ * assignment) — so a marker field alone cannot make ops reject a decimated
+ * mesh at compile time, only nesting the real mesh one level down can:
+ * `RenderOnlyMesh` has no top-level `positions`/`indices` at all, so it
+ * simply does not structurally match `IndexedMesh`, and passing
+ * `someDecimateMeshResult.mesh` where an `IndexedMesh` is expected is a
+ * compile error, not a lint nit or a runtime footgun. Consumers that
+ * genuinely need the render buffers (kernel-workers' jobs/decimate.ts, and
+ * from there apps/client/src/engine/lod.ts) read `.renderMesh.positions`/
+ * `.renderMesh.indices` explicitly — that extra step is the point, not
+ * friction to code around.
+ */
+export interface RenderOnlyMesh {
+  readonly renderMesh: IndexedMesh;
+}
+
+/** Wraps a plain `IndexedMesh` as a `RenderOnlyMesh` — the one place this
+ * module (or any caller) is allowed to assert "this mesh is now render-only
+ * from here on". Module-private in spirit (only `beginDecimation`'s
+ * `finish()` below calls it) but exported so decimate.test.ts's byte-
+ * identity assertions can construct one directly if ever needed. */
+export function toRenderOnlyMesh(mesh: IndexedMesh): RenderOnlyMesh {
+  return { renderMesh: mesh };
+}
+
 export interface DecimateMeshOptions {
   /** Stop once the live triangle count is `<= targetTriangleCount` (or the
    * candidate queue empties first — see this module's "Boundary policy" doc
@@ -174,8 +206,10 @@ export interface DecimateMeshOptions {
 }
 
 export interface DecimateMeshResult {
-  /** A fresh `IndexedMesh` — `mesh` (the input) is never mutated. */
-  mesh: IndexedMesh;
+  /** A fresh, RENDER-ONLY mesh — `mesh` (the input) is never mutated. See
+   * `RenderOnlyMesh`'s doc for why this is not a plain `IndexedMesh`: no
+   * kernel op accepts this field directly, at compile time, by design. */
+  mesh: RenderOnlyMesh;
   inputTriangleCount: number;
   outputTriangleCount: number;
   /** Number of edge collapses actually performed. */
@@ -579,7 +613,7 @@ export function beginDecimation(mesh: IndexedMesh, options: DecimateMeshOptions)
     }
 
     cachedResult = {
-      mesh: { positions: outPositions, indices: outIndices },
+      mesh: toRenderOnlyMesh({ positions: outPositions, indices: outIndices }),
       inputTriangleCount: faceCount,
       outputTriangleCount: liveTriangleCount,
       collapseCount,

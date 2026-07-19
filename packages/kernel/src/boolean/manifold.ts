@@ -17,6 +17,40 @@
 // import reachable from that native-load path must spell out `.ts`. See
 // packages/kernel-workers/tsconfig.json's allowImportingTsExtensions
 // comment for the same requirement on that package.
+//
+// @errorBound Every function in this module that round-trips a mesh through
+// manifold-3d (`toManifoldMesh`/`fromManifoldMesh` and, transitively,
+// `cleanupMesh`/`sectionCap`/every boolean op below) inherits ONE shared
+// Float64->Float32 rounding bound, derived HERE ONCE (this project's chosen
+// `@errorBound` convention — module-header derivation, function-level docs
+// reference it rather than re-deriving) rather than at each call site:
+//
+// This is ONE of TWO documented Float64->Float32 exceptions in the kernel
+// (docs/plans/phase-0-foundation.md Global Constraints: "the manifold-3d
+// WASM boundary converts Float64->Float32; the wrapper documents this as an
+// error bound") — the other is the SDF grid's Float32 storage boundary
+// (`packages/kernel/src/sdf/grid.ts`'s module doc, "Grid storage: Float32,
+// not Float64"), which documents its own, separately-derived error budget;
+// the two are independent boundaries, not the same exception cited twice.
+//
+// `toManifoldMesh` casts every Float64 coordinate to Float32 on the way IN
+// (`new Float32Array(mesh.positions)`) — this rounds to Float32's ~7
+// significant decimal digits (machine epsilon 2^-23 ~= 1.19e-7), bounding
+// the RELATIVE error introduced by this cast to ~1.2e-7. At the mm scale
+// used throughout this kernel, that is at most ~1.2e-4 mm of absolute error
+// for a 1000 mm coordinate (comfortably inside dental/CAD working volumes).
+// This rounding happens ONCE, going in; `fromManifoldMesh` widens Float32
+// back to Float64 EXACTLY on the way out (every Float32 value is exactly
+// representable in Float64), so no further error is introduced there, and
+// `cleanupMesh` (a construct/getMesh round trip) inherits exactly this same
+// single rounding — it does not smooth or move surviving vertices beyond
+// that one cast (see its own doc for the topology it DOES change: degenerate
+// triangle/vertex collapse, which affects connectivity, not position
+// accuracy for surviving vertices). `sectionCap` inherits it too, THROUGH
+// the plane-alignment rotation it applies (applied to the ALREADY-Float32-
+// cast positions manifold-3d holds internally), so a cap vertex can be off
+// the true section plane by up to this same bound — acceptable for a visual
+// fill, never used for any measurement (see `sectionCap`'s own doc).
 import Module from 'manifold-3d';
 import type { ErrorStatus, Manifold, ManifoldToplevel, Mat4, Mesh } from 'manifold-3d';
 import type { IndexedMesh } from '../mesh/types.ts';
@@ -101,22 +135,9 @@ export function initManifold(): Promise<ManifoldToplevel> {
  * `Mesh` (Float32 vertProperties) — the input side of manifold-3d's WASM
  * boundary.
  *
- * @errorBound This is ONE of TWO documented Float64→Float32 exceptions in
- * the kernel (docs/plans/phase-0-foundation.md Global Constraints: "the
- * manifold-3d WASM boundary converts Float64→Float32; the wrapper documents
- * this as an error bound") — the other is the SDF grid's Float32 storage
- * boundary (`packages/kernel/src/sdf/grid.ts`'s module doc, "Grid storage:
- * Float32, not Float64"), which documents its own, separately-derived error
- * budget; the two are independent boundaries, not the same exception cited
- * twice. Casting a Float64 coordinate to Float32 rounds
- * it to Float32's ~7 significant decimal digits (machine epsilon
- * 2^-23 ≈ 1.19e-7), bounding the RELATIVE error introduced by this cast to
- * ~1.2e-7. At the mm scale used throughout this kernel, that is at most
- * ~1.2e-4 mm of absolute error for a 1000 mm coordinate (comfortably inside
- * dental/CAD working volumes). This rounding happens once, going in;
- * {@link fromManifoldMesh} widens Float32 back to Float64 exactly (every
- * Float32 value is exactly representable in Float64), so no further error
- * is introduced on the way out.
+ * @errorBound See this module's header doc — the Float64->Float32 rounding
+ * this cast performs is derived there once, for every function in this file
+ * that round-trips through it.
  */
 function toManifoldMesh(toplevel: ManifoldToplevel, mesh: IndexedMesh): Mesh {
   return new toplevel.Mesh({
@@ -131,9 +152,8 @@ function toManifoldMesh(toplevel: ManifoldToplevel, mesh: IndexedMesh): Mesh {
  * kernel's Float64 {@link IndexedMesh} — the output side of manifold-3d's
  * WASM boundary.
  *
- * @errorBound See {@link toManifoldMesh}'s `@errorBound`: the Float64→Float32
- * rounding for this boundary is fully accounted for there. Float32→Float64
- * widening here is exact and adds no additional error.
+ * @errorBound See this module's header doc: Float32->Float64 widening here
+ * is exact and adds no additional error beyond {@link toManifoldMesh}'s cast.
  */
 function fromManifoldMesh(mesh: Mesh): IndexedMesh {
   if (mesh.numProp !== POSITION_NUM_PROP) {
@@ -245,12 +265,10 @@ export async function surfaceArea(mesh: IndexedMesh): Promise<number> {
  * (degenerate-sliver collapse). Callers needing post-cleanup facts must
  * re-run `analyzeMesh` on the RESULT (offsetMesh.ts does).
  *
- * @errorBound Inherits {@link toManifoldMesh}'s documented Float64→Float32
- * boundary: each coordinate is rounded once to Float32 (relative error
- * ≤ ~1.2e-7; ≤ 1.2e-7 * |coordinate| mm absolute) on the way in and widened
- * exactly on the way out. No other positional change is introduced — the
- * collapse step removes degenerate topology, it does not smooth or move
- * surviving vertices beyond that cast.
+ * @errorBound See this module's header doc — inherits the shared Float64->
+ * Float32 boundary; no other positional change is introduced (the collapse
+ * step removes degenerate topology, it does not smooth or move surviving
+ * vertices beyond that cast).
  */
 export async function cleanupMesh(mesh: IndexedMesh): Promise<IndexedMesh> {
   return withManifold(mesh, (manifold) => fromManifoldMesh(manifold.getMesh()));
@@ -262,8 +280,8 @@ export async function cleanupMesh(mesh: IndexedMesh): Promise<IndexedMesh> {
 // half of Task 10's cross-section feature — the acceptance-critical outline
 // polyline (../section/polyline.ts's `sectionMesh`) never touches
 // manifold-3d and is exact Float64 end-to-end; this function inherits
-// manifold-3d's Float32 WASM-boundary rounding (see `toManifoldMesh`'s
-// `@errorBound` above) THROUGH THE ROTATION as well (the rotation below is
+// manifold-3d's Float32 WASM-boundary rounding (see this module's header
+// doc `@errorBound`) THROUGH THE ROTATION as well (the rotation below is
 // applied to the ALREADY-Float32-cast vertex positions manifold-3d holds
 // internally), so a cap vertex can be off the true section plane by up to
 // the same ~1.2e-7 relative / ~1.2e-4 mm absolute bound documented there —

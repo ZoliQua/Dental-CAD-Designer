@@ -11,7 +11,7 @@
 // filtering/smoothing/ridge-extraction here (YAGNI — Phase 3's job).
 import { caseStore } from './caseStore';
 import { computeAutoRange, distancesToVertexColors, type ColorRange } from './colormap';
-import { getPool } from './workers';
+import { ensureBvhBuilt, getPool } from './workers';
 import { useCurvatureStore, type CurvatureField, type CurvatureRange } from '../state/curvatureStore';
 
 export interface CurvatureOverlay {
@@ -58,6 +58,14 @@ class CurvatureEngine {
    * needs a real interior-only display policy), so a scan's boundary rim
    * shows up as the colormap's midpoint regardless of its true (unmeasured)
    * curvature.
+   *
+   * `ensureBvhBuilt` + `affinityKey: contentHash` (same convention as
+   * workers.ts's own BVH-cache-affinity doc): the `computeCurvature` job
+   * caches its result per-worker, keyed by `contentHash` (jobs/curvature.ts's
+   * module doc) — routing this call to the SAME affinity-pinned worker a
+   * prior `computeCurvature`/BVH-cache call for this mesh used is what makes
+   * a repeat run (e.g. toggling H then back to H) hit that cache instead of
+   * recomputing.
    */
   async run(nodeId: string, field: CurvatureField): Promise<void> {
     const document = caseStore.getDocument();
@@ -72,13 +80,12 @@ class CurvatureEngine {
     useCurvatureStore.getState().setRun({ nodeId, field });
 
     try {
-      const positions = record.positions.slice();
-      const indices = record.indices.slice();
+      await ensureBvhBuilt(record.contentHash, record.positions, record.indices);
       const result = await getPool().run(
         'computeCurvature',
-        { positions, indices },
+        { contentHash: record.contentHash },
         {
-          transfer: [positions.buffer, indices.buffer],
+          affinityKey: record.contentHash,
           onProgress: (fraction) => {
             if (myGeneration === this.generation) {
               useCurvatureStore.getState().setProgress(fraction);

@@ -97,7 +97,7 @@ function createFakeServer() {
       const body = JSON.parse(String(init?.body)) as { name: string };
       const id = `case-${(counter += 1)}`;
       const now = new Date().toISOString();
-      const row: FakeCaseRow = { id, name: body.name, createdAt: now, updatedAt: now, schemaVersion: 1, document: null };
+      const row: FakeCaseRow = { id, name: body.name, createdAt: now, updatedAt: now, schemaVersion: 2, document: null };
       cases.set(id, row);
       return Response.json(summaryOf(row), { status: 201 });
     }
@@ -119,7 +119,7 @@ function createFakeServer() {
       if (!row) return new Response(null, { status: 404 });
       const body = JSON.parse(String(init?.body)) as CaseDocument;
       if (body.id !== row.id) return new Response(null, { status: 400 });
-      if (body.schemaVersion !== 1) return new Response(null, { status: 400 });
+      if (body.schemaVersion !== 2) return new Response(null, { status: 400 });
       row.document = body;
       row.schemaVersion = body.schemaVersion;
       row.updatedAt = new Date().toISOString();
@@ -429,6 +429,150 @@ describe('save / openCase round trip', () => {
     // missing — see persistence.ts's `save()` doc).
     expect(usePersistenceStore.getState().activeCaseId).toBe('case-b-simulated');
     expect(usePersistenceStore.getState().activeCaseName).toBe('Case B');
+  });
+});
+
+describe('CaseDocument.schemaVersion 1 -> 2 migration (Phase 3 Task 1)', () => {
+  it('migrates a legacy schemaVersion-1 document on load, then a save -> reload round trip is byte-for-byte identical', async () => {
+    // Simulate a case row that predates this task's schema evolution: the
+    // fake server's GET route just echoes back whatever `document` is
+    // stored (mirroring the REAL server's app.ts, which does no validation
+    // of its own stored JSON — see engine/caseDocumentMigration.ts's module
+    // doc) — a raw, schemaVersion-1-shaped object, injected directly (never
+    // constructible as a real `CaseDocument` — this cast is the point).
+    const legacyDocument = {
+      id: 'legacy-case-1',
+      schemaVersion: 1,
+      createdAt: '2025-01-01T00:00:00.000Z',
+      meshes: [],
+      scene: [],
+      restorations: [
+        {
+          id: 'restoration-1',
+          type: 'crown',
+          teeth: [26],
+          marginLines: {
+            26: {
+              vertexAnchors: [0, 1, 2, 3],
+              controlPoints: [
+                [0, 0, 0],
+                [1, 0, 0],
+                [1, 1, 0],
+                [0, 1, 0],
+              ],
+              closed: true,
+            },
+          },
+          insertionAxis: [0, 0, 1],
+          params: {
+            cementGapMm: 0.05,
+            marginalGapMm: 0.02,
+            spacerStartMm: 0.75,
+            minWallThicknessMm: 0.5,
+            proximalContactPenetrationMm: 0.02,
+            occlusalContactMm: 0,
+          },
+          stages: {},
+          qc: null,
+        },
+      ],
+      measurements: [],
+      history: [],
+      settings: { materialProfileId: 'zirconia-default', profileVersion: '1.0.0' },
+    };
+    server.cases.set('legacy-case-1', {
+      id: 'legacy-case-1',
+      name: 'Legacy case',
+      createdAt: legacyDocument.createdAt,
+      updatedAt: legacyDocument.createdAt,
+      schemaVersion: 1,
+      document: legacyDocument as unknown as CaseDocument,
+    });
+
+    await openCase('legacy-case-1', 'Legacy case');
+
+    // 1. Loaded document is migrated to schemaVersion 2 with the new
+    // MarginLine.anchors shape — position carried through EXACTLY,
+    // triangleIndex/barycentric are the documented UNRESOLVED sentinel.
+    const loaded = useCaseStore.getState().document;
+    expect(loaded.schemaVersion).toBe(2);
+    const marginLine = loaded.restorations[0]?.marginLines[26];
+    expect(marginLine?.closed).toBe(true);
+    expect(marginLine?.anchors).toHaveLength(4);
+    expect(marginLine?.anchors.map((a) => a.position)).toEqual([
+      [0, 0, 0],
+      [1, 0, 0],
+      [1, 1, 0],
+      [0, 1, 0],
+    ]);
+    for (const anchor of marginLine!.anchors) {
+      expect(anchor.triangleIndex).toBe(-1); // UNRESOLVED_MARGIN_ANCHOR_TRIANGLE_INDEX
+    }
+    // No `vertexAnchors`/`controlPoints` field survives the reshape.
+    expect(marginLine).not.toHaveProperty('vertexAnchors');
+    expect(marginLine).not.toHaveProperty('controlPoints');
+
+    // 2. The migration is journaled, not silent (CLAUDE.md invariant 5).
+    const migrationOp = loaded.history.find((op) => op.name === 'migrate-schema-v1-to-v2');
+    expect(migrationOp).toBeDefined();
+    expect(migrationOp?.params['fromSchemaVersion']).toBe(1);
+    expect(migrationOp?.params['toSchemaVersion']).toBe(2);
+    expect(migrationOp?.params['anchorCount']).toBe(4);
+
+    // 3. A migrated document is not silently left dangling as "saved" on
+    // the server (it never was, until now) — `openCase` persists the
+    // migration ITSELF as part of loading (persistence.ts's `openCase`
+    // doc's "wasMigrated" branch), so by the time it resolves the migrated
+    // document is already durably saved.
+    expect(usePersistenceStore.getState().status).toBe('saved');
+    const savedDocument = useCaseStore.getState().document;
+    expect(savedDocument.schemaVersion).toBe(2);
+    expect(server.cases.get('legacy-case-1')!.document).toEqual(savedDocument);
+
+    // 4. save() again is a genuine no-op (already in sync) — this task's
+    // brief's explicit round-trip shape ("v1 doc -> load -> v2 -> save ->
+    // reload") still holds even though `openCase` already did the save.
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockClear();
+    await save();
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    // 5. Reload from scratch: v1 doc -> load -> v2 -> save -> reload
+    // IDENTICAL (this task's brief's exact required round-trip test).
+    caseStore.resetForTests();
+    resetPersistenceForTests();
+    await openCase('legacy-case-1', 'Legacy case');
+    const reloadedDocument = useCaseStore.getState().document;
+    expect(reloadedDocument).toEqual(savedDocument);
+    // Idempotent: reloading an ALREADY-v2 document does not migrate again
+    // (no second migrate-schema-v1-to-v2 entry, no re-dirtying).
+    expect(reloadedDocument.history.filter((op) => op.name === 'migrate-schema-v1-to-v2')).toHaveLength(1);
+    expect(usePersistenceStore.getState().status).toBe('saved');
+  });
+
+  it('rejects an unsupported schemaVersion (neither 1 nor 2) rather than silently guessing', async () => {
+    const badDocument = {
+      id: 'bad-case-1',
+      schemaVersion: 3,
+      createdAt: '2025-01-01T00:00:00.000Z',
+      meshes: [],
+      scene: [],
+      restorations: [],
+      measurements: [],
+      history: [],
+      settings: { materialProfileId: '', profileVersion: '' },
+    };
+    server.cases.set('bad-case-1', {
+      id: 'bad-case-1',
+      name: 'Bad case',
+      createdAt: badDocument.createdAt,
+      updatedAt: badDocument.createdAt,
+      schemaVersion: 3,
+      document: badDocument as unknown as CaseDocument,
+    });
+
+    await expect(openCase('bad-case-1', 'Bad case')).rejects.toThrow(/unsupported CaseDocument.schemaVersion/);
+    expect(usePersistenceStore.getState().status).toBe('error');
   });
 });
 

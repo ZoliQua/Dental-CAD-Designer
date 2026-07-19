@@ -119,14 +119,34 @@ const sceneNodeSchema = {
   },
 } as const;
 
-const marginLineSchema = {
+// schemaVersion 2 (Phase 3 Task 1) — see shared-types' `MarginAnchor` doc
+// for the field semantics ("triangle + barycentric, the SurfacePoint
+// currency"). Replaces the schemaVersion-1 `vertexAnchors: number[]` shape;
+// migration from a v1 document happens CLIENT-SIDE only (apps/client/src/
+// engine/caseDocumentMigration.ts) — the server never sees/accepts a v1
+// document (`caseDocumentSchema`'s `schemaVersion` `const: 2` below rejects
+// it outright).
+const marginAnchorSchema = {
   type: 'object',
-  required: ['vertexAnchors', 'controlPoints', 'closed'],
+  required: ['position', 'triangleIndex', 'barycentric'],
   additionalProperties: false,
   properties: {
-    vertexAnchors: { type: 'array', items: { type: 'integer' } },
-    controlPoints: { type: 'array', items: vec3Schema },
+    position: vec3Schema,
+    triangleIndex: { type: 'integer' },
+    barycentric: { type: 'array', items: { type: 'number' }, minItems: 3, maxItems: 3 },
+  },
+} as const;
+
+const marginLineSchema = {
+  type: 'object',
+  required: ['anchors', 'closed'],
+  additionalProperties: false,
+  properties: {
+    anchors: { type: 'array', items: marginAnchorSchema },
     closed: { type: 'boolean' },
+    // Optional (shared-types' `MarginLine.resampledPoints?`) — absent until
+    // something actually resamples the fitted spline.
+    resampledPoints: { type: 'array', items: vec3Schema },
   },
 } as const;
 
@@ -231,9 +251,14 @@ const caseSettingsSchema = {
 
 /** The full `CaseDocument` shape (shared-types) — used both to validate
  * `PUT /api/cases/:id`'s request body and to serialize `GET
- * /api/cases/:id`'s response. `schemaVersion`'s `const: 1` is what makes an
- * unsupported/future document version a 400 (AJV rejects any other value)
- * rather than something the route handler has to check itself. */
+ * /api/cases/:id`'s response. `schemaVersion`'s `const: 2` is what makes an
+ * unsupported/legacy document version a 400 (AJV rejects any other value)
+ * rather than something the route handler has to check itself — this
+ * INCLUDES a schemaVersion-1 document: the server has no migration logic of
+ * its own (Phase 3 Task 1's brief: "migration happens client-side on
+ * load"), so a v1 `PUT` is rejected exactly like any other malformed body,
+ * and the CLIENT is responsible for having already migrated (apps/client/
+ * src/engine/caseDocumentMigration.ts) before ever attempting to save. */
 export const caseDocumentSchema = {
   type: 'object',
   required: [
@@ -250,7 +275,7 @@ export const caseDocumentSchema = {
   additionalProperties: false,
   properties: {
     id: { type: 'string' },
-    schemaVersion: { type: 'integer', const: 1 },
+    schemaVersion: { type: 'integer', const: 2 },
     createdAt: { type: 'string' },
     patientRef: { type: 'string' },
     meshes: { type: 'array', items: meshAssetSchema },

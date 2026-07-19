@@ -239,8 +239,8 @@ export interface SurfaceSplineSpan {
 
 /** A cubic spline lying on a mesh surface — the fitted/refit result this
  * task's brief calls "the margin-line data structure Phase 3 edits
- * interactively". See `marginLine.ts` for the (documented, lossy in one
- * direction) adapter to/from shared-types' `MarginLine`. */
+ * interactively". See `marginLine.ts` for the (Phase 3 Task 1: now
+ * lossless) adapter to/from shared-types' `MarginLine`. */
 export interface SurfaceSpline {
   /** On-surface control points, in order — each the direct BVH projection
    * of the corresponding input ambient point (`fitSurfaceSpline`) or, after

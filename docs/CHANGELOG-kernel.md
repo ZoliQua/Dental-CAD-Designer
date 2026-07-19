@@ -59,6 +59,41 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.2.2] — Phase 3 Task 1 housekeeping: kernelVersion/manifoldVersion metadata on the standalone intake/curvature/offset goldens (metadata only, no hash change)
+
+Extends the 0.2.1 precedent (below) — that bump added `kernelVersion`/
+`manifoldVersion` to `test-fixtures/golden/kernel-ops.json` only; this one
+closes the gap for the THREE other, standalone golden files that never
+carried this metadata at all:
+
+1. `test-fixtures/intake/arch-case-01-upperjaw.intake.golden.json` gained a
+   `kernelVersion` field (`scripts/generate-intake-golden.ts` now stamps
+   `KERNEL_VERSION` into the written snapshot; `test/golden/intake.test.ts`
+   gained a well-formedness check for it, mirroring
+   `test/golden/kernel-ops.test.ts`'s own). No `manifoldVersion` — plain
+   `intake()` never touches manifold-3d.
+2. `test-fixtures/curvature/arch-case-01-upperjaw.curvature.golden.json`
+   gained a `kernelVersion` field, same treatment
+   (`scripts/generate-curvature-golden.ts` / `test/golden/curvature.test.ts`).
+   No `manifoldVersion` — `computeCurvature` is pure kernel math.
+3. `test-fixtures/offset/standin-prep-die.offset.golden.json` gained BOTH
+   `kernelVersion` AND `manifoldVersion` fields (offset's manifold-cleanup
+   stage IS WASM-derived) — regenerated via
+   `UPDATE_OFFSET_GOLDEN=1 RUN_CLINICAL_GOLDEN=1 npx vitest run --project golden test/golden/offset.test.ts`
+   and diffed against the pre-bump file: `stats`, `errorBoundMm`,
+   `resultSha256`, `distanceMm`, `pitchMm` are all BYTE-IDENTICAL; only the
+   two new metadata fields were added. `test/golden/offset.test.ts` gained
+   the same well-formedness checks.
+
+Same "why this needed a `KERNEL_VERSION` bump at all" reasoning as 0.2.1
+below: this repo's golden-version gate
+(`scripts/check-golden-version-gate.ts`) triggers on ANY diff to a
+golden-pinned path, metadata-only or not — a real, if patch-level, bump
+through the normal mechanism is simpler and more honest than teaching the
+gate a second "metadata-only, exempt" special case. `test-fixtures/golden/
+kernel-ops.json` itself was NOT touched by this change (unrelated —
+already had this metadata since 0.2.1) and was NOT regenerated.
+
 ## [0.2.1] — Fix batch (post-Task-12): pin manifold-3d + record its version in goldens (metadata only, no hash change)
 
 Two related, purely-mechanical changes, ZERO numerical difference in any

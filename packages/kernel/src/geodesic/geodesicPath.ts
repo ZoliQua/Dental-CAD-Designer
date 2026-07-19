@@ -176,7 +176,7 @@
 // to the typical-case accuracy above, well under the 0.1% budget.
 import type { HalfedgeMesh } from '../halfedge/types.ts';
 import type { IndexedMesh } from '../mesh/types.ts';
-import { dualGraphDijkstra, edgeKey } from './corridor.ts';
+import { dualGraphDijkstra, dualEdgeKey } from './corridor.ts';
 import { materializeGeodesic, type MaterializedPath } from './funnel.ts';
 import { surfacePointDistanceSquared, vertexIndexIfExact } from './surfacePoint.ts';
 import { sequentialUnfold, triarea2, vec2Length, vec2Sub, type UnfoldedCorridor, type Vec2 } from './unfold.ts';
@@ -361,7 +361,7 @@ export function geodesicPath(
     // manually splicing the existing corridor.
     let addedForbidden = false;
     for (const bend of materialized.bendVertices) {
-      const key = edgeKey(corridor[bend.allIndex - 1]!, corridor[bend.allIndex]!);
+      const key = dualEdgeKey(corridor[bend.allIndex - 1]!, corridor[bend.allIndex]!);
       if (!forbiddenEdges.has(key)) {
         forbiddenEdges.add(key);
         addedForbidden = true;
@@ -381,8 +381,8 @@ export function geodesicPath(
       const worst = findWorstDeviationFace(corridor, unfolded.face2D, start2D, end2D);
       if (worst) {
         for (const key of [
-          edgeKey(corridor[worst.corridorIndex - 1]!, corridor[worst.corridorIndex]!),
-          edgeKey(corridor[worst.corridorIndex]!, corridor[worst.corridorIndex + 1]!),
+          dualEdgeKey(corridor[worst.corridorIndex - 1]!, corridor[worst.corridorIndex]!),
+          dualEdgeKey(corridor[worst.corridorIndex]!, corridor[worst.corridorIndex + 1]!),
         ]) {
           if (!forbiddenEdges.has(key)) {
             forbiddenEdges.add(key);

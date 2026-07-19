@@ -21,7 +21,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { parseStl } from '@dqcad/io';
-import { computeCurvature, intake, type CurvatureResult } from '@dqcad/kernel';
+import { computeCurvature, intake, KERNEL_VERSION, type CurvatureResult } from '@dqcad/kernel';
 
 const repoRoot = fileURLToPath(new URL('../', import.meta.url));
 const upperjawStlPath = join(repoRoot, 'test-fixtures', 'real-scans', 'arch-case-01', 'arch-case-01-upperjaw.stl');
@@ -81,6 +81,9 @@ const intakeResult = intake({ kind: 'soup', soup });
 const curvature = computeCurvature(intakeResult.mesh);
 
 const snapshot = {
+  // Phase 3 Task 1 housekeeping: metadata field, no effect on the hash
+  // below — see test/golden/curvature.test.ts's `CurvatureGoldenSnapshot` doc.
+  kernelVersion: KERNEL_VERSION,
   summary: summarize(curvature),
   resultSha256: hashCurvatureResult(curvature),
 };

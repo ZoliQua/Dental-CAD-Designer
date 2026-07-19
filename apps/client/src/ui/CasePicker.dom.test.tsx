@@ -58,7 +58,7 @@ describe('CasePicker — rename error path', () => {
           name: 'Original Name',
           createdAt: new Date(0).toISOString(),
           updatedAt: new Date(0).toISOString(),
-          schemaVersion: 1,
+          schemaVersion: 2,
         },
       ],
     });

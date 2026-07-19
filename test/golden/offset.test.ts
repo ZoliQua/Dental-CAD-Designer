@@ -50,9 +50,10 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { parseStl } from '@dqcad/io';
-import { intake, offsetMesh, type MeshStats } from '@dqcad/kernel';
+import { intake, offsetMesh, KERNEL_VERSION, type MeshStats } from '@dqcad/kernel';
 import { DEFAULT_OFFSET_VOXEL_PITCH_MM } from '@dqcad/clinical-profiles';
 import { assertNotLfsPointer } from './stl-reader.ts';
+import { getInstalledManifoldVersion } from '../../scripts/kernel-ops-lib.ts';
 
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
 const diePath = join(repoRoot, 'test-fixtures', 'standin-scans', 'standin-prep-die.stl');
@@ -64,6 +65,18 @@ const goldenPath = join(repoRoot, 'test-fixtures', 'offset', 'standin-prep-die.o
 const OFFSET_DISTANCE_MM = 0.05;
 
 interface OffsetGoldenSnapshot {
+  /** See test/golden/intake.test.ts's `IntakeGoldenSnapshot.kernelVersion`
+   * doc (Phase 3 Task 1 housekeeping) — same field, same rationale. */
+  kernelVersion: string;
+  /** The offset pipeline's manifold cleanup stage (`cleanupMesh`,
+   * @dqcad/kernel's boolean/manifold.ts) is WASM-derived (manifold-3d) —
+   * unlike intake/curvature's pure-kernel-math goldens, this snapshot
+   * records the installed manifold-3d package version alongside
+   * kernelVersion, same convention as scripts/kernel-ops-lib.ts's
+   * `KernelOpsSnapshot.manifoldVersion` (see that field's doc for why: "a
+   * manifold-3d upgrade that changes this suite's hashes is visible AS a
+   * manifold-3d-version change, not just an unexplained numeric diff"). */
+  manifoldVersion: string;
   distanceMm: number;
   pitchMm: number;
   errorBoundMm: number;
@@ -111,6 +124,8 @@ describe('offset — golden on standin-prep-die at the clinical default pitch', 
       expect(result.stats.componentCount).toBe(1);
 
       const snapshot: OffsetGoldenSnapshot = {
+        kernelVersion: KERNEL_VERSION,
+        manifoldVersion: getInstalledManifoldVersion(),
         distanceMm: OFFSET_DISTANCE_MM,
         pitchMm: DEFAULT_OFFSET_VOXEL_PITCH_MM,
         errorBoundMm: result.errorBoundMm,
@@ -132,6 +147,12 @@ describe('offset — golden on standin-prep-die at the clinical default pitch', 
       expect(snapshot.resultSha256).toBe(golden.resultSha256);
       expect(snapshot.distanceMm).toBe(golden.distanceMm);
       expect(snapshot.pitchMm).toBe(golden.pitchMm);
+      // Well-formedness only (not equality with the live version) — see
+      // test/golden/intake.test.ts's identical check's doc for why.
+      expect(typeof golden.kernelVersion).toBe('string');
+      expect(golden.kernelVersion.length).toBeGreaterThan(0);
+      expect(typeof golden.manifoldVersion).toBe('string');
+      expect(golden.manifoldVersion.length).toBeGreaterThan(0);
     },
   );
 });

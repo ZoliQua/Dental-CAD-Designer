@@ -226,6 +226,7 @@
     "panelTitle": "Javítás",
     "previewLoading": "Előnézet számítása…",
     "previewError": "Javítási előnézet sikertelen: {{message}}",
+    "bowtieDetectionError": "Nem sikerült ellenőrizni a nem sokrétű (bowtie) csúcspontokat: {{message}}. Emiatt a kapcsolódó javítási lehetőség rejtve maradhat.",
     "applyButton": "Alkalmaz",
     "applying": "Alkalmazás…",
     "applied": "Alkalmazva",

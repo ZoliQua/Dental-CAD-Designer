@@ -107,6 +107,7 @@
 // spaced" at extreme oversampling, which is not this task's realistic
 // operating range.
 import type { Vec3 } from '../bvh/geometry.ts';
+import { MESH_WELD_EPSILON_MM } from '../intake/weld.ts';
 
 /** Centripetal parametrization exponent — see this module's top doc. Not
  * exposed as a caller-configurable option: alpha=0.5 is the property this
@@ -146,13 +147,14 @@ export function polylineLength(points: readonly Vec3[]): number {
 
 /** Minimum consecutive-control-point distance below which centripetal knot
  * spacing degenerates (division by ~0 in `centripetalKnots`) — reuses
- * `MESH_WELD_EPSILON_MM` (1e-6 mm) for the same reason section/polyline.ts
- * does (see that module's `ON_PLANE_EPSILON_MM` doc): mesh intake already
- * never leaves two DISTINCT points closer than this, so two control points
- * closer than it are, for spline-fitting purposes, indistinguishable from a
- * genuine duplicate — rejected outright (see `validateControlPoints`) rather
- * than silently producing a near-singular knot interval. */
-export const MIN_CONTROL_POINT_SEPARATION_MM = 1e-6;
+ * `MESH_WELD_EPSILON_MM` (1e-6 mm, imported rather than re-literaled — same
+ * reason section/polyline.ts's `ON_PLANE_EPSILON_MM` does) for the same
+ * reason: mesh intake already never leaves two DISTINCT points closer than
+ * this, so two control points closer than it are, for spline-fitting
+ * purposes, indistinguishable from a genuine duplicate — rejected outright
+ * (see `validateControlPoints`) rather than silently producing a
+ * near-singular knot interval. */
+export const MIN_CONTROL_POINT_SEPARATION_MM = MESH_WELD_EPSILON_MM;
 
 /**
  * Input validation shared by every public entry point in this module and

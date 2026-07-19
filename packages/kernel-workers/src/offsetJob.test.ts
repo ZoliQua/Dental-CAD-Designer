@@ -1,13 +1,16 @@
-// offsetMesh job tests (Phase 2 Task 7) — exercised via a real Node
-// worker_threads WorkerPool, same rationale as sdfJobs.test.ts: the offset
-// algorithm itself (acceptance radial-error bounds, sign convention, cube
-// rounding, roundtrip property, `@errorBound`) is exhaustively covered at
-// the kernel level (packages/kernel/src/offset/*.test.ts) — these tests
-// prove the job wires @dqcad/kernel's offset/ module through a real worker
-// correctly: staged progress, genuine mid-SDF cancellation, typed-error
-// propagation across the Comlink boundary, and byte-identity with a direct
-// kernel `offsetMesh` call (the job drives the same per-slice/per-slab
-// primitives — see jobs/offset.ts's module doc).
+// offsetMesh job tests (Phase 2 Task 7; Phase 3 Task 1 housekeeping:
+// contentHash-keyed per-worker result cache, BVH reuse) — exercised via a
+// real Node worker_threads WorkerPool, same rationale as sdfJobs.test.ts:
+// the offset algorithm itself (acceptance radial-error bounds, sign
+// convention, cube rounding, roundtrip property, `@errorBound`) is
+// exhaustively covered at the kernel level
+// (packages/kernel/src/offset/*.test.ts) — these tests prove the job wires
+// @dqcad/kernel's offset/ module through a real worker correctly: staged
+// progress, genuine mid-SDF cancellation, typed-error propagation across the
+// Comlink boundary, byte-identity with a direct kernel `offsetMesh` call
+// (the job drives the same per-slice/per-slab primitives — see
+// jobs/offset.ts's module doc), PLUS the cache/eviction contract added by
+// this housekeeping task.
 import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import { offsetMesh } from '@dqcad/kernel';
@@ -94,6 +97,15 @@ function hashBuffers(positions: Float64Array, indices: Uint32Array): string {
   return hash.digest('hex');
 }
 
+async function buildBvhFor(
+  pool: WorkerPool,
+  contentHash: string,
+  positions: Float64Array,
+  indices: Uint32Array,
+): Promise<void> {
+  await pool.run('buildBvh', { contentHash, positions, indices });
+}
+
 describe('offsetMesh job', () => {
   it(
     'produces a watertight offset mesh BYTE-IDENTICAL to a direct kernel offsetMesh call, with staged progress ending at 1',
@@ -103,12 +115,13 @@ describe('offsetMesh job', () => {
       const { positions, indices } = icosahedronBuffers();
       const distanceMm = 0.15;
       const pitchMm = 0.08;
+      const contentHash = 'icosahedron-offset';
+      await buildBvhFor(pool, contentHash, positions.slice(), indices.slice());
 
       const progressValues: number[] = [];
       const jobResult = await pool.run(
         'offsetMesh',
-        // Fresh copies: run() transfers the buffers into the worker.
-        { positions: positions.slice(), indices: indices.slice(), distanceMm, pitchMm },
+        { contentHash, distanceMm, pitchMm },
         { onProgress: (fraction) => progressValues.push(fraction) },
       );
 
@@ -131,23 +144,107 @@ describe('offsetMesh job', () => {
       // Byte-identity with the kernel path (same primitives, same order —
       // jobs/offset.ts's module doc).
       const direct = await offsetMesh({ positions, indices }, distanceMm, { pitchMm });
-      expect(hashBuffers(jobResult.positions, jobResult.indices)).toBe(hashBuffers(direct.mesh.positions, direct.mesh.indices));
+      expect(hashBuffers(jobResult.positions, jobResult.indices)).toBe(
+        hashBuffers(direct.mesh.positions, direct.mesh.indices),
+      );
       expect(jobResult.stats).toEqual(direct.stats);
       expect(jobResult.errorBoundMm).toBe(direct.errorBoundMm);
     },
   );
 
+  it(
+    'cache hit: a second call with the SAME contentHash/distanceMm/pitchMm returns a byte-identical, ' +
+      'independently-transferable result without re-running the pipeline',
+    { timeout: 120_000 },
+    async () => {
+      const pool = createPool({ size: 1 });
+      const { positions, indices } = icosahedronBuffers();
+      const contentHash = 'icosahedron-offset-cache';
+      await buildBvhFor(pool, contentHash, positions, indices);
+
+      const first = await pool.run('offsetMesh', { contentHash, distanceMm: 0.1, pitchMm: 0.1 });
+      const progressValues: number[] = [];
+      const second = await pool.run(
+        'offsetMesh',
+        { contentHash, distanceMm: 0.1, pitchMm: 0.1 },
+        { onProgress: (fraction) => progressValues.push(fraction) },
+      );
+
+      // Cache hit reports no intermediate staged progress — straight to 1
+      // (jobs/offset.ts's module doc: "A cache HIT skips straight to 1").
+      expect(progressValues).toEqual([0, 1]);
+
+      expect(second.positions.buffer).not.toBe(first.positions.buffer); // distinct clone
+      expect(hashBuffers(second.positions, second.indices)).toBe(hashBuffers(first.positions, first.indices));
+      expect(second.stats).toEqual(first.stats);
+      expect(second.errorBoundMm).toBe(first.errorBoundMm);
+    },
+  );
+
+  it('a DIFFERENT distanceMm/pitchMm for the SAME mesh is a cache miss (still requires the cached BVH)', async () => {
+    const pool = createPool({ size: 1 });
+    const { positions, indices } = icosahedronBuffers();
+    const contentHash = 'icosahedron-offset-miss';
+    await buildBvhFor(pool, contentHash, positions, indices);
+
+    await pool.run('offsetMesh', { contentHash, distanceMm: 0.1, pitchMm: 0.1 });
+    // Different pitchMm — must recompute (staged progress reappears), not
+    // return the (0.1, 0.1) cache entry.
+    const progressValues: number[] = [];
+    const result = await pool.run(
+      'offsetMesh',
+      { contentHash, distanceMm: 0.1, pitchMm: 0.12 },
+      { onProgress: (fraction) => progressValues.push(fraction) },
+    );
+    expect(progressValues.length).toBeGreaterThan(2); // real staged progress, not a 2-entry cache-hit trace
+    expect(result.pitchMm).toBe(0.12);
+  });
+
+  it('evicts every cached (distanceMm, pitchMm) result when releaseBvh runs for the same contentHash', async () => {
+    const pool = createPool({ size: 1 });
+    const { positions, indices } = icosahedronBuffers();
+    const contentHash = 'icosahedron-offset-evict';
+    await buildBvhFor(pool, contentHash, positions, indices);
+    await pool.run('offsetMesh', { contentHash, distanceMm: 0.1, pitchMm: 0.1 }); // populates the cache
+
+    await pool.run('releaseBvh', { contentHash });
+
+    await expect(
+      pool.run('offsetMesh', { contentHash, distanceMm: 0.1, pitchMm: 0.1 }),
+    ).rejects.toMatchObject({ name: 'BvhNotCachedError' });
+  });
+
+  it('cache isolation: releasing a DIFFERENT contentHash does not evict this one', async () => {
+    const pool = createPool({ size: 1 });
+    const { positions, indices } = icosahedronBuffers();
+    const contentHash = 'icosahedron-offset-isolation';
+    await buildBvhFor(pool, contentHash, positions, indices);
+    await buildBvhFor(pool, 'other-offset-hash', positions.slice(), indices.slice());
+    await pool.run('offsetMesh', { contentHash, distanceMm: 0.1, pitchMm: 0.1 });
+
+    await pool.run('releaseBvh', { contentHash: 'other-offset-hash' });
+
+    await expect(
+      pool.run('offsetMesh', { contentHash, distanceMm: 0.1, pitchMm: 0.1 }),
+    ).resolves.toBeDefined();
+  });
+
+  it('rejects a contentHash with no cached BVH on this worker', async () => {
+    const pool = createPool({ size: 1 });
+    await expect(
+      pool.run('offsetMesh', { contentHash: 'never-built', distanceMm: 0.1, pitchMm: 0.1 }),
+    ).rejects.toMatchObject({ name: 'BvhNotCachedError' });
+  });
+
   it('is cancellable BEFORE it starts (pre-flight: signal already aborted)', async () => {
     const pool = createPool({ size: 1 });
     const { positions, indices } = icosahedronBuffers();
+    const contentHash = 'icosahedron-offset-preflight-cancel';
+    await buildBvhFor(pool, contentHash, positions, indices);
     const controller = new AbortController();
     controller.abort();
     await expect(
-      pool.run(
-        'offsetMesh',
-        { positions, indices, distanceMm: 0.1, pitchMm: 0.05 },
-        { signal: controller.signal },
-      ),
+      pool.run('offsetMesh', { contentHash, distanceMm: 0.1, pitchMm: 0.05 }, { signal: controller.signal }),
     ).rejects.toThrow(JobCancelledError);
   });
 
@@ -157,6 +254,8 @@ describe('offsetMesh job', () => {
     async () => {
       const pool = createPool({ size: 1 });
       const { positions, indices } = icosahedronBuffers();
+      const contentHash = 'icosahedron-offset-mid-cancel';
+      await buildBvhFor(pool, contentHash, positions, indices);
 
       const controller = new AbortController();
       const progressValues: number[] = [];
@@ -165,7 +264,7 @@ describe('offsetMesh job', () => {
         pool.run(
           'offsetMesh',
           // Fine pitch so the SDF stage has many slices to cancel between.
-          { positions, indices, distanceMm: 0.1, pitchMm: 0.02 },
+          { contentHash, distanceMm: 0.1, pitchMm: 0.02 },
           {
             signal: controller.signal,
             onProgress: (fraction) => {
@@ -189,27 +288,33 @@ describe('offsetMesh job', () => {
   it('propagates NonWatertightMeshError for an open mesh', async () => {
     const pool = createPool({ size: 1 });
     const { positions, indices } = openPatchBuffers();
+    const contentHash = 'open-patch-offset';
+    await buildBvhFor(pool, contentHash, positions, indices);
     await expect(
-      pool.run('offsetMesh', { positions, indices, distanceMm: 0.1, pitchMm: 0.1 }),
+      pool.run('offsetMesh', { contentHash, distanceMm: 0.1, pitchMm: 0.1 }),
     ).rejects.toMatchObject({ name: 'NonWatertightMeshError' });
   });
 
   it('rejects invalid pitchMm/distanceMm with a TypeError before any heavy work', async () => {
     const pool = createPool({ size: 1 });
     const { positions, indices } = icosahedronBuffers();
+    const contentHash = 'icosahedron-offset-invalid-params';
+    await buildBvhFor(pool, contentHash, positions, indices);
     await expect(
-      pool.run('offsetMesh', { positions: positions.slice(), indices: indices.slice(), distanceMm: 0.1, pitchMm: 0 }),
+      pool.run('offsetMesh', { contentHash, distanceMm: 0.1, pitchMm: 0 }),
     ).rejects.toMatchObject({ name: 'TypeError' });
     await expect(
-      pool.run('offsetMesh', { positions, indices, distanceMm: Number.NaN, pitchMm: 0.1 }),
+      pool.run('offsetMesh', { contentHash, distanceMm: Number.NaN, pitchMm: 0.1 }),
     ).rejects.toMatchObject({ name: 'TypeError' });
   });
 
   it('propagates EmptyOffsetResultError when the offset surface vanishes (inward past the inradius)', { timeout: 60_000 }, async () => {
     const pool = createPool({ size: 1 });
     const { positions, indices } = icosahedronBuffers(1);
+    const contentHash = 'icosahedron-offset-empty';
+    await buildBvhFor(pool, contentHash, positions, indices);
     await expect(
-      pool.run('offsetMesh', { positions, indices, distanceMm: -1.4, pitchMm: 0.1 }),
+      pool.run('offsetMesh', { contentHash, distanceMm: -1.4, pitchMm: 0.1 }),
     ).rejects.toMatchObject({ name: 'EmptyOffsetResultError' });
   });
 });

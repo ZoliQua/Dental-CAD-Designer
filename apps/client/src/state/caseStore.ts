@@ -17,7 +17,7 @@ import type { CaseDocument } from '@dqcad/shared-types';
 export function createEmptyCaseDocument(): CaseDocument {
   return {
     id: crypto.randomUUID(),
-    schemaVersion: 1,
+    schemaVersion: 2,
     createdAt: new Date().toISOString(),
     meshes: [],
     scene: [],

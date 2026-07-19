@@ -1,4 +1,5 @@
-// sectionMesh job tests (Task 10) — worker round-trip wiring (transferables,
+// sectionMesh job tests (Task 10; Phase 3 Task 1 housekeeping: contentHash
+// instead of raw buffers) — worker round-trip wiring (transferables,
 // progress, flat polyline encoding, optional cap) for the cross-section
 // job. The extraction ALGORITHM itself (edge-plane intersection, on-plane
 // epsilon policy, the acceptance-critical sphere radius tests) is
@@ -48,20 +49,29 @@ function openBoxMesh(): { positions: Float64Array; indices: Uint32Array } {
   return { positions: cube.positions, indices: Uint32Array.from(withoutTop.flat()) };
 }
 
+async function buildBvhFor(
+  pool: WorkerPool,
+  contentHash: string,
+  positions: Float64Array,
+  indices: Uint32Array,
+): Promise<void> {
+  await pool.run('buildBvh', { contentHash, positions, indices });
+}
+
 describe('WorkerPool — sectionMesh', () => {
-  it('extracts a 4-point closed square outline through a unit cube, transfers buffers', async () => {
+  it('extracts a 4-point closed square outline through a unit cube', async () => {
     const pool = createPool({ size: 1 });
     const cube = cubeMesh();
-    const sourceBuffer = cube.positions.buffer;
+    const contentHash = 'cube-section';
+    await buildBvhFor(pool, contentHash, cube.positions, cube.indices);
 
     const fractions: number[] = [];
     const result = await pool.run(
       'sectionMesh',
-      { positions: cube.positions, indices: cube.indices, point: [0, 0, 0.5], normal: [0, 0, 1] },
-      { transfer: [cube.positions.buffer, cube.indices.buffer], onProgress: (f) => fractions.push(f) },
+      { contentHash, point: [0, 0, 0.5], normal: [0, 0, 1] },
+      { onProgress: (f) => fractions.push(f) },
     );
 
-    expect(sourceBuffer.byteLength).toBe(0); // moved, not copied
     expect(fractions[0]).toBe(0);
     expect(fractions.at(-1)).toBe(1);
 
@@ -88,18 +98,15 @@ describe('WorkerPool — sectionMesh', () => {
   it('computeCap: true returns a filled cap mesh for a watertight input', async () => {
     const pool = createPool({ size: 1 });
     const cube = cubeMesh();
+    const contentHash = 'cube-section-cap';
+    await buildBvhFor(pool, contentHash, cube.positions, cube.indices);
 
-    const result = await pool.run(
-      'sectionMesh',
-      {
-        positions: cube.positions,
-        indices: cube.indices,
-        point: [0, 0, 0.5],
-        normal: [0, 0, 1],
-        computeCap: true,
-      },
-      { transfer: [cube.positions.buffer, cube.indices.buffer] },
-    );
+    const result = await pool.run('sectionMesh', {
+      contentHash,
+      point: [0, 0, 0.5],
+      normal: [0, 0, 1],
+      computeCap: true,
+    });
 
     expect(result.capPositions).not.toBeNull();
     expect(result.capIndices).not.toBeNull();
@@ -110,18 +117,15 @@ describe('WorkerPool — sectionMesh', () => {
   it('computeCap: true on a non-watertight mesh omits the cap without failing the job', async () => {
     const pool = createPool({ size: 1 });
     const open = openBoxMesh();
+    const contentHash = 'open-box-section-cap';
+    await buildBvhFor(pool, contentHash, open.positions, open.indices);
 
-    const result = await pool.run(
-      'sectionMesh',
-      {
-        positions: open.positions,
-        indices: open.indices,
-        point: [0, 0, 0.5],
-        normal: [0, 0, 1],
-        computeCap: true,
-      },
-      { transfer: [open.positions.buffer, open.indices.buffer] },
-    );
+    const result = await pool.run('sectionMesh', {
+      contentHash,
+      point: [0, 0, 0.5],
+      normal: [0, 0, 1],
+      computeCap: true,
+    });
 
     // The outline is still valid even though the cap was omitted.
     expect(result.polylineCounts.length).toBeGreaterThan(0);
@@ -132,33 +136,38 @@ describe('WorkerPool — sectionMesh', () => {
   it('a plane missing the mesh entirely returns zero polylines, no crash', async () => {
     const pool = createPool({ size: 1 });
     const cube = cubeMesh();
+    const contentHash = 'cube-section-miss';
+    await buildBvhFor(pool, contentHash, cube.positions, cube.indices);
 
-    const result = await pool.run(
-      'sectionMesh',
-      { positions: cube.positions, indices: cube.indices, point: [0, 0, 100], normal: [0, 0, 1] },
-      { transfer: [cube.positions.buffer, cube.indices.buffer] },
-    );
+    const result = await pool.run('sectionMesh', { contentHash, point: [0, 0, 100], normal: [0, 0, 1] });
 
     expect(result.polylineCounts.length).toBe(0);
     expect(result.pointsFlat.length).toBe(0);
     expect(result.points2dFlat.length).toBe(0);
   });
 
-  it('rejects a malformed payload (positions not Float64Array)', async () => {
+  it('rejects a contentHash with no cached BVH on this worker', async () => {
     const pool = createPool({ size: 1 });
     // Comlink reconstructs a thrown error as a plain Error with the
     // original name/message preserved (not the exact built-in subclass) —
-    // same caveat as JobCancelledError/BvhNotCachedError elsewhere in this
-    // package (see jobs/context.ts's and jobs/bvh.ts's doc comments) — so this asserts by `.name`
-    // rather than `instanceof TypeError`.
+    // same caveat as JobCancelledError elsewhere in this package (see
+    // jobs/context.ts's and jobs/bvh.ts's doc comments) — so this asserts by
+    // `.name` rather than `instanceof`.
     await expect(
-      pool.run('sectionMesh', {
-        // @ts-expect-error deliberately wrong type for the runtime guard test
-        positions: [0, 0, 0],
-        indices: new Uint32Array(0),
-        point: [0, 0, 0],
-        normal: [0, 0, 1],
-      }),
-    ).rejects.toMatchObject({ name: 'TypeError' });
+      pool.run('sectionMesh', { contentHash: 'never-built', point: [0, 0, 0], normal: [0, 0, 1] }),
+    ).rejects.toMatchObject({ name: 'BvhNotCachedError' });
+  });
+
+  it('two consecutive section queries for the SAME contentHash both succeed without re-sending buffers', async () => {
+    const pool = createPool({ size: 1 });
+    const cube = cubeMesh();
+    const contentHash = 'cube-section-repeat';
+    await buildBvhFor(pool, contentHash, cube.positions, cube.indices);
+
+    const first = await pool.run('sectionMesh', { contentHash, point: [0, 0, 0.25], normal: [0, 0, 1] });
+    const second = await pool.run('sectionMesh', { contentHash, point: [0, 0, 0.75], normal: [0, 0, 1] });
+
+    expect(first.polylineCounts.length).toBe(1);
+    expect(second.polylineCounts.length).toBe(1);
   });
 });

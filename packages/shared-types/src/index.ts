@@ -86,12 +86,50 @@ export interface SceneNode {
 // Margin line
 // ---------------------------------------------------------------------------
 
+/**
+ * A control point anchoring a `MarginLine` spline to a mesh surface — the
+ * SAME "triangle + barycentric" currency `@dqcad/kernel`'s `SurfacePoint`
+ * uses (packages/kernel/src/geodesic/types.ts), duplicated here as a plain,
+ * serializable, kernel-independent shape (shared-types has no dependency on
+ * `@dqcad/kernel` — this package is "type declarations only", see this
+ * file's top doc) so a `CaseDocument` can carry it directly.
+ *
+ * `triangleIndex`/`barycentric` are meaningful ONLY relative to whatever
+ * mesh the OWNING `Restoration` currently targets for this tooth — that
+ * association is established by context (the restoration's assigned prepDie
+ * scan, Phase 3 Task 2's wizard), not carried inline on the anchor itself;
+ * `position` is the float-precision echo of the same point (never expected
+ * to disagree with re-evaluating `triangleIndex`/`barycentric` against the
+ * correct mesh — see marginLine.ts's `toMarginLine`/`fromMarginLine`, the
+ * kernel-side adapter that produces/consumes this shape).
+ *
+ * schemaVersion 2 (Phase 3 Task 1) — replaces schemaVersion 1's lossy
+ * `vertexAnchors: readonly number[]` (nearest-VERTEX hint only, no triangle/
+ * barycentric — see this package's CHANGELOG-adjacent migration notes in
+ * apps/client/src/engine/caseDocumentMigration.ts for the v1 -> v2 load-time
+ * migration and its documented, explicit limitation for legacy documents).
+ */
+export interface MarginAnchor {
+  /** Float64 mm world-space position — exact, always trustworthy regardless
+   * of whether `triangleIndex`/`barycentric` have been resolved against a
+   * real mesh (see this interface's doc and the v1->v2 migration's doc for
+   * the one documented case where they haven't: a migrated legacy anchor). */
+  position: Vec3;
+  triangleIndex: number;
+  barycentric: readonly [number, number, number];
+}
+
 /** A spline lying on a prep mesh surface, defining a restoration's finish line. */
 export interface MarginLine {
-  /** Indices into the owning mesh's vertex buffer that anchor the spline to the surface. */
-  vertexAnchors: readonly number[];
-  controlPoints: readonly Vec3[];
+  /** Ordered control points anchoring the spline to the surface — see
+   * `MarginAnchor`'s doc. */
+  anchors: readonly MarginAnchor[];
   closed: boolean;
+  /** Optional densely-resampled points along the fitted spline (e.g. for
+   * display or export), Float64 mm world-space — NOT authoritative (
+   * `anchors` is); absent until something actually resamples the spline
+   * (Phase 3's surface-spline fitting, packages/kernel/src/spline/). */
+  resampledPoints?: readonly Vec3[];
 }
 
 // ---------------------------------------------------------------------------
@@ -213,7 +251,16 @@ export interface CaseSettings {
 
 export interface CaseDocument {
   id: string;
-  schemaVersion: 1;
+  /** 2 (Phase 3 Task 1): `MarginLine` moved from lossy `vertexAnchors:
+   * number[]` to `anchors: MarginAnchor[]` (triangle + barycentric + exact
+   * position — see `MarginAnchor`'s doc). A schemaVersion-1 document loaded
+   * from the server is migrated client-side BEFORE it is ever represented
+   * as a `CaseDocument` — see apps/client/src/engine/
+   * caseDocumentMigration.ts's module doc for the full migration contract
+   * and its documented legacy-anchor limitation. The server's PUT schema
+   * (apps/server/src/schemas.ts) accepts ONLY `2` — migration is exclusively
+   * a client-side, load-time concern, never a server responsibility. */
+  schemaVersion: 2;
   /** ISO 8601 timestamp. */
   createdAt: string;
   /** Optional link to an external record (e.g. DentalQuoter). */

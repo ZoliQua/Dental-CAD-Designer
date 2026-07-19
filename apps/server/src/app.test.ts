@@ -63,7 +63,7 @@ describe('server app', () => {
     };
     expect(created).toMatchObject({
       name: 'Molar crown, patient A',
-      schemaVersion: 1,
+      schemaVersion: 2,
     });
     expect(typeof created.id).toBe('string');
     expect(typeof created.createdAt).toBe('string');
@@ -202,22 +202,24 @@ describe('server app', () => {
       expect(response.statusCode).toBe(404);
     });
 
-    it('rejects a schemaVersion other than 1 with 400', async () => {
+    it('rejects a schemaVersion other than 2 with 400 (including a legacy schemaVersion-1 document — Phase 3 Task 1: server never migrates, client must)', async () => {
       const created = await app
         .inject({ method: 'POST', url: '/api/cases', payload: { name: 'Bad schema version' } })
         .then((r) => r.json() as { id: string; createdAt: string });
 
-      const document = {
-        ...createEmptyCaseDocument(created.id, created.createdAt),
-        schemaVersion: 2,
-      };
+      for (const schemaVersion of [1, 3]) {
+        const document = {
+          ...createEmptyCaseDocument(created.id, created.createdAt),
+          schemaVersion,
+        };
 
-      const response = await app.inject({
-        method: 'PUT',
-        url: `/api/cases/${created.id}`,
-        payload: document,
-      });
-      expect(response.statusCode).toBe(400);
+        const response = await app.inject({
+          method: 'PUT',
+          url: `/api/cases/${created.id}`,
+          payload: document,
+        });
+        expect(response.statusCode).toBe(400);
+      }
     });
 
     it('rejects a document shape that violates the schema (extra property) with 400', async () => {

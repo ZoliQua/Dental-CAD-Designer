@@ -226,6 +226,7 @@
     "panelTitle": "Reparatur",
     "previewLoading": "Vorschau wird berechnet…",
     "previewError": "Reparaturvorschau fehlgeschlagen: {{message}}",
+    "bowtieDetectionError": "Prüfung auf nicht-mannigfaltige (Bowtie-)Eckpunkte fehlgeschlagen: {{message}}. Die zugehörige Reparaturoption ist dadurch möglicherweise ausgeblendet.",
     "applyButton": "Anwenden",
     "applying": "Wird angewendet…",
     "applied": "Angewendet",

@@ -1,4 +1,6 @@
 {
+  "kernelVersion": "0.2.1",
+  "manifoldVersion": "3.5.1",
   "distanceMm": 0.05,
   "pitchMm": 0.02,
   "errorBoundMm": 0.010022406179999999,

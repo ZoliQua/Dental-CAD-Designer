@@ -226,6 +226,7 @@
     "panelTitle": "Repair",
     "previewLoading": "Computing preview…",
     "previewError": "Repair preview failed: {{message}}",
+    "bowtieDetectionError": "Could not check for non-manifold (bowtie) vertices: {{message}}. The related repair option may be hidden as a result.",
     "applyButton": "Apply",
     "applying": "Applying…",
     "applied": "Applied",

@@ -121,6 +121,25 @@ function runFunnel(start2D: Vec2, end2D: Vec2, portals: readonly Portal[]): Bend
   return bends;
 }
 
+/** Threshold on `lineIntersect`'s 2D cross-product denominator
+ * (`d1.x*d2.y - d1.y*d2.x`) below which the two lines are treated as
+ * parallel (no solvable intersection) rather than solved for a numerically
+ * unstable near-singular `s`/`t`. Deliberately set at MACHINE-EPSILON scale
+ * (Float64's `Number.EPSILON ≈ 2.22e-16`; `1e-15` is ~4.5 ULP), not a
+ * geometry-scale tolerance like `MESH_WELD_EPSILON_MM` (1e-6 mm,
+ * `../intake/weld.ts`) — `denom` here is a dimensionless cross product of
+ * two 2D DIRECTION differences in the funnel's unfolded planar frame
+ * (`unfold.ts`), not a distance, so a geometry-scale epsilon would be the
+ * wrong unit entirely and would reject legitimately-near-parallel-but-valid
+ * portal pairs that the funnel algorithm's own correctness (this module's
+ * top doc) already guarantees are well-posed at every REAL bend. This tight
+ * a threshold only ever fires on TRUE (bit-exact-in-direction) parallels —
+ * e.g. degenerate zero-length portals or exactly-colinear unfolded
+ * triangles, which `materializeGeodesic`'s call site defensively clamps
+ * around rather than relying on `lineIntersect` to reject — never on
+ * ordinary near-tangent geometry, which produces a large but finite `s`/`t`
+ * that the call site's own clamping (this function's doc) already handles
+ * correctly. */
 const LINE_PARALLEL_EPSILON = 1e-15;
 
 /** 2D line-line intersection parameters: `s` along `p0->p1`, `t` along

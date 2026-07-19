@@ -6,17 +6,28 @@
 //
 // Split out of the original monolithic jobs.ts (Phase 2 Task 1: "split
 // jobs.ts before new jobs" — see jobs/registry.ts's module doc for the full
-// rationale and file map). Pure mechanical move: no behavioral change.
+// rationale and file map). Pure mechanical move (at that time): no
+// behavioral change.
 //
-// Unlike jobs/bvh.ts's buildBvh/measurePointToSurface/raycastMesh, this job
-// takes the mesh buffers DIRECTLY (not a cached contentHash) — a section
-// query isn't a per-worker-cached "build once, query many times" workload
-// (each call already needs the FULL mesh to walk every triangle once;
-// there's no repeated-query structure to amortize a cache against, unlike
-// the BVH), so there is no per-worker cache to keep warm and no reason to
-// pin this to the size:1 measurement pool — apps/client/src/engine/
-// section.ts runs it on the general (multi-worker) pool. See that module's
-// doc for the engine-side call site.
+// ## contentHash, not raw buffers (Phase 3 Task 1 housekeeping: "jobs/
+// section.ts stops re-sending buffers")
+//
+// This job now takes a `contentHash` (jobs/bvh.ts's `requireCachedBvh`),
+// same convention as buildBvh/measurePointToSurface/raycastMesh — `buildBvh`
+// must have been called for it on THIS worker first. Deliberately NO
+// per-worker RESULT cache alongside this, unlike jobs/curvature.ts/jobs/
+// offset.ts: a section query still needs to walk the FULL mesh once per
+// call regardless (there is no repeated-EXACT-query structure to amortize a
+// result cache against — a different plane point/normal is a different
+// query every time, unlike curvature's "same mesh, same answer always" or
+// offset's "same mesh + same distance/pitch, same answer"), so the only
+// actual saving available here is skipping the buffer RE-SEND — which
+// reusing the already-cached mesh (`requireCachedBvh(payload.contentHash)
+// .mesh`) gets for free, without needing to also memoize section results.
+// apps/client/src/engine/section.ts routes this through the shared
+// `getPool()` with `affinityKey: contentHash` (mirroring measurePointToSurface's
+// call-site convention) so a `buildBvh` call for a mesh and a later
+// `sectionMesh` call for the SAME mesh land on the SAME worker.
 //
 // Cancellation/progress granularity: like buildBvh/the repair jobs
 // (jobs/bvh.ts, jobs/repair.ts), this is fundamentally ONE bounded
@@ -33,15 +44,14 @@ import {
   normalizePlane,
   projectPolylinesToPlaneXY,
   NonManifoldInputError,
-  type IndexedMesh,
   type Vec3,
 } from '@dqcad/kernel';
 import { JobCancelledError, type JobContext } from './context.ts';
-import { requireMeshPayload, type Vec3Payload } from './shared.ts';
+import { requireCachedBvh } from './bvh.ts';
+import type { Vec3Payload } from './shared.ts';
 
 export interface SectionMeshPayload {
-  positions: Float64Array;
-  indices: Uint32Array;
+  contentHash: string;
   /** A point the cutting plane passes through, Float64 mm world coords. */
   point: Vec3Payload;
   /** The cutting plane's normal (need not be unit length — see kernel
@@ -85,11 +95,10 @@ export const sectionMeshJob = async (
   payload: SectionMeshPayload,
   ctx: JobContext,
 ): Promise<SectionMeshResult> => {
-  requireMeshPayload(payload.positions, payload.indices, 'sectionMesh');
   if (await ctx.cancelled()) throw new JobCancelledError();
   ctx.progress(0);
 
-  const mesh: IndexedMesh = { positions: payload.positions, indices: payload.indices };
+  const { mesh } = requireCachedBvh(payload.contentHash);
   const plane = { point: payload.point as Vec3, normal: payload.normal as Vec3 };
 
   const { polylines } = computeSectionMesh(mesh, plane);
