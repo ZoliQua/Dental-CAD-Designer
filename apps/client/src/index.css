@@ -779,6 +779,92 @@ body {
   color: var(--color-text);
 }
 
+/* Margin editor overlay (Phase 3 Task 5): screen-space anchor handles +
+   magnifier lens — see ui/MarginOverlay.tsx's module doc. */
+.margin-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  pointer-events: none;
+}
+
+.margin-overlay__handle {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-bg-elevated);
+  border: 2px solid var(--color-accent);
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+}
+
+.margin-overlay__handle--selected {
+  border-color: #e0a020;
+  box-shadow: 0 0 0 2px color-mix(in srgb, #e0a020 40%, transparent);
+}
+
+.margin-overlay__handle--dragging {
+  cursor: grabbing;
+  background: var(--color-accent);
+}
+
+.margin-overlay__magnifier {
+  position: absolute;
+  border-radius: 50%;
+  border: 2px solid var(--color-accent);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+
+/* Margin editor panel (Sidebar) — same convention as .measurement-panel. */
+.margin-panel {
+  border-top: 1px solid var(--color-border);
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+}
+
+.margin-panel__title {
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  margin: 0 0 0.5rem;
+}
+
+.margin-panel__field {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  margin-bottom: 0.4rem;
+}
+
+.margin-panel__error {
+  color: #e05252;
+  font-size: 0.8rem;
+}
+
+.margin-panel__mode-button--active {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.margin-panel__progress {
+  position: relative;
+  height: 6px;
+  background: var(--color-border);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 0.4rem 0;
+}
+
+.margin-panel__progress-bar {
+  height: 100%;
+  background: var(--color-accent);
+}
+
 /* Measurement results panel (Sidebar) */
 .measurement-panel {
   border-top: 1px solid var(--color-border);

@@ -161,6 +161,25 @@ export interface MeasurementRenderData {
   points: ReadonlyArray<readonly [number, number, number]>;
 }
 
+/** One geodesic-snapped segment of a margin curve overlay (Phase 3 Task 5),
+ * render-frame (already offset by the caller — engine/marginFrame.ts's
+ * `toMarginRenderPoints`, same convention as `MeasurementRenderData`). `weak`
+ * mirrors `engine/marginEditor.ts`'s `MARGIN_WEAK_CONFIDENCE_THRESHOLD`
+ * flag for this segment (deliverable 4: "weak-confidence segments visually
+ * distinct"). */
+export interface MarginOverlaySegmentRenderData {
+  points: ReadonlyArray<readonly [number, number, number]>;
+  weak: boolean;
+}
+
+/** A full margin curve overlay — `origin` drives the base color (deliverable
+ * 4: "distinct colors for proposed vs confirmed" — see `MARGIN_PROPOSED_COLOR`/
+ * `MARGIN_CONFIRMED_COLOR`). */
+export interface MarginOverlayRenderData {
+  segments: readonly MarginOverlaySegmentRenderData[];
+  origin: 'proposed' | 'confirmed';
+}
+
 /** One cross-section outline polyline (Task 10) — render-frame (already
  * offset by the caller, same convention as `RenderNode.positions` /
  * `MeasurementRenderData.points`) flat Float32 xyz. `closed` mirrors
@@ -254,6 +273,27 @@ const ALIGNMENT_PREVIEW_OPACITY = 0.45;
  * HUD overlays (10/9) — a preview should read as "part of the 3D scene",
  * not a HUD element. */
 const ALIGNMENT_PREVIEW_RENDER_ORDER = 3;
+
+// Margin editor overlay (Phase 3 Task 5): a HUD-style curve overlay, same
+// `depthTest: false` "always on top" reasoning as the measurement/section
+// overlays. Two base hues distinguish an untouched auto-proposal from a
+// human-confirmed curve (deliverable 4) — warm yellow (distinct from the
+// measurement tool's amber and the alignment preview's violet) for
+// "proposed, not yet human-edited", green for "confirmed" (loaded from the
+// document, manually traced, or edited at least once). A per-SEGMENT weak-
+// confidence flag (engine/marginEditor.ts's `MARGIN_WEAK_CONFIDENCE_THRESHOLD`)
+// overrides either base color with a warning red — implemented via a
+// per-vertex `color` BufferAttribute (not a second material) so one
+// LineSegments object can mix normal- and weak-confidence segments in a
+// single draw call.
+const MARGIN_PROPOSED_COLOR = new Color(0xffd23f);
+const MARGIN_CONFIRMED_COLOR = new Color(0x39d98a);
+const MARGIN_WEAK_CONFIDENCE_COLOR = new Color(0xff4d4d);
+/** Below the measurement/section HUD overlays (10/9) but above the
+ * alignment ghost preview (3) — a margin curve is a HUD-ish annotation, not
+ * "part of the 3D scene", but shouldn't fight an active measurement for
+ * visual priority. */
+const MARGIN_OVERLAY_RENDER_ORDER = 8;
 
 interface ThemeColors {
   background: ColorRepresentation;
@@ -439,6 +479,13 @@ export class SceneManager {
    * preview is active. */
   private alignmentPreview: { nodeId: string; mesh: Mesh; material: MeshBasicMaterial } | null = null;
 
+  /** Margin curve overlay (Phase 3 Task 5) — full rebuild per
+   * `syncMarginOverlay` call, same reasoning as `measurementEntries`/
+   * `sectionOutlineObjects` (a margin curve changes at most once per edit
+   * gesture, never per-frame, and is small relative to mesh geometry). */
+  private readonly marginGroup: Group;
+  private marginOverlayObjects: LineSegments[] = [];
+
   private projectionMode: CameraProjection;
   private shadingPreset: ShadingPreset;
   private wireframeEnabled: boolean;
@@ -470,7 +517,21 @@ export class SceneManager {
     );
     this.orthographicCamera = new OrthographicCamera(-1, 1, 1, -1, CAMERA_NEAR_MM, CAMERA_FAR_MM);
 
-    this.renderer = new WebGLRenderer({ antialias: true });
+    this.renderer = new WebGLRenderer({
+      antialias: true,
+      // Required for ui/MarginOverlay.tsx's magnifier widget (Phase 3 Task
+      // 5): it `drawImage`s a cropped region of THIS canvas from its own,
+      // independently-timed rAF loop. Manual verification caught this: WITHOUT
+      // `preserveDrawingBuffer`, the browser is free to clear/swap the
+      // drawing buffer as soon as compositing finishes, so a read from a
+      // DIFFERENT rAF callback (not the one immediately after `render()`)
+      // reliably sees a blank canvas — not merely a "worst-case one-frame
+      // lag" as this module's original doc speculated, but an ALWAYS-blank
+      // result in practice. `preserveDrawingBuffer: true` keeps the buffer
+      // intact between frames at a small, well-understood perf cost (no
+      // implicit clear-on-present) — acceptable for this app's scale.
+      preserveDrawingBuffer: true,
+    });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     // Always on: an empty `material.clippingPlanes` array (the default,
     // whenever no section clip is active — see `applyClipPlane`) costs
@@ -501,6 +562,9 @@ export class SceneManager {
 
     this.sectionGroup = new Group();
     this.scene.add(this.sectionGroup);
+
+    this.marginGroup = new Group();
+    this.scene.add(this.marginGroup);
 
     this.resizeObserver = new ResizeObserver(() => this.handleResize());
     this.resizeObserver.observe(this.container);
@@ -1116,6 +1180,92 @@ export class SceneManager {
       this.sectionGroup.add(mesh);
       this.sectionCapObjects.push(mesh);
     }
+  }
+
+  // ---------------------------------------------------------------------
+  // Margin editor (Phase 3 Task 5)
+  // ---------------------------------------------------------------------
+
+  /** Rebuilds the margin curve overlay from `data` (or clears it, via
+   * `null`) — see `MarginOverlayRenderData`'s doc. Anchor HANDLES are NOT
+   * drawn here (they're screen-space HTML elements, ui/MarginOverlay.tsx,
+   * positioned via `projectToScreen` — same division of responsibility as
+   * `syncMeasurements`/ui/MeasurementOverlay.tsx's numeric labels): this
+   * only ever draws the curve itself as line segments, with a per-vertex
+   * `color` attribute so normal- and weak-confidence segments can share one
+   * draw call.
+   */
+  syncMarginOverlay(data: MarginOverlayRenderData | null): void {
+    this.clearMarginOverlay();
+    if (!data || data.segments.length === 0) return;
+
+    const baseColor = data.origin === 'confirmed' ? MARGIN_CONFIRMED_COLOR : MARGIN_PROPOSED_COLOR;
+    const positions: number[] = [];
+    const colors: number[] = [];
+    for (const segment of data.segments) {
+      const color = segment.weak ? MARGIN_WEAK_CONFIDENCE_COLOR : baseColor;
+      for (let i = 0; i < segment.points.length - 1; i++) {
+        const a = segment.points[i]!;
+        const b = segment.points[i + 1]!;
+        positions.push(a[0], a[1], a[2], b[0], b[1], b[2]);
+        colors.push(color.r, color.g, color.b, color.r, color.g, color.b);
+      }
+    }
+    if (positions.length === 0) return;
+
+    const geometry = new BufferGeometry();
+    geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new Float32BufferAttribute(colors, 3));
+    const material = new LineBasicMaterial({ vertexColors: true, depthTest: false });
+    const line = new LineSegments(geometry, material);
+    line.renderOrder = MARGIN_OVERLAY_RENDER_ORDER;
+    this.marginGroup.add(line);
+    this.marginOverlayObjects.push(line);
+  }
+
+  private clearMarginOverlay(): void {
+    for (const line of this.marginOverlayObjects) {
+      this.marginGroup.remove(line);
+      line.geometry.dispose();
+      (line.material as LineBasicMaterial).dispose();
+    }
+    this.marginOverlayObjects = [];
+  }
+
+  /** The renderer's own `<canvas>` element — exposed so ui/MarginOverlay.tsx's
+   * magnifier widget (a small secondary 2D-canvas "lens") can `drawImage`
+   * a cropped, scaled-up region of it every animation frame. See that
+   * component's doc for why this is the CHEAP correct approach chosen over a
+   * genuine secondary Three.js render pass (no duplicate scene/camera, just
+   * a 2D canvas pixel copy of whatever this canvas last painted). */
+  getCanvasElement(): HTMLCanvasElement {
+    return this.renderer.domElement;
+  }
+
+  /**
+   * Computes the render-frame pick ray for an arbitrary client position —
+   * unlike the private, click-driven, `interactionMode`-gated
+   * `pickAtClientPosition`, this is a pure, mode-independent utility for
+   * continuous pointer-driven interactions that live OUTSIDE the canvas's
+   * own click handling (ui/MarginOverlay.tsx's anchor-handle drag: pointer
+   * events land on the HANDLE's own `<div>`, not this canvas, so
+   * `handlePointerDown`/`Up` never fire for them). Returns `null` if the
+   * container has no current size (matches `pickAtClientPosition`'s own
+   * guard).
+   */
+  rayAtClientPosition(
+    clientX: number,
+    clientY: number,
+  ): { rayOrigin: readonly [number, number, number]; rayDirection: readonly [number, number, number] } | null {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+    const ndc = new Vector2(
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -(((clientY - rect.top) / rect.height) * 2 - 1),
+    );
+    this.raycaster.setFromCamera(ndc, this.activeCamera);
+    const { origin, direction } = this.raycaster.ray;
+    return { rayOrigin: [origin.x, origin.y, origin.z], rayDirection: [direction.x, direction.y, direction.z] };
   }
 
   private handlePointerDown = (event: PointerEvent): void => {

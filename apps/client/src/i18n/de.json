@@ -319,5 +319,32 @@
     "confirmButton": "Bestätigen",
     "confirmHelp": "Wendet die Transformation auf das bewegte Netz an und protokolliert sie.",
     "cancelPreviewButton": "Verwerfen"
+  },
+  "margin": {
+    "panelTitle": "Präparationsgrenze",
+    "needsRestoration": "Erstellen Sie zuerst eine Restauration, um ihre Präparationsgrenze nachzuzeichnen.",
+    "restorationLabel": "Restauration",
+    "toothLabel": "Zahn",
+    "selectPlaceholder": "Wählen…",
+    "startButton": "Präparationsgrenze bearbeiten",
+    "needsTargetScan": "Weisen Sie dieser Restauration zuerst einen Ziel-Scan zu.",
+    "editingTooth": "Zahn {{tooth}}",
+    "unresolvedAnchors": "{{count}} Anker müssen neu eingerastet werden, bevor diese Grenze bearbeitet werden kann.",
+    "resnapButton": "Jetzt neu einrasten",
+    "proposing": "Präparationsgrenze wird vorgeschlagen…",
+    "errorNoRidgeFound": "In der Nähe dieses Punkts wurde kein Grenzkamm gefunden: {{message}} Klicken Sie näher an der sichtbaren Präparationsgrenze, oder zeichnen Sie sie manuell nach.",
+    "errorNoClosure": "Die vorgeschlagene Grenze konnte nicht zu einer Schleife geschlossen werden: {{message}} Versuchen Sie einen anderen Startpunkt, oder zeichnen Sie sie manuell nach.",
+    "errorOther": "Vorschlag der Präparationsgrenze fehlgeschlagen: {{message}}",
+    "modeAuto": "Automatischer Vorschlag",
+    "modeManual": "Manuelles Nachzeichnen",
+    "autoHint": "Klicken Sie innerhalb der Präparation, nahe der Grenze, um einen Vorschlag zu erhalten.",
+    "manualHint": "Klicken Sie entlang der Grenze, um nacheinander Anker zu setzen.",
+    "anchorCount": "{{count}} Anker",
+    "acceptProposalButton": "Vorschlag übernehmen",
+    "closeButton": "Grenze schließen",
+    "saveOpenButton": "Speichern (offen)",
+    "openButton": "Grenze öffnen",
+    "deleteAnchorButton": "Anker löschen",
+    "cancelButton": "Bearbeitung beenden"
   }
 }

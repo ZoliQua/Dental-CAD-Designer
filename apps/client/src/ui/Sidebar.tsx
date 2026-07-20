@@ -10,6 +10,7 @@ import { caseStore } from '../engine/caseStore';
 import { AlignmentPanel } from './AlignmentPanel';
 import { CurvaturePanel } from './CurvaturePanel';
 import { ImportPanel } from './ImportPanel';
+import { MarginPanel } from './MarginPanel';
 import { MeasurementPanel } from './MeasurementPanel';
 import { RepairPanel } from './RepairPanel';
 import { RestorationWizard } from './RestorationWizard';
@@ -39,6 +40,7 @@ export function Sidebar() {
         </ul>
       )}
       <RestorationWizard />
+      <MarginPanel />
       <MeasurementPanel />
       <AlignmentPanel />
       <SurfaceDistancePanel />

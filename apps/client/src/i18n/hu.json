@@ -319,5 +319,32 @@
     "confirmButton": "Megerősítés",
     "confirmHelp": "Alkalmazza a transzformációt a mozgatott hálóra, és naplózza azt.",
     "cancelPreviewButton": "Elvetés"
+  },
+  "margin": {
+    "panelTitle": "Margóvonal",
+    "needsRestoration": "Először hozzon létre egy pótlást a margóvonal kijelöléséhez.",
+    "restorationLabel": "Pótlás",
+    "toothLabel": "Fog",
+    "selectPlaceholder": "Válasszon…",
+    "startButton": "Margó szerkesztése",
+    "needsTargetScan": "Először rendeljen célszkennelést ehhez a pótláshoz.",
+    "editingTooth": "{{tooth}}. fog",
+    "unresolvedAnchors": "{{count}} rögzítőpont újbóli illesztésre szorul, mielőtt ez a margó szerkeszthető lenne.",
+    "resnapButton": "Újraillesztés most",
+    "proposing": "Margó javaslat készítése…",
+    "errorNoRidgeFound": "Nem található margógerinc a pont közelében: {{message}} Próbáljon a látható készreformálási vonalhoz közelebb kattintani, vagy rajzolja meg kézzel.",
+    "errorNoClosure": "A javasolt margó nem zárható hurokká: {{message}} Próbáljon másik kiindulópontot, vagy rajzolja meg kézzel.",
+    "errorOther": "A margójavaslat sikertelen: {{message}}",
+    "modeAuto": "Automatikus javaslat",
+    "modeManual": "Kézi rajzolás",
+    "autoHint": "Kattintson a csonkon belülre, a készreformálási vonal közelébe a margó javaslathoz.",
+    "manualHint": "Kattintson végig a készreformálási vonalon, hogy egyenként helyezze el a rögzítőpontokat.",
+    "anchorCount": "{{count}} rögzítőpont",
+    "acceptProposalButton": "Javaslat elfogadása",
+    "closeButton": "Margó zárása",
+    "saveOpenButton": "Mentés (nyitott)",
+    "openButton": "Margó nyitása",
+    "deleteAnchorButton": "Rögzítőpont törlése",
+    "cancelButton": "Szerkesztés leállítása"
   }
 }

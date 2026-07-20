@@ -319,5 +319,32 @@
     "confirmButton": "Confirmar",
     "confirmHelp": "Aplica la transformación a la malla móvil y la registra en el historial.",
     "cancelPreviewButton": "Descartar"
+  },
+  "margin": {
+    "panelTitle": "Línea de margen",
+    "needsRestoration": "Cree primero una restauración para trazar su línea de margen.",
+    "restorationLabel": "Restauración",
+    "toothLabel": "Diente",
+    "selectPlaceholder": "Elegir…",
+    "startButton": "Editar margen",
+    "needsTargetScan": "Asigne primero un escaneo objetivo a esta restauración.",
+    "editingTooth": "Diente {{tooth}}",
+    "unresolvedAnchors": "{{count}} ancla(s) necesitan reajustarse antes de poder editar este margen.",
+    "resnapButton": "Reajustar ahora",
+    "proposing": "Proponiendo margen…",
+    "errorNoRidgeFound": "No se encontró ninguna cresta de margen cerca de ese punto: {{message}} Intente hacer clic más cerca de la línea de terminación visible, o trácelo manualmente.",
+    "errorNoClosure": "El margen propuesto no pudo cerrarse en un bucle: {{message}} Intente con otro punto de partida, o trácelo manualmente.",
+    "errorOther": "Error al proponer el margen: {{message}}",
+    "modeAuto": "Propuesta automática",
+    "modeManual": "Trazado manual",
+    "autoHint": "Haga clic dentro de la preparación, cerca de la línea de terminación, para proponer un margen.",
+    "manualHint": "Haga clic a lo largo de la línea de terminación para colocar anclas, una a una.",
+    "anchorCount": "{{count}} ancla(s)",
+    "acceptProposalButton": "Aceptar propuesta",
+    "closeButton": "Cerrar margen",
+    "saveOpenButton": "Guardar (abierto)",
+    "openButton": "Abrir margen",
+    "deleteAnchorButton": "Eliminar ancla",
+    "cancelButton": "Detener edición"
   }
 }

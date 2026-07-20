@@ -7,6 +7,8 @@ import { caseStore } from '../engine/caseStore';
 import { curvatureEngine } from '../engine/curvature';
 import { heatmapEngine } from '../engine/heatmap';
 import { lodEngine } from '../engine/lod';
+import { marginEditor } from '../engine/marginEditor';
+import { toMarginOverlayRenderData } from '../engine/marginFrame';
 import { toMeasurementRenderData, toWorldRay } from '../engine/measurementFrame';
 import type { RenderNode } from '../engine/renderNode';
 import { sectionEngine } from '../engine/section';
@@ -19,9 +21,11 @@ import { useCaseStore } from '../state/caseStore';
 import { useCurvatureStore } from '../state/curvatureStore';
 import { useHeatmapStore } from '../state/heatmapStore';
 import { useLodStore } from '../state/lodStore';
+import { useMarginStore } from '../state/marginStore';
 import { useSectionStore } from '../state/sectionStore';
 import { useToolStore } from '../state/toolStore';
 import { useViewerStore } from '../state/viewerStore';
+import { MarginOverlay } from './MarginOverlay';
 import { MeasureToolbar } from './MeasureToolbar';
 import { MeasurementOverlay } from './MeasurementOverlay';
 import { ViewerToolbar } from './ViewerToolbar';
@@ -86,6 +90,15 @@ function handleMeasurePick(pick: MeasurePickCandidate): void {
     void alignmentEngine.handlePick(request);
     return;
   }
+  // Margin editing (Phase 3 Task 5) always targets exactly ONE mesh (the
+  // restoration's assigned target scan) — `marginEditor.handlePick` ignores
+  // `candidateNodeIds` entirely and raycasts only its own target, so the
+  // (multi-candidate) `request` shape is reused verbatim, same "SceneManager
+  // stays generic, engine decides" split as alignment vs. measurement above.
+  if (useMarginStore.getState().phase === 'active') {
+    void marginEditor.handlePick(worldRay);
+    return;
+  }
   void toolManager.handlePick(request);
 }
 
@@ -105,6 +118,10 @@ export function Viewport() {
   const wireframeEnabled = useViewerStore((state) => state.wireframeEnabled);
   const activeMeasurementTool = useToolStore((state) => state.activeTool);
   const alignmentPhase = useAlignmentStore((state) => state.phase);
+  const marginPhase = useMarginStore((state) => state.phase);
+  const marginSegments = useMarginStore((state) => state.segments);
+  const marginSegmentConfidence = useMarginStore((state) => state.segmentConfidence);
+  const marginHumanEdited = useMarginStore((state) => state.humanEdited);
   const heatmapVisible = useHeatmapStore((state) => state.visible);
   const heatmapStatus = useHeatmapStore((state) => state.status);
   const heatmapRange = useHeatmapStore((state) => state.range);
@@ -220,18 +237,30 @@ export function Viewport() {
   }, [wireframeEnabled]);
 
   useEffect(() => {
-    // Alignment picking reuses the SAME 'measure' interaction mode as the
-    // measurement tools (candidate-set + ray reporting) — see
-    // `handleMeasurePick`'s doc for how the two are told apart.
-    const measureModeActive = Boolean(activeMeasurementTool) || alignmentPhase === 'pickingPairs';
+    // Alignment/margin picking both reuse the SAME 'measure' interaction
+    // mode as the measurement tools (candidate-set + ray reporting) — see
+    // `handleMeasurePick`'s doc for how the three are told apart.
+    const measureModeActive = Boolean(activeMeasurementTool) || alignmentPhase === 'pickingPairs' || marginPhase === 'active';
     sceneManagerRef.current?.setInteractionMode(measureModeActive ? 'measure' : 'select');
-  }, [activeMeasurementTool, alignmentPhase]);
+  }, [activeMeasurementTool, alignmentPhase, marginPhase]);
+
+  useEffect(() => {
+    // Margin curve overlay (Phase 3 Task 5) — re-syncs whenever the live
+    // margin store's segments/confidence/origin change, or the world offset
+    // could have shifted (`document`), same trigger set as the measurement
+    // overlay sync above.
+    const worldOffset = caseStore.getRenderWorldOffset();
+    sceneManagerRef.current?.syncMarginOverlay(
+      toMarginOverlayRenderData(marginSegments, marginSegmentConfidence, marginHumanEdited, worldOffset),
+    );
+  }, [document, marginSegments, marginSegmentConfidence, marginHumanEdited]);
 
   return (
     <div className="viewport" ref={containerRef}>
       <ViewerToolbar />
       <MeasureToolbar />
       <MeasurementOverlay />
+      <MarginOverlay />
     </div>
   );
 }

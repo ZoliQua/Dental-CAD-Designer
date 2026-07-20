@@ -319,5 +319,32 @@
     "confirmButton": "Confirm",
     "confirmHelp": "Applies the transform to the moving mesh and journals it.",
     "cancelPreviewButton": "Discard"
+  },
+  "margin": {
+    "panelTitle": "Margin line",
+    "needsRestoration": "Create a restoration first to trace its margin line.",
+    "restorationLabel": "Restoration",
+    "toothLabel": "Tooth",
+    "selectPlaceholder": "Choose…",
+    "startButton": "Edit margin",
+    "needsTargetScan": "Assign a target scan to this restoration first.",
+    "editingTooth": "Tooth {{tooth}}",
+    "unresolvedAnchors": "{{count}} anchor(s) need re-snapping before this margin can be edited.",
+    "resnapButton": "Re-snap now",
+    "proposing": "Proposing margin…",
+    "errorNoRidgeFound": "No margin ridge found near that point: {{message}} Try clicking closer to the visible finish line, or trace it manually.",
+    "errorNoClosure": "The proposed margin could not be closed into a loop: {{message}} Try a different starting point, or trace it manually.",
+    "errorOther": "Margin proposal failed: {{message}}",
+    "modeAuto": "Auto-propose",
+    "modeManual": "Manual trace",
+    "autoHint": "Click inside the prep, near the finish line, to propose a margin.",
+    "manualHint": "Click along the finish line to place anchors, one at a time.",
+    "anchorCount": "{{count}} anchor(s)",
+    "acceptProposalButton": "Accept proposal",
+    "closeButton": "Close margin",
+    "saveOpenButton": "Save (open)",
+    "openButton": "Open margin",
+    "deleteAnchorButton": "Delete anchor",
+    "cancelButton": "Stop editing"
   }
 }
