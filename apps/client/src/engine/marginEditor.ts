@@ -50,6 +50,14 @@
 // journal — satisfying this task's "no per-mousemove spam" / "ONE coalesced
 // op per completed gesture" guardrail literally for every named gesture
 // while avoiding one-journal-entry-per-click during freehand tracing.
+//
+// T5 REVIEW FIX (T8 reproducibility): whichever gesture turns out to be a
+// session's FIRST commit ALSO carries `params.seed`/`params.proposalDefaults`
+// when that session started from a successful auto-proposal — regardless of
+// whether that first commit is `acceptProposal()` or something else entirely
+// (e.g. dragging a misplaced anchor immediately after a proposal, never
+// clicking Accept). See `commit()`'s own doc for the exact session-state
+// gate this uses.
 import type {
   FdiTooth,
   MarginAnchor,
@@ -301,11 +309,33 @@ class MarginEditorEngine {
       await this.runPropose(hit);
       return;
     }
-    if (!store.closed) {
-      await this.appendAnchor(hit);
-      return;
+    // Task 5 review item 4b: re-check `busy` HERE, after the raycast's own
+    // await, and hold it for the duration of the manual-placement gesture
+    // below. The check at the top of this method (before the raycast) is
+    // NOT enough on its own: two `handlePick` calls fired back-to-back
+    // (without awaiting the first) both pass that check while `busy` is
+    // still `false`, then both suspend on their own `raycastTarget` await —
+    // without a SECOND check here, both would go on to call
+    // `appendAnchor`/`addAnchorOnSegment` concurrently, each reading its own
+    // now-stale snapshot of `store.anchors`/`segments` and racing to
+    // `setActive`/commit, silently losing whichever call's write loses the
+    // race (a real "lost anchor" bug, not merely a redundant duplicate
+    // click). There is no `await` between this check and `setBusy(true)`,
+    // so the two together are atomic w.r.t. any other `handlePick` call's
+    // continuation. The `finally` guarantees `busy` is released even if
+    // `targetContentHashOrThrow`/the placement call throws synchronously,
+    // rather than leaving the tool permanently stuck.
+    if (useMarginStore.getState().busy) return;
+    useMarginStore.getState().setBusy(true);
+    try {
+      if (!store.closed) {
+        await this.appendAnchor(hit);
+        return;
+      }
+      await this.addAnchorOnSegment(hit);
+    } finally {
+      useMarginStore.getState().setBusy(false);
     }
-    await this.addAnchorOnSegment(hit);
   }
 
   // ---------------------------------------------------------------------
@@ -389,12 +419,14 @@ class MarginEditorEngine {
   async acceptProposal(): Promise<void> {
     const store = useMarginStore.getState();
     if (store.phase !== 'active' || store.anchors.length === 0) return;
-    await this.commit(store.anchors, store.segments, store.closed, store.segmentConfidence, false, 'auto-propose', {
-      seed: this.lastProposalSeed
-        ? { triangleIndex: this.lastProposalSeed.triangleIndex, barycentric: this.lastProposalSeed.barycentric }
-        : null,
-      proposalDefaults: { searchRadiusMm: MARGIN_SEARCH_RADIUS_MM },
-    });
+    // Task 5 review item 1: seed/proposalDefaults are no longer attached
+    // HERE — `commit()` itself attaches them to whichever gesture turns out
+    // to be the FIRST commit of an auto-proposed session (see its own doc).
+    // This call is very often exactly that first commit (an unedited
+    // accept), so it still ends up carrying them — just via the same
+    // session-state gate every other gesture goes through, not a
+    // call-site special case.
+    await this.commit(store.anchors, store.segments, store.closed, store.segmentConfidence, false, 'auto-propose', {});
   }
 
   // ---------------------------------------------------------------------
@@ -808,6 +840,37 @@ class MarginEditorEngine {
     const anchorsHash = await hashAnchorPositionsHex(anchors);
     const meshId = caseStore.getDocument().scene.find((n) => n.id === store.targetNodeId)?.meshId;
 
+    // Task 5 review item 1 (CRITICAL fix): T8 journal-replay reproducibility
+    // requires the auto-propose seed to be recoverable from the FIRST
+    // committed op of a session that started with a proposal — regardless
+    // of WHICH gesture that first commit happens to be. The realistic
+    // workflow "propose, then immediately drag a misplaced anchor without
+    // ever clicking Accept" journals a plain `drag-anchor` op; the original
+    // implementation only ever attached `seed`/`proposalDefaults` at the
+    // `acceptProposal()` call site, so that entirely normal workflow lost
+    // the seed forever. Gated on SESSION STATE, not on which method called
+    // `commit`: `store.mode` stays `'auto'` for a session's ENTIRE lifetime
+    // once a proposal succeeds (ui/MarginPanel.tsx only shows the mode
+    // selector before any anchor exists — see `MarginToolState.mode`'s own
+    // call sites), so `mode === 'auto'` here reliably means "this session's
+    // anchors originated from THIS session's own `runPropose` call".
+    // `lastProposalSeed` is set immediately before that same call's
+    // `setActive`, so it is never stale for a session that reaches this
+    // state (never carried over from a different tooth/session — every
+    // `runPropose` overwrites it before anything can be committed).
+    // `!hasCommittedThisSession` makes this fire EXACTLY ONCE per session:
+    // e.g. propose -> accept -> drag journals seed on the accept op only
+    // (accept's own `commit()` call flips `hasCommittedThisSession` to
+    // `true` before the drag's later `commit()` call ever runs this check) —
+    // no duplication.
+    const isFirstAutoProposeCommit = !this.hasCommittedThisSession && store.mode === 'auto' && this.lastProposalSeed !== null;
+    const seedParams = isFirstAutoProposeCommit
+      ? {
+          seed: { triangleIndex: this.lastProposalSeed!.triangleIndex, barycentric: this.lastProposalSeed!.barycentric },
+          proposalDefaults: { searchRadiusMm: MARGIN_SEARCH_RADIUS_MM },
+        }
+      : {};
+
     const operation: Operation = {
       id: crypto.randomUUID(),
       name: 'margin-edit',
@@ -818,6 +881,7 @@ class MarginEditorEngine {
         anchorCount: anchors.length,
         closed,
         diff,
+        ...seedParams,
         ...extraParams,
       },
       inputHashes: meshId ? [meshId] : [],

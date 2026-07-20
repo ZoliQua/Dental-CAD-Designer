@@ -67,6 +67,73 @@ export function toRenderPoint(point: Vec3, worldOffset: Vec3): [number, number, 
   return subtract(point, worldOffset);
 }
 
+/** One screen-space point tagged with an arbitrary caller-defined `index`
+ * (ui/MarginOverlay.tsx uses an anchor's index into `useMarginStore`'s
+ * `anchors` array) — the shared shape `declutterScreenPoints`/
+ * `nearestScreenPointWithinRadius` both operate on (Task 5 review items 3a
+ * and 3b). */
+export interface IndexedScreenPoint {
+  index: number;
+  xPx: number;
+  yPx: number;
+}
+
+/** Greedy minimum-screen-pixel-spacing declutter filter (Task 5 review item
+ * 3a): processes `points` in the given order (ui/MarginOverlay.tsx passes
+ * them in anchor-curve order), keeping a point only when it is at least
+ * `minSpacingPx` away from EVERY already-kept point. Deliberately a
+ * RENDER-ONLY filter — the caller's full underlying anchor list (the
+ * store's `anchors`) is completely untouched; this only decides which
+ * anchors get an actual `<div>` HANDLE drawn on screen. This self-resolves
+ * as the user zooms in: two anchors that are close in WORLD space project
+ * further apart in SCREEN space as the camera moves closer (their world
+ * distance is fixed, but the same distance subtends more screen pixels at
+ * higher zoom), so more of them naturally clear the spacing threshold and
+ * start rendering on their own — no separate "zoom level" input or LOD-
+ * style anchor-count logic is needed; this function only ever looks at
+ * already-projected screen coordinates.
+ * @errorBound N/A — pure screen-space filter; never adjusts a single
+ * anchor's own geometry, only which ones get a rendered handle. */
+export function declutterScreenPoints<T extends { xPx: number; yPx: number }>(
+  points: readonly T[],
+  minSpacingPx: number,
+): T[] {
+  const kept: T[] = [];
+  for (const point of points) {
+    const tooClose = kept.some((k) => Math.hypot(k.xPx - point.xPx, k.yPx - point.yPx) < minSpacingPx);
+    if (!tooClose) kept.push(point);
+  }
+  return kept;
+}
+
+/** Nearest of `points` to `(xPx, yPx)`, only if within `radiusPx` (`null`
+ * otherwise, and for an empty `points`) — shared by ui/MarginOverlay.tsx's
+ * nearest-anchor PICK-PRIORITY interception (Task 5 review item 3b): a
+ * pointerdown landing within this radius of ANY anchor should begin a drag
+ * instead of letting the camera orbit. Deliberately takes its OWN `points`
+ * argument rather than assuming `declutterScreenPoints`'s output — the two
+ * are used with DIFFERENT inputs by design: picking must search the FULL
+ * anchor set (so a click can still grab an anchor the declutter pass chose
+ * not to render a handle for), while rendering only shows the decluttered
+ * subset. */
+export function nearestScreenPointWithinRadius<T extends { xPx: number; yPx: number }>(
+  points: readonly T[],
+  xPx: number,
+  yPx: number,
+  radiusPx: number,
+): T | null {
+  let best: T | null = null;
+  let bestDist = radiusPx;
+  for (const point of points) {
+    const dist = Math.hypot(point.xPx - xPx, point.yPx - yPx);
+    if (dist <= bestDist) {
+      bestDist = dist;
+      best = point;
+    }
+  }
+  return best;
+}
+
 /** Builds `SceneManager.syncMarginOverlay`'s input from the live margin
  * store's segments/confidence — the one place that converts world-frame
  * segment points to render frame AND applies the weak-confidence threshold

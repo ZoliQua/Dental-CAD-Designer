@@ -20,9 +20,9 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { beforeEach, describe, expect, it } from 'vitest';
-import type { IntakeReport, MeshStats } from '@dqcad/kernel-workers';
-import type { Vec3 } from '@dqcad/shared-types';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { MARGIN_SEARCH_RADIUS_MM, type IntakeReport, type MeshStats } from '@dqcad/kernel-workers';
+import type { FdiTooth, MarginAnchor, MarginLine, Vec3 } from '@dqcad/shared-types';
 import {
   marginEditor,
   nearestSegmentIndex,
@@ -32,6 +32,7 @@ import {
   type AnchorDiffSummary,
 } from './marginEditor';
 import { caseStore } from './caseStore';
+import { UNRESOLVED_MARGIN_ANCHOR_TRIANGLE_INDEX } from './caseDocumentMigration';
 import { createRestoration } from './restorations';
 import { ensureBvhBuilt, getPool, resetBvhCacheForTests } from './workers';
 import { useCaseStore } from '../state/caseStore';
@@ -554,3 +555,236 @@ async function measureClosestPoint(contentHash: string, point: Vec3): Promise<{ 
   const result = await getPool().run('measurePointToSurface', { contentHash, point }, { affinityKey: contentHash });
   return { point: result.point, triangleIndex: result.triangleIndex };
 }
+
+// ---------------------------------------------------------------------------
+// Task 5 review item 1 (CRITICAL): seed/proposalDefaults journaled on the
+// FIRST commit of an auto-proposed session, regardless of gesture.
+// ---------------------------------------------------------------------------
+
+describe('marginEditor — Task 5 review item 1: seed/proposalDefaults journaling', () => {
+  let mesh: TestMesh;
+
+  beforeAll(async () => {
+    mesh = await loadFixtureMesh('real-scans', 'arch-case-01', 'arch-case-01-upperjaw.stl');
+  }, 60_000);
+
+  /** Registers the shared real fixture (cheap — parsing/intake already
+   * happened once in `beforeAll`) under a fresh contentHash per test,
+   * proposes at Task 4's own pinned golden seed, and returns the
+   * restoration id. Throws if propose unexpectedly fails (a golden-seed
+   * regression, not this test's own concern — see the sibling "auto-propose
+   * success" describe block above). */
+  async function proposeOnUpperjaw(tooth: FdiTooth, contentHash: string): Promise<{ restorationId: string }> {
+    caseStore.registerImportedMesh({
+      contentHash,
+      name: 'arch-case-01-upperjaw.stl',
+      format: 'stl',
+      positions: mesh.positions,
+      indices: mesh.indices,
+      stats: mesh.stats,
+      report: mesh.report,
+      operations: [],
+    });
+    const node = caseStore.addSceneNode(contentHash, 'upperJaw');
+    const restoration = createRestoration({ type: 'crown', teeth: [tooth], targetNodeId: node.id });
+    marginEditor.startForTooth(restoration.id, tooth);
+
+    const goldenSeedAmbient: Vec3 = [6.675659656524658, -17.737689971923828, 10.945829391479492];
+    await ensureBvhBuilt(contentHash, mesh.positions, mesh.indices);
+    const seedHit = await measureClosestPoint(contentHash, goldenSeedAmbient);
+    const seedRay = rayThroughSurfacePoint(mesh, seedHit.point, seedHit.triangleIndex);
+    await marginEditor.handlePick(seedRay);
+
+    const proposed = useMarginStore.getState();
+    if (proposed.error || proposed.anchors.length === 0) {
+      throw new Error(`propose unexpectedly failed at the known-good golden seed: ${proposed.error}`);
+    }
+    return { restorationId: restoration.id };
+  }
+
+  async function dragMidpointAnchor(contentHash: string): Promise<void> {
+    const proposed = useMarginStore.getState();
+    const dragIndex = Math.floor(proposed.anchors.length / 2);
+    const anchorBefore = proposed.anchors[dragIndex]!.position;
+    const nudged: Vec3 = [anchorBefore[0] + 0.3, anchorBefore[1], anchorBefore[2]];
+    const nudgedHit = await measureClosestPoint(contentHash, nudged);
+    const dragRay = rayThroughSurfacePoint(mesh, nudgedHit.point, nudgedHit.triangleIndex);
+    marginEditor.beginAnchorDrag(dragIndex);
+    await marginEditor.updateAnchorDrag(dragRay);
+    await marginEditor.endAnchorDrag();
+  }
+
+  it('propose -> drag (NEVER clicking Accept) commits ONE op that still carries seed + proposalDefaults', async () => {
+    const contentHash = 'margin-t5r1-drag-first';
+    await proposeOnUpperjaw(21, contentHash);
+
+    const historyBefore = useCaseStore.getState().document.history.length;
+    await dragMidpointAnchor(contentHash);
+
+    const history = useCaseStore.getState().document.history;
+    expect(history).toHaveLength(historyBefore + 1); // propose itself never journals — ONE op total
+    const op = history.at(-1)!;
+    expect(op.params.gesture).toBe('drag-anchor');
+    const seed = op.params.seed as { triangleIndex: number; barycentric: readonly number[] } | undefined;
+    expect(seed).toBeDefined();
+    expect(seed!.triangleIndex).toBeGreaterThanOrEqual(0);
+    expect(seed!.barycentric).toHaveLength(3);
+    const proposalDefaults = op.params.proposalDefaults as { searchRadiusMm: number } | undefined;
+    expect(proposalDefaults).toBeDefined();
+    expect(proposalDefaults!.searchRadiusMm).toBe(MARGIN_SEARCH_RADIUS_MM);
+  }, 60_000);
+
+  it('propose -> accept -> drag: seed/proposalDefaults land on the accept op ONLY — no duplication onto the later drag op', async () => {
+    const contentHash = 'margin-t5r1-accept-then-drag';
+    await proposeOnUpperjaw(22, contentHash);
+
+    const historyBeforeAccept = useCaseStore.getState().document.history.length;
+    await marginEditor.acceptProposal();
+    const afterAccept = useCaseStore.getState().document.history;
+    expect(afterAccept).toHaveLength(historyBeforeAccept + 1);
+    const acceptOp = afterAccept.at(-1)!;
+    expect(acceptOp.params.gesture).toBe('auto-propose');
+    expect(acceptOp.params.seed).toBeDefined();
+    expect(acceptOp.params.proposalDefaults).toBeDefined();
+
+    await dragMidpointAnchor(contentHash);
+
+    const afterDrag = useCaseStore.getState().document.history;
+    expect(afterDrag).toHaveLength(historyBeforeAccept + 2);
+    const dragOp = afterDrag.at(-1)!;
+    expect(dragOp.params.gesture).toBe('drag-anchor');
+    expect(dragOp.params.seed).toBeUndefined(); // NOT duplicated onto the second commit
+    expect(dragOp.params.proposalDefaults).toBeUndefined();
+  }, 60_000);
+
+  it('manual-mode session: no committed op ever carries seed/proposalDefaults fields', async () => {
+    const { nodeId, positions } = registerIcosahedron();
+    const restoration = createRestoration({ type: 'crown', teeth: [13], targetNodeId: nodeId });
+    marginEditor.startForTooth(restoration.id, 13);
+    marginEditor.setMode('manual');
+    for (let i = 0; i < 4; i++) {
+      await marginEditor.handlePick(rayAtVertex(pointAt(positions, i), [0, 0, 0]));
+    }
+    await marginEditor.toggleClosed(); // first commit
+    const afterClose = useCaseStore.getState().document.history;
+    expect(afterClose.at(-1)!.params.seed).toBeUndefined();
+    expect(afterClose.at(-1)!.params.proposalDefaults).toBeUndefined();
+
+    // A LATER gesture too, for good measure (not just the first commit).
+    await marginEditor.handlePick(rayAtVertex(pointAt(positions, 5), [0, 0, 0]));
+    const afterAdd = useCaseStore.getState().document.history;
+    expect(afterAdd.at(-1)!.params.seed).toBeUndefined();
+    expect(afterAdd.at(-1)!.params.proposalDefaults).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 5 review item 2: sentinel (-1) anchor re-snap path.
+// ---------------------------------------------------------------------------
+
+describe('marginEditor — Task 5 review item 2: sentinel re-snap path', () => {
+  it('startForTooth on a v1->v2-migrated MarginLine shows a degraded straight-line display; reSnapUnresolvedAnchors resolves every anchor and journals exactly ONE resnap op', async () => {
+    const { nodeId, positions } = registerIcosahedron();
+    const restoration = createRestoration({ type: 'crown', teeth: [14], targetNodeId: nodeId });
+
+    // Simulate a persisted v1->v2-migrated MarginLine (see
+    // caseDocumentMigration.ts's `migrateMarginLine`): real, on-surface
+    // `position`s (icosahedron vertices) but UNRESOLVED
+    // triangleIndex/barycentric sentinels — exactly the shape that
+    // migration produces, seeded directly via `caseStore.updateRestoration`
+    // to simulate "loaded from a persisted document" without going through
+    // marginEditor at all.
+    const unresolvedAnchors: MarginAnchor[] = [0, 1, 2, 3].map((i) => ({
+      position: pointAt(positions, i),
+      triangleIndex: UNRESOLVED_MARGIN_ANCHOR_TRIANGLE_INDEX,
+      barycentric: [1, 0, 0],
+    }));
+    const seededLine: MarginLine = { anchors: unresolvedAnchors, closed: true, resampledPoints: [] };
+    caseStore.updateRestoration(
+      { ...restoration, marginLines: { ...restoration.marginLines, 14: seededLine } },
+      {
+        id: crypto.randomUUID(),
+        name: 'margin-edit',
+        params: { note: 'test-seeded v1->v2-migrated unresolved margin line' },
+        inputHashes: [],
+        outputHashes: [],
+        kernelVersion: 'test',
+        timestamp: new Date().toISOString(),
+      },
+    );
+
+    marginEditor.startForTooth(restoration.id, 14);
+
+    // Degraded display: unresolved count > 0, anchors STILL carry the
+    // sentinel, segments are the straight-line fallback (never a geodesic
+    // kernel call against a bogus triangleIndex — see startForTooth's doc).
+    const degraded = useMarginStore.getState();
+    expect(degraded.unresolvedAnchorCount).toBe(4);
+    expect(degraded.anchors.every((a) => a.triangleIndex === UNRESOLVED_MARGIN_ANCHOR_TRIANGLE_INDEX)).toBe(true);
+    expect(degraded.segments).toHaveLength(4); // closed: 4 anchors -> 4 straight segments
+    degraded.segments.forEach((segment) => expect(segment.points).toHaveLength(2)); // straight line, not geodesic-sampled
+
+    const historyBefore = useCaseStore.getState().document.history.length;
+    await marginEditor.reSnapUnresolvedAnchors();
+
+    const resolved = useMarginStore.getState();
+    expect(resolved.unresolvedAnchorCount).toBe(0);
+    expect(resolved.anchors).toHaveLength(4);
+    resolved.anchors.forEach((a) => {
+      expect(a.triangleIndex).toBeGreaterThanOrEqual(0); // resolved to a real on-surface triangle
+      const sum = a.barycentric[0] + a.barycentric[1] + a.barycentric[2];
+      expect(sum).toBeCloseTo(1, 6);
+    });
+
+    const history = useCaseStore.getState().document.history;
+    expect(history).toHaveLength(historyBefore + 1); // exactly ONE journaled resnap op
+    const op = history.at(-1)!;
+    expect(op.params.gesture).toBe('resnap-unresolved');
+    expect(op.params.tooth).toBe(14);
+    expect(typeof op.outputHashes[0]).toBe('string');
+    expect(op.outputHashes[0]!.length).toBe(64); // sha256 hex "resulting anchors hash"
+
+    const savedLine = restorationMarginLine(restoration.id, 14)!;
+    expect(savedLine.anchors.every((a) => a.triangleIndex >= 0)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 5 review item 4b (minor): manual-mode handlePick busy guard.
+// ---------------------------------------------------------------------------
+
+describe('marginEditor — Task 5 review item 4b: concurrent manual handlePick calls do not interleave', () => {
+  it('two concurrent handlePick calls placing the 2nd and 3rd anchors never corrupt the anchor/segment lists, whichever order the racing raycasts settle in', async () => {
+    const { nodeId, positions } = registerIcosahedron();
+    const restoration = createRestoration({ type: 'crown', teeth: [15], targetNodeId: nodeId });
+    marginEditor.startForTooth(restoration.id, 15);
+    marginEditor.setMode('manual');
+
+    // Establish a first anchor (awaited) so the two concurrent picks below
+    // exercise `appendAnchor`'s REAL `geodesicSegmentBetween` await (a
+    // genuine async yield point) rather than the very first anchor's fast,
+    // near-synchronous path (which never yields, so two concurrent FIRST
+    // picks can't actually overlap in practice — not a meaningful race
+    // test).
+    await marginEditor.handlePick(rayAtVertex(pointAt(positions, 0), [0, 0, 0]));
+    expect(useMarginStore.getState().anchors).toHaveLength(1);
+
+    const pick1 = marginEditor.handlePick(rayAtVertex(pointAt(positions, 1), [0, 0, 0]));
+    const pick2 = marginEditor.handlePick(rayAtVertex(pointAt(positions, 2), [0, 0, 0])); // NOT awaited before firing
+    await Promise.all([pick1, pick2]);
+
+    const finalState = useMarginStore.getState();
+    // Never corrupted — whichever of the two racing clicks actually landed
+    // (the busy guard may let either just one, or (if they happen not to
+    // truly overlap this run) both proceed, serialized), `segments` always
+    // correctly matches an OPEN curve's invariant (`segments.length ===
+    // anchors.length - 1`). The failure mode a stale-read "lost update"
+    // race would produce is exactly a MISMATCH here — e.g. 3 anchors but
+    // only 1 segment, from one call's `[...store.segments, newSegment]`
+    // overwriting the other's — never merely "fewer anchors than clicks".
+    expect(finalState.segments).toHaveLength(finalState.anchors.length - 1);
+    expect(finalState.anchors.length).toBeGreaterThanOrEqual(2); // the first anchor plus at least one racing pick
+    expect(finalState.anchors.length).toBeLessThanOrEqual(3);
+    expect(finalState.busy).toBe(false); // guard always released, whichever call(s) landed
+  });
+});
