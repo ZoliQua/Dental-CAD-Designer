@@ -129,11 +129,25 @@ describe('proposeMarginLoop — analytic shoulderPrepMesh (filleted margin)', ()
     const result = proposeMarginLoop(fixture.mesh, hm, curv, seed);
     expect(result.closed).toBe(true);
 
-    // Derived tolerance: the fillet blend never moves the crest outside a
-    // `filletRadiusMm` neighborhood of the nominal sharp-corner location
-    // (marginRidge.test-fixtures.ts's `filletCorner` doc) — a small extra
-    // slack (10%) absorbs the discrete-curvature estimator's own resolution
-    // dependence at a small-radius feature (curvature.ts's `@errorBound`).
+    // Derived tolerance (tightened, fix batch T4 review): the fillet blend's
+    // two tangent points each sit `r / tan(theta/2)` from the nominal sharp
+    // corner P2 along P2's own two straight edges — the standard
+    // tangent-circle-at-a-vertex identity, where `theta` is the angle
+    // between those two edges as seen FROM the corner (`theta = acos(
+    // normalize(P1-P2) . normalize(P3-P2))`). At this fixture's default
+    // gingival/margin/top radii and heights, `theta ~= 103deg`, so
+    // `r / tan(theta/2) ~= r / tan(51.5deg) ~= 0.7975*r` (~0.8r) — TIGHTER
+    // than the `filletRadiusMm` (1.0r) bound this test previously stated.
+    // The blended arc lies within the triangle those two tangent points and
+    // P2 form (marginRidge.test-fixtures.ts's `filletCorner` doc), so no
+    // point on the blended crest is ever farther from P2 than that. The
+    // ASSERTED tolerance below is deliberately kept LOOSER than this tight
+    // ~0.8r bound (1.1r, unchanged) as a safety margin absorbing the
+    // discrete-curvature estimator's own resolution-dependent behavior at a
+    // small-radius feature (curvature.ts's `@errorBound`) — the MEASURED
+    // numbers logged below (0.1026mm/0.2051mm at filletRadiusMm 0.15/0.3)
+    // are comfortably under even the tight 0.8r bound (0.12mm/0.24mm), not
+    // just the 1.1r safety tolerance.
     const derivedToleranceMm = filletRadiusMm * 1.1;
     const measuredMaxDeviationMm = maxAnchorDeviationMm(fixture.mesh, result.anchors, fixture.marginRadiusMm, fixture.marginHeightMm);
     console.log(

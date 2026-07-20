@@ -262,6 +262,23 @@ describe('proposeMargin job — performance guardrail (real upperjaw fixture)', 
     );
     expect(result.closed).toBe(true);
     expect(elapsedMs).toBeLessThan(5000);
+
+    // Confidence-spread assertion (fix batch, T4 review): on this real,
+    // noisy fixture `segmentConfidence` was MEASURED to spread across
+    // roughly 0.10-0.98 (weak, background-adjacent segments alongside
+    // strong, unambiguous ridge segments) — a real, healthy spread, not a
+    // saturated "everything reads as ~1.0" degenerate result. Assert a
+    // band straddling the midpoint (min comfortably below it, max
+    // comfortably above), loose enough not to flake on ordinary golden/
+    // fixture-noise drift, tight enough to catch a future regression that
+    // collapses the whole confidence range (e.g. a normalization bug that
+    // saturates every segment to ~1.0 or ~0.5).
+    const confidenceValues = Array.from(result.segmentConfidence);
+    const confidenceMin = Math.min(...confidenceValues);
+    const confidenceMax = Math.max(...confidenceValues);
+    console.log(`[proposeMargin perf] segmentConfidence spread: min=${confidenceMin.toFixed(3)}, max=${confidenceMax.toFixed(3)} (measured band: ~0.10-0.98).`);
+    expect(confidenceMin).toBeLessThan(0.7);
+    expect(confidenceMax).toBeGreaterThan(0.7);
   }, 30_000);
 
   // Guardrail (this task's brief): "the bounded region must prevent the walk
@@ -271,6 +288,22 @@ describe('proposeMargin job — performance guardrail (real upperjaw fixture)', 
   // genuinely close, real inter-tooth gaps down to ~0.27mm on this same
   // fixture), the two proposals must be DISTINCT loops (no shared anchors,
   // different hashes), never one bleeding into the other.
+  //
+  // TODO (fix batch, T4 review): the pair exercised here (21/22, gap
+  // ~2.4mm) is NOT the TIGHTEST real ambient gap on this fixture — that's
+  // ~0.27mm, between the golden ("21") cluster and a separate, small
+  // (~400-vertex) near-midline cluster (scripts/diagnose-margin-gap.ts's
+  // own cluster survey) — but that tightest-GAP pair is not the pair this
+  // test actually needs: the genuinely non-closing central-incisor
+  // candidate (this task's report; verified directly by
+  // scripts/diagnose-margin-gap.ts) is a THIRD, separate ~820-vertex
+  // cluster whose own ridge has an interrupted stretch mid-loop (a real
+  // scan-coverage hole, not a proximity-to-another-tooth issue) — it
+  // cannot be used here regardless of which OTHER cluster it might be
+  // paired against. T6 (validation) should revisit once that candidate's
+  // own closure is resolved (more real fixtures, Task 8) and consider
+  // whether a genuinely tighter-gap adjacent pair is also worth adding
+  // alongside this one.
   it('two ADJACENT real preps propose DISTINCT loops (no shared anchors, hash-different)', async () => {
     const mesh = loadUpperjawMesh();
     const pool = createPool({ size: 1 });

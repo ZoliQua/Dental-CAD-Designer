@@ -188,7 +188,8 @@ import { MinHeap } from '../geodesic/heap.ts';
  * error, yet — since adjacent real preps were measured as close as ~0.27mm
  * apart — this alone cannot be relied on to keep the search from ever
  * reaching a NEIGHBORING tooth's own ridge (see `MARGIN_WALK_RADIUS_MM`'s
- * doc for why that job falls to ridge CONNECTIVITY, not this radius). */
+ * doc for the walk's actual, MEASURED defenses — the lookahead hop budget
+ * and direction-continuity filter, not an explicit connectivity gate). */
 export const MARGIN_SEARCH_RADIUS_MM = 10;
 
 /** A SEPARATE, larger bounded-region radius (graph distance, mm, from the
@@ -208,20 +209,54 @@ export const MARGIN_SEARCH_RADIUS_MM = 10;
  *
  * This is safe to be generous with — despite covering a much LARGER area
  * than the ~0.27mm-to-a-few-mm gap between adjacent real preps (this task's
- * report), a neighboring tooth's margin is NEVER actually reachable through
- * it: `qualifies()` additionally requires curvature CONNECTIVITY (a
- * candidate must be `k2`-qualifying AND a one-ring/bounded-lookahead
- * neighbor of the walk's current front), and the real-scan cluster survey
- * (this task's report) confirmed every pair of adjacent teeth's own
+ * report), a neighboring tooth's margin is, in practice, never actually
+ * reached through it.
+ *
+ * CORRECTION (fix batch, T4 review): this doc previously claimed
+ * `qualifies()` itself requires ridge CONNECTIVITY at every hop of the walk
+ * — it does not, and that overstated the actual mechanism. `qualifies()`
+ * (see that function) only gates which CANDIDATE `findNextStep` is allowed
+ * to SELECT at a given hop; it does NOT gate the BFS FRONTIER — the
+ * `nextQueue` expansion loop inside `findNextStep` recurses through every
+ * vertex still inside `region` and not yet visited/seen, REGARDLESS of
+ * whether it `qualifies()`. So the walk is not connectivity-gated at every
+ * hop. Contrast `findRidgeStart`'s own one-time component-refinement BFS
+ * (that function's doc), which genuinely IS gated this way: its expansion
+ * step only recurses through vertices that already `qualifies()` — a true
+ * connected-component search. The crest walk deliberately does NOT copy
+ * that pattern for every step: `findNextStep`'s own doc records that an
+ * earlier, MORE restrictive design (1-ring-only, best-scoring-direction —
+ * effectively closer to a connectivity-gated walk) measurably drifted
+ * sideways and stalled inside a real, noisy ridge BAND (~2.3mm covered in
+ * 30 steps) instead of tracking the true crest — the measured
+ * drift-and-stall fix this file's doc already documents. A real, noisy
+ * `k2`-qualifying region is a band with occasional single-vertex dips below
+ * threshold, not a crisp connected line, so gating frontier expansion on
+ * `qualifies()` risks reintroducing that exact failure mode; it was
+ * therefore deliberately NOT added here.
+ *
+ * What actually keeps the walk off a neighboring tooth's margin, then, is
+ * the COMBINATION of: (1) `MARGIN_LOOKAHEAD_STEPS`'s small, fixed hop budget
+ * (a candidate more than that many mesh-edge hops away, qualifying or not,
+ * is simply never reached within one step), (2)
+ * `MARGIN_MIN_DIRECTION_SCORE`'s heading-continuity filter (a candidate
+ * whose direction reverses relative to the walk's established heading is
+ * rejected even if it qualifies), and (3) the real-scan cluster survey
+ * (this task's report) confirming every pair of adjacent teeth's own
  * `k2 < -MARGIN_MIN_RIDGE_STRENGTH` regions are SEPARATE connected
- * components — there is always a gap of non-qualifying (background-
- * curvature) vertices between them, which the walk's own quality gate
- * refuses to cross (see `MARGIN_LOOKAHEAD_STEPS`'s small, fixed hop budget).
- * `MARGIN_WALK_RADIUS_MM` is therefore a HANG-GUARD against a genuinely
- * connected runaway ridge (e.g. real-scan noise bridging two features),
- * not the primary defense against crossing to a neighboring tooth — see
- * this task's report for the dedicated two-adjacent-seeds test that
- * verifies the primary (connectivity) defense directly. */
+ * components with a genuine gap of non-qualifying vertices between them.
+ * This is a MEASURED outcome on the one real fixture available (verified
+ * directly not to be bridged by (1)+(2) together), not a structurally
+ * GUARANTEED one the way an explicit connectivity gate would be.
+ * `MARGIN_WALK_RADIUS_MM` remains a HANG-GUARD against a genuinely connected
+ * runaway ridge (e.g. real-scan noise bridging two features) — see this
+ * task's report for the dedicated two-adjacent-seeds test that verifies the
+ * observed outcome, and `scripts/diagnose-margin-gap.ts` (fix batch, T4
+ * review) for a direct kappa2-profile probe of the one documented
+ * non-closing real candidate (this task's report) this reasoning relies on
+ * — that probe found the candidate's own dead-end gap sits WITHIN its own
+ * cluster's interrupted ridge (a genuine scan-coverage hole, ~5mm along the
+ * mesh graph), not at the ambient boundary with a neighboring tooth. */
 export const MARGIN_WALK_RADIUS_MM = 30;
 
 /** `k2` (mm^-1) a vertex must be more negative than to count as "on the
@@ -284,12 +319,46 @@ export const MARGIN_MIN_DIRECTION_SCORE = 0.3;
  * value this task's own report measured as still safe on the one real,
  * noisy fixture available; a future task with more real prep fixtures to
  * validate against may be able to widen it (or tighten it) with more
- * evidence. Small enough that a genuine, disconnected NEIGHBORING tooth's
- * margin (measured as close as ~0.27mm away — this task's report) is
- * essentially never reachable within this many mesh-edge hops without first
- * crossing several non-qualifying (background-curvature) vertices, which
- * `findNextStep`'s own `qualifies()` gate refuses at every hop regardless
- * of how many hops remain. */
+ * evidence.
+ *
+ * CORRECTION (fix batch, T4 review): this doc previously claimed
+ * `findNextStep`'s own `qualifies()` gate "refuses at every hop regardless
+ * of how many hops remain" — that overstates what the code does.
+ * `qualifies()` gates which candidate the search is allowed to SELECT at a
+ * hop (`findNextStep`'s inner scoring loop: `if (!qualifies(...)) continue;`
+ * before a candidate is even scored); it does NOT gate the BFS FRONTIER
+ * itself — `findNextStep`'s `nextQueue` expansion recurses through ANY
+ * vertex still inside `region` and not yet visited/seen, qualifying or not.
+ * So a genuine, disconnected NEIGHBORING tooth's margin (measured as close
+ * as ~0.27mm away — this task's report) is kept out of reach by the
+ * COMBINATION of (a) this small, fixed hop budget (a candidate more than 5
+ * mesh-edge hops away is never reached by one `findNextStep` call
+ * regardless of qualification) and (b) `MARGIN_MIN_DIRECTION_SCORE`'s
+ * heading-continuity filter, together with (c) the real-scan cluster
+ * survey's own observation that adjacent teeth's qualifying regions sit
+ * several non-qualifying vertices apart on this one fixture — NOT by an
+ * explicit connectivity gate on the frontier itself.
+ *
+ * Contrast `findRidgeStart`'s own component-refinement BFS (that function's
+ * doc), which genuinely IS connectivity-gated: its expansion step only
+ * recurses through vertices that already `qualifies()`. That one-time,
+ * purely local refinement (over a cluster the nearest-qualifying-vertex
+ * search already landed in) can afford a strict connectivity gate; the
+ * crest WALK deliberately does not copy that pattern for every step,
+ * because `findNextStep`'s own doc records that an earlier, MORE
+ * restrictive design (1-ring-only, best-scoring-direction — effectively
+ * closer to a connectivity-gated walk) measurably drifted sideways and
+ * stalled inside a real, noisy ridge BAND (~2.3mm covered in 30 steps)
+ * rather than tracking the true crest — the measured drift-and-stall fix.
+ * Widening the search past a strict qualifying-only frontier is what let
+ * the walk reach ~10mm before a genuine dead end; gating frontier expansion
+ * on `qualifies()` risks reintroducing that failure mode, so it was
+ * deliberately not added here. See `scripts/diagnose-margin-gap.ts` (fix
+ * batch, T4 review) for a direct kappa2-profile probe of the one documented
+ * non-closing real candidate (this task's report) this reasoning relies on
+ * — that probe found the candidate's own dead-end gap sits WITHIN its own
+ * cluster's interrupted ridge (a genuine scan-coverage hole, ~5mm along the
+ * mesh graph), not at the ambient boundary with a neighboring tooth. */
 export const MARGIN_LOOKAHEAD_STEPS = 5;
 
 /** Hard cap on walk steps PER DIRECTION — hang-guard for a pathological
@@ -348,8 +417,21 @@ export class NoClosureError extends Error {
   readonly closureDeviationMm: number;
   readonly closureToleranceMm: number;
   readonly stepsTaken: number;
+  /** DIAGNOSTIC ONLY (fix batch, T4 review) — the two directions' final
+   * ("dead-end") front vertex indices at the moment the walk gave up,
+   * undefined when a direction never got established at all (e.g.
+   * direction B found no candidate to start from). NOT part of
+   * `proposeMarginLoop`'s stable behavior contract and not used by any
+   * production code path — exists solely so a post-mortem tool
+   * (`scripts/diagnose-margin-gap.ts`) can locate where a non-closing walk
+   * actually stalled without re-implementing the walk. Adding these fields
+   * changes no numeric computation on any path (this class is only
+   * constructed on the already-failing, non-closing path — never on the
+   * golden's own successful `proposeMargin` call). */
+  readonly frontAVertex?: number;
+  readonly frontBVertex?: number;
 
-  constructor(closureDeviationMm: number, closureToleranceMm: number, stepsTaken: number) {
+  constructor(closureDeviationMm: number, closureToleranceMm: number, stepsTaken: number, frontAVertex?: number, frontBVertex?: number) {
     super(
       `proposeMarginLoop: ridge walk did not close into a loop (closest approach ${closureDeviationMm.toFixed(3)}mm, ` +
         `tolerance ${closureToleranceMm}mm, after ${stepsTaken} steps) — the seed's ridge may be an open feature ` +
@@ -359,6 +441,8 @@ export class NoClosureError extends Error {
     this.closureDeviationMm = closureDeviationMm;
     this.closureToleranceMm = closureToleranceMm;
     this.stepsTaken = stepsTaken;
+    this.frontAVertex = frontAVertex;
+    this.frontBVertex = frontBVertex;
   }
 }
 
@@ -886,7 +970,13 @@ export function walkRidge(
     if (stateA.deadEnd && (!stateB || stateB.deadEnd)) break;
   }
 
-  throw new NoClosureError(closestApproach, opts.closureToleranceMm, stateA.path.length + (stateB?.path.length ?? 0));
+  throw new NoClosureError(
+    closestApproach,
+    opts.closureToleranceMm,
+    stateA.path.length + (stateB?.path.length ?? 0),
+    stateA.path[stateA.path.length - 1],
+    stateB?.path[stateB.path.length - 1],
+  );
 }
 
 /** Builds a `DirectedWalkState` from an initial multi-vertex path found by
