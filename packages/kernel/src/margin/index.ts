@@ -1,0 +1,25 @@
+// packages/kernel/src/margin/index.ts — public surface of the margin/
+// module (Phase 3 Task 4). See marginRidge.ts's module doc for the method.
+export {
+  proposeMarginLoop,
+  boundedVertexRegion,
+  walkRidge,
+  simplifyRidgeLoopIndices,
+  segmentConfidence,
+  surfacePointAtVertex,
+  NoRidgeFoundError,
+  NoClosureError,
+  MARGIN_SEARCH_RADIUS_MM,
+  MARGIN_WALK_RADIUS_MM,
+  MARGIN_MIN_RIDGE_STRENGTH,
+  MARGIN_CLOSURE_TOLERANCE_MM,
+  MARGIN_MIN_DIRECTION_SCORE,
+  MARGIN_TANGENT_EMA_WEIGHT,
+  MARGIN_LOOKAHEAD_STEPS,
+  MARGIN_MAX_WALK_STEPS,
+  MARGIN_ANCHOR_ANGLE_BUDGET_RAD,
+  MARGIN_ANCHOR_MAX_SPACING_MM,
+  type ProposeMarginLoopOptions,
+  type ProposeMarginLoopResult,
+  type RidgeWalkResult,
+} from './marginRidge.ts';

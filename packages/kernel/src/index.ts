@@ -18,8 +18,12 @@
  * (coarseAlignFromPointTriples + icpRefine/icpRefineIteration) — minor
  * bump per the undercutScan (0.0.0 -> 0.1.0) precedent for a brand-new op;
  * the kernel-ops golden gained one new pinned entry ("icpRegister"), every
- * other entry unchanged. */
-export const KERNEL_VERSION = '0.3.0';
+ * other entry unchanged. 0.4.0 (Phase 3 Task 4): NEW op — the margin/
+ * module (proposeMarginLoop: curvature-ridge (k2) bidirectional crest walk
+ * + curvature-adaptive anchor simplification) — same "brand-new op, minor
+ * bump" precedent; the kernel-ops golden gained one new pinned entry
+ * ("proposeMargin"), every other entry unchanged. */
+export const KERNEL_VERSION = '0.4.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -317,3 +321,27 @@ export {
   type Mat4,
   type Mat3,
 } from './register/index.ts';
+
+export {
+  proposeMarginLoop,
+  boundedVertexRegion,
+  walkRidge,
+  simplifyRidgeLoopIndices,
+  segmentConfidence,
+  surfacePointAtVertex,
+  NoRidgeFoundError,
+  NoClosureError,
+  MARGIN_SEARCH_RADIUS_MM,
+  MARGIN_WALK_RADIUS_MM,
+  MARGIN_MIN_RIDGE_STRENGTH,
+  MARGIN_CLOSURE_TOLERANCE_MM,
+  MARGIN_MIN_DIRECTION_SCORE,
+  MARGIN_TANGENT_EMA_WEIGHT,
+  MARGIN_LOOKAHEAD_STEPS,
+  MARGIN_MAX_WALK_STEPS,
+  MARGIN_ANCHOR_ANGLE_BUDGET_RAD,
+  MARGIN_ANCHOR_MAX_SPACING_MM,
+  type ProposeMarginLoopOptions,
+  type ProposeMarginLoopResult,
+  type RidgeWalkResult,
+} from './margin/index.ts';

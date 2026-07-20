@@ -68,6 +68,12 @@ export {
   type CoarsePointPair,
   type IcpRegisterPayload,
   type IcpRegisterResult,
+  NoRidgeFoundError,
+  NoClosureError,
+  MARGIN_SEARCH_RADIUS_MM,
+  type MarginSurfacePointPayload,
+  type ProposeMarginPayload,
+  type ProposeMarginResult,
 } from './jobs/registry.js';
 export { meshBuffers, type MeshBuffersPayload, type MeshBuffersResult } from './transfer.js';
 // MeshStats/IntakeReport/Bbox: re-exported here (rather than only living on

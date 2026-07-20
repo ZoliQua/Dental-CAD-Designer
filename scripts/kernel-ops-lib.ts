@@ -64,6 +64,7 @@ import {
   undercutScan,
   icpRefine,
   IDENTITY_MAT4,
+  proposeMarginLoop,
   type IndexedMesh,
   type SurfaceSpline,
 } from '@dqcad/kernel';
@@ -712,6 +713,65 @@ export async function computeKernelOpsSnapshot(): Promise<KernelOpsSnapshot> {
     });
   }
 
+  // --- 17. proposeMargin (Phase 3 Task 4) --------------------------------
+  // Real fixture: arch-case-01 upperjaw, FIXED seed AT one of the real
+  // anterior shoulder-prep margin ridge vertices — see this task's report
+  // for the full real-case identification (an anterior-cluster survey via
+  // extreme kappa2, since the 4 real shoulder preps are FDI 12/11/21/22 —
+  // this seed sits on the "tooth21"-position candidate: the two
+  // central-incisor margins were both tried, one (the "tooth11"-position
+  // candidate) did NOT close with default parameters on this real, noisy
+  // scan — a genuine, reported limitation, not silently swapped away — the
+  // OTHER (this one) closes cleanly to a 29.7mm-circumference loop,
+  // comfortably inside the 15-35mm anatomical range this task's brief cites
+  // for an incisor). ALL parameters are kernel DEFAULTS (no override) —
+  // this golden exercises the real, shipped default behavior.
+  {
+    const archMeshForMargin = intakeStlFixture(ARCH_UPPERJAW_PATH);
+    const hmForMargin = buildHalfedge(archMeshForMargin);
+    const curvatureForMargin = computeCurvature(archMeshForMargin, hmForMargin);
+    const bvhForMargin = buildBvh(archMeshForMargin);
+    const marginSeedAmbient = [6.675659656524658, -17.737689971923828, 10.945829391479492] as const;
+    const seed = snapToSurface(archMeshForMargin, bvhForMargin, marginSeedAmbient);
+    const result = proposeMarginLoop(archMeshForMargin, hmForMargin, curvatureForMargin, seed);
+    const flatAnchors = Float64Array.from(result.anchors.flatMap((a) => evaluateSurfacePoint(archMeshForMargin, a)));
+    let perimeterMm = 0;
+    for (let i = 0; i < result.anchors.length; i++) {
+      const a = evaluateSurfacePoint(archMeshForMargin, result.anchors[i]!);
+      const b = evaluateSurfacePoint(archMeshForMargin, result.anchors[(i + 1) % result.anchors.length]!);
+      perimeterMm += Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+    }
+    if (!(perimeterMm >= 15 && perimeterMm <= 35)) {
+      throw new Error(
+        `kernel-ops golden: proposeMargin's anchor-polyline perimeter (${perimeterMm.toFixed(2)}mm) is outside the ` +
+          'anatomical 15-35mm incisor range (this task\'s brief) — investigate before regenerating (do not pin a garbage loop as golden).',
+      );
+    }
+    ops.push({
+      id: 'proposeMargin',
+      op: 'proposeMarginLoop',
+      fixture: 'arch-case-01 upperjaw (post-intake), fixed seed on a real anterior shoulder-prep margin ridge vertex',
+      params: { seedAmbient: marginSeedAmbient },
+      hash: sha256Of(
+        flatAnchors,
+        Float64Array.from(result.segmentConfidence),
+        JSON.stringify({
+          closed: result.closed,
+          anchorCount: result.anchors.length,
+          walkVertexCount: result.walkVertexCount,
+          closureDeviationMm: result.closureDeviationMm,
+          searchRadiusMm: result.searchRadiusMm,
+        }),
+      ),
+      meta: {
+        anchorCount: result.anchors.length,
+        walkVertexCount: result.walkVertexCount,
+        closureDeviationMm: result.closureDeviationMm,
+        perimeterMm,
+      },
+    });
+  }
+
   return {
     kernelVersion: KERNEL_VERSION,
     manifoldVersion: getInstalledManifoldVersion(),
@@ -726,6 +786,7 @@ export async function computeKernelOpsSnapshot(): Promise<KernelOpsSnapshot> {
       'undercutScan (Phase 2 Task 9) uses \'corners\' sampling (the more expensive, more conservative policy) at a single fixed direction — see packages/kernel/src/undercut/undercutScan.ts for the sign convention and depth semantics.',
       'KERNEL_VERSION 0.2.1 (Fix batch, post-Task-12): metadata-only bump — this file gained the manifoldVersion field (recording the installed manifold-3d WASM package version alongside kernelVersion) and packages/kernel/package.json now pins manifold-3d to an EXACT version (was ^3.5.1). Every op hash is BYTE-IDENTICAL to 0.2.0 — verified via the regeneration diff — this bump exists solely to move the metadata-only golden-file change through the same bump+changelog discipline every other golden change goes through, per docs/CHANGELOG-kernel.md.',
       'icpRegister (Phase 3 Task 3, KERNEL_VERSION 0.3.0): NEW pinned entry — arch-case-01 bite0 (src) vs upperjaw (dst), identity initial transform (verified via bbox overlap: same acquisition session, already a valid coarse init), outlierRejectionFraction 0.85 (measured necessary for this partial-overlap real pair — see the op\'s own inline comment above). Every other op entry is UNCHANGED by this bump.',
+      'proposeMargin (Phase 3 Task 4, KERNEL_VERSION 0.4.0): NEW pinned entry — arch-case-01 upperjaw, fixed seed on a real anterior shoulder-prep margin ridge vertex, default params, perimeter-in-anatomical-range self-check (15-35mm). Every other op entry is UNCHANGED by this bump.',
     ],
     ops,
   };

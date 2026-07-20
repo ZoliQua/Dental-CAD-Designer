@@ -59,6 +59,65 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.4.0] — Phase 3 Task 4: margin ridge detection (proposeMarginLoop)
+
+Adds `packages/kernel/src/margin/` — `proposeMarginLoop(mesh, hm, curvature,
+seed, opts)`: the margin auto-proposal core. From a seed roughly inside a
+crown prep, locates the nearest curvature-ridge locus (the SIGNED, most-
+negative principal curvature `k2` — chosen over `|k2|`/curvedness because it
+uniquely, and MEASURABLY on the real arch-case-01 upperjaw fixture,
+distinguishes a shoulder margin's CONCAVE crease from an equally sharp but
+CONVEX feature elsewhere on the same arch — see marginRidge.ts's module doc
+for the full probe-line evidence), then walks it bidirectionally on the
+halfedge graph (a bounded k-hop BFS at every step, geodesic-step-regularized
+via an EMA-smoothed heading to resist zigzag on noisy real-scan curvature,
+preferring the STRONGEST ridge point within the search window over the
+nearest — see `findNextStep`'s doc for why, and the measured real-fixture
+evidence this design choice is based on) until the walk closes into a loop
+(GRAPH-based closure — the two directions' paths literally sharing a
+vertex — checked before a distance-based fallback), then simplifies the
+walked vertex path into curvature-adaptive `SurfacePoint[]` anchors (angle-
+budget marching) ready for `fitSurfaceSpline`, with a per-segment confidence
+score (ridge strength vs. local background, normalized).
+
+Two independently-bounded regions, by design (see `MARGIN_SEARCH_RADIUS_MM`/
+`MARGIN_WALK_RADIUS_MM`'s docs): a tight one (10mm, from the seed) locates
+the ridge; a looser one (30mm, from the ridge start) bounds the walk itself
+— the primary defense against the walk crossing to a NEIGHBORING tooth's own
+margin (measured as close as ~0.27mm away on the real 4-adjacent-prep
+fixture) is ridge CONNECTIVITY (a real gap of non-qualifying, background-
+curvature vertices always separates two different teeth's margins at the
+`k2 < -3` floor — verified on the real fixture, not merely assumed), not
+either radius alone.
+
+Typed errors: `NoRidgeFoundError` (no ridge locus within the bounded search
+region — a degenerate/flat seed) and `NoClosureError` (a ridge was found but
+the walk never closed into a loop — an open margin is invalid by
+definition, per PLAN.md: a prep finish line is always closed).
+
+No existing op's algorithm or output changed — the kernel-ops golden file
+changed only by GAINING one new pinned entry, `"proposeMargin"` (same "pure
+addition, still needs the bump" precedent as [0.3.0]'s `icpRegister` entry
+above), on the real arch-case-01 upperjaw fixture at a fixed seed (default
+params) — measured perimeter ~29.7mm, inside the 15-35mm anatomical range
+this task's brief cites for an incisor, self-checked at generation time
+(`kernel-ops-lib.ts` throws rather than pin an out-of-range loop). Worker
+job `proposeMargin` (`kernel-workers/src/jobs/margin.ts`) wires this through
+with per-worker halfedge+curvature caches (mirrors jobs/geodesic.ts's/
+jobs/curvature.ts's own caches) — measured < 5s (typically ~0.5s) on the
+real 250k-triangle fixture, well under this task's brief's budget.
+
+**Known real-data limitation (reported, not swept under the rug):** of the
+4 real anterior shoulder preps (FDI 12/11/21/22) on arch-case-01, 3 close
+cleanly with DEFAULT parameters (~28-30mm loops); the 4th (one of the two
+central-incisor candidates) does not close within the default
+`closureToleranceMm` on this specific real, noisy scan region — flagged for
+Task 6 (validation)/Task 8 (dentist-hand-traced accuracy benchmarking) to
+investigate further with more real fixtures to generalize from. The
+analytic acceptance suite (sharp AND filleted shoulder, on a fixture with an
+EXACTLY known margin circle) is unaffected and passes with sub-micron
+(sharp) / sub-fillet-radius (filleted) measured deviation.
+
 ## [0.3.0] — Phase 3 Task 3: rigid registration (coarseAlignFromPointTriples + icpRefine)
 
 Adds `packages/kernel/src/register/` — `coarseAlignFromPointTriples` (closed-form
