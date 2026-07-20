@@ -23,7 +23,7 @@
  * + curvature-adaptive anchor simplification) — same "brand-new op, minor
  * bump" precedent; the kernel-ops golden gained one new pinned entry
  * ("proposeMargin"), every other entry unchanged. */
-export const KERNEL_VERSION = '0.4.0';
+export const KERNEL_VERSION = '0.4.1';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {

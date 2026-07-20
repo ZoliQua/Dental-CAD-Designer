@@ -1,5 +1,5 @@
 {
-  "kernelVersion": "0.4.0",
+  "kernelVersion": "0.4.1",
   "manifoldVersion": "3.5.1",
   "notes": [
     "Runtime budget: every param here is chosen to keep this suite fast (target: whole suite well under the ~2 min CI budget) — see scripts/kernel-ops-lib.ts's module doc for each choice.",

@@ -59,6 +59,22 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.4.1] — Phase 3 Task 7: dentist hand-traced reference margins committed (acceptance inputs, no kernel change)
+
+- `test-fixtures/margins/arch-case-01/{12,11,21,22}.reference.json`: four
+  human-traced reference margin lines (FDI 12, 11, 21, 22, shoulder preps)
+  exported from the margin editor by the project owner (a practicing
+  dentist) on 2026-07-15. These are Task 8's acceptance ground truth.
+- Clinical context recorded by the tracer: this is a REAL case, not an
+  idealized specimen — the margin line is partially obscured by collapsed
+  gingiva in several regions, and the traces reflect clinical judgment in
+  those regions (exactly the realism the acceptance test should measure
+  against).
+- No kernel algorithm changed; hashes of all kernel-op goldens are
+  byte-identical. This bump exists because reference files are
+  version-gate-protected acceptance inputs (see
+  test-fixtures/margins/README.md).
+
 ## [0.4.0] — Phase 3 Task 4: margin ridge detection (proposeMarginLoop)
 
 Adds `packages/kernel/src/margin/` — `proposeMarginLoop(mesh, hm, curvature,
