@@ -148,8 +148,11 @@ const MAX_SINGLE_GAP_MM = 5.0;
 // (supragingival vs. subgingival, chamfer vs. shoulder extent) while still
 // catching a badly wrong trace (e.g. an accidentally-huge or
 // near-degenerate loop).
-const CIRCUMFERENCE_MIN_MM = 12;
-const CIRCUMFERENCE_MAX_MM = 40;
+// 15-35 mm per the phase plan (docs/plans/phase-3-margin-axis.md §Task 7) —
+// the plan's number governs (an earlier 12-40 draft came from a dispatch
+// prompt, not the plan; adjudicated by the controller 2026-07-15).
+const CIRCUMFERENCE_MIN_MM = 15;
+const CIRCUMFERENCE_MAX_MM = 35;
 
 function referencePath(tooth: number): string {
   return join(repoRoot, MARGINS_DIR, `${tooth}.reference.json`);
@@ -227,7 +230,7 @@ describe('margin references — arch-case-01 (Phase 3 Task 7)', () => {
         expect(max).toBeLessThanOrEqual(MAX_SINGLE_GAP_MM);
       });
 
-      it('circumference is within loose anatomical sanity bounds (12-40mm for an upper incisor/canine — sanity, not clinical dogma)', () => {
+      it('circumference is within loose anatomical sanity bounds (15-35mm for an upper incisor/canine — sanity, not clinical dogma)', () => {
         const spacings = polylineSpacingsMm(parsed.resampledPoints, parsed.closed);
         const circumferenceMm = spacings.reduce((sum, v) => sum + v, 0);
         console.log(`[margin-references] tooth ${tooth}: circumferenceMm=${circumferenceMm.toFixed(3)}`);
@@ -238,6 +241,12 @@ describe('margin references — arch-case-01 (Phase 3 Task 7)', () => {
       it('meshContentHash matches the actual, freshly-computed content hash of the arch-case-01 upperjaw fixture mesh', () => {
         const mesh = loadUpperjawMeshOnce();
         const expectedHash = hashMeshContentHex(mesh);
+        // If this ever fails for ALL references at once after a tracing
+        // session, check first whether the in-app import applied a
+        // unit-rescale (importer.ts's pre-intake rescale branch) — this test
+        // replicates parse+intake but NOT rescale-on-import. arch-case-01 is
+        // well within mm-scale so it can't trigger today; a future
+        // differently-scaled fixture could.
         expect(parsed.meshContentHash).toBe(expectedHash);
       });
     });
