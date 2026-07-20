@@ -161,6 +161,16 @@ describe('alignmentEngine — full flow (pick 3 pairs, run, confirm)', () => {
     alignmentEngine.startPicking(srcNodeId, dstNodeId);
     expect(useAlignmentStore.getState().phase).toBe('pickingPairs');
 
+    // This fixture is a genuinely FULL-overlap pair (dst == the SAME src
+    // vertices, exactly rigidly transformed — every point has a true
+    // correspondence), so this test explicitly selects the 'full' overlap
+    // preset (fix batch: 'partial' is now the tool's SESSION default —
+    // see state/alignmentStore.ts's `DEFAULT_ALIGNMENT_OVERLAP_MODE` doc —
+    // which would reject 85% of correspondences here for no reason this
+    // fixture actually has and starve the below `inlierFraction > 0.5`
+    // assertion).
+    alignmentEngine.setOverlapMode('full');
+
     // 3 vertex pairs — src vertices 0,1,2 correspond EXACTLY (by
     // construction) to dst vertices 0,1,2 (dst = ROTATION*src + TRANSLATION
     // applied to the SAME index order).
@@ -205,6 +215,11 @@ describe('alignmentEngine — full flow (pick 3 pairs, run, confirm)', () => {
     expect(op.params.transform).toEqual(srcNode.transform);
     expect(op.params.converged).toBe(true);
     expect(typeof op.params.seed).toBe('number');
+    // Fix batch: the overlap-mode preset actually used (set above) is
+    // journaled verbatim alongside the fraction it resolved to — see
+    // engine/alignment.ts's `confirm()` / OVERLAP_MODE_* doc.
+    expect(op.params.overlapMode).toBe('full');
+    expect(op.params.outlierRejectionFraction).toBe(0.1);
     expect(op.outputHashes).toEqual([]);
     expect(op.inputHashes).toContain('align-src');
     expect(op.inputHashes).toContain('align-dst');

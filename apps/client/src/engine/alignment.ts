@@ -29,15 +29,57 @@
 // this path).
 import type { Operation, SceneNode, Vec3 } from '@dqcad/shared-types';
 import { KERNEL_VERSION, type CoarsePointPair, type IcpRegisterResult, type RaycastMeshResult } from '@dqcad/kernel-workers';
-import { useAlignmentStore, type AlignmentResult } from '../state/alignmentStore';
+import { useAlignmentStore, type AlignmentOverlapMode, type AlignmentResult } from '../state/alignmentStore';
 import { caseStore } from './caseStore';
 import type { EngineMeshRecord } from './meshStore';
 import { renderFrameTransform } from './sceneTransform';
 import { getActiveSceneManager } from './viewerController';
 import { ensureBvhBuilt, getPool } from './workers';
 
+/** Re-exported so ui/AlignmentPanel.tsx (and tests) can import the overlap-
+ * mode type from this module alongside `alignmentEngine`, without also
+ * needing a separate import from `state/alignmentStore.ts` just for the
+ * type. */
+export type { AlignmentOverlapMode };
+
 export const ALIGNMENT_SAMPLE_COUNT = 2000;
 export const ALIGNMENT_MAX_ITERATIONS = 60;
+
+/**
+ * Overlap-mode presets for `icpRefine`/`icpRegister`'s
+ * `outlierRejectionFraction` (packages/kernel/src/register/icpRefine.ts's
+ * `DEFAULT_OUTLIER_REJECTION_FRACTION` doc) — an ICP CORRESPONDENCE-
+ * REJECTION tuning knob, not a clinical parameter, so these live here
+ * (engine layer) rather than in `clinical-profiles/` (CLAUDE.md: "Clinical
+ * defaults live in clinical-profiles/ only" scopes GAPS/THICKNESSES/
+ * CONNECTOR AREAS drawn from a per-MATERIAL profile; this is neither — it
+ * is a property of how much of TWO SCANS' surfaces genuinely correspond to
+ * each other, chosen per alignment SESSION by which pair of scans is being
+ * registered, with no material/tooth/restoration-type dimension at all).
+ *
+ * Two named presets, not a free-form slider, because the tuned value that
+ * makes this repo's flagship real-fixture pair converge (0.85 —
+ * scripts/kernel-ops-lib.ts's `icpRegister` golden entry: arch-case-01
+ * bite0 vs. upperjaw) was previously reachable ONLY from that golden
+ * script: `run()` below never set `outlierRejectionFraction` in the
+ * `icpRegister` job payload at all, so every UI-driven alignment silently
+ * used `icpRefine`'s library default (0.10) — which does NOT converge on a
+ * partial-overlap pair like bite-vs-upperjaw (measured, per the golden
+ * script's own inline comment: plateaus/drifts around 2.4mm RMS and never
+ * converges, because the 90%-kept "inlier" budget is dominated by points
+ * that have no genuine correspondence on the other scan at all). See
+ * `state/alignmentStore.ts`'s `DEFAULT_ALIGNMENT_OVERLAP_MODE` doc for why
+ * the tool defaults to the partial-overlap preset.
+ */
+export const OVERLAP_MODE_FULL_OUTLIER_REJECTION_FRACTION = 0.1;
+export const OVERLAP_MODE_PARTIAL_OUTLIER_REJECTION_FRACTION = 0.85;
+
+/** Maps an `AlignmentOverlapMode` to the `outlierRejectionFraction` `run()`
+ * passes into the `icpRegister` job — see this module's preset-constants
+ * doc above. */
+export function overlapModeOutlierRejectionFraction(mode: AlignmentOverlapMode): number {
+  return mode === 'full' ? OVERLAP_MODE_FULL_OUTLIER_REJECTION_FRACTION : OVERLAP_MODE_PARTIAL_OUTLIER_REJECTION_FRACTION;
+}
 
 /** Same request shape as ToolManager.ts's `MeasurePickRequest` — reused
  * verbatim so ui/Viewport.tsx can route a SceneManager `onMeasurePick`
@@ -85,6 +127,20 @@ class AlignmentEngine {
     this.pendingSrc = null;
     this.pairs = [];
     useAlignmentStore.getState().startPicking(srcNodeId, dstNodeId);
+  }
+
+  /**
+   * Sets the overlap-mode preset (`AlignmentOverlapMode`) that the NEXT
+   * `run()` will use — see this module's `OVERLAP_MODE_*` constants and
+   * `state/alignmentStore.ts`'s `DEFAULT_ALIGNMENT_OVERLAP_MODE` doc.
+   * Callable at any phase (it only affects a SUBSEQUENT `run()`; there is
+   * no invalid-state hazard in setting it early or mid-session) —
+   * ui/AlignmentPanel.tsx only renders the selector while `phase ===
+   * 'idle'`, purely to keep the choice visually grouped with the other
+   * session-setup fields (mesh pickers).
+   */
+  setOverlapMode(mode: AlignmentOverlapMode): void {
+    useAlignmentStore.getState().setOverlapMode(mode);
   }
 
   /** Aborts the in-progress session (any phase) without applying anything —
@@ -224,6 +280,18 @@ class AlignmentEngine {
       const seed = crypto.getRandomValues(new Uint32Array(1))[0]!;
       const coarsePairs: CoarsePointPair[] = this.pairs.map((p) => ({ src: p.src, dst: p.dst }));
 
+      // IMPORTANT (fix batch): previously this payload never set
+      // `outlierRejectionFraction` at all, so the job silently fell back to
+      // `icpRefine`'s library DEFAULT_OUTLIER_REJECTION_FRACTION (0.10) —
+      // unreachable-from-the-UI territory that does NOT converge on a
+      // partial-overlap pair (this module's `OVERLAP_MODE_*` doc). The
+      // fraction now always flows from the store's currently-selected
+      // `overlapMode` preset (`setOverlapMode`/ui/AlignmentPanel.tsx),
+      // captured here so it can be echoed into `AlignmentResult` and
+      // journaled verbatim on `confirm()` below.
+      const overlapMode = store.overlapMode;
+      const outlierRejectionFraction = overlapModeOutlierRejectionFraction(overlapMode);
+
       const result: IcpRegisterResult = await getPool().run(
         'icpRegister',
         {
@@ -233,6 +301,7 @@ class AlignmentEngine {
           sampleCount: ALIGNMENT_SAMPLE_COUNT,
           seed,
           maxIterations: ALIGNMENT_MAX_ITERATIONS,
+          outlierRejectionFraction,
         },
         {
           affinityKey: dstNode.meshId,
@@ -248,6 +317,8 @@ class AlignmentEngine {
         converged: result.converged,
         seed,
         sampleCount: ALIGNMENT_SAMPLE_COUNT,
+        overlapMode,
+        outlierRejectionFraction,
       };
       useAlignmentStore.getState().setResult(alignmentResult);
 
@@ -267,6 +338,11 @@ class AlignmentEngine {
    * caseStore.applyAlignment (journaled as `alignment-apply`), clears the
    * ghost preview, and resets to idle. No-op if there is no result to
    * confirm.
+   *
+   * Journaling a transform-only `SceneNode` change is a deliberate, bounded
+   * exception to docs/adr/002-scene-ops-not-journaled.md's general rule —
+   * see that ADR's "Amendment (Phase 3): alignment-apply" section (and
+   * caseStore.ts's `applyAlignment` doc) for why.
    */
   confirm(): void {
     const store = useAlignmentStore.getState();
@@ -288,6 +364,12 @@ class AlignmentEngine {
         converged: result.converged,
         seed: result.seed,
         sampleCount: result.sampleCount,
+        // Fix batch: journal WHICH overlap-mode preset produced
+        // `outlierRejectionFraction` (not just the resolved fraction) so a
+        // replay/audit can see the operator's actual choice — see this
+        // module's `OVERLAP_MODE_*` doc.
+        overlapMode: result.overlapMode,
+        outlierRejectionFraction: result.outlierRejectionFraction,
       },
       inputHashes: [srcMeshId, dstMeshId].filter((hash): hash is string => hash !== undefined),
       outputHashes: [],

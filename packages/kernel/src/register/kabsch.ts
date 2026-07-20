@@ -63,11 +63,23 @@ export const COLLINEAR_SIN_SQ_EPSILON = 1e-8;
 export type DegenerateTripleReason = 'coincident' | 'collinear';
 
 export class DegenerateTripleError extends Error {
-  readonly which: 'src' | 'dst';
+  /** Which triple is degenerate — `'src'`/`'dst'` for `checkTripleNonDegenerate`'s
+   * per-triple coincident/collinear check (a property of ONE triple, in
+   * isolation). `'combined'` is for the separate, rarer guard below
+   * (`sigma1`/`sigma2` near-zero in `coarseAlignFromPointTriples`): BOTH
+   * triples can individually pass `checkTripleNonDegenerate` and still
+   * produce a (near-)singular cross-covariance `H`, because that
+   * degeneracy is a property of how the two triples' PLANES RELATE to each
+   * other, not of either triple alone — attributing it to `'src'` or
+   * `'dst'` specifically would misleadingly suggest re-picking just one
+   * side would fix it. */
+  readonly which: 'src' | 'dst' | 'combined';
   readonly reason: DegenerateTripleReason;
-  constructor(which: 'src' | 'dst', reason: DegenerateTripleReason) {
+  constructor(which: 'src' | 'dst' | 'combined', reason: DegenerateTripleReason) {
     super(
-      `coarseAlignFromPointTriples: ${which} triple is ${reason} (degenerate — cannot define a plane/orientation)`,
+      which === 'combined'
+        ? `coarseAlignFromPointTriples: src/dst triples are individually fine but their cross-covariance is ${reason} (degenerate — the two triples' planes relate in a way that admits no unique orientation; try different picks)`
+        : `coarseAlignFromPointTriples: ${which} triple is ${reason} (degenerate — cannot define a plane/orientation)`,
     );
     this.name = 'DegenerateTripleError';
     this.which = which;
@@ -302,11 +314,16 @@ export function coarseAlignFromPointTriples(
     // Both triples already passed the individual collinearity check, but H
     // can still be (near-)singular in rank if the two triples' planes
     // relate in a degenerate way — vanishingly rare for real picks, but
-    // guarded rather than dividing by ~0 below.
-    throw new DegenerateTripleError('src', 'collinear');
+    // guarded rather than dividing by ~0 below. Fix batch: this is NOT a
+    // property of `src` or `dst` alone (both already passed
+    // `checkTripleNonDegenerate` individually) — it's the pair's combined
+    // cross-covariance that's singular, so `which` says so honestly
+    // (`'combined'`) rather than pinning blame on an arbitrarily-chosen
+    // side — see `DegenerateTripleError.which`'s doc.
+    throw new DegenerateTripleError('combined', 'collinear');
   }
   if (sigma2 < 1e-9 * sigma1) {
-    throw new DegenerateTripleError('dst', 'collinear');
+    throw new DegenerateTripleError('combined', 'collinear');
   }
 
   // Re-orthonormalize v2 against v1 (Jacobi already returns orthonormal

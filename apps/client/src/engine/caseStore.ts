@@ -249,6 +249,16 @@ class CaseStoreEngine {
    * exactly what `getRenderNodes()`/`renderFrameTransform` already do for
    * ANY node, transform included).
    *
+   * A `SceneNode.transform`-only write is exactly the category
+   * docs/adr/002-scene-ops-not-journaled.md's Decision puts in the
+   * NEVER-journaled bucket (alongside `setSceneNodeOpacity`/
+   * `setSceneNodeVisibility` just above) — journaling it anyway is a
+   * DELIBERATE, bounded exception, not an inconsistency: see that ADR's
+   * "Amendment (Phase 3): alignment-apply" section for why (clinically
+   * consequential, unlike opacity/visibility) and why it needs no
+   * PLAN.md §6.3 replay coverage (no mesh bytes ever change).
+   *
+
    * @throws {Error} if no SceneNode with id `nodeId` exists — mirrors
    * `updateRestoration`'s "loud failure on a caller programming error"
    * stance (unlike e.g. `removeMeasurement`'s tolerant-of-a-stale-id style,

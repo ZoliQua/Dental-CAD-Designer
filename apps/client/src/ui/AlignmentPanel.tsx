@@ -1,4 +1,7 @@
-// Alignment panel (Phase 3 Task 3) — pick mesh A (to move) and B (fixed
+// Alignment panel (Phase 3 Task 3) — pick an overlap-mode preset (fix batch:
+// "Full overlap" / "Partial overlap", see engine/alignment.ts's
+// `OVERLAP_MODE_*` doc — DEFAULTS to partial, this tool's primary clinical
+// use being bite/situ registration), pick mesh A (to move) and B (fixed
 // target) from the scene tree, pick 3 point pairs alternating clicks on the
 // two meshes (engine/alignment.ts's `handlePick`, routed here from
 // ui/Viewport.tsx exactly like the measurement tool), run coarse+ICP
@@ -11,7 +14,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { SceneNode } from '@dqcad/shared-types';
-import { alignmentEngine } from '../engine/alignment';
+import { alignmentEngine, type AlignmentOverlapMode } from '../engine/alignment';
 import { useCaseStore } from '../state/caseStore';
 import { useAlignmentStore } from '../state/alignmentStore';
 
@@ -29,6 +32,7 @@ export function AlignmentPanel() {
   const { t } = useTranslation();
   const document = useCaseStore((state) => state.document);
   const phase = useAlignmentStore((state) => state.phase);
+  const overlapMode = useAlignmentStore((state) => state.overlapMode);
   const pairCount = useAlignmentStore((state) => state.pairCount);
   const awaitingSide = useAlignmentStore((state) => state.awaitingSide);
   const progress = useAlignmentStore((state) => state.progress);
@@ -55,6 +59,10 @@ export function AlignmentPanel() {
     } catch (err) {
       setStartError(err instanceof Error ? err.message : String(err));
     }
+  }
+
+  function handleOverlapModeChange(mode: AlignmentOverlapMode): void {
+    alignmentEngine.setOverlapMode(mode);
   }
 
   function handleCancel(): void {
@@ -89,6 +97,17 @@ export function AlignmentPanel() {
 
       {idle && (
         <div className="alignment-panel__selectors">
+          <label className="alignment-panel__field">
+            {t('alignment.overlapModeLabel')}
+            <select
+              value={overlapMode}
+              onChange={(event) => handleOverlapModeChange(event.target.value as AlignmentOverlapMode)}
+              data-testid="alignment-overlap-mode-select"
+            >
+              <option value="partial">{t('alignment.overlapModePartial')}</option>
+              <option value="full">{t('alignment.overlapModeFull')}</option>
+            </select>
+          </label>
           <label className="alignment-panel__field">
             {t('alignment.meshSrcLabel')}
             <select

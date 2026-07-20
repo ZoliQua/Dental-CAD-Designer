@@ -296,6 +296,9 @@
   "alignment": {
     "panelTitle": "Alineación",
     "needsTwoMeshes": "Añada al menos dos mallas a la escena para alinearlas.",
+    "overlapModeLabel": "Solape del escaneo",
+    "overlapModePartial": "Solape parcial (p. ej., escaneo de mordida)",
+    "overlapModeFull": "Solape total (escaneos alineados de la misma zona)",
     "meshSrcLabel": "Malla a mover",
     "meshDstLabel": "Malla objetivo",
     "selectPlaceholder": "Elegir malla…",

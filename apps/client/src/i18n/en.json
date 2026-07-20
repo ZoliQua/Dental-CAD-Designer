@@ -296,6 +296,9 @@
   "alignment": {
     "panelTitle": "Alignment",
     "needsTwoMeshes": "Add at least two meshes to the scene to align them.",
+    "overlapModeLabel": "Scan overlap",
+    "overlapModePartial": "Partial overlap (e.g. bite scan)",
+    "overlapModeFull": "Full overlap (aligned scans of the same region)",
     "meshSrcLabel": "Mesh to move",
     "meshDstLabel": "Target mesh",
     "selectPlaceholder": "Choose mesh…",

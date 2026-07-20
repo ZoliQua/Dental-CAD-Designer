@@ -203,7 +203,77 @@ describe('AlignmentPanel — critical path (real component, real store, real wor
     expect(srcNode.transform).not.toEqual([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
     expect(srcNode.transform).toEqual(op.params.transform);
 
+    // Fix batch: no overlap-mode selection was made in this test — the
+    // tool's SESSION default ('partial', 0.85) is what actually drove this
+    // run/journal entry.
+    expect(op.params.overlapMode).toBe('partial');
+    expect(op.params.outlierRejectionFraction).toBe(0.85);
+
     // Panel returns to the idle mesh-picker view.
     expect(screen.getByTestId('alignment-mesh-src-select')).toBeTruthy();
+  });
+
+  it('overlap-mode preset selector controls the outlierRejectionFraction passed to icpRegister', async () => {
+    const user = userEvent.setup();
+    const { srcNodeId, dstNodeId, srcPositions } = registerPair();
+
+    render(<AlignmentPanel />);
+
+    // Default (no interaction yet) is 'partial' — see
+    // state/alignmentStore.ts's `DEFAULT_ALIGNMENT_OVERLAP_MODE` doc.
+    expect(useAlignmentStore.getState().overlapMode).toBe('partial');
+
+    await user.selectOptions(screen.getByTestId('alignment-overlap-mode-select'), 'full');
+    expect(useAlignmentStore.getState().overlapMode).toBe('full');
+
+    await user.selectOptions(screen.getByTestId('alignment-mesh-src-select'), srcNodeId);
+    await user.selectOptions(screen.getByTestId('alignment-mesh-dst-select'), dstNodeId);
+    await user.click(screen.getByTestId('alignment-start-button'));
+
+    await waitFor(() => {
+      expect(useAlignmentStore.getState().phase).toBe('pickingPairs');
+    });
+
+    for (let i = 0; i < 3; i++) {
+      const srcVertex = pointAt(srcPositions, i);
+      const dstVertex = applyRigid(ROTATION, TRANSLATION, srcVertex);
+      await act(async () => {
+        await alignmentEngine.handlePick({ candidateNodeIds: [srcNodeId, dstNodeId], ...rayAtVertex(srcVertex, [0, 0, 0]) });
+      });
+      await act(async () => {
+        await alignmentEngine.handlePick({ candidateNodeIds: [srcNodeId, dstNodeId], ...rayAtVertex(dstVertex, TRANSLATION) });
+      });
+    }
+
+    await waitFor(() => {
+      expect(useAlignmentStore.getState().phase).toBe('ready');
+    });
+
+    await user.click(screen.getByTestId('alignment-run-button'));
+
+    await waitFor(
+      () => {
+        expect(screen.getByTestId('alignment-result')).toBeTruthy();
+      },
+      { timeout: 10_000 },
+    );
+
+    // Store/job-call observation: `AlignmentResult` is populated straight
+    // from the `icpRegister` job's own payload/result (engine/alignment.ts's
+    // `run()`) — asserting on it here proves the SELECTED 'full' preset's
+    // fraction (0.10) actually reached the job, not just the UI's own
+    // 'partial' default (0.85).
+    const result = useAlignmentStore.getState().result;
+    expect(result?.overlapMode).toBe('full');
+    expect(result?.outlierRejectionFraction).toBe(0.1);
+
+    await user.click(screen.getByTestId('alignment-confirm-button'));
+    await waitFor(() => {
+      expect(useAlignmentStore.getState().phase).toBe('idle');
+    });
+
+    const op = useCaseStore.getState().document.history.at(-1)!;
+    expect(op.params.overlapMode).toBe('full');
+    expect(op.params.outlierRejectionFraction).toBe(0.1);
   });
 });

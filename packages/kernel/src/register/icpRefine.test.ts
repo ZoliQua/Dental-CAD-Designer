@@ -159,11 +159,20 @@ describe('icpRefine — seeded noise robustness', () => {
 });
 
 describe('icpRefine — outlier rejection', () => {
-  it('10% far-outlier samples do not perturb the recovered transform, and inlierFraction reflects the rejection', () => {
-    // Simulate "10% outliers" by using a coarser outlier-rejection budget
-    // matched to a src mesh that includes a handful of vertices pushed far
-    // off-surface (a local, isolated patch) — samplePointsOnMesh draws from
-    // the true SRC_MESH surface, so instead this test verifies the
+  // Fix batch: this test's original title ("10% far-outlier samples do not
+  // perturb the recovered transform...") overclaimed — it introduces NO
+  // actual outliers (SRC_MESH/DST_MESH here are a clean, exact rigid pair;
+  // see this test's own body comment below). What it actually verifies is
+  // narrower: that `outlierRejectionFraction: 0.1` (the library default,
+  // `DEFAULT_OUTLIER_REJECTION_FRACTION`) is honored on a CLEAN pair — the
+  // rejection budget is applied (inlierFraction lands near 0.9) even though
+  // there's nothing genuinely outlying to reject. The REAL outlier-rejection
+  // test — outliers actually present, rejection measurably helping recovery
+  // — is the next `it` below; renamed so ITS title, not this one's, carries
+  // that requirement.
+  it('outlierRejectionFraction default (0.1) is honored on a clean pair (no true outliers): inlierFraction lands near 0.9', () => {
+    // Samples come from the true SRC_MESH surface (no injected outliers
+    // here — see this file's next test for that) — this verifies the
     // DEFAULT outlier fraction (10%) is honored on the clean pair: fewer
     // than sampleCount are kept whenever sampleCount doesn't evenly divide,
     // and inlierFraction is close to 0.9.

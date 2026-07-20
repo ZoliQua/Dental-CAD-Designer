@@ -296,6 +296,9 @@
   "alignment": {
     "panelTitle": "Illesztés",
     "needsTwoMeshes": "Adjon hozzá legalább két hálót a jelenethez az illesztéshez.",
+    "overlapModeLabel": "Letapogatások átfedése",
+    "overlapModePartial": "Részleges átfedés (pl. harapási letapogatás)",
+    "overlapModeFull": "Teljes átfedés (ugyanazon terület illesztett letapogatásai)",
     "meshSrcLabel": "Mozgatandó háló",
     "meshDstLabel": "Célháló",
     "selectPlaceholder": "Válasszon hálót…",

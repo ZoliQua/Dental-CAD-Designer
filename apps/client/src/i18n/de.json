@@ -296,6 +296,9 @@
   "alignment": {
     "panelTitle": "Ausrichtung",
     "needsTwoMeshes": "Fügen Sie mindestens zwei Netze zur Szene hinzu, um sie auszurichten.",
+    "overlapModeLabel": "Scan-Überlappung",
+    "overlapModePartial": "Teilweise Überlappung (z. B. Bissscan)",
+    "overlapModeFull": "Vollständige Überlappung (ausgerichtete Scans desselben Bereichs)",
     "meshSrcLabel": "Zu verschiebendes Netz",
     "meshDstLabel": "Zielnetz",
     "selectPlaceholder": "Netz wählen…",
