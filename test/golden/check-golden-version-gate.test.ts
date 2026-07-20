@@ -23,11 +23,17 @@ describe('isGoldenPath', () => {
     expect(isGoldenPath('test-fixtures/offset/standin-prep-die.offset.golden.json')).toBe(true);
   });
 
+  it('matches hand-traced reference margin fixtures (Phase 3 Task 7)', () => {
+    expect(isGoldenPath('test-fixtures/margins/arch-case-01/11.reference.json')).toBe(true);
+    expect(isGoldenPath('test-fixtures/margins/arch-case-01/12.reference.json')).toBe(true);
+  });
+
   it('does NOT match unrelated files, including non-golden files inside golden dirs', () => {
     expect(isGoldenPath('packages/kernel/src/index.ts')).toBe(false);
     expect(isGoldenPath('docs/CHANGELOG-kernel.md')).toBe(false);
     expect(isGoldenPath('test-fixtures/standin-scans/standin-prep-die.stl')).toBe(false);
     expect(isGoldenPath('test-fixtures/offset/README.md')).toBe(false);
+    expect(isGoldenPath('test-fixtures/margins/README.md')).toBe(false);
   });
 
   it('every declared pattern has a non-empty label (documentation-in-code sanity)', () => {

@@ -134,6 +134,68 @@ export interface MarginLine {
   resampledPoints?: readonly Vec3[];
 }
 
+/**
+ * Phase 3 Task 7 — the on-disk shape of a hand-traced reference margin
+ * fixture (`test-fixtures/margins/<caseId>/<tooth>.reference.json`),
+ * produced by `apps/client/src/engine/marginEditor.ts`'s dev-only
+ * `exportReferenceMargin()` and consumed by `test/golden/
+ * margin-references.test.ts`'s reference-quality checks (and, later, Task
+ * 8's acceptance harness). See `test-fixtures/margins/README.md` for the
+ * full workflow/schema doc.
+ *
+ * Declared here (not local to `apps/client`) so both the client engine
+ * (which produces it) and root-level `test/golden/` scripts (which consume
+ * it) can import the SAME type without a cross-layer dependency — the same
+ * "file-format shape belongs in shared-types" precedent as `MarginLine`
+ * itself.
+ *
+ * ALLOW-LISTED FIELDS ONLY (CLAUDE.md "no silent data mutation" / no-PHI
+ * export requirement): every field is either a mesh-relative geometric
+ * quantity, a content-hash reference (never a filename or any
+ * patient-identifying string), or build/provenance metadata. A test that
+ * asserts `Object.keys(parsed)` against exactly this field set IS this
+ * fixture's no-PHI check — nothing else may ever be added here without a
+ * matching audit of that assertion.
+ */
+export interface MarginReferenceExport {
+  tooth: FdiTooth;
+  /** Same currency as `MarginLine.anchors` — see `MarginAnchor`'s doc. */
+  anchors: readonly MarginAnchor[];
+  /** A confirmed margin is always closed (Task 6's validation gate blocks
+   * confirm on an open loop — see `MarginHardFailureKind`'s 'open' case,
+   * apps/client/src/state/marginStore.ts) — carried explicitly anyway
+   * (rather than assumed `true`) so a consumer can reconstruct a
+   * self-describing `MarginLineLike` from this file alone, with no implicit
+   * assumption baked into the reader. */
+  closed: boolean;
+  /** Same currency as `MarginLine.resampledPoints`, but REQUIRED here (never
+   * absent) — a reference exported from a confirmed margin always has a
+   * real committed `resampledPoints` array (see `MarginLine.resampledPoints`'s
+   * own doc for when it's legitimately absent on the LIVE editing shape;
+   * that case never reaches a confirm-and-export). */
+  resampledPoints: readonly Vec3[];
+  /** The target mesh's `MeshAsset.contentHash` this margin was traced
+   * against — ties the reference to a specific, immutable, anonymized
+   * fixture mesh (never a filename or scan identifier). */
+  meshContentHash: string;
+  /** Always `'human-reference'` — distinguishes this file, by construction,
+   * from any machine-generated (`proposeMargin`) golden fixture; a fixed
+   * literal rather than a boolean so a future export path (if one is ever
+   * added) can extend the union without an ambiguous `false`. */
+  traced: 'human-reference';
+  /** `apps/client`'s own build/version tag at export time (see
+   * `apps/client/src/appVersion.ts`) — independent of `kernelVersion`
+   * below: a client UI/wiring change bumps this, not that. */
+  appVersion: string;
+  /** `@dqcad/kernel`'s `KERNEL_VERSION` at export time — the same value
+   * every journaled `Operation.kernelVersion` records. */
+  kernelVersion: string;
+  /** ISO-8601 UTC timestamp of the export action itself — provenance only,
+   * never treated as clinically meaningful (no acquisition date is stored
+   * anywhere in this file — see this interface's doc). */
+  exportedAt: string;
+}
+
 // ---------------------------------------------------------------------------
 // Restoration
 // ---------------------------------------------------------------------------

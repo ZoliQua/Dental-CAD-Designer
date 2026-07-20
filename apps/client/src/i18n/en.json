@@ -358,7 +358,8 @@
       "reasonSmoothness": "{{count}} rough/jagged point(s) on the margin line.",
       "confirmButton": "Confirm margin",
       "acknowledgeAndConfirmButton": "Acknowledge warnings and confirm",
-      "confirmedLabel": "Margin confirmed"
+      "confirmedLabel": "Margin confirmed",
+      "exportReferenceButton": "Export as reference (dev)"
     }
   }
 }

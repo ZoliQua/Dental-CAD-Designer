@@ -358,7 +358,8 @@
       "reasonSmoothness": "{{count}} raue(r)/gezackte(r) Punkt(e) auf der Grenzlinie.",
       "confirmButton": "Grenze bestätigen",
       "acknowledgeAndConfirmButton": "Warnungen bestätigen und übernehmen",
-      "confirmedLabel": "Grenze bestätigt"
+      "confirmedLabel": "Grenze bestätigt",
+      "exportReferenceButton": "Als Referenz exportieren (Entwickler)"
     }
   }
 }

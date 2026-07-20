@@ -310,6 +310,24 @@ export function MarginPanel() {
                   {t('margin.validation.confirmedLabel')}
                 </p>
               )}
+              {/* Phase 3 Task 7: DEV-ONLY reference-margin export — same
+                  `import.meta.env.DEV` gate as engine/testHooks.ts's
+                  `installTestHooksIfDev` (this repo's one other "dev-only
+                  surface" precedent), so this button (and the file-download
+                  side effect it triggers) never ships in a `vite build`
+                  production bundle. Disabled whenever `!confirmed` — mirrors
+                  `marginEditor.exportReferenceMargin()`'s own no-op guard
+                  (defense in depth, not the only enforcement). */}
+              {import.meta.env.DEV && (
+                <button
+                  type="button"
+                  onClick={() => marginEditor.exportReferenceMargin()}
+                  disabled={!confirmed}
+                  data-testid="margin-export-reference-button"
+                >
+                  {t('margin.validation.exportReferenceButton')}
+                </button>
+              )}
               {confirmError && <p className="margin-panel__error">{confirmError}</p>}
               <button
                 type="button"

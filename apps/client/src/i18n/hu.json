@@ -358,7 +358,8 @@
       "reasonSmoothness": "{{count}} durva/szaggatott pont a margóvonalon.",
       "confirmButton": "Margó megerősítése",
       "acknowledgeAndConfirmButton": "Figyelmeztetések tudomásulvétele és megerősítés",
-      "confirmedLabel": "Margó megerősítve"
+      "confirmedLabel": "Margó megerősítve",
+      "exportReferenceButton": "Exportálás referenciaként (fejlesztői)"
     }
   }
 }

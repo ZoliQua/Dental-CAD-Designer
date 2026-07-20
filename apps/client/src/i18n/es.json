@@ -358,7 +358,8 @@
       "reasonSmoothness": "{{count}} punto(s) irregular(es) en la línea de margen.",
       "confirmButton": "Confirmar margen",
       "acknowledgeAndConfirmButton": "Reconocer advertencias y confirmar",
-      "confirmedLabel": "Margen confirmado"
+      "confirmedLabel": "Margen confirmado",
+      "exportReferenceButton": "Exportar como referencia (dev)"
     }
   }
 }

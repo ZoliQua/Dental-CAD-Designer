@@ -62,6 +62,7 @@ import type {
   FdiTooth,
   MarginAnchor,
   MarginLine,
+  MarginReferenceExport,
   Operation,
   Restoration,
   Vec3,
@@ -75,6 +76,7 @@ import {
   type MarginLinePayload,
   type ValidateMarginResult,
 } from '@dqcad/kernel-workers';
+import { APP_VERSION } from '../appVersion';
 import {
   useMarginStore,
   type LiveMarginAnchor,
@@ -892,6 +894,76 @@ class MarginEditorEngine {
     caseStore.updateRestoration(restoration, operation);
     useMarginStore.getState().setConfirmed(true);
     return { ok: true, requiresAcknowledgement: false, blocked: false, hardFailureKinds: [], hasWarnings: snapshot.hasWarnings };
+  }
+
+  // ---------------------------------------------------------------------
+  // Reference-margin export (Phase 3 Task 7 — DEV-ONLY tooling)
+  // ---------------------------------------------------------------------
+
+  /**
+   * DEV-ONLY (see `ui/MarginPanel.tsx`'s `import.meta.env.DEV` gate — the
+   * same convention `engine/testHooks.ts`'s `installTestHooksIfDev` already
+   * establishes for this codebase): downloads the CURRENT CONFIRMED margin
+   * for the tooth being edited as `<tooth>.reference.json` — the tooling
+   * half of Phase 3 Task 7's hand-traced-reference workflow. The dentist
+   * project owner traces + confirms a margin in the running app, then
+   * clicks this once per tooth; the resulting files are committed BY HAND
+   * to `test-fixtures/margins/<caseId>/` (see that directory's README.md
+   * for the full schema/workflow doc and `test/golden/
+   * margin-references.test.ts` for the automated reference-quality checks
+   * that run against whatever has been committed there).
+   *
+   * Returns `false` (no-op, no download) unless the CURRENT session is
+   * `confirmed` (CLAUDE.md gate semantics: a reference is only as good as a
+   * margin that has actually passed Task 6's validation gate) — the UI
+   * button is disabled under the exact same condition; this is defense in
+   * depth against a stale/direct call, not the only enforcement.
+   *
+   * Reads `restoration.marginLines[tooth]` — the JOURNALED, persisted
+   * margin — rather than the live store: by construction (`commit()`'s own
+   * doc) the two are identical the instant `confirmed` becomes `true`
+   * (confirm never rewrites `marginLines`, only the immediately-preceding
+   * `margin-edit` commit does, and `confirmed` resets to `false` on any
+   * later edit — `state/marginStore.ts`'s own doc), so this is a
+   * belt-and-suspenders choice: the exported reference always matches
+   * EXACTLY what got journaled, never a possibly-stale in-memory echo.
+   */
+  exportReferenceMargin(): boolean {
+    const store = useMarginStore.getState();
+    if (!store.confirmed || !store.restorationId || store.tooth === null) return false;
+    const restoration = this.findRestoration(store.restorationId);
+    if (!restoration) return false;
+    const marginLine = restoration.marginLines[store.tooth];
+    if (!marginLine) return false;
+    const payload: MarginReferenceExport = {
+      tooth: store.tooth,
+      anchors: marginLine.anchors,
+      closed: marginLine.closed,
+      resampledPoints: marginLine.resampledPoints ?? [],
+      meshContentHash: this.targetContentHashOrThrow(),
+      traced: 'human-reference',
+      appVersion: APP_VERSION,
+      kernelVersion: KERNEL_VERSION,
+      exportedAt: nowIso(),
+    };
+    // Same `Blob` + `URL.createObjectURL` + throwaway `<a download>` anchor
+    // pattern as `engine/section.ts`'s `downloadSvg` (this repo's one other
+    // "trigger a browser file download" precedent) — `JSON.stringify(...,
+    // null, 2)` (human-readable, diff-friendly: these files are committed
+    // to git and hand-reviewed, unlike every other machine-generated golden
+    // fixture in this repo).
+    const json = JSON.stringify(payload, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    try {
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `${store.tooth}.reference.json`;
+      anchor.click();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+    return true;
   }
 
   // ---------------------------------------------------------------------
