@@ -345,6 +345,20 @@
     "saveOpenButton": "Save (open)",
     "openButton": "Open margin",
     "deleteAnchorButton": "Delete anchor",
-    "cancelButton": "Stop editing"
+    "cancelButton": "Stop editing",
+    "validation": {
+      "checking": "Checking margin…",
+      "badgeValid": "Margin valid",
+      "badgeWarnings": "Margin has warnings",
+      "badgeInvalid": "Margin invalid",
+      "reasonOpen": "The margin is not closed into a loop.",
+      "reasonSelfIntersecting": "The margin line crosses itself.",
+      "reasonOffSurface": "Part of the margin line is not on the scanned surface.",
+      "reasonDegenerate": "The margin line has too few anchors, or zero length.",
+      "reasonSmoothness": "{{count}} rough/jagged point(s) on the margin line.",
+      "confirmButton": "Confirm margin",
+      "acknowledgeAndConfirmButton": "Acknowledge warnings and confirm",
+      "confirmedLabel": "Margin confirmed"
+    }
   }
 }

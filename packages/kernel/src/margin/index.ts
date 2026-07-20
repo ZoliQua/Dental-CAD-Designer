@@ -23,3 +23,20 @@ export {
   type ProposeMarginLoopResult,
   type RidgeWalkResult,
 } from './marginRidge.ts';
+
+// Phase 3 Task 6: margin-line validation. See validate.ts's module doc.
+export {
+  validateMarginLine,
+  classifyMarginValidation,
+  MARGIN_SELF_INTERSECTION_TOLERANCE_MM,
+  MARGIN_SMOOTHNESS_CURVATURE_THRESHOLD_MM_INV,
+  MARGIN_VALIDATE_ZERO_LENGTH_EPSILON_MM,
+  MARGIN_VALIDATE_MIN_ANCHOR_COUNT,
+  type MarginValidationReport,
+  type MarginValidationClassification,
+  type MarginValidationHardFailureKind,
+  type MarginSelfIntersectionLocation,
+  type MarginOffSurfacePoint,
+  type MarginSmoothnessWarning,
+  type ValidateMarginLineOptions,
+} from './validate.ts';

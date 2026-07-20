@@ -30,6 +30,7 @@ import {
   buildHalfedge,
   computeCurvature,
   proposeMarginLoop,
+  validateMarginLine,
   MARGIN_SEARCH_RADIUS_MM,
   NoRidgeFoundError,
   NoClosureError,
@@ -37,6 +38,7 @@ import {
   type HalfedgeMesh,
   type IndexedMesh,
   type SurfacePoint,
+  type MarginLineLike,
 } from '@dqcad/kernel';
 import { JobCancelledError, type JobContext } from './context.ts';
 import { onBvhRelease, requireCachedBvh } from './bvh.ts';
@@ -179,3 +181,132 @@ export const proposeMarginJob = async (payload: ProposeMarginPayload, ctx: JobCo
  * direct `@dqcad/kernel` import in engine code — mirrors kernel-workers'
  * own top-level `index.ts` re-export precedent (e.g. `DEFAULT_MAX_BOUNDARY_EDGES`). */
 export { MARGIN_SEARCH_RADIUS_MM };
+
+// ---------------------------------------------------------------------------
+// validateMargin (Phase 3 Task 6) — @dqcad/kernel's `validateMarginLine`
+// (margin/validate.ts — ambient segment-pair self-intersection, BVH
+// on-surface check, discrete-curvature smoothness outliers, degenerate
+// anchor-count/length; see that module's doc for the method, tolerances,
+// and their measured derivations) as a single worker job.
+//
+// ## Progress/cancellation (this task's brief: "progress optional for the
+// small input, cancellation pre-flight OK — document")
+//
+// Same shape as `proposeMarginJob` above: ONE synchronous, non-yielding
+// kernel call, a single cancellation checkpoint BEFORE starting (no
+// mid-call checkpoint). Justified even more strongly here than for
+// `proposeMargin`: this task's report measures `validateMarginLine` at
+// ~6-9ms on the real 261-anchor arch-case-01 golden margin (well under the
+// live-badge <50ms target this task's brief sets) — there is no realistic
+// input size for a margin LINE (as opposed to a full mesh) where a
+// mid-call progress/cancellation checkpoint would ever matter; a single
+// pre-flight `ctx.cancelled()` check is this project's established minimum
+// for ANY job (mirrors every other job in this file/package), not a
+// special exception for this one.
+//
+// `buildBvh` must already be cached for `payload.contentHash` on THIS
+// worker (jobs/bvh.ts's `requireCachedBvh`) — same per-worker-cache
+// contract every other margin-domain job in this file relies on.
+// `validateMarginLine` needs no halfedge/curvature (unlike `proposeMargin`
+// above) — it operates purely on the mesh + BVH + the margin's own
+// (ambient) points, so this job does not touch `halfedgeCache`/
+// `curvatureCache` at all.
+
+/** Worker-safe `MarginAnchor` shape (mirrors `MarginSurfacePointPayload`'s
+ * own "separate, structurally-identical payload type per domain module"
+ * convention — jobs/registry.ts's re-export doc has the precedent this
+ * follows). Structurally identical to `@dqcad/shared-types`'
+ * `MarginAnchor` / `@dqcad/kernel`'s `MarginAnchorLike`. */
+export interface MarginAnchorPayload {
+  position: Vec3Payload;
+  triangleIndex: number;
+  barycentric: Vec3Payload;
+}
+
+/** Worker-safe `MarginLine` shape — mirrors `MarginAnchorPayload`'s doc. */
+export interface MarginLinePayload {
+  anchors: readonly MarginAnchorPayload[];
+  closed: boolean;
+  resampledPoints?: readonly Vec3Payload[];
+}
+
+function toMarginLineLike(margin: MarginLinePayload): MarginLineLike {
+  return {
+    anchors: margin.anchors.map((a) => ({ position: a.position, triangleIndex: a.triangleIndex, barycentric: a.barycentric })),
+    closed: margin.closed,
+    ...(margin.resampledPoints !== undefined ? { resampledPoints: margin.resampledPoints } : {}),
+  };
+}
+
+export interface ValidateMarginPayload {
+  contentHash: string;
+  margin: MarginLinePayload;
+  /** See `ValidateMarginLineOptions` (@dqcad/kernel) — optional, kernel
+   * defaults apply when omitted. */
+  selfIntersectionToleranceMm?: number;
+  smoothnessCurvatureThresholdMmInv?: number;
+}
+
+/** Plain, small-count result (unlike `ProposeMarginResult`'s flattened
+ * typed arrays) — a validation report's finding lists are 0-length for
+ * clean input and small (a handful of entries) even for deliberately bad
+ * input (this task's own figure-eight/zigzag acceptance fixtures never
+ * exceed a few dozen), so there is no payload-size motivation for typed-
+ * array flattening here — plain objects keep this job's code (and its
+ * callers') simple. Field shape mirrors `@dqcad/kernel`'s
+ * `MarginValidationReport` exactly (verified structurally by this file's
+ * own job test). */
+export interface ValidateMarginResult {
+  closed: boolean;
+  selfIntersecting: boolean;
+  selfIntersections: readonly {
+    segmentIndexA: number;
+    segmentIndexB: number;
+    pointMm: Vec3Payload;
+    distanceMm: number;
+  }[];
+  onSurface: boolean;
+  maxSurfaceDeviationMm: number;
+  offSurfacePoints: readonly { index: number; pointMm: Vec3Payload; distanceMm: number }[];
+  smoothnessWarnings: readonly { index: number; pointMm: Vec3Payload; curvatureMmInv: number }[];
+  degenerate: boolean;
+  degenerateReasons: readonly ('tooFewAnchors' | 'zeroLength')[];
+  validatedPointCount: number;
+}
+
+/**
+ * `validateMargin`: deterministic margin-line validation on the mesh cached
+ * under `payload.contentHash` (`buildBvh` must have been called for it on
+ * THIS worker first — see this file's module doc). NEVER throws for a
+ * validation finding (per @dqcad/kernel's `validateMarginLine` contract —
+ * "REPORTS, not gates") — only a genuine job-infrastructure failure
+ * (`BvhNotCachedError`, `JobCancelledError`) throws.
+ *
+ * @throws {BvhNotCachedError} (jobs/bvh.ts) if `buildBvh` was never called
+ * for `payload.contentHash` on this worker.
+ */
+export const validateMarginJob = async (payload: ValidateMarginPayload, ctx: JobContext): Promise<ValidateMarginResult> => {
+  if (await ctx.cancelled()) throw new JobCancelledError();
+  ctx.progress(0);
+
+  const { mesh, bvh } = requireCachedBvh(payload.contentHash);
+  const margin = toMarginLineLike(payload.margin);
+  const report = validateMarginLine(mesh, bvh, margin, {
+    selfIntersectionToleranceMm: payload.selfIntersectionToleranceMm,
+    smoothnessCurvatureThresholdMmInv: payload.smoothnessCurvatureThresholdMmInv,
+  });
+
+  ctx.progress(1);
+  return {
+    closed: report.closed,
+    selfIntersecting: report.selfIntersecting,
+    selfIntersections: report.selfIntersections,
+    onSurface: report.onSurface,
+    maxSurfaceDeviationMm: report.maxSurfaceDeviationMm,
+    offSurfacePoints: report.offSurfacePoints,
+    smoothnessWarnings: report.smoothnessWarnings,
+    degenerate: report.degenerate,
+    degenerateReasons: report.degenerateReasons,
+    validatedPointCount: report.validatedPointCount,
+  };
+};

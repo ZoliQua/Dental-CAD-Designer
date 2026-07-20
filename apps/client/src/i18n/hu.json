@@ -345,6 +345,20 @@
     "saveOpenButton": "Mentés (nyitott)",
     "openButton": "Margó nyitása",
     "deleteAnchorButton": "Rögzítőpont törlése",
-    "cancelButton": "Szerkesztés leállítása"
+    "cancelButton": "Szerkesztés leállítása",
+    "validation": {
+      "checking": "Margó ellenőrzése…",
+      "badgeValid": "A margó érvényes",
+      "badgeWarnings": "A margónak figyelmeztetései vannak",
+      "badgeInvalid": "A margó érvénytelen",
+      "reasonOpen": "A margó nincs zárt hurokká zárva.",
+      "reasonSelfIntersecting": "A margóvonal önmagát metszi.",
+      "reasonOffSurface": "A margóvonal egy része nincs a beszkennelt felületen.",
+      "reasonDegenerate": "A margóvonalnak túl kevés rögzítőpontja van, vagy nulla hosszúságú.",
+      "reasonSmoothness": "{{count}} durva/szaggatott pont a margóvonalon.",
+      "confirmButton": "Margó megerősítése",
+      "acknowledgeAndConfirmButton": "Figyelmeztetések tudomásulvétele és megerősítés",
+      "confirmedLabel": "Margó megerősítve"
+    }
   }
 }

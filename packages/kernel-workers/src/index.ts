@@ -74,6 +74,10 @@ export {
   type MarginSurfacePointPayload,
   type ProposeMarginPayload,
   type ProposeMarginResult,
+  type MarginAnchorPayload,
+  type MarginLinePayload,
+  type ValidateMarginPayload,
+  type ValidateMarginResult,
 } from './jobs/registry.js';
 export { meshBuffers, type MeshBuffersPayload, type MeshBuffersResult } from './transfer.js';
 // MeshStats/IntakeReport/Bbox: re-exported here (rather than only living on

@@ -345,6 +345,20 @@
     "saveOpenButton": "Speichern (offen)",
     "openButton": "Grenze öffnen",
     "deleteAnchorButton": "Anker löschen",
-    "cancelButton": "Bearbeitung beenden"
+    "cancelButton": "Bearbeitung beenden",
+    "validation": {
+      "checking": "Grenze wird geprüft…",
+      "badgeValid": "Grenze gültig",
+      "badgeWarnings": "Grenze hat Warnungen",
+      "badgeInvalid": "Grenze ungültig",
+      "reasonOpen": "Die Grenze ist nicht zu einer Schleife geschlossen.",
+      "reasonSelfIntersecting": "Die Grenzlinie schneidet sich selbst.",
+      "reasonOffSurface": "Ein Teil der Grenzlinie liegt nicht auf der gescannten Oberfläche.",
+      "reasonDegenerate": "Die Grenzlinie hat zu wenige Anker oder die Länge null.",
+      "reasonSmoothness": "{{count}} raue(r)/gezackte(r) Punkt(e) auf der Grenzlinie.",
+      "confirmButton": "Grenze bestätigen",
+      "acknowledgeAndConfirmButton": "Warnungen bestätigen und übernehmen",
+      "confirmedLabel": "Grenze bestätigt"
+    }
   }
 }

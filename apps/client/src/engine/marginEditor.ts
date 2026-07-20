@@ -72,6 +72,8 @@ import {
   NoClosureError,
   NoRidgeFoundError,
   type ProposeMarginResult,
+  type MarginLinePayload,
+  type ValidateMarginResult,
 } from '@dqcad/kernel-workers';
 import {
   useMarginStore,
@@ -79,6 +81,8 @@ import {
   type LiveMarginSegment,
   type MarginToolMode,
   type SegmentConfidence,
+  type MarginValidationSnapshot,
+  type MarginHardFailureKind,
 } from '../state/marginStore';
 import { UNRESOLVED_MARGIN_ANCHOR_TRIANGLE_INDEX } from './caseDocumentMigration';
 import { caseStore } from './caseStore';
@@ -93,6 +97,56 @@ import { ensureBvhBuilt, getPool } from './workers';
 export const MARGIN_WEAK_CONFIDENCE_THRESHOLD = 0.5;
 
 export type MarginErrorKind = 'noRidgeFound' | 'noClosure' | 'other';
+
+/** `confirmMargin()`'s return shape — see that method's doc. `ok: true`
+ * means the confirm was journaled; `ok: false` + `requiresAcknowledgement:
+ * true` means the caller must re-invoke with `{ acknowledgeWarnings: true
+ * }` after presenting the warnings to the user; `ok: false` + `blocked:
+ * true` means a hard failure exists and confirm cannot proceed at all
+ * (`hardFailureKinds` has the reasons — the UI badge already shows these
+ * live via `marginStore.validation`, this is the same data echoed back for
+ * a caller that only wants the outcome of ITS OWN confirm attempt). */
+export interface MarginConfirmOutcome {
+  ok: boolean;
+  requiresAcknowledgement: boolean;
+  blocked: boolean;
+  hardFailureKinds: readonly MarginHardFailureKind[];
+  hasWarnings: boolean;
+}
+
+/** Translates a `validateMargin` worker job result (`@dqcad/kernel-workers`'
+ * `ValidateMarginResult`, structurally identical to `@dqcad/kernel`'s
+ * `MarginValidationReport`) into `state/marginStore.ts`'s local
+ * `MarginValidationSnapshot` — the classification logic here is a
+ * DELIBERATE, small duplication of `@dqcad/kernel`'s own
+ * `classifyMarginValidation` (margin/validate.ts): `engine/` cannot import
+ * `@dqcad/kernel` directly (CLAUDE.md layer rule: `engine -> kernel-workers
+ * | state | shared-types`), so this is the same "duplicate the trivial
+ * shape/logic at a layer boundary" convention this file's own
+ * `evaluateSurfacePointOnMesh` doc already documents — the RULE (hard
+ * failures = open/selfIntersecting/offSurface/degenerate; smoothness is
+ * warning-only) is a 4-line `if` chain, not real logic drift risk. */
+function classifyValidationResult(result: ValidateMarginResult): MarginValidationSnapshot {
+  const hardFailureKinds: MarginHardFailureKind[] = [];
+  if (!result.closed) hardFailureKinds.push('open');
+  if (result.selfIntersecting) hardFailureKinds.push('selfIntersecting');
+  if (!result.onSurface) hardFailureKinds.push('offSurface');
+  if (result.degenerate) hardFailureKinds.push('degenerate');
+  return {
+    closed: result.closed,
+    selfIntersecting: result.selfIntersecting,
+    selfIntersectionCount: result.selfIntersections.length,
+    onSurface: result.onSurface,
+    offSurfaceCount: result.offSurfacePoints.length,
+    maxSurfaceDeviationMm: result.maxSurfaceDeviationMm,
+    smoothnessWarningCount: result.smoothnessWarnings.length,
+    degenerate: result.degenerate,
+    degenerateReasons: result.degenerateReasons,
+    hardFailureKinds,
+    hasWarnings: result.smoothnessWarnings.length > 0,
+    blocked: hardFailureKinds.length > 0,
+  };
+}
 
 export interface MarginPickRequest {
   rayOrigin: Vec3;
@@ -668,6 +722,179 @@ class MarginEditorEngine {
   }
 
   // ---------------------------------------------------------------------
+  // Validation + confirm (Phase 3 Task 6)
+  // ---------------------------------------------------------------------
+
+  /** Runs `validateMargin` against the CURRENT store geometry and publishes
+   * the result to `marginStore.validation` — the live badge's data source.
+   * Fire-and-forget by every caller (`commit()`, `startForTooth()`,
+   * `reSnapUnresolvedAnchors()`) — deliberately NOT awaited inline with the
+   * gesture it follows, so an extra worker round trip never adds to the
+   * edit-gesture latency budget Task 5 already measured/protects (drag/edit
+   * must stay < 100ms on the real upperjaw). `validateMarginLine` itself
+   * measures ~6-9ms on the real 261-anchor golden margin (packages/kernel/
+   * src/margin/validate.ts's own doc), so in practice the badge updates
+   * near-instantly anyway — this is a belt-and-suspenders latency
+   * guarantee, not a response to an observed slowdown. Errors are swallowed
+   * (logged) rather than surfacing as a tool error: a failed BADGE refresh
+   * must never block or corrupt an otherwise-successful edit gesture.
+   *
+   * Public (not `private`, unlike most of this section's internals) so a
+   * caller that publishes store geometry OUTSIDE the normal commit path
+   * (e.g. a test injecting `useMarginStore.getState().setActive(...)`
+   * directly — see ui/MarginPanel.validation.dom.test.tsx's confirm-with-
+   * acknowledge scenario) can still populate the live badge without first
+   * synthesizing a full commit-worthy gesture.
+   */
+  async refreshValidation(): Promise<void> {
+    const store = useMarginStore.getState();
+    if (!store.restorationId || store.tooth === null || store.anchors.length === 0) {
+      useMarginStore.getState().setValidation(null);
+      return;
+    }
+    const generation = ++this.validationGeneration;
+    useMarginStore.getState().setValidationBusy(true);
+    try {
+      const report = await this.runValidateMarginJob(store.anchors, store.closed, store.segments);
+      // A newer refresh (or session reset) superseded this one while the
+      // job was in flight — same "generation counter" guard as
+      // `dragGeneration` (this module's own precedent) — discard a stale
+      // result rather than clobbering a fresher one.
+      if (generation !== this.validationGeneration) return;
+      useMarginStore.getState().setValidation(report);
+    } catch (err) {
+      if (generation !== this.validationGeneration) return;
+      console.error('marginEditor.refreshValidation: validateMargin job failed', err);
+      useMarginStore.getState().setValidation(null);
+    } finally {
+      if (generation === this.validationGeneration) useMarginStore.getState().setValidationBusy(false);
+    }
+  }
+
+  /** Calls the `validateMargin` worker job against `anchors`/`closed`
+   * (building the SAME `resampledPoints` a real commit would — see
+   * `flattenResampledPoints`) and classifies the result into
+   * `MarginValidationSnapshot` (state/marginStore.ts) — the local,
+   * structural-twin translation this engine layer owns (see that type's
+   * own doc for why `state/` cannot import `@dqcad/kernel-workers`
+   * directly).
+   */
+  private async runValidateMarginJob(
+    anchors: readonly LiveMarginAnchor[],
+    closed: boolean,
+    segments: readonly LiveMarginSegment[],
+  ): Promise<MarginValidationSnapshot> {
+    const contentHash = this.targetContentHashOrThrow();
+    const record = this.targetRecordOrThrow();
+    await ensureBvhBuilt(contentHash, record.positions, record.indices);
+    const margin: MarginLinePayload = {
+      anchors: anchors.map((a) => ({ position: a.position, triangleIndex: a.triangleIndex, barycentric: a.barycentric })),
+      closed,
+      resampledPoints: flattenResampledPoints(segments),
+    };
+    const result: ValidateMarginResult = await getPool().run('validateMargin', { contentHash, margin }, { affinityKey: contentHash });
+    return classifyValidationResult(result);
+  }
+
+  /** Live validation badge state for the tool currently being edited — see
+   * `MarginValidationSnapshot`'s doc. Convenience accessor (also directly
+   * readable via `useMarginStore`) mirroring `getErrorKind()`'s pattern. */
+  getValidation(): MarginValidationSnapshot | null {
+    return useMarginStore.getState().validation;
+  }
+
+  /** Guards `refreshValidation` against a stale, superseded response
+   * clobbering a fresher one — same pattern as `dragGeneration`. */
+  private validationGeneration = 0;
+
+  /**
+   * Confirms the current margin on its restoration — CLAUDE.md gate
+   * semantics: hard failures (open, self-intersecting, off-surface,
+   * degenerate) BLOCK confirm outright; a margin with ONLY smoothness
+   * warnings requires `opts.acknowledgeWarnings: true` to proceed (the
+   * explicit acknowledge path — the caller/UI is expected to call this
+   * once with no options, see `requiresAcknowledgement: true` in the
+   * result, present the warnings, then call again with
+   * `acknowledgeWarnings: true` once the user confirms). A margin with
+   * ZERO findings confirms immediately, no acknowledgement needed.
+   *
+   * ALWAYS re-validates fresh here (never trusts `marginStore.validation`,
+   * which may be stale/debounced/in-flight relative to the exact anchor
+   * state being confirmed) — the one place in this module where an extra
+   * worker round trip is awaited inline, because correctness of the GATE
+   * decision matters more than latency for an explicit, deliberate user
+   * action (as opposed to `refreshValidation`'s purely advisory badge).
+   *
+   * On success, journals ONE `margin-confirm` Operation (see this method's
+   * body for why a single op name — not two, e.g. a separate
+   * `margin-acknowledge-warnings` — covers both the clean-confirm and the
+   * acknowledged-warnings-confirm cases) via `caseStore.updateRestoration`
+   * with the restoration object UNCHANGED (a legitimate "journal-only, no
+   * content change" call — same precedent as `caseStore.removeRestoration`'s
+   * own no-op-body-still-journals doc): confirm doesn't rewrite
+   * `marginLines[tooth]` (already written by the anchors' own prior
+   * `margin-edit` commit), it only records that THIS anchor state was
+   * reviewed and accepted, with which (if any) warnings were acknowledged.
+   */
+  async confirmMargin(opts: { acknowledgeWarnings?: boolean } = {}): Promise<MarginConfirmOutcome> {
+    const store = useMarginStore.getState();
+    if (!store.restorationId || store.tooth === null) {
+      throw new Error('marginEditor.confirmMargin: no active session');
+    }
+    const restoration = this.findRestoration(store.restorationId);
+    if (!restoration) {
+      throw new Error(`marginEditor.confirmMargin: restoration ${store.restorationId} no longer exists`);
+    }
+
+    useMarginStore.getState().setValidationBusy(true);
+    let snapshot: MarginValidationSnapshot;
+    try {
+      snapshot = await this.runValidateMarginJob(store.anchors, store.closed, store.segments);
+    } finally {
+      useMarginStore.getState().setValidationBusy(false);
+    }
+    useMarginStore.getState().setValidation(snapshot);
+
+    if (snapshot.blocked) {
+      useMarginStore.getState().setConfirmed(false);
+      return { ok: false, requiresAcknowledgement: false, blocked: true, hardFailureKinds: snapshot.hardFailureKinds, hasWarnings: snapshot.hasWarnings };
+    }
+    if (snapshot.hasWarnings && !opts.acknowledgeWarnings) {
+      return { ok: false, requiresAcknowledgement: true, blocked: false, hardFailureKinds: [], hasWarnings: true };
+    }
+
+    const meshId = caseStore.getDocument().scene.find((n) => n.id === store.targetNodeId)?.meshId;
+    const anchorsHash = await hashAnchorPositionsHex(store.anchors);
+    const operation: Operation = {
+      id: crypto.randomUUID(),
+      name: 'margin-confirm',
+      params: {
+        restorationId: store.restorationId,
+        tooth: store.tooth,
+        anchorCount: store.anchors.length,
+        closed: snapshot.closed,
+        // A SINGLE op name covers both the clean-confirm and the
+        // acknowledged-warnings-confirm case (this task's brief allows
+        // either "extend margin-edit" or "a dedicated
+        // margin-acknowledge-warnings op" — this is a third, documented
+        // choice: one op, `acknowledgedWarnings` distinguishes the two
+        // paths) — a replay/audit consumer can tell exactly what was
+        // acknowledged from `smoothnessWarningCount`/`acknowledgedWarnings`
+        // alone, without needing two op names to grep for.
+        smoothnessWarningCount: snapshot.smoothnessWarningCount,
+        acknowledgedWarnings: snapshot.hasWarnings, // true iff warnings existed AND this confirm required (and got) explicit acknowledgement
+      },
+      inputHashes: meshId ? [meshId] : [],
+      outputHashes: [anchorsHash],
+      kernelVersion: KERNEL_VERSION,
+      timestamp: nowIso(),
+    };
+    caseStore.updateRestoration(restoration, operation);
+    useMarginStore.getState().setConfirmed(true);
+    return { ok: true, requiresAcknowledgement: false, blocked: false, hardFailureKinds: [], hasWarnings: snapshot.hasWarnings };
+  }
+
+  // ---------------------------------------------------------------------
   // Internals
   // ---------------------------------------------------------------------
 
@@ -806,6 +1033,13 @@ class MarginEditorEngine {
       mode,
       unresolvedAnchorCount: 0,
     });
+    // Refresh the live validation badge for whatever margin was just
+    // resolved/displayed (Phase 3 Task 6) — covers BOTH `startForTooth`'s
+    // initial load (no commit follows) and `reSnapUnresolvedAnchors`'s
+    // resolve step (redundant with, but harmless alongside, the
+    // `commit()` call that follows it there — see `refreshValidation`'s
+    // own generation-counter guard).
+    void this.refreshValidation();
   }
 
   /** The single seam every commit-worthy gesture routes through — journals
@@ -904,6 +1138,12 @@ class MarginEditorEngine {
       mode: store.mode,
       unresolvedAnchorCount: 0,
     });
+    // A committed edit invalidates any prior confirmation (Phase 3 Task 6)
+    // — the badge itself is refreshed fire-and-forget (this method's own
+    // doc: never adds worker round-trip latency to a commit-worthy
+    // gesture).
+    useMarginStore.getState().setConfirmed(false);
+    void this.refreshValidation();
   }
 }
 

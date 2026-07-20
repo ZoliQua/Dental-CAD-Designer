@@ -181,12 +181,17 @@ export { DegenerateTripleError, type CoarsePointPair, type IcpRegisterPayload, t
 
 import {
   proposeMarginJob,
+  validateMarginJob,
   NoRidgeFoundError,
   NoClosureError,
   MARGIN_SEARCH_RADIUS_MM,
   type MarginSurfacePointPayload,
   type ProposeMarginPayload,
   type ProposeMarginResult,
+  type MarginAnchorPayload,
+  type MarginLinePayload,
+  type ValidateMarginPayload,
+  type ValidateMarginResult,
 } from './margin.ts';
 export {
   NoRidgeFoundError,
@@ -195,6 +200,10 @@ export {
   type MarginSurfacePointPayload,
   type ProposeMarginPayload,
   type ProposeMarginResult,
+  type MarginAnchorPayload,
+  type MarginLinePayload,
+  type ValidateMarginPayload,
+  type ValidateMarginResult,
 };
 
 import {
@@ -312,6 +321,7 @@ export interface JobPayloadMap {
   fitSurfaceSplineSpan: FitSurfaceSplineSpanPayload;
   icpRegister: IcpRegisterPayload;
   proposeMargin: ProposeMarginPayload;
+  validateMargin: ValidateMarginPayload;
 }
 
 export interface JobResultMap {
@@ -348,6 +358,7 @@ export interface JobResultMap {
   fitSurfaceSplineSpan: FitSurfaceSplineSpanResult;
   icpRegister: IcpRegisterResult;
   proposeMargin: ProposeMarginResult;
+  validateMargin: ValidateMarginResult;
 }
 
 export type JobName = keyof JobPayloadMap;
@@ -391,6 +402,7 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   fitSurfaceSplineSpan,
   icpRegister: icpRegisterJob,
   proposeMargin: proposeMarginJob,
+  validateMargin: validateMarginJob,
 };
 
 const noopContext: JobContext = {

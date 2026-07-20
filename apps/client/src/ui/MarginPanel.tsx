@@ -8,17 +8,47 @@
 // this component only calls its exported actions and reads
 // state/marginStore.ts (same "ui never mutates the snapshot directly" rule
 // as every other panel — e.g. ui/AlignmentPanel.tsx).
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { FdiTooth } from '@dqcad/shared-types';
 import { marginEditor, type MarginErrorKind } from '../engine/marginEditor';
 import { useCaseStore } from '../state/caseStore';
-import { useMarginStore, type MarginToolMode } from '../state/marginStore';
+import { useMarginStore, type MarginHardFailureKind, type MarginToolMode } from '../state/marginStore';
 
 function errorGuidanceKey(kind: MarginErrorKind | null): string {
   if (kind === 'noRidgeFound') return 'margin.errorNoRidgeFound';
   if (kind === 'noClosure') return 'margin.errorNoClosure';
   return 'margin.errorOther';
+}
+
+/** Maps a `MarginHardFailureKind` (state/marginStore.ts) to its i18n key —
+ * same "typed kind -> key" convention as `errorGuidanceKey` above. */
+function hardFailureReasonKey(kind: MarginHardFailureKind): string {
+  switch (kind) {
+    case 'open':
+      return 'margin.validation.reasonOpen';
+    case 'selfIntersecting':
+      return 'margin.validation.reasonSelfIntersecting';
+    case 'offSurface':
+      return 'margin.validation.reasonOffSurface';
+    case 'degenerate':
+      return 'margin.validation.reasonDegenerate';
+  }
+}
+
+type MarginBadgeStatus = 'checking' | 'valid' | 'warning' | 'invalid';
+
+function badgeStatusKey(status: MarginBadgeStatus): string {
+  switch (status) {
+    case 'valid':
+      return 'margin.validation.badgeValid';
+    case 'warning':
+      return 'margin.validation.badgeWarnings';
+    case 'invalid':
+      return 'margin.validation.badgeInvalid';
+    case 'checking':
+      return 'margin.validation.checking';
+  }
 }
 
 export function MarginPanel() {
@@ -34,10 +64,25 @@ export function MarginPanel() {
   const unresolvedAnchorCount = useMarginStore((state) => state.unresolvedAnchorCount);
   const selectedAnchorIndex = useMarginStore((state) => state.selectedAnchorIndex);
   const tooth = useMarginStore((state) => state.tooth);
+  const validation = useMarginStore((state) => state.validation);
+  const validationBusy = useMarginStore((state) => state.validationBusy);
+  const confirmed = useMarginStore((state) => state.confirmed);
 
   const [pendingRestorationId, setPendingRestorationId] = useState('');
   const [pendingTooth, setPendingTooth] = useState('');
   const [startError, setStartError] = useState<string | null>(null);
+  // `true` once `confirmMargin()` reports `requiresAcknowledgement: true` —
+  // shows the "Acknowledge warnings and confirm" secondary action. Reset on
+  // ANY anchor-list/closed change (a new edit invalidates whatever warnings
+  // were about to be acknowledged — the user must re-confirm against the
+  // FRESH geometry, not blindly acknowledge stale findings).
+  const [pendingAcknowledge, setPendingAcknowledge] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPendingAcknowledge(false);
+    setConfirmError(null);
+  }, [anchors, closed]);
 
   const restorations = document.restorations;
   const selectedRestoration = restorations.find((r) => r.id === pendingRestorationId);
@@ -64,6 +109,18 @@ export function MarginPanel() {
 
   function handleModeChange(nextMode: MarginToolMode): void {
     marginEditor.setMode(nextMode);
+  }
+
+  const badgeStatus: MarginBadgeStatus = !validation ? 'checking' : validation.blocked ? 'invalid' : validation.hasWarnings ? 'warning' : 'valid';
+
+  async function handleConfirm(acknowledgeWarnings: boolean): Promise<void> {
+    setConfirmError(null);
+    try {
+      const outcome = await marginEditor.confirmMargin({ acknowledgeWarnings });
+      setPendingAcknowledge(outcome.requiresAcknowledgement);
+    } catch (err) {
+      setConfirmError(err instanceof Error ? err.message : String(err));
+    }
   }
 
   if (phase === 'idle') {
@@ -231,6 +288,48 @@ export function MarginPanel() {
             >
               {t('margin.deleteAnchorButton')}
             </button>
+          )}
+
+          {anchors.length > 0 && (
+            <div className="margin-panel__validation" data-testid="margin-validation-badge" data-status={badgeStatus}>
+              <p className="margin-panel__validation-status">{t(badgeStatusKey(badgeStatus))}</p>
+              {validation && validation.hardFailureKinds.length > 0 && (
+                <ul className="margin-panel__validation-reasons" data-testid="margin-validation-hard-failures">
+                  {validation.hardFailureKinds.map((kind) => (
+                    <li key={kind}>{t(hardFailureReasonKey(kind))}</li>
+                  ))}
+                </ul>
+              )}
+              {validation && validation.hasWarnings && (
+                <p className="margin-panel__validation-warning" data-testid="margin-validation-smoothness-warning">
+                  {t('margin.validation.reasonSmoothness', { count: validation.smoothnessWarningCount })}
+                </p>
+              )}
+              {confirmed && (
+                <p className="margin-panel__validation-confirmed" data-testid="margin-confirmed-indicator">
+                  {t('margin.validation.confirmedLabel')}
+                </p>
+              )}
+              {confirmError && <p className="margin-panel__error">{confirmError}</p>}
+              <button
+                type="button"
+                onClick={() => void handleConfirm(false)}
+                disabled={!validation || validation.blocked || validationBusy}
+                data-testid="margin-confirm-button"
+              >
+                {t('margin.validation.confirmButton')}
+              </button>
+              {pendingAcknowledge && (
+                <button
+                  type="button"
+                  onClick={() => void handleConfirm(true)}
+                  disabled={validationBusy}
+                  data-testid="margin-acknowledge-confirm-button"
+                >
+                  {t('margin.validation.acknowledgeAndConfirmButton')}
+                </button>
+              )}
+            </div>
           )}
         </>
       )}

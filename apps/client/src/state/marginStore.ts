@@ -11,6 +11,51 @@
 import { create } from 'zustand';
 import type { FdiTooth, Vec3 } from '@dqcad/shared-types';
 
+// ---------------------------------------------------------------------------
+// Validation snapshot (Phase 3 Task 6)
+//
+// A LOCAL, structural-twin type — NOT imported from `@dqcad/kernel-workers`'
+// `ValidateMarginResult` (this file's own layer rule, eslint.config.js's
+// `boundaries/dependencies`: `state` may only import `shared-types`).
+// `engine/marginEditor.ts` (which CAN import `@dqcad/kernel-workers`) is
+// responsible for calling the `validateMargin` worker job and translating
+// its result into this shape before publishing it here — same "duplicate
+// the trivial shape at the layer boundary" convention marginEditor.ts's own
+// `evaluateSurfacePointOnMesh` doc already documents for the analogous
+// engine<->kernel boundary.
+// ---------------------------------------------------------------------------
+
+/** The 4 finding kinds that BLOCK confirm (CLAUDE.md gate semantics: "hard
+ * failures block confirm; warnings acknowledgeable") — mirrors
+ * `@dqcad/kernel`'s `MarginValidationHardFailureKind` exactly. */
+export type MarginHardFailureKind = 'open' | 'selfIntersecting' | 'offSurface' | 'degenerate';
+
+/** Live validation badge state — set by `engine/marginEditor.ts`'s
+ * `refreshValidation()` (fire-and-forget after every settled commit, and
+ * after loading an existing margin) and re-derived, synchronously fresh,
+ * by `confirmMargin()` right before deciding whether to journal a confirm
+ * (never trusts a possibly-stale badge for the actual gating decision — see
+ * that method's doc). `null` while no validation has run yet for the
+ * current session (e.g. between `start()` and the first `refreshValidation`
+ * resolving) — the UI shows a neutral "checking" state then, never a false
+ * "invalid". */
+export interface MarginValidationSnapshot {
+  closed: boolean;
+  selfIntersecting: boolean;
+  selfIntersectionCount: number;
+  onSurface: boolean;
+  offSurfaceCount: number;
+  maxSurfaceDeviationMm: number;
+  smoothnessWarningCount: number;
+  degenerate: boolean;
+  degenerateReasons: readonly ('tooFewAnchors' | 'zeroLength')[];
+  /** Empty iff the margin can be confirmed outright. */
+  hardFailureKinds: readonly MarginHardFailureKind[];
+  hasWarnings: boolean;
+  /** `true` iff `hardFailureKinds` is non-empty. */
+  blocked: boolean;
+}
+
 export type MarginToolMode = 'auto' | 'manual';
 /** Deliberately NO distinct 'error' phase: a failed `proposeMargin` call
  * (NoRidgeFoundError/NoClosureError) stays `'active'` — see
@@ -85,6 +130,18 @@ interface MarginToolState {
    * widget. `null` when the pointer is outside the viewport or the tool
    * isn't active. */
   cursorScreenPos: { xPx: number; yPx: number } | null;
+  /** Live validation badge state — see `MarginValidationSnapshot`'s doc.
+   * `null` = no validation run yet this session (neutral "checking" UI
+   * state, not "invalid"). */
+  validation: MarginValidationSnapshot | null;
+  /** `true` while a `validateMargin` worker call (either the live badge
+   * refresh or `confirmMargin`'s own fresh check) is in flight. */
+  validationBusy: boolean;
+  /** `true` immediately after a successful `confirmMargin()` call, for
+   * whichever anchor state was confirmed — reset to `false` by ANY further
+   * commit-worthy edit (engine/marginEditor.ts's `commit()`), since a new
+   * edit invalidates the prior confirmation. */
+  confirmed: boolean;
 
   start: (restorationId: string, tooth: FdiTooth, targetNodeId: string) => void;
   setMode: (mode: MarginToolMode) => void;
@@ -112,6 +169,9 @@ interface MarginToolState {
   setSelectedAnchorIndex: (index: number | null) => void;
   setDraggingAnchorIndex: (index: number | null) => void;
   setCursorScreenPos: (pos: { xPx: number; yPx: number } | null) => void;
+  setValidation: (validation: MarginValidationSnapshot | null) => void;
+  setValidationBusy: (busy: boolean) => void;
+  setConfirmed: (confirmed: boolean) => void;
   reset: () => void;
 }
 
@@ -128,6 +188,9 @@ const INITIAL: Omit<
   | 'setSelectedAnchorIndex'
   | 'setDraggingAnchorIndex'
   | 'setCursorScreenPos'
+  | 'setValidation'
+  | 'setValidationBusy'
+  | 'setConfirmed'
   | 'reset'
 > = {
   restorationId: null,
@@ -147,6 +210,9 @@ const INITIAL: Omit<
   busy: false,
   error: null,
   cursorScreenPos: null,
+  validation: null,
+  validationBusy: false,
+  confirmed: false,
 };
 
 export const useMarginStore = create<MarginToolState>((set) => ({
@@ -185,5 +251,8 @@ export const useMarginStore = create<MarginToolState>((set) => ({
   setSelectedAnchorIndex: (selectedAnchorIndex) => set({ selectedAnchorIndex }),
   setDraggingAnchorIndex: (draggingAnchorIndex) => set({ draggingAnchorIndex }),
   setCursorScreenPos: (cursorScreenPos) => set({ cursorScreenPos }),
+  setValidation: (validation) => set({ validation }),
+  setValidationBusy: (validationBusy) => set({ validationBusy }),
+  setConfirmed: (confirmed) => set({ confirmed }),
   reset: () => set({ ...INITIAL }),
 }));

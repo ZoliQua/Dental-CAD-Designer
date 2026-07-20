@@ -345,6 +345,20 @@
     "saveOpenButton": "Guardar (abierto)",
     "openButton": "Abrir margen",
     "deleteAnchorButton": "Eliminar ancla",
-    "cancelButton": "Detener edición"
+    "cancelButton": "Detener edición",
+    "validation": {
+      "checking": "Comprobando el margen…",
+      "badgeValid": "Margen válido",
+      "badgeWarnings": "El margen tiene advertencias",
+      "badgeInvalid": "Margen inválido",
+      "reasonOpen": "El margen no está cerrado en un bucle.",
+      "reasonSelfIntersecting": "La línea de margen se cruza consigo misma.",
+      "reasonOffSurface": "Parte de la línea de margen no está sobre la superficie escaneada.",
+      "reasonDegenerate": "La línea de margen tiene muy pocas anclas, o longitud cero.",
+      "reasonSmoothness": "{{count}} punto(s) irregular(es) en la línea de margen.",
+      "confirmButton": "Confirmar margen",
+      "acknowledgeAndConfirmButton": "Reconocer advertencias y confirmar",
+      "confirmedLabel": "Margen confirmado"
+    }
   }
 }
