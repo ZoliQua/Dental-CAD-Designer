@@ -41,6 +41,7 @@ import {
   validateMarginLine,
   classifyMarginValidation,
   MARGIN_SELF_INTERSECTION_TOLERANCE_MM,
+  MARGIN_SMOOTHNESS_CURVATURE_THRESHOLD_MM_INV,
   type IndexedMesh,
   type MarginLineLike,
   type MarginAnchorLike,
@@ -102,6 +103,31 @@ describe('validateMarginLine — real fixture (arch-case-01 upperjaw)', () => {
     // for the fire-and-forget (non-blocking) UI wiring this measurement
     // justifies WITHOUT an additional debounce.
     expect(elapsedMs).toBeLessThan(500);
+
+    // T6 review item 4 — smoothness HEADROOM (against silent erosion of the
+    // margin, not just its pass/fail outcome): `validateMarginLine`'s
+    // report only ever surfaces points that already CLEAR
+    // `MARGIN_SMOOTHNESS_CURVATURE_THRESHOLD_MM_INV` (80mm^-1) as
+    // `smoothnessWarnings` — `zero findings` above proves this golden
+    // proposal's OWN measured max curvature is somewhere under 80, but not
+    // HOW FAR under. Passing `smoothnessCurvatureThresholdMmInv: 0`
+    // (`ValidateMarginLineOptions`) makes every validated point report its
+    // own curvature as a "warning" (the SAME computation,
+    // `computeSmoothnessWarnings`, just with the outlier cutoff floored to
+    // zero) — a legitimate, already-parameterized way to recover the raw
+    // max without any production code change. this task's report measured
+    // this golden proposal's own max at 44.8mm^-1 (MARGIN_SMOOTHNESS_
+    // CURVATURE_THRESHOLD_MM_INV's own derivation comment) — asserting
+    // `< threshold x 0.7` (56mm^-1) pins ~1.8x documented slack UNDER the
+    // measured value AND ~1.25x under the production threshold itself, so
+    // a future ridge-walk regression that quietly erodes smoothness (but
+    // not enough to trip the 80 threshold outright) fails HERE first,
+    // loudly, instead of silently eating the threshold's own safety
+    // margin.
+    const allCurvaturesReport = validateMarginLine(mesh, bvh, margin, { smoothnessCurvatureThresholdMmInv: 0 });
+    const maxCurvatureMmInv = Math.max(...allCurvaturesReport.smoothnessWarnings.map((w) => w.curvatureMmInv));
+    console.log(`validateMarginLine real-margin max discrete curvature: ${maxCurvatureMmInv.toFixed(3)}mm^-1 (threshold ${MARGIN_SMOOTHNESS_CURVATURE_THRESHOLD_MM_INV}mm^-1)`);
+    expect(maxCurvatureMmInv).toBeLessThan(MARGIN_SMOOTHNESS_CURVATURE_THRESHOLD_MM_INV * 0.7);
   });
 
   it('ACCEPTANCE: a figure-eight reordering of a subset of the SAME real, on-surface anchors is rejected — selfIntersecting: true, with locations', () => {

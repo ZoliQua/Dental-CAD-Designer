@@ -115,6 +115,116 @@ describe('validateMarginLine — ACCEPTANCE: seeded self-intersection rejection 
 });
 
 // ---------------------------------------------------------------------------
+// T6 review item 1 — legal near-miss regression: pins the CLINICAL-LEGALITY
+// FLOOR that MARGIN_SELF_INTERSECTION_TOLERANCE_MM's own derivation comment
+// cites (the real arch-case-01 golden margin's measured 0.0222mm GLOBAL
+// MINIMUM non-adjacent ambient segment distance — a real, clean margin can
+// legitimately come this close to itself without crossing). A future
+// tolerance bump (e.g. loosening 0.015mm toward or past ~0.022mm+, "to catch
+// more real crossings") would silently start flagging exactly this kind of
+// legal near-miss as a false self-intersection — this test fails LOUDLY the
+// moment that happens, independent of (and in addition to) the real-fixture
+// golden coverage in test/golden/margin-validate.test.ts.
+// ---------------------------------------------------------------------------
+
+describe('validateMarginLine — legal near-miss (pins the tolerance floor, not merely the locality window)', () => {
+  it('two non-crossing, on-surface, PARALLEL arcs routed ~0.022mm apart at closest approach — arc-length separated well past the locality window — are NOT reported self-intersecting', () => {
+    const { mesh, bvh, marginRadiusMm, marginHeightMm } = buildFixture();
+    // GAP_MM mirrors MARGIN_SELF_INTERSECTION_TOLERANCE_MM's own derivation
+    // comment: the real arch-case-01 golden margin's measured 0.0222mm
+    // global minimum non-adjacent ambient distance — comfortably ABOVE the
+    // 0.015mm tolerance (a real, clean margin can legally get this close to
+    // itself), so `selfIntersecting` must stay `false` here.
+    const GAP_MM = 0.022;
+    // Two straight "arcs" on the fixture's own flat P1->P2 shelf ANNULUS
+    // (z = marginHeightMm, radius anywhere in [marginRadiusMm,
+    // gingivalRadiusMm] — see validate.test.ts's off-surface test's own
+    // comment for why the WHOLE annulus, not just the P2 ring, is
+    // on-surface): strand1 at x=x1, strand2 at x=x1+GAP_MM, both spanning
+    // the SAME y in [0, 1] — perfectly parallel, so their closest approach
+    // is EXACTLY GAP_MM (never less: the perpendicular offset between two
+    // parallel, y-overlapping segments), never a crossing.
+    const x1 = marginRadiusMm + 0.1; // safely inside the shelf band
+    const x2 = x1 + GAP_MM;
+    const z = marginHeightMm;
+    const ys = [0, 0.25, 0.5, 0.75, 1.0];
+    const point = (x: number, y: number): [number, number, number] => [x, y, z];
+    const anchorAt = (x: number, y: number): MarginAnchorLike => ({ position: point(x, y), triangleIndex: 0, barycentric: [1, 0, 0] });
+
+    // strand1: A(y=0) -> ... -> B(y=1), at x1.
+    const strand1 = ys.map((y) => anchorAt(x1, y));
+    // cap: short connector off B, at x2 (excluded by the locality window —
+    // literally the "adjacent via a short connector" case, not this test's
+    // concern).
+    const cap = anchorAt(x2, 1.0);
+    // strand2: continues from y=0.75 down to D(y=0), at x2 — parallel to
+    // strand1, GAP_MM away, spanning the SAME y range.
+    const strand2 = [...ys].reverse().slice(1).map((y) => anchorAt(x2, y));
+    // Return leg: D -> (x2, -5) -> (x1, -5) -> [closing wraparound] -> A.
+    // Both hops are PERPENDICULAR to the strand-pair's own separation
+    // vector (dx=0 for D->(x2,-5); dx=0 for (x1,-5)->A) — by construction
+    // (two parallel vertical lines whose y-RANGES don't overlap touch only
+    // at their shared y=0 boundary), this return leg's closest approach to
+    // EITHER strand is bounded below by exactly GAP_MM too — not merely
+    // "probably far enough", a real geometric guarantee, not a hand-tuned
+    // magic number.
+    const returnLeg = [anchorAt(x2, -5), anchorAt(x1, -5)];
+
+    const anchors: MarginAnchorLike[] = [...strand1, cap, ...strand2, ...returnLeg];
+    const margin: MarginLineLike = { anchors, closed: true };
+
+    const report = validateMarginLine(mesh, bvh, margin);
+    expect(report.selfIntersecting).toBe(false);
+    expect(report.selfIntersections).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T6 review item 2 — window-boundary crossing: guards the EXACT bug class
+// this task's report documents finding and fixing (an earlier locality-
+// window design, scaled by the crossing pair's OWN local segment length,
+// hid a genuine crossing on a coarse curve). A genuine crossing whose two
+// segments' arc-length separation sits comfortably ABOVE the fixed window
+// (SELF_INTERSECTION_LOCALITY_WINDOW_MM_FACTOR x tolerance = 0.075mm) must
+// still be caught — this is NOT a "just barely adjacent" case.
+// ---------------------------------------------------------------------------
+
+describe('validateMarginLine — window-boundary crossing (guards against a window that hides real crossings)', () => {
+  it('a genuine crossing, arc-length separated ~0.15mm — 2x past the 0.075mm locality window — is still reported selfIntersecting: true, with a location', () => {
+    const { mesh, bvh, marginHeightMm } = buildFixture();
+    // Small "bowtie" quad (same construction family as MarginPanel.
+    // validation.dom.test.tsx's real-UI bowtie acceptance test): 2h is the
+    // two crossing diagonals' own arc-length INTERVAL GAP (by the
+    // rectangle's own symmetry — see below), sized to 2x the locality
+    // window so this exercises the actual distance check, not window
+    // exclusion.
+    const w = 0.3;
+    const h = 0.075; // half of the two crossing diagonals' own interval gap (2h = 0.15mm)
+    const z = marginHeightMm;
+    const p = (x: number, y: number): [number, number, number] => [x, y, z];
+    const a = (x: number, y: number): MarginAnchorLike => ({ position: p(x, y), triangleIndex: 0, barycentric: [1, 0, 0] });
+    // BOWTIE order: P0 -> P1 (diagonal 1) -> P2 (right edge) -> P3
+    // (diagonal 2) -> [closing] -> P0 (left edge). The two diagonals
+    // (P0->P1, P2->P3) cross exactly at the rectangle's center (0, 0, z);
+    // by the rectangle's symmetry, each diagonal's arc-length separation
+    // from the OTHER (measured the short way, via either vertical edge) is
+    // exactly the vertical edge's own length, 2h.
+    const anchors: MarginAnchorLike[] = [a(-w, h), a(w, -h), a(w, h), a(-w, -h)];
+    const margin: MarginLineLike = { anchors, closed: true };
+
+    const report = validateMarginLine(mesh, bvh, margin);
+    expect(report.selfIntersecting).toBe(true);
+    expect(report.selfIntersections.length).toBeGreaterThan(0);
+    const hit = report.selfIntersections[0]!;
+    expect(hit.distanceMm).toBeLessThanOrEqual(MARGIN_SELF_INTERSECTION_TOLERANCE_MM);
+    expect(Number.isFinite(hit.pointMm[0])).toBe(true);
+    // Crosses exactly at the rectangle's own center.
+    expect(Math.abs(hit.pointMm[0])).toBeLessThan(1e-6);
+    expect(Math.abs(hit.pointMm[1])).toBeLessThan(1e-6);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Clean margins pass with zero findings
 // ---------------------------------------------------------------------------
 

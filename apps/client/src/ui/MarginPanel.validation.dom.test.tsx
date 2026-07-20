@@ -146,7 +146,17 @@ const PERIMETER_ORDER = [0, 1, 3, 2];
 const BOWTIE_ORDER = [0, 2, 1, 3];
 
 async function placeManualLoop(positions: Float64Array, order: readonly number[]): Promise<void> {
-  marginEditor.setMode('manual');
+  // `setMode` synchronously updates `marginStore` (a React re-render), so it
+  // needs the SAME `act()` wrap as every other store-mutating call here —
+  // an earlier draft of this helper called it bare, which was the root
+  // cause of this file's act() warnings (a real DOM subscriber re-render
+  // firing with no act() scope active), found and fixed by this task's
+  // review batch (see MarginPanel — validation.dom test.tsx's own note in
+  // p3-task-6-report.md's "Fix: T6 review items" section for the trace that
+  // pinned it down).
+  act(() => {
+    marginEditor.setMode('manual');
+  });
   for (const vertexIndex of order) {
     await act(async () => {
       await marginEditor.handlePick(rayAtVertex(pointAt(positions, vertexIndex)));
@@ -180,9 +190,15 @@ describe('MarginPanel — validation badge + confirm (ACCEPTANCE: seeded self-in
     const confirmButton = screen.getByTestId('margin-confirm-button') as HTMLButtonElement;
     expect(confirmButton.disabled).toBe(true);
 
-    // Engine-level assertion of the SAME acceptance.
+    // Engine-level assertion of the SAME acceptance. `confirmMargin()` is
+    // called directly (not via a DOM event, so React can't wrap the
+    // dispatch itself) — its own store update needs an explicit `act()`
+    // wrap, same as every other direct `marginEditor` call in this file.
     const historyBefore = useCaseStore.getState().document.history.length;
-    const outcome = await marginEditor.confirmMargin();
+    let outcome!: Awaited<ReturnType<typeof marginEditor.confirmMargin>>;
+    await act(async () => {
+      outcome = await marginEditor.confirmMargin();
+    });
     expect(outcome.ok).toBe(false);
     expect(outcome.blocked).toBe(true);
     expect(outcome.hardFailureKinds).toContain('selfIntersecting');
@@ -191,9 +207,15 @@ describe('MarginPanel — validation badge + confirm (ACCEPTANCE: seeded self-in
 
     // Browser-lane: clicking a disabled button is a no-op (real DOM
     // semantics, not a simulated bypass) — the SAME hard block from the UI
-    // side.
+    // side. `MarginPanel`'s own confirm handler is fire-and-forget
+    // (`onClick={() => void handleConfirm(false)}`) — `user.click()` only
+    // awaits the synchronous DOM dispatch, not that inner promise, so this
+    // needs its own `act()` wrap too (same reasoning as the direct
+    // `confirmMargin()` call above).
     const user = userEvent.setup();
-    await user.click(confirmButton);
+    await act(async () => {
+      await user.click(confirmButton);
+    });
     expect(useCaseStore.getState().document.history.length).toBe(historyBefore);
   }, 30_000);
 
@@ -221,7 +243,9 @@ describe('MarginPanel — validation badge + confirm (ACCEPTANCE: seeded self-in
     expect(confirmButton.disabled).toBe(false);
 
     const historyBefore = useCaseStore.getState().document.history.length;
-    await user.click(confirmButton);
+    await act(async () => {
+      await user.click(confirmButton);
+    });
 
     await waitFor(() => {
       expect(screen.getByTestId('margin-confirmed-indicator')).toBeTruthy();
