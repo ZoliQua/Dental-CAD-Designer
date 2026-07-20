@@ -59,6 +59,49 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.5.0] — Phase 3 Task 8 tuning: `findRidgeStart` ignores isolated curvature-noise components
+
+Adds `packages/kernel/src/margin/marginRidge.ts`'s
+`MARGIN_MIN_RIDGE_COMPONENT_SIZE` (default 20) and a new
+`computeQualifyingComponentSizes` helper; `findRidgeStart`'s
+"nearest-qualifying-vertex-to-seed" search now requires the candidate's own
+`k2`-qualifying connected component (within the LOCATE-step bounded region)
+to have at least this many vertices, before it is eligible to be picked as
+the seed for the "refine to strongest within that component" step.
+
+**Why:** building Task 8's real-fixture acceptance harness
+(`scripts/margin-acceptance.ts`), seeds derived deterministically from a
+reference margin's own point centroid (rather than hand-picked precisely ON
+a ridge vertex, as Task 4's pinned golden seed is) could land closer to an
+ISOLATED single-vertex curvature-noise blip than to the real, hundreds-of-
+vertices ridge component a fraction of a millimeter further away. Without
+this guard, `findRidgeStart`'s component-refinement step is a no-op on a
+size-1 component (the noise vertex is trivially its own strongest vertex),
+so the walk starts from a spurious, unrepresentative locus. MEASURED on
+arch-case-01 "tooth 21": a reference-centroid seed ~0.78mm from the true
+ridge found nearest-qualifying vertex 74246 in an isolated size-1
+component, producing `NoClosureError` (closest approach 1.311mm after 468
+steps) — where the SAME tooth's finish line, found from the FIX (or from
+Task 4's own on-ridge golden seed, unaffected either way) closes cleanly to
+261 anchors / 29.7mm, matching Task 4's pinned result exactly.
+
+**Golden impact:** VERIFIED a no-op — `scripts/generate-kernel-goldens.ts`'s
+regeneration diff against the previously-committed
+`test-fixtures/golden/kernel-ops.json` is EMPTY (byte-identical). Task 4's
+pinned `proposeMargin` seed already sits exactly ON its ridge vertex
+(nearest-qualifying distance 0.000mm, in the 1211-vertex tooth-21 component,
+comfortably above the new 20-vertex floor), so this change is invisible to
+every currently-pinned real-fixture and analytic-fixture golden. Bumped
+anyway (rather than leaving `KERNEL_VERSION` at 0.4.1) per this repo's
+discipline that a real kernel algorithm change goes through the same
+bump+changelog workflow regardless of whether it happens to be a no-op for
+every currently-pinned case — see `MARGIN_MIN_RIDGE_COMPONENT_SIZE`'s own
+TSDoc for the full evidence, and `.superpowers/sdd/p3-task-8-report.md` for
+this task's full acceptance-measurement report (including why, even with
+this fix, the phase's ≥90%-length/≤100µm acceptance criterion is NOT met on
+this real case — a genuine curvature-signal limitation, not a further
+tuning target; see that report).
+
 ## [0.4.1] — Phase 3 Task 7: dentist hand-traced reference margins committed (acceptance inputs, no kernel change)
 
 - `test-fixtures/margins/arch-case-01/{12,11,21,22}.reference.json`: four

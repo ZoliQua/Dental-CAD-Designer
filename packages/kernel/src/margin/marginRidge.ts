@@ -267,6 +267,49 @@ export const MARGIN_WALK_RADIUS_MM = 30;
  * features — this task's report). */
 export const MARGIN_MIN_RIDGE_STRENGTH = 3;
 
+/** Minimum connected-component size (vertex count, within the LOCATE-step
+ * bounded region) for a `k2`-qualifying component to be eligible as the
+ * "nearest ridge locus" `findRidgeStart` searches for — Phase 3 Task 8
+ * tuning (measured necessary building the real-fixture acceptance harness,
+ * `scripts/margin-acceptance.ts`; see that file and this task's report for
+ * the full evidence).
+ *
+ * MEASURED PROBLEM: a seed placed near (but not precisely ON) a real
+ * margin ridge — e.g. Task 8's reference-centroid-derived seeds, as opposed
+ * to Task 4's own golden seed, which was hand-picked to sit EXACTLY on a
+ * ridge vertex (ambient distance 0.000mm from its own nearest-qualifying
+ * vertex) — can have its "nearest qualifying vertex" (unbounded by
+ * component) land on an ISOLATED single-vertex (or handful-of-vertices)
+ * curvature-noise blip a fraction of a mm away, rather than on the real,
+ * hundreds-of-vertices ridge component slightly further off. Without this
+ * guard, `findRidgeStart`'s "refine to strongest WITHIN THAT SAME component"
+ * step is a no-op on a size-1 component (the noise vertex IS its own
+ * component's strongest vertex) — the walk then starts from a spurious,
+ * unrepresentative locus. MEASURED on arch-case-01 tooth "21" (the
+ * `MARGIN_SEARCH_RADIUS_MM`-bounded region around a reference-centroid seed
+ * ~0.78mm from the ridge): nearest-qualifying vertex 74246, its OWN
+ * connected component size 1 (an isolated blip), vs. the real ridge
+ * component 1211 vertices away — walking from the noise vertex produced a
+ * `NoClosureError` (closest approach 1.311mm after 468 steps) where the
+ * golden's own on-ridge seed for the SAME tooth closes cleanly (261
+ * anchors, 29.7mm).
+ *
+ * DEFAULT (20): every real shoulder-margin ridge component measured on the
+ * real arch-case-01 fixture (Task 4's report; `scripts/diagnose-margin-gap.ts`)
+ * is 400-1800+ vertices — comfortably two orders of magnitude above this
+ * floor — while the measured noise blip above was size 1. 20 is
+ * conservative headroom (an order of magnitude above the observed noise
+ * size, two orders below the smallest observed real ridge) without being
+ * anywhere near large enough to risk excluding a genuine, smaller ridge
+ * feature (e.g. a die/inlay-scale margin on a smaller real or analytic
+ * fixture) — every existing analytic fixture (`marginRidge.test-fixtures.ts`'s
+ * `shoulderPrepMesh`) has a full-circumference ridge (hundreds of vertices
+ * at its tessellation density), so this floor changes NO analytic/property
+ * test's outcome — see `marginRidge.property.test.ts`'s own re-run after
+ * this change. Purely a "reject isolated noise, not a real small ridge"
+ * floor, not a clinical margin-size assumption. */
+export const MARGIN_MIN_RIDGE_COMPONENT_SIZE = 20;
+
 /** Loop-closure tolerance (ambient mm) — see this file's module doc, step 4.
  * Comfortably tighter than the smallest inter-tooth margin gap measured on
  * the real 4-adjacent-prep fixture (~0.27 mm — this task's report), and
@@ -586,7 +629,13 @@ export function surfacePointAtVertex(mesh: IndexedMesh, hm: HalfedgeMesh, v: num
  * changes anything on noisy real-scan curvature.
  */
 function findRidgeStart(mesh: IndexedMesh, hm: HalfedgeMesh, curvature: CurvatureResult, region: Map<number, number>, minRidgeStrength: number): number | null {
-  const nearest = findNearestQualifyingVertex(curvature, region, minRidgeStrength);
+  // MARGIN_MIN_RIDGE_COMPONENT_SIZE guard (Phase 3 Task 8 tuning — see that
+  // constant's doc): reject isolated curvature-noise blips as "nearest
+  // ridge locus" candidates before picking one, so a seed that lands
+  // slightly off the true ridge cannot get stuck on a same-distance noise
+  // vertex instead.
+  const componentSizes = computeQualifyingComponentSizes(hm, curvature, region, minRidgeStrength);
+  const nearest = findNearestQualifyingVertex(curvature, region, minRidgeStrength, componentSizes);
   if (nearest === null) return null;
 
   // BFS over `nearest`'s own connected qualifying component (bounded to
@@ -611,7 +660,47 @@ function findRidgeStart(mesh: IndexedMesh, hm: HalfedgeMesh, curvature: Curvatur
   return strongest;
 }
 
-function findNearestQualifyingVertex(curvature: CurvatureResult, region: Map<number, number>, minRidgeStrength: number): number | null {
+/**
+ * Connected-component size, per `k2`-qualifying vertex, restricted to
+ * `region` — one BFS pass over every qualifying vertex reachable in
+ * `region` (same one-ring adjacency + `qualifies` predicate `findRidgeStart`
+ * itself uses for its refinement step), used by `findNearestQualifyingVertex`
+ * to ignore isolated curvature-noise blips. See `MARGIN_MIN_RIDGE_COMPONENT_SIZE`'s
+ * doc for the measured motivating case.
+ */
+function computeQualifyingComponentSizes(
+  hm: HalfedgeMesh,
+  curvature: CurvatureResult,
+  region: Map<number, number>,
+  minRidgeStrength: number,
+): Map<number, number> {
+  const sizes = new Map<number, number>();
+  const visited = new Set<number>();
+  for (const v of region.keys()) {
+    if (visited.has(v) || !qualifies(curvature, region, v, minRidgeStrength)) continue;
+    const component: number[] = [];
+    const stack = [v];
+    visited.add(v);
+    while (stack.length > 0) {
+      const cur = stack.pop()!;
+      component.push(cur);
+      for (const nb of oneRingVertices(hm, cur)) {
+        if (visited.has(nb) || !qualifies(curvature, region, nb, minRidgeStrength)) continue;
+        visited.add(nb);
+        stack.push(nb);
+      }
+    }
+    for (const cv of component) sizes.set(cv, component.length);
+  }
+  return sizes;
+}
+
+function findNearestQualifyingVertex(
+  curvature: CurvatureResult,
+  region: Map<number, number>,
+  minRidgeStrength: number,
+  componentSizes: Map<number, number>,
+): number | null {
   let best: number | null = null;
   let bestGraphDist = Infinity;
   let bestK2 = 0;
@@ -619,6 +708,7 @@ function findNearestQualifyingVertex(curvature: CurvatureResult, region: Map<num
     if (curvature.isBoundary[v]) continue;
     const k2 = curvature.k2[v]!;
     if (!(k2 < -minRidgeStrength)) continue;
+    if ((componentSizes.get(v) ?? 0) < MARGIN_MIN_RIDGE_COMPONENT_SIZE) continue;
     if (
       graphDist < bestGraphDist - 1e-12 ||
       (Math.abs(graphDist - bestGraphDist) <= 1e-12 && (k2 < bestK2 - 1e-12 || (k2 === bestK2 && (best === null || v < best))))

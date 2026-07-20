@@ -22,8 +22,18 @@
  * module (proposeMarginLoop: curvature-ridge (k2) bidirectional crest walk
  * + curvature-adaptive anchor simplification) — same "brand-new op, minor
  * bump" precedent; the kernel-ops golden gained one new pinned entry
- * ("proposeMargin"), every other entry unchanged. */
-export const KERNEL_VERSION = '0.4.1';
+ * ("proposeMargin"), every other entry unchanged. 0.4.1 (Phase 3 Task 7):
+ * dentist hand-traced reference margins committed (acceptance inputs) — no
+ * kernel change. 0.5.0 (Phase 3 Task 8 tuning): `margin/marginRidge.ts` gains
+ * `MARGIN_MIN_RIDGE_COMPONENT_SIZE` — `findRidgeStart` now ignores isolated
+ * curvature-noise components below this size when picking the "nearest
+ * ridge locus" to a seed (measured necessary for the Task 8 acceptance
+ * harness's reference-derived seeds; see that constant's own doc). Verified
+ * a NO-OP for every existing kernel-ops.json entry (byte-identical
+ * regeneration diff) — bumped anyway per this repo's tuning-discipline
+ * convention (a real algorithm change, even where currently a no-op for
+ * pinned seeds, goes through the same bump+changelog workflow). */
+export const KERNEL_VERSION = '0.5.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -334,6 +344,7 @@ export {
   MARGIN_SEARCH_RADIUS_MM,
   MARGIN_WALK_RADIUS_MM,
   MARGIN_MIN_RIDGE_STRENGTH,
+  MARGIN_MIN_RIDGE_COMPONENT_SIZE,
   MARGIN_CLOSURE_TOLERANCE_MM,
   MARGIN_MIN_DIRECTION_SCORE,
   MARGIN_TANGENT_EMA_WEIGHT,
