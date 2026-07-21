@@ -153,6 +153,29 @@
 //    `offset/offsetMesh.ts`'s own documented, bounded error character), not
 //    this preview's raw per-vertex raycast patch.
 //
+// 3. **Composite-interaction gap** — also NEW to this module, and DISTINCT
+//    from (1)/(2) above: every self-consistency measurement this module
+//    relies on (see blockoutPreview.analytic.test.ts, cited in (2) above)
+//    re-scans the DISPLACED PATCH IN ISOLATION — it checks that the patch
+//    doesn't occlude ITSELF. It never checks the other direction: whether
+//    introducing the wax bulge changes occlusion for ORIGINAL-MESH
+//    triangles OUTSIDE the selected region. A prep with a tight
+//    adjacent-tooth contact or a tight opposing-wall clearance could have
+//    its virtual wax bulge close that gap and create a NEW undercut (or a
+//    new insertion collision) against geometry the region scan never
+//    considered — this is a KNOWN, UNTESTED interaction, not merely an
+//    unmeasured one. It is acceptable for THIS phase because the preview
+//    is display-only decision support (see this module's top-of-file scope
+//    boundary) — but it is explicitly NOT acceptable to carry into Phase
+//    4's real solid blockout: that construction (PLAN.md §5's "prep region
+//    inside margin → offset → undercut blockout relative to insertion axis
+//    → skirt to margin line", unioned into a watertight solid) MUST account
+//    for composite interaction with the surrounding case geometry — e.g. by
+//    re-running the undercut/collision scan against the FULL case (target
+//    scan + antagonist, not just the selected region) after the blockout
+//    solid is unioned in, not only against the isolated patch. Flagging
+//    this explicitly for whoever implements Phase 4's blockout stage.
+//
 // ## Determinism
 //
 // Pure function of `(mesh, bvh, region, directionUnit, thresholdMm,

@@ -289,6 +289,41 @@ describe('axisEngine — manual adjust', () => {
   });
 });
 
+describe('axisEngine — concurrent heatmap + blockout refresh (independent generation counters)', () => {
+  it('a slider change fired while the blockout preview is visible still lands the heatmap result', async () => {
+    // Same slider-drag event flow as `applyManualAngles`: with the blockout
+    // preview visible, ONE slider call fires `refreshHeatmap()` AND
+    // `refreshBlockoutPreview()` concurrently (both fire-and-forget). This
+    // guards `blockoutGeneration` being a counter INDEPENDENT of
+    // `generation` (axis.ts's own doc on the field) — under a shared/
+    // aliased counter, `refreshBlockoutPreview`'s bump invalidates
+    // `refreshHeatmap`'s already-captured generation mid-flight (both bump
+    // synchronously before their first `await`), so `refreshHeatmap`'s
+    // success path never reaches `setHeatmapResult` and the heatmap goes
+    // stale (its early-return guard also skips resetting `heatmapBusy`, so
+    // that gets stuck `true` too).
+    const { restorationId } = setupCrownRestoration();
+    axisEngine.start(restorationId);
+    await axisEngine.setBlockoutPreviewVisible(true); // preview now live at the start direction
+    const heatmapGenerationBefore = useAxisStore.getState().heatmapGeneration;
+
+    axisEngine.setElevationDeg(60);
+
+    for (
+      let i = 0;
+      i < 50 && useAxisStore.getState().heatmapGeneration === heatmapGenerationBefore;
+      i++
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+
+    const state = useAxisStore.getState();
+    expect(state.heatmapGeneration).toBeGreaterThan(heatmapGenerationBefore);
+    expect(state.heatmapBusy).toBe(false);
+    expect(state.perAbutment[0]!.tooth).toBe(11);
+  });
+});
+
 describe('axisEngine — confirmAxis', () => {
   it('journals an axis-set Operation and stamps insertionAxis on the restoration', async () => {
     const { restorationId } = setupCrownRestoration();
