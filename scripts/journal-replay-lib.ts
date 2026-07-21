@@ -53,9 +53,17 @@ import {
   splitNonManifoldEdges,
   fillSmallHoles,
   splitNonManifoldVertices,
+  buildHalfedge,
+  buildBvh,
+  computeCurvature,
+  snapToSurface,
+  evaluateSurfacePoint,
+  proposeMarginLoop,
   type IndexedMesh,
+  type SurfacePoint,
+  type Vec3,
 } from '@dqcad/kernel';
-import type { Operation } from '@dqcad/shared-types';
+import type { MarginReferenceExport, Operation } from '@dqcad/shared-types';
 
 export const repoRoot = fileURLToPath(new URL('../', import.meta.url));
 
@@ -410,12 +418,208 @@ export function replayJournal(journal: RecordedJournal): ReplayFailure[] {
   return failures;
 }
 
-/** The fixture set this harness runs — see this file's module doc: both
- * are small/fast enough that this IS the "fast fixture subset" the task
- * brief asks CI to run (no perf-scale fixtures are included). */
+// ---------------------------------------------------------------------------
+// Phase 3 Task 11: margin/axis journal-replay extension
+//
+// PLAN.md invariant 3 / this task's brief: "margin/axis ops with kernel
+// effects... enter the replay harness". Of the 3 margin/axis `Operation`
+// names `apps/client/src/engine/` actually journals —
+//   - `margin-edit` (marginEditor.ts): committed on EVERY margin-anchor
+//     gesture. When it is a session's FIRST commit AND that session began
+//     with a successful auto-proposal, it additionally carries
+//     `params.seed` (triangleIndex+barycentric) and
+//     `params.proposalDefaults.targetAnchorCount` — enough to
+//     DETERMINISTICALLY re-derive the exact same anchor set via
+//     `proposeMarginLoop` alone (a pure function of mesh + seed + options,
+//     CLAUDE.md invariant 2), and `outputHashes[0]` is a real
+//     content-addressed hash (SHA-256 over the anchors' flat Float64
+//     ambient-position buffer — `marginEditor.ts`'s `hashAnchorPositionsHex`,
+//     re-derived below via this file's own `hashFloat64`, same convention
+//     as `import-mesh`/`repair-*` above) — REPLAYABLE, and
+//     `recordMarginProposeJournal` below does exactly that. A LATER
+//     `margin-edit` from a manual anchor drag carries no such seed (its
+//     input is an interactive screen pick, not reproducible from journaled
+//     params alone) — out of scope here, same as any other non-deterministic
+//     user gesture.
+//   - `margin-confirm` (marginEditor.ts) and `axis-set` (axis.ts): BOTH are
+//     param-records with NO content-addressed geometric output to replay
+//     against — `margin-confirm` re-hashes whatever anchor state the prior
+//     `margin-edit` already committed (no NEW kernel computation of its
+//     own); `axis-set` carries `inputHashes: []`/`outputHashes: []`
+//     entirely (it stamps a direction vector onto the restoration — a
+//     `SceneNode`-adjacent bookkeeping write, not a mesh-byte or
+//     content-addressed output). This is the EXACT "no mesh-byte output for
+//     a replay to assert bit-identity over" category
+//     `docs/adr/002-scene-ops-not-journaled.md`'s `alignment-apply`
+//     amendment already documents for a structurally identical case
+//     (`suggestAxis`'s own determinism, like `icpRegister`'s, is separately
+//     covered by `packages/kernel/src/axis`'s and
+//     `packages/kernel-workers/src/axisJobs.test.ts`'s own determinism
+//     tests — NOT this journal-replay harness's job). Deliberately NOT
+//     given a `RecordedJournal` entry here — documented as excluded, not an
+//     oversight.
+// ---------------------------------------------------------------------------
+
+const MARGIN_JOURNAL_UPPERJAW_PATH = 'test-fixtures/real-scans/arch-case-01/arch-case-01-upperjaw.stl';
+const MARGIN_JOURNAL_REFERENCE_PATH = 'test-fixtures/margins/arch-case-01/21.reference.json';
+/** Tooth 21, not 11: `scripts/margin-acceptance.ts`'s own
+ * `EXPECTED_NON_CLOSING_TEETH = [11]` documents that tooth 11's real-scan
+ * curvature signal never closes into a loop at all (`NoClosureError`) on
+ * this fixture — not usable as a replay seed. 21 is one of the 3 closing
+ * teeth (`AMENDED_ACCEPTANCE_ASSERTION_TEETH`) and the highest-coverage of
+ * the three (see `docs/demos/phase-3-task-8-evidence.md`'s amended-criterion
+ * table) — an arbitrary-but-reasoned, reproducible choice among the 3
+ * closing teeth (this harness only needs ONE seeded propose to prove
+ * replayability, not a repeat of Task 8's own accuracy measurement). */
+const MARGIN_JOURNAL_TOOTH = 21;
+/** Mirrors `apps/client/src/engine/marginEditor.ts`'s
+ * `MARGIN_PROPOSAL_ANCHOR_COUNT_DEFAULT` — re-derived locally (this file's
+ * own "duplicate the trivial constant across the script/app boundary"
+ * convention, matching the seeded-damage helpers above) rather than
+ * importing across the `scripts/` <-> `apps/client/` boundary. */
+const MARGIN_JOURNAL_TARGET_ANCHOR_COUNT = 50;
+
+interface MarginUpperjawSetup {
+  mesh: IndexedMesh;
+  hm: ReturnType<typeof buildHalfedge>;
+  curvature: ReturnType<typeof computeCurvature>;
+  bvh: ReturnType<typeof buildBvh>;
+}
+
+let cachedMarginUpperjawSetup: MarginUpperjawSetup | null = null;
+
+/**
+ * Loads + builds the shared, deterministic PRE-REQUISITE structures
+ * (mesh, halfedge overlay, curvature, BVH) `proposeMarginLoop` needs,
+ * memoized across calls within this process. This does NOT cache the thing
+ * actually being replayed — `proposeMarginLoop` itself is always called
+ * FRESH, both in `recordMarginProposeJournal` and inside its replay step's
+ * own `recompute()` closure below — only the surrounding infrastructure,
+ * exactly the same "cache the expensive deterministic setup, recompute the
+ * operation itself" split `packages/kernel-workers/src/jobs/margin.ts`'s
+ * own per-worker halfedge/curvature caches already use in production (see
+ * that file's module doc for the identical reasoning). Without this,
+ * `recordAllFixtures()`'s own repeated self-calls (this file's
+ * `test/golden/journal-replay.test.ts`'s "is itself deterministic" case,
+ * and its `it.each`'s own argument list) would rebuild curvature + BVH on a
+ * real ~250k-triangle clinical scan several times over per test run for no
+ * reason.
+ */
+function loadMarginUpperjawSetup(): MarginUpperjawSetup {
+  if (cachedMarginUpperjawSetup) return cachedMarginUpperjawSetup;
+  const rawBytes = readFixtureBytes(MARGIN_JOURNAL_UPPERJAW_PATH);
+  const { soup } = parseStl(rawBytes);
+  const mesh = intake({ kind: 'soup', soup }).mesh;
+  const hm = buildHalfedge(mesh);
+  const curvature = computeCurvature(mesh, hm);
+  const bvh = buildBvh(mesh);
+  cachedMarginUpperjawSetup = { mesh, hm, curvature, bvh };
+  return cachedMarginUpperjawSetup;
+}
+
+function centroidOfPoints(points: readonly Vec3[]): Vec3 {
+  const sum: [number, number, number] = [0, 0, 0];
+  for (const p of points) {
+    sum[0] += p[0];
+    sum[1] += p[1];
+    sum[2] += p[2];
+  }
+  return [sum[0] / points.length, sum[1] / points.length, sum[2] / points.length];
+}
+
+/** SAME algorithm as `apps/client/src/engine/marginEditor.ts`'s
+ * `hashAnchorPositionsHex` (SHA-256 over a flat Float64 buffer of each
+ * anchor's evaluated ambient position) — re-derived here via this file's
+ * own `hashFloat64`, per this file's module doc's "re-derive, don't deep
+ * import" convention. */
+function hashAnchorPositions(mesh: IndexedMesh, anchors: readonly SurfacePoint[]): string {
+  const flat = new Float64Array(anchors.length * 3);
+  anchors.forEach((a, i) => {
+    const p = evaluateSurfacePoint(mesh, a);
+    flat[i * 3] = p[0];
+    flat[i * 3 + 1] = p[1];
+    flat[i * 3 + 2] = p[2];
+  });
+  return hashFloat64(flat);
+}
+
+/**
+ * Records + replay-proves ONE seeded `margin-edit` operation — see this
+ * section's module doc above for exactly what makes this op (unlike
+ * `margin-confirm`/`axis-set`) genuinely replayable. Seed: the ambient
+ * centroid of the COMMITTED hand-traced reference's own `resampledPoints`,
+ * `snapToSurface`-projected — the EXACT method
+ * `scripts/margin-acceptance.ts`'s `computeToothResult` already uses to
+ * derive a reproducible, non-hand-picked seed from a committed fixture
+ * alone (re-derived here, not imported, per this file's own convention —
+ * `margin-acceptance.ts` is itself a script, not a shared library).
+ */
+export function recordMarginProposeJournal(): RecordedJournal {
+  const fixtureLabel = 'arch-case-01-upperjaw-margin-tooth21';
+  const { mesh, hm, curvature, bvh } = loadMarginUpperjawSetup();
+
+  const referenceBytes = readFileSync(join(repoRoot, MARGIN_JOURNAL_REFERENCE_PATH), 'utf8');
+  const reference = JSON.parse(referenceBytes) as MarginReferenceExport;
+  if (reference.tooth !== MARGIN_JOURNAL_TOOTH) {
+    throw new Error(
+      `recordMarginProposeJournal: expected reference tooth ${MARGIN_JOURNAL_TOOTH}, got ${reference.tooth} — wrong fixture file?`,
+    );
+  }
+  const referencePoints: Vec3[] = reference.resampledPoints.map((p) => [p[0], p[1], p[2]]);
+  const seedCentroidAmbient = centroidOfPoints(referencePoints);
+  const seed: SurfacePoint = snapToSurface(mesh, bvh, seedCentroidAmbient);
+
+  const timestamp = new Date(0).toISOString(); // fixed — see recordJournal's own doc for why.
+  const meshContentHash = hashMeshContent(mesh.positions, mesh.indices);
+
+  const proposal = proposeMarginLoop(mesh, hm, curvature, seed, {
+    targetAnchorCount: MARGIN_JOURNAL_TARGET_ANCHOR_COUNT,
+  });
+  const outputHash = hashAnchorPositions(mesh, proposal.anchors);
+
+  const operation: Operation = {
+    id: `${fixtureLabel}-margin-edit`,
+    name: 'margin-edit',
+    params: {
+      fixture: fixtureLabel,
+      tooth: reference.tooth,
+      gesture: 'accept-proposal',
+      anchorCount: proposal.anchors.length,
+      closed: proposal.closed,
+      seed: { triangleIndex: seed.triangleIndex, barycentric: seed.barycentric },
+      proposalDefaults: { targetAnchorCount: MARGIN_JOURNAL_TARGET_ANCHOR_COUNT },
+    },
+    inputHashes: [meshContentHash],
+    outputHashes: [outputHash],
+    kernelVersion: KERNEL_VERSION,
+    timestamp,
+  };
+
+  const replaySteps: ReplayStep[] = [
+    {
+      operationIndex: 0,
+      recompute: () => {
+        const fresh = proposeMarginLoop(mesh, hm, curvature, seed, {
+          targetAnchorCount: MARGIN_JOURNAL_TARGET_ANCHOR_COUNT,
+        });
+        return hashAnchorPositions(mesh, fresh.anchors);
+      },
+    },
+  ];
+
+  return { fixtureLabel, operations: [operation], replaySteps, finalMesh: mesh };
+}
+
+/** The fixture set this harness runs — see this file's module doc: the
+ * first two are small/fast enough that this IS the "fast fixture subset"
+ * the task brief asks CI to run (no perf-scale fixtures are included); the
+ * margin fixture reuses `loadMarginUpperjawSetup`'s memoized curvature/BVH
+ * build (see that function's doc) to stay affordable despite the real
+ * ~250k-triangle mesh. */
 export function recordAllFixtures(): readonly RecordedJournal[] {
   return [
     recordJournal('test-fixtures/synthetic/sphere-r5.stl', 'sphere-r5', true),
     recordJournal('test-fixtures/real-scans/arch-case-01/arch-case-01-upperjaw.stl', 'arch-case-01-upperjaw', false),
+    recordMarginProposeJournal(),
   ];
 }

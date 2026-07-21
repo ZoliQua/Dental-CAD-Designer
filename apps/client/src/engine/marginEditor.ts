@@ -481,6 +481,40 @@ class MarginEditorEngine {
     }
   }
 
+  /**
+   * DEV/TEST-ONLY: seeds auto-propose directly from a known
+   * `(triangleIndex, barycentric)` surface location, bypassing the
+   * viewport-ray raycast step `handlePick` normally performs first
+   * (`raycastTarget` — itself a thin wrapper around the `raycastMesh`
+   * worker job, already covered on its own by
+   * `packages/kernel-workers/src/bvhJobs.test.ts` and
+   * e2e/phase1.spec.ts's point-to-point measurement test). Exists because a
+   * real screen-pixel click cannot reliably land on the sub-millimeter seed
+   * location a margin proposal needs on a real, dense, ~250k-triangle
+   * clinical scan at whole-arch camera framing (curvature-ridge walk seeds
+   * are sensitive to which triangle they land on — see
+   * `packages/kernel/src/margin/marginRidge.ts`'s own module doc) — see
+   * e2e/phase3.spec.ts's top doc for the full reasoning and how the
+   * `(triangleIndex, barycentric)` seed passed in is itself derived
+   * (reusing `scripts/margin-acceptance.ts`'s own "ambient centroid of a
+   * committed hand-traced reference, `snapToSurface`-projected" method).
+   * Everything downstream of the seed — the real curvature-ridge walk
+   * (`proposeMargin` worker job), geodesic segment resampling, journal
+   * commit — runs completely for real, unmodified; only the "which
+   * triangle did this ray hit" step is skipped. Only ever called from
+   * `engine/testHooks.ts`, itself only installed in DEV builds (see that
+   * module's doc) — never reachable from a production build or from any
+   * other production code path.
+   */
+  async seedProposeForTest(triangleIndex: number, barycentric: readonly [number, number, number]): Promise<void> {
+    const store = useMarginStore.getState();
+    if (store.phase !== 'active' || store.busy) return;
+    if (store.mode !== 'auto' || store.anchors.length !== 0) return;
+    const record = this.targetRecordOrThrow();
+    const point = evaluateSurfacePointOnMesh(record, triangleIndex, barycentric);
+    await this.runPropose({ point, triangleIndex, barycentric });
+  }
+
   // ---------------------------------------------------------------------
   // Auto-propose
   // ---------------------------------------------------------------------

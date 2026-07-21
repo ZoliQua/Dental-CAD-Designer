@@ -30,8 +30,30 @@
 // no `window.__dqcadTestHooks__` at all). Playwright's `webServer` always
 // runs `npm run dev` (see playwright.config.ts), so it's present for every
 // e2e run.
+//
+// ## Phase 3 Task 11 additions
+//
+// e2e/phase3.spec.ts's margin/axis flow needs two more narrow, read-only-or-
+// deliberately-test-only seams, same spirit as `getCameraState`/
+// `worldToCanvasPoint` above (real pipeline underneath; only the "how do we
+// get an exact input/read an internal result" step is test-assisted):
+//   - `seedMarginPropose` — see `engine/marginEditor.ts`'s
+//     `seedProposeForTest` doc for the full reasoning (bypasses only the
+//     screen-pixel-to-ray step of a real click; the real `proposeMargin`
+//     worker job runs unmodified).
+//   - `getAxisHeatmapOverlay` — the live undercut heatmap is a Three.js
+//     per-vertex color buffer (`engine/axis.ts`'s `AxisHeatmapOverlay`), not
+//     a DOM element or a screenshot-checkable pixel — reading
+//     `axisEngine.getHeatmapOverlay()` directly is this repo's established
+//     "assert real engine state, not a screenshot" convention (this file's
+//     top doc) applied to a case with no DOM surface at all to assert
+//     against.
+import { axisEngine } from './axis';
 import { caseStore } from './caseStore';
+import { marginEditor } from './marginEditor';
 import { getActiveSceneManager } from './viewerController';
+import { useAxisStore } from '../state/axisStore';
+import { useMarginStore } from '../state/marginStore';
 
 export interface DqcadCameraState {
   position: readonly [number, number, number];
@@ -57,6 +79,40 @@ export interface DqcadTestHooks {
    * Returns `null` if the viewport hasn't mounted or the point is outside
    * the camera's near/far range (see `SceneManager.projectToScreen`'s doc). */
   worldToCanvasPoint(point: readonly [number, number, number]): DqcadCanvasPoint | null;
+  /** DEV/TEST-ONLY margin-tool seed — see this module's top doc and
+   * `engine/marginEditor.ts`'s `seedProposeForTest` doc. Resolves once the
+   * real `proposeMargin` worker job (and the store update it feeds) has
+   * settled, one way or another (success sets `anchors`; a typed
+   * `NoRidgeFoundError`/`NoClosureError` sets the panel's error state) — a
+   * caller awaiting this can immediately read anchor state, no polling. */
+  seedMarginPropose(
+    triangleIndex: number,
+    barycentric: readonly [number, number, number],
+  ): Promise<void>;
+  /** Read-only: the CURRENT live margin anchors' world-frame positions (or
+   * `null` before any anchors exist) — used to compute a real drag gesture's
+   * exact pixel target via `worldToCanvasPoint` above, same "know the exact
+   * 3D point, then drive a real pointer event at its exact projected pixel"
+   * pattern as the point-to-point measurement test in e2e/phase1.spec.ts. */
+  getMarginAnchorPositions(): readonly (readonly [number, number, number])[] | null;
+  /** Read-only: a light summary of the live undercut heatmap overlay
+   * (`engine/axis.ts`'s `AxisHeatmapOverlay`) — `null` while the heatmap is
+   * off, no target scan is set, or no heatmap colors have been computed yet;
+   * otherwise the vertex-color-buffer length and whether it holds any
+   * genuinely non-uniform (not-all-identical) values, i.e. a REAL computed
+   * heatmap rather than an all-zero/uninitialized buffer. */
+  getAxisHeatmapOverlay(): { nodeId: string; colorCount: number; hasVariation: boolean } | null;
+  /** Read-only: the axis tool's CURRENT `direction` vector — `axisEngine.
+   * start()` seeds this from `restoration.insertionAxis` verbatim (see
+   * `state/axisStore.ts`'s `start` action), so reading this immediately
+   * after `axis-start-button` is clicked (before any suggest/manual
+   * override) is exactly "what insertion axis did this restoration
+   * persist" — used by e2e/phase3.spec.ts's reload-restore check, since
+   * `confirmed` itself is deliberately session-scoped (resets to `false`
+   * on every fresh `start()`, per that store's own doc) and so cannot be
+   * used to prove restoration on its own. `null` before the tool has been
+   * started. */
+  getAxisDirection(): readonly [number, number, number] | null;
 }
 
 declare global {
@@ -80,6 +136,31 @@ const hooks: DqcadTestHooks = {
     ];
     const projected = sceneManager.projectToScreen(renderPoint);
     return projected ? { x: projected.xPx, y: projected.yPx } : null;
+  },
+  async seedMarginPropose(triangleIndex, barycentric) {
+    await marginEditor.seedProposeForTest(triangleIndex, barycentric);
+  },
+  getMarginAnchorPositions() {
+    const anchors = useMarginStore.getState().anchors;
+    if (anchors.length === 0) return null;
+    return anchors.map((a) => a.position);
+  },
+  getAxisHeatmapOverlay() {
+    const overlay = axisEngine.getHeatmapOverlay();
+    if (!overlay) return null;
+    const colors = overlay.colors;
+    let hasVariation = false;
+    for (let i = 1; i < colors.length; i++) {
+      if (colors[i] !== colors[0]) {
+        hasVariation = true;
+        break;
+      }
+    }
+    return { nodeId: overlay.nodeId, colorCount: colors.length, hasVariation };
+  },
+  getAxisDirection() {
+    const store = useAxisStore.getState();
+    return store.status === 'idle' ? null : store.direction;
   },
 };
 
