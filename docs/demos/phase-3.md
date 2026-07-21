@@ -4,7 +4,7 @@ Status: **DONE, with one criterion honestly PENDING** (Task 11 — e2e, docs,
 acceptance wrap-up; the final Phase 3 task). Branch `phase-3-margin-axis`.
 `KERNEL_VERSION` at phase end: **0.7.0**.
 
-Phase acceptance criteria (`docs/plans/phase-3-margin-axis.md:5`, itself
+Phase acceptance criteria (`PLAN.md:188 (amended 2026-07-15; paraphrased below — see PLAN.md for the verbatim text)`, itself
 quoting `PLAN.md`, **AMENDED 2026-07-15** after Task 8's honest BLOCKED
 verdict — see "Amendment history" below):
 

@@ -2,7 +2,7 @@
 
 Decomposition of PLAN.md Phase 3 into dispatchable tasks. Branch: `phase-3-margin-axis` (from `main` dcde2e2). Milestone M3 "Margin master".
 
-**Phase acceptance (PLAN.md):** on 3 real prep fixtures, auto margin proposal is within 100 µm (mean) of a hand-traced reference polyline for ≥ 90% of its length; margin validation rejects seeded self-intersections; undercut map on a tilted cylinder matches analytic expectation *(already pre-verified in Phase 2 Task 9: 2.3e-15 rel. error — cite, re-assert via the existing test, and add the UI-facing µm-depth heatmap this phase)*.
+**Phase acceptance (PLAN.md:188, AMENDED 2026-07-15 — the authoritative text lives there; summary):** auto margin proposal within 100 µm (mean) of the hand-traced reference along the ridge-VISIBLE portion for ≥ 3 preps, with per-tooth visible-coverage honestly reported (auto-proposal is a proposal, never final); the original full-length criterion is additionally demonstrated on a scan-visible (retraction-cord) fixture when supplied; margin validation rejects seeded self-intersections; undercut map on a tilted cylinder matches analytic expectation *(already pre-verified in Phase 2 Task 9: 2.3e-15 rel. error — cite, re-assert via the existing test, and add the UI-facing µm-depth heatmap this phase)*.
 
 **Real prep data:** `arch-case-01` UpperJaw contains FOUR shoulder-prepped teeth — FDI **12, 11, 21, 22**. Four real preps satisfy "3 real prep fixtures". The project owner (a dentist) hand-traces the reference margin polylines in the margin editor (Task 7 — user-in-the-loop); references are committed as anonymized fixtures.
 
