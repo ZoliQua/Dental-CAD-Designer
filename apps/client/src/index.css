@@ -806,6 +806,14 @@ body {
   box-shadow: 0 0 0 2px color-mix(in srgb, #e0a020 40%, transparent);
 }
 
+/* Bulk multi-select (shift-click — Phase 3 editor enhancements): visually
+   distinct from the single amber selection so a mixed state stays legible. */
+.margin-overlay__handle--multi-selected {
+  border-color: #d04545;
+  background: color-mix(in srgb, #d04545 30%, var(--color-bg-elevated));
+  box-shadow: 0 0 0 2px color-mix(in srgb, #d04545 40%, transparent);
+}
+
 .margin-overlay__handle--dragging {
   cursor: grabbing;
   background: var(--color-accent);
@@ -839,6 +847,14 @@ body {
   font-size: 0.8rem;
   color: var(--color-text-muted);
   margin-bottom: 0.4rem;
+}
+
+/* Anchor-count slider (Phase 3 editor enhancements, task 1). */
+.margin-panel__anchor-count input[type='range'] {
+  display: block;
+  width: 100%;
+  margin: 0.3rem 0 0.15rem;
+  accent-color: var(--color-accent);
 }
 
 .margin-panel__error {

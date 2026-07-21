@@ -75,6 +75,7 @@ import {
   type ProposeMarginResult,
   type MarginLinePayload,
   type ValidateMarginResult,
+  type SectionMeshResult,
 } from '@dqcad/kernel-workers';
 import { APP_VERSION } from '../appVersion';
 import {
@@ -85,6 +86,7 @@ import {
   type SegmentConfidence,
   type MarginValidationSnapshot,
   type MarginHardFailureKind,
+  type MagnifierSectionSnapshot,
 } from '../state/marginStore';
 import { UNRESOLVED_MARGIN_ANCHOR_TRIANGLE_INDEX } from './caseDocumentMigration';
 import { caseStore } from './caseStore';
@@ -97,6 +99,57 @@ import { ensureBvhBuilt, getPool } from './workers';
  * it is exactly the point where the ridge signal along a segment equals the
  * local background (i.e. "no better than noise"), not merely a low number. */
 export const MARGIN_WEAK_CONFIDENCE_THRESHOLD = 0.5;
+
+/** Anchor-count slider range/default (Phase 3 editor-enhancement task 1 —
+ * the dentist project owner's own stated ranges: "a complex margin needs
+ * max 40-50, simple ones 20-30", "especially with 10 prepped teeth" — a
+ * user cannot usefully drag 200+ points). `MIN` 20 / `MAX` 200 are the
+ * brief's own literal slider bounds (the dentist can still freely choose 30
+ * or lower for a case they judge acceptable).
+ *
+ * `DEFAULT` is 50, NOT the dentist's own literal "suggest 30" comfort
+ * figure — a deliberate, MEASURED override (test/golden/
+ * margin-anchor-count-fidelity.test.ts, run against the real golden
+ * tooth-11 proposal): the resampled-polyline deviation between a sparser
+ * anchor set's geodesic chain and the dense 261-anchor reference curve
+ * measured mean=71.05um/max=266.45um at target=20, mean=67.56um/
+ * max=272.93um at target=30, and mean=54.63um/max=288.89um at target=40 —
+ * ALL exceeding this task's own 50um mean-deviation guardrail on this real,
+ * clinically-challenging fixture. Only target=50 crosses under it
+ * (mean=40.89um/max=222.80um). Per the brief's own explicit instruction
+ * ("if thinning anchors materially degrades the dense curve (>50µm), say so
+ * and cap the default slider suggestion accordingly"), this measured result
+ * — not the dentist's own unvalidated guess — sets the shipped default. See
+ * that test file's own module doc for the full table and discussion. */
+export const MARGIN_PROPOSAL_ANCHOR_COUNT_MIN = 20;
+export const MARGIN_PROPOSAL_ANCHOR_COUNT_MAX = 200;
+export const MARGIN_PROPOSAL_ANCHOR_COUNT_DEFAULT = 50;
+
+/** ROI radius (mm) for `updateMagnifierSection`'s `sectionMesh` query
+ * (Phase 3 editor-enhancement task 3) — generously larger than the
+ * magnifier's own visible footprint at comfortable zoom
+ * (ui/MarginOverlay.tsx's `MAGNIFIER_SOURCE_CROP_PX` samples a small
+ * screen-space patch, typically well under this many mm of real surface for
+ * a several-mm-scale prep) so the rendered section is never visibly
+ * truncated by the ROI boundary in normal use, while still measurably
+ * cheaper than a full-mesh query (this task's report:
+ * `sectionMeshRoiPerf.test.ts`, kernel-workers, measured ~0.44-0.49x the
+ * full-mesh cost on the real 250k-tri upperjaw at this radius). NOT a
+ * clinical parameter (CLAUDE.md's clinical-profiles rule doesn't apply — a
+ * display-only preview radius, same "kernel/UX algorithmic default, not a
+ * clinical one" precedent as `MARGIN_SEARCH_RADIUS_MM`). */
+export const MARGIN_SECTION_PREVIEW_ROI_RADIUS_MM = 4;
+
+/** Minimum wall-clock interval (ms) between magnifier cross-section run
+ * STARTS (`updateMagnifierSection`'s throttle — see `pumpMagnifierSection`'s
+ * doc for the two-layer design and why the floor exists at all: protecting
+ * the drag-latency budget on the shared affinity worker, this task's report
+ * has the measured numbers). 100ms = 10 previews/s — comfortably fluid for
+ * a positioning aid (the preview is meant to be read while the hand slows
+ * down near the target, not tracked at pointer speed), while capping the
+ * section work at ~1/10th of the pointermove rate. Display-only timing —
+ * never journaled, never part of any geometry computation. */
+export const MAGNIFIER_SECTION_MIN_INTERVAL_MS = 100;
 
 export type MarginErrorKind = 'noRidgeFound' | 'noClosure' | 'other';
 
@@ -320,6 +373,10 @@ class MarginEditorEngine {
    * document (journal is append-only — see this module's top doc). */
   cancel(): void {
     this.pendingDrag = null;
+    // Invalidate any in-flight magnifier-section job (its late result must
+    // not re-publish a snapshot into the now-reset store), drop any
+    // coalesced pending request, and disarm the throttle timer.
+    this.clearMagnifierSection();
     useMarginStore.getState().reset();
   }
 
@@ -327,20 +384,50 @@ class MarginEditorEngine {
     useMarginStore.getState().setMode(mode);
   }
 
+  /** Sets the anchor-count SLIDER value (Phase 3 editor-enhancement task 1)
+   * for the NEXT `runPropose()` call — see `marginStore.
+   * proposalTargetAnchorCount`'s doc. Clamps to
+   * `[MARGIN_PROPOSAL_ANCHOR_COUNT_MIN, MARGIN_PROPOSAL_ANCHOR_COUNT_MAX]`
+   * (defense in depth — ui/MarginPanel.tsx's `<input type="range">` already
+   * enforces this range natively). */
+  setProposalTargetAnchorCount(count: number): void {
+    const clamped = Math.round(Math.min(MARGIN_PROPOSAL_ANCHOR_COUNT_MAX, Math.max(MARGIN_PROPOSAL_ANCHOR_COUNT_MIN, count)));
+    useMarginStore.getState().setProposalTargetAnchorCount(clamped);
+  }
+
   selectAnchor(index: number | null): void {
     useMarginStore.getState().setSelectedAnchorIndex(index);
+  }
+
+  /** Shift-click multi-select toggle (Phase 3 editor-enhancement task 2) —
+   * see `marginStore.selectedAnchorIndices`'s own doc for why this is a
+   * SEPARATE mechanism from `selectAnchor`'s plain single-select, not a
+   * modifier flag on it. */
+  toggleAnchorSelection(index: number): void {
+    const store = useMarginStore.getState();
+    if (index < 0 || index >= store.anchors.length) return;
+    useMarginStore.getState().toggleAnchorSelection(index);
   }
 
   setCursorScreenPos(pos: { xPx: number; yPx: number } | null): void {
     useMarginStore.getState().setCursorScreenPos(pos);
   }
 
-  /** TEST-ONLY: mirrors alignmentEngine.resetForTests()'s convention. */
+  /** TEST-ONLY: mirrors alignmentEngine.resetForTests()'s convention.
+   * Unlike a production `reset()`, ALSO restores the anchor-count slider to
+   * its default (`marginStore.reset` deliberately preserves it across
+   * sessions — see that store's `start` comment — but tests must not leak a
+   * previous test's slider value into the next). */
   resetForTests(): void {
     this.hasCommittedThisSession = false;
     this.dragGeneration = 0;
     this.pendingDrag = null;
+    this.lastProposalSeed = null;
+    this.lastProposalTargetAnchorCount = null;
+    this.clearMagnifierSection();
+    this.lastMagnifierSectionStartMs = -Infinity;
     useMarginStore.getState().reset();
+    useMarginStore.getState().setProposalTargetAnchorCount(MARGIN_PROPOSAL_ANCHOR_COUNT_DEFAULT);
   }
 
   // ---------------------------------------------------------------------
@@ -400,12 +487,19 @@ class MarginEditorEngine {
 
   private async runPropose(seed: RayHit): Promise<void> {
     const contentHash = this.targetContentHashOrThrow();
+    // Phase 3 editor-enhancement task 1: the panel's anchor-count slider
+    // (`marginStore.proposalTargetAnchorCount`) is read HERE, at the
+    // moment propose actually runs — not earlier — so a slider change made
+    // right up until the seed click still applies (the slider is only ever
+    // shown before any anchor exists, per ui/MarginPanel.tsx, so there is
+    // no "propose already ran, slider still visible" race to worry about).
+    const targetAnchorCount = useMarginStore.getState().proposalTargetAnchorCount;
     useMarginStore.getState().setProposing();
     try {
       await ensureBvhBuilt(contentHash, this.targetRecordOrThrow().positions, this.targetRecordOrThrow().indices);
       const result: ProposeMarginResult = await getPool().run(
         'proposeMargin',
-        { contentHash, seed: { triangleIndex: seed.triangleIndex, barycentric: seed.barycentric } },
+        { contentHash, seed: { triangleIndex: seed.triangleIndex, barycentric: seed.barycentric }, targetAnchorCount },
         {
           affinityKey: contentHash,
           onProgress: (fraction) => {
@@ -427,6 +521,7 @@ class MarginEditorEngine {
       const segmentConfidence: SegmentConfidence = Array.from(result.segmentConfidence);
       const segments = await this.geodesicSegmentsForClosedLoop(anchors, contentHash);
       this.lastProposalSeed = seed;
+      this.lastProposalTargetAnchorCount = targetAnchorCount;
       useMarginStore.getState().setActive({
         anchors,
         segments,
@@ -442,6 +537,10 @@ class MarginEditorEngine {
   }
 
   private lastProposalSeed: RayHit | null = null;
+  /** Mirrors `lastProposalSeed`'s own "captured at propose time, attached to
+   * whichever gesture turns out to be the session's FIRST commit" pattern —
+   * see `commit()`'s `seedParams` doc. */
+  private lastProposalTargetAnchorCount: number | null = null;
 
   private handleProposeError(error: unknown): void {
     const isNoRidge = error instanceof NoRidgeFoundError || (error instanceof Error && error.name === 'NoRidgeFoundError');
@@ -674,6 +773,55 @@ class MarginEditorEngine {
     await this.commit(anchors, segments, closed, null, true, 'delete-anchor', { deletedIndex: index });
   }
 
+  /**
+   * Bulk-deletes every anchor currently in `marginStore.selectedAnchorIndices`
+   * (Phase 3 editor-enhancement task 2 — "I can't delete points in groups")
+   * — ONE coalesced `margin-edit` commit/journal entry for the WHOLE batch,
+   * not one per deleted anchor. Refuses (no-op) if deleting all of them
+   * would drop below the same structural floor `deleteSelectedAnchor` itself
+   * enforces (2 open / 3 closed).
+   *
+   * Implementation: repeatedly applies `deleteSelectedAnchor`'s own proven
+   * single-anchor primitives (`planAnchorDeletion`/
+   * `rebuildSegmentsAfterDeletion`) against a local WORKING COPY of
+   * `anchors`/`segments`, one index at a time, in DESCENDING order —
+   * deleting from the highest index down means every not-yet-processed
+   * index is still valid against the shrinking array (removing a HIGHER
+   * index never shifts a LOWER one), so this is exactly equivalent to the
+   * user deleting them one at a time by hand, just without a commit (and a
+   * geodesic-recompute round trip) between each step — only the FINAL
+   * result is committed/journaled, once.
+   */
+  async deleteSelectedAnchors(): Promise<void> {
+    const store = useMarginStore.getState();
+    const indices = [...store.selectedAnchorIndices]
+      .filter((i) => i >= 0 && i < store.anchors.length)
+      .sort((a, b) => a - b);
+    if (indices.length === 0) return;
+    const minCount = store.closed ? 3 : 2;
+    if (store.anchors.length - indices.length < minCount) return;
+    const contentHash = this.targetContentHashOrThrow();
+    const closed = store.closed;
+
+    let anchors = store.anchors.slice();
+    let segments = store.segments.slice();
+    for (const index of [...indices].sort((a, b) => b - a)) {
+      const plan = planAnchorDeletion(anchors.length, closed, index);
+      let bridging: LiveMarginSegment | null = null;
+      if (plan.needsBridging) {
+        bridging = await this.geodesicSegmentBetween(anchors[plan.prevAnchorIdx]!, anchors[plan.nextAnchorIdx]!, contentHash);
+      }
+      anchors = anchors.filter((_, i) => i !== index);
+      segments = rebuildSegmentsAfterDeletion(segments, plan, bridging);
+    }
+
+    await this.commit(anchors, segments, closed, null, true, 'delete-anchors-bulk', {
+      deletedIndices: indices,
+      deletedCount: indices.length,
+    });
+    useMarginStore.getState().clearAnchorSelection();
+  }
+
   /** Explicit close/open toggle (deliverable 2). Closing requires ≥ 3
    * anchors (same minimum as any closed margin) and works identically for a
    * fresh, never-committed manual trace (this IS that trace's "explicit
@@ -698,6 +846,127 @@ class MarginEditorEngine {
     );
     const segments = [...store.segments, closingSegment];
     await this.commit(store.anchors, segments, true, null, true, 'toggle-close', {});
+  }
+
+  // ---------------------------------------------------------------------
+  // Magnifier cross-section preview (Phase 3 editor-enhancement task 3 —
+  // "the magnifier is good — it could also show the scan's cross-section
+  // ... easier to place points")
+  // ---------------------------------------------------------------------
+
+  /**
+   * Requests a fresh magnifier cross-section through the cursor's current
+   * world hit point — the throttled entry point ui/MarginOverlay.tsx calls
+   * from every pointermove path that already drives the magnifier's pixel
+   * crop (hover-while-placing AND active-drag alike), fire-and-forget.
+   *
+   * THROTTLE (this task's brief: "keep dragging fluid"): two layers, both
+   * in `pumpMagnifierSection` (see its doc) — single-flight coalescing to
+   * the LATEST request (never a backlog of stale requests), PLUS a
+   * `MAGNIFIER_SECTION_MIN_INTERVAL_MS` wall-clock floor between run
+   * starts, leading + trailing edge. On the wall-clock use: CLAUDE.md's
+   * "no `Date.now()` in computations" targets JOURNALED geometry results
+   * (determinism of persisted operations) — this is a display-only,
+   * never-persisted UI preview throttle (`performance.now()`, request
+   * TIMING only, never fed into any geometry), a genuinely different
+   * concern; noted explicitly since the wording could otherwise read as
+   * covering this too.
+   */
+  updateMagnifierSection(request: MarginPickRequest): void {
+    if (useMarginStore.getState().phase !== 'active') return;
+    this.pendingMagnifierSectionRequest = request;
+    this.pumpMagnifierSection();
+  }
+
+  /** Drains `pendingMagnifierSectionRequest` subject to BOTH throttle
+   * conditions: single-flight (never two concurrent section runs) AND a
+   * minimum wall-clock interval between run STARTS
+   * (`MAGNIFIER_SECTION_MIN_INTERVAL_MS`) — the latter is what actually
+   * protects the drag-latency budget: the section run shares the SAME
+   * affinity-routed worker as the drag's own `geodesicPath` calls, so
+   * without a floor on the request rate, back-to-back section runs (each
+   * cheap on its own) would interleave with — and delay — every single
+   * drag-update job during a fast pointer move. Leading edge fires
+   * immediately (a fresh hover gets its preview with no artificial lag);
+   * trailing edge is guaranteed via the timer re-arm, so the LAST cursor
+   * position always gets a section (never left showing a stale cut after
+   * the pointer stops). See this task's report for the measured drag-latency
+   * impact with this throttle in place. */
+  private pumpMagnifierSection(): void {
+    if (this.magnifierSectionBusy || this.magnifierSectionTimer !== null) return;
+    const pending = this.pendingMagnifierSectionRequest;
+    if (!pending) return;
+    const elapsedMs = performance.now() - this.lastMagnifierSectionStartMs;
+    if (elapsedMs < MAGNIFIER_SECTION_MIN_INTERVAL_MS) {
+      this.magnifierSectionTimer = setTimeout(() => {
+        this.magnifierSectionTimer = null;
+        this.pumpMagnifierSection();
+      }, MAGNIFIER_SECTION_MIN_INTERVAL_MS - elapsedMs);
+      return;
+    }
+    this.pendingMagnifierSectionRequest = null;
+    void this.runMagnifierSection(pending);
+  }
+
+  /** Clears the live cross-section preview (pointer left the viewport, or
+   * the overlay unmounted) — also invalidates any in-flight/pending request
+   * so a late worker result can never resurrect a stale snapshot (same
+   * generation-counter convention as `dragGeneration`). */
+  clearMagnifierSection(): void {
+    this.magnifierSectionGeneration++;
+    this.pendingMagnifierSectionRequest = null;
+    if (this.magnifierSectionTimer !== null) {
+      clearTimeout(this.magnifierSectionTimer);
+      this.magnifierSectionTimer = null;
+    }
+    useMarginStore.getState().setMagnifierSection(null);
+  }
+
+  private magnifierSectionBusy = false;
+  private magnifierSectionGeneration = 0;
+  private pendingMagnifierSectionRequest: MarginPickRequest | null = null;
+  private magnifierSectionTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastMagnifierSectionStartMs = -Infinity;
+
+  private async runMagnifierSection(request: MarginPickRequest): Promise<void> {
+    this.magnifierSectionBusy = true;
+    this.lastMagnifierSectionStartMs = performance.now();
+    const generation = ++this.magnifierSectionGeneration;
+    try {
+      const hit = await this.raycastTarget(request.rayOrigin, request.rayDirection);
+      if (hit === null) {
+        if (generation === this.magnifierSectionGeneration) useMarginStore.getState().setMagnifierSection(null);
+        return;
+      }
+      if (generation !== this.magnifierSectionGeneration) return;
+      const contentHash = this.targetContentHashOrThrow();
+      const store = useMarginStore.getState();
+      const normal = computeMagnifierSectionNormal(
+        store.anchors,
+        store.closed,
+        store.draggingAnchorIndex,
+        hit.point,
+        cameraAlignedFallbackNormal(request.rayDirection),
+      );
+      const result = await getPool().run(
+        'sectionMesh',
+        { contentHash, point: hit.point, normal, roiRadiusMm: MARGIN_SECTION_PREVIEW_ROI_RADIUS_MM },
+        { affinityKey: contentHash },
+      );
+      if (generation !== this.magnifierSectionGeneration) return;
+      useMarginStore.getState().setMagnifierSection(toMagnifierSectionSnapshot(result));
+    } catch (err) {
+      if (generation === this.magnifierSectionGeneration) {
+        console.error('marginEditor.updateMagnifierSection: sectionMesh job failed', err);
+        useMarginStore.getState().setMagnifierSection(null);
+      }
+    } finally {
+      this.magnifierSectionBusy = false;
+      // Trailing edge: whatever request arrived while this run was in
+      // flight goes back through the SAME interval gate (never a direct
+      // re-run — that would defeat the wall-clock floor for a slow worker).
+      this.pumpMagnifierSection();
+    }
   }
 
   // ---------------------------------------------------------------------
@@ -1173,7 +1442,12 @@ class MarginEditorEngine {
     const seedParams = isFirstAutoProposeCommit
       ? {
           seed: { triangleIndex: this.lastProposalSeed!.triangleIndex, barycentric: this.lastProposalSeed!.barycentric },
-          proposalDefaults: { searchRadiusMm: MARGIN_SEARCH_RADIUS_MM },
+          // `targetAnchorCount` (Phase 3 editor-enhancement task 1): the
+          // slider value actually used for THIS session's `runPropose` call
+          // — journaled alongside `searchRadiusMm` for the same
+          // journal-replay-reproducibility reason (T8 review, this file's
+          // top doc) — `null` when the default (dense, no-option) path ran.
+          proposalDefaults: { searchRadiusMm: MARGIN_SEARCH_RADIUS_MM, targetAnchorCount: this.lastProposalTargetAnchorCount },
         }
       : {};
 
@@ -1312,6 +1586,127 @@ export function rebuildSegmentsAfterDeletion<S>(oldSegments: readonly S[], plan:
     newSegments.push(oldSegments[oldIdx]!);
   }
   return newSegments;
+}
+
+// ---------------------------------------------------------------------------
+// Magnifier cross-section preview — pure helpers (Phase 3 editor-enhancement
+// task 3). Exported specifically so this task's node-lane tests
+// (marginEditor.test.ts) can exercise the plane-DERIVATION logic directly,
+// without a worker/kernel round trip — same "pure gesture logic" testing
+// convention this module's top doc already establishes for
+// `summarizeAnchorDiff`/`planAnchorDeletion`/`rebuildSegmentsAfterDeletion`.
+// ---------------------------------------------------------------------------
+
+function vecSub3(a: Vec3, b: Vec3): Vec3 {
+  return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+}
+function vecLength3(v: Vec3): number {
+  return Math.hypot(v[0], v[1], v[2]);
+}
+function vecNormalize3(v: Vec3): Vec3 {
+  const len = vecLength3(v);
+  return len > 0 ? [v[0] / len, v[1] / len, v[2] / len] : [0, 0, 0];
+}
+function vecCross3(a: Vec3, b: Vec3): Vec3 {
+  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+}
+
+/** Below this cross-product magnitude, `rayDirection` is treated as too
+ * close to parallel with the world-up axis for `cross(rayDirection, [0, 1,
+ * 0])` to give a numerically meaningful "camera right" direction (looking
+ * straight up/down) — `cameraAlignedFallbackNormal` falls back to crossing
+ * against world-X instead in that case. */
+const CAMERA_FALLBACK_DEGENERACY_EPSILON = 1e-6;
+
+/**
+ * "Camera-aligned fallback" plane normal (`computeMagnifierSectionNormal`'s
+ * own doc, "no established direction yet" case) — the camera's own "right"
+ * direction at the cursor: `normalize(cross(rayDirection, worldUp))`, so the
+ * preview section is a roughly VERTICAL cut through the cursor point, facing
+ * across the view (a standard, easily-oriented convention — the same
+ * "vertical cut facing the viewer" a person visualizes when told "show me a
+ * cross-section here" with no other direction implied). Falls back to
+ * crossing against world-X when `rayDirection` is itself near-parallel to
+ * world-up (looking straight up/down), where the primary cross product would
+ * be near-zero/numerically unstable — mirrors `@dqcad/kernel`'s
+ * `normalizePlane`'s own "least-aligned axis" defensive pattern, simplified
+ * to 2 candidates since only the degenerate world-up case is actually
+ * reachable from a camera ray (a camera ray is never parallel to a
+ * SECOND arbitrary axis at the same time).
+ */
+export function cameraAlignedFallbackNormal(rayDirection: Vec3): Vec3 {
+  const worldUp: Vec3 = [0, 1, 0];
+  let n = vecCross3(rayDirection, worldUp);
+  if (vecLength3(n) < CAMERA_FALLBACK_DEGENERACY_EPSILON) {
+    n = vecCross3(rayDirection, [1, 0, 0]);
+  }
+  return vecNormalize3(n);
+}
+
+/**
+ * Derives the magnifier cross-section plane's NORMAL (this task's brief:
+ * "plane perpendicular to the margin's local direction... or camera-aligned
+ * fallback when no direction exists yet") — a plane perpendicular to a
+ * direction vector has that vector AS its normal, so this function's return
+ * value is used directly as `sectionMesh`'s `normal` parameter.
+ *
+ * Direction sources, in priority order:
+ * 1. **Dragging an established anchor** (`draggingAnchorIndex !== null`,
+ *    `>= 2` anchors): the tangent between the anchor's STABLE neighbors
+ *    either side of it (never the dragged anchor's OWN — currently
+ *    changing — position, which would make the section plane visibly jitter
+ *    frame-to-frame as the anchor itself moves through it). At an open
+ *    curve's endpoint (only one neighbor exists), falls back to the
+ *    neighbor-to-cursor direction.
+ * 2. **Extending an open curve** (not dragging, `>= 1` anchor, not closed):
+ *    the direction from the last placed anchor to the cursor — the tangent
+ *    of the segment ABOUT TO be created.
+ * 3. **No established direction yet** (a fresh session, zero anchors, or a
+ *    closed loop with no drag in progress): `cameraFallbackNormal` (see
+ *    `cameraAlignedFallbackNormal`'s own doc).
+ */
+export function computeMagnifierSectionNormal(
+  anchors: readonly LiveMarginAnchor[],
+  closed: boolean,
+  draggingAnchorIndex: number | null,
+  hitPoint: Vec3,
+  cameraFallbackNormal: Vec3,
+): Vec3 {
+  const n = anchors.length;
+  if (draggingAnchorIndex !== null && n >= 2) {
+    const idx = draggingAnchorIndex;
+    const prevIdx = closed ? (idx - 1 + n) % n : idx > 0 ? idx - 1 : null;
+    const nextIdx = closed ? (idx + 1) % n : idx < n - 1 ? idx + 1 : null;
+    if (prevIdx !== null && nextIdx !== null) {
+      return vecNormalize3(vecSub3(anchors[nextIdx]!.position, anchors[prevIdx]!.position));
+    }
+    if (prevIdx !== null) return vecNormalize3(vecSub3(hitPoint, anchors[prevIdx]!.position));
+    if (nextIdx !== null) return vecNormalize3(vecSub3(anchors[nextIdx]!.position, hitPoint));
+  } else if (n >= 1 && !closed) {
+    return vecNormalize3(vecSub3(hitPoint, anchors[n - 1]!.position));
+  }
+  return cameraFallbackNormal;
+}
+
+/** Translates a `sectionMesh` worker job result (`@dqcad/kernel-workers`'
+ * `SectionMeshResult`) into `state/marginStore.ts`'s local
+ * `MagnifierSectionSnapshot` — the same "duplicate the trivial shape at the
+ * layer boundary" convention `classifyValidationResult` (this module, above)
+ * already follows for the analogous `validateMargin` translation. */
+function toMagnifierSectionSnapshot(result: SectionMeshResult): MagnifierSectionSnapshot {
+  const polylines: { points: readonly (readonly [number, number])[]; closed: boolean }[] = [];
+  let offset = 0;
+  for (let i = 0; i < result.polylineCounts.length; i++) {
+    const count = result.polylineCounts[i]!;
+    const points: [number, number][] = [];
+    for (let k = 0; k < count; k++) {
+      const idx = offset + k;
+      points.push([result.points2dFlat[idx * 2]!, result.points2dFlat[idx * 2 + 1]!]);
+    }
+    polylines.push({ points, closed: result.polylineClosed[i] === 1 });
+    offset += count;
+  }
+  return { polylines, cursorUV: [result.cursorUV[0], result.cursorUV[1]] };
 }
 
 /** Module-level singleton — same pattern as engine/alignment.ts's

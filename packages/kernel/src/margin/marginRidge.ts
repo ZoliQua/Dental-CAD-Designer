@@ -1236,6 +1236,98 @@ export function simplifyRidgeLoopIndices(
 }
 
 // ---------------------------------------------------------------------------
+// Target-anchor-count simplification (Phase 3 editor-enhancement task 1)
+// ---------------------------------------------------------------------------
+
+/** Binary-search multiplier bounds for `simplifyToTargetAnchorCount` — wide
+ * enough to reach both extremes on any real loop scale this module targets
+ * (a few hundred to a few thousand walked vertices): `lo` drives the
+ * effective budget toward zero (every loop vertex becomes its own anchor,
+ * `anchors.length -> loop.length`), `hi` drives it toward infinity (no
+ * anchor ever clears budget, collapsing to `simplifyRidgeLoopIndices`'s own
+ * 3-anchor structural floor). */
+const TARGET_ANCHOR_SEARCH_MIN_MULTIPLIER = 1e-6;
+const TARGET_ANCHOR_SEARCH_MAX_MULTIPLIER = 1e6;
+const TARGET_ANCHOR_SEARCH_ITERATIONS = 40;
+
+/**
+ * Curvature-adaptive anchor simplification TARGETING `targetAnchorCount`
+ * anchors — see `ProposeMarginLoopOptions.targetAnchorCount`'s own doc for
+ * the caller-facing contract. Implementation: `simplifyRidgeLoopIndices`'s
+ * two budgets (`baseAngleBudgetRad`, `baseMaxSpacingMm`) are SCALED TOGETHER
+ * by a single multiplier `m` — never re-weighted relative to each other, so
+ * the angle-vs-arc-length BALANCE those two defaults encode (tight on
+ * curves, loose on straights) is preserved at every anchor count this
+ * search can reach; only the overall density changes. `anchors.length` is,
+ * in practice, a NON-INCREASING step function of `m` (a looser budget
+ * delays each individual threshold crossing; note this is a strong
+ * empirical property, not a strict theorem — the march RESETS both
+ * accumulators at every placed anchor, so a delayed early placement can in
+ * principle re-phase later crossings; the analytic test asserts the
+ * monotone outcome directly on the fixture, and the `best`-tracking below
+ * means any local non-monotonicity could only cost approximation accuracy
+ * for that one target, never determinism or validity), so a
+ * fixed-iteration binary search in LOG space (`m` spans many orders of
+ * magnitude — the walked loop's own vertex density varies a lot between a
+ * tight analytic ring and a noisy real scan) deterministically converges to
+ * the closest reachable anchor count. `TARGET_ANCHOR_SEARCH_ITERATIONS`
+ * fixed iterations (not "until diff === 0"): most integer targets are not
+ * exactly reachable (see `@errorBound` below), so a plain "stop when exact"
+ * loop would run the full budget anyway for the common case — fixing the
+ * count keeps this deterministic AND bounds its cost (`O(iterations x
+ * loop.length)`, trivial at this module's scale) independent of whether the
+ * target happens to be reachable.
+ *
+ * @errorBound "Approximate" is load-bearing: because anchor count only
+ * takes discrete step values as `m` varies, the result can land within a
+ * handful of anchors of `targetAnchorCount` rather than exactly on it, and
+ * can never exceed `loop.length` or go below the 3-anchor structural floor
+ * `simplifyRidgeLoopIndices` itself guarantees. This function never changes
+ * the WALKED loop itself (identical regardless of `m`) — only WHICH of its
+ * vertices become anchors. What DOES change with fewer anchors, and is
+ * measured (not merely asserted) in this task's report: the caller-side
+ * geodesic-chained resampled polyline built BETWEEN sparser anchors
+ * (`apps/client/src/engine/marginEditor.ts`'s `geodesicSegmentsForClosedLoop`)
+ * can deviate further from the walked ridge than a denser anchor set would
+ * — a geodesic chord between two anchors need not hug every wiggle the walk
+ * traced between them. The walked loop and per-segment confidence
+ * (`segmentConfidence`, computed against the SAME walked loop before this
+ * simplification narrows it) are entirely unaffected by `m`.
+ */
+function simplifyToTargetAnchorCount(
+  mesh: IndexedMesh,
+  loop: readonly number[],
+  targetAnchorCount: number,
+  baseAngleBudgetRad: number,
+  baseMaxSpacingMm: number,
+): number[] {
+  if (loop.length <= 3) return loop.slice();
+  const clampedTarget = Math.max(3, Math.min(Math.round(targetAnchorCount), loop.length));
+
+  let best = simplifyRidgeLoopIndices(mesh, loop, baseAngleBudgetRad, baseMaxSpacingMm);
+  let bestDiff = Math.abs(best.length - clampedTarget);
+
+  let lo = TARGET_ANCHOR_SEARCH_MIN_MULTIPLIER; // smallest budget -> most anchors
+  let hi = TARGET_ANCHOR_SEARCH_MAX_MULTIPLIER; // largest budget -> fewest anchors (3-anchor floor)
+
+  for (let i = 0; i < TARGET_ANCHOR_SEARCH_ITERATIONS && bestDiff > 0; i++) {
+    const mid = Math.sqrt(lo * hi); // geometric-mean midpoint (log-space binary search)
+    const candidate = simplifyRidgeLoopIndices(mesh, loop, baseAngleBudgetRad * mid, baseMaxSpacingMm * mid);
+    const diff = Math.abs(candidate.length - clampedTarget);
+    if (diff < bestDiff) {
+      best = candidate;
+      bestDiff = diff;
+    }
+    if (candidate.length > clampedTarget) {
+      lo = mid; // still too many anchors -> loosen the budget (larger multiplier)
+    } else {
+      hi = mid; // too few (or exactly enough) anchors -> tighten the budget (smaller multiplier)
+    }
+  }
+  return best;
+}
+
+// ---------------------------------------------------------------------------
 // Per-segment confidence
 // ---------------------------------------------------------------------------
 
@@ -1314,6 +1406,24 @@ export interface ProposeMarginLoopOptions {
   /** Anchor-simplification straight-run max spacing, mm — default
    * `MARGIN_ANCHOR_MAX_SPACING_MM`. */
   anchorMaxSpacingMm?: number;
+  /** Target anchor count for the FINAL simplified loop (Phase 3
+   * editor-enhancement task 1 — the dentist project owner's "200+
+   * auto-generated points are unusable" feedback). `undefined` (default):
+   * EXACT CURRENT BEHAVIOR — `anchorAngleBudgetRad`/`anchorMaxSpacingMm` (or
+   * their kernel defaults) apply completely unmodified, byte-identical to
+   * every existing golden/analytic test that doesn't pass this option (this
+   * module's own `simplifyRidgeLoopIndices` call path is untouched when this
+   * is `undefined` — see `proposeMarginLoop`'s body). When provided: an
+   * APPROXIMATE, curvature-adaptive target — see
+   * `simplifyToTargetAnchorCount`'s own `@errorBound` doc for the exact
+   * search method and honest semantics (never a uniform re-sample; cannot
+   * exceed the walked loop's own vertex count or go below the 3-anchor
+   * structural floor; the WALKED loop and per-segment confidence are
+   * entirely unaffected — only which of the walked vertices become anchors
+   * changes). Must be finite and `>= 3` (a loop/spline needs >= 3 control
+   * points — same floor `simplifyRidgeLoopIndices` itself already
+   * guarantees unconditionally). */
+  targetAnchorCount?: number;
 }
 
 export interface ProposeMarginLoopResult {
@@ -1373,6 +1483,9 @@ export function proposeMarginLoop(
   if (walkRadiusMm <= 0 || !Number.isFinite(walkRadiusMm)) {
     throw new RangeError(`proposeMarginLoop: walkRadiusMm must be finite and > 0, got ${walkRadiusMm}`);
   }
+  if (opts.targetAnchorCount !== undefined && (!Number.isFinite(opts.targetAnchorCount) || opts.targetAnchorCount < 3)) {
+    throw new RangeError(`proposeMarginLoop: targetAnchorCount must be finite and >= 3, got ${opts.targetAnchorCount}`);
+  }
 
   // Step 2 (locate): bounded region FROM THE SEED — see MARGIN_SEARCH_RADIUS_MM's doc.
   // `findRidgeStart` locates the nearest qualifying vertex AND refines it to
@@ -1395,7 +1508,14 @@ export function proposeMarginLoop(
     walkRadiusMm,
   });
 
-  const anchorVertices = simplifyRidgeLoopIndices(mesh, loop, anchorAngleBudgetRad, anchorMaxSpacingMm);
+  // `targetAnchorCount === undefined` takes the ORIGINAL, byte-identical
+  // `simplifyRidgeLoopIndices` call path (never even calls
+  // `simplifyToTargetAnchorCount`) — see `ProposeMarginLoopOptions.targetAnchorCount`'s
+  // doc for why this matters (default-path golden stability).
+  const anchorVertices =
+    opts.targetAnchorCount === undefined
+      ? simplifyRidgeLoopIndices(mesh, loop, anchorAngleBudgetRad, anchorMaxSpacingMm)
+      : simplifyToTargetAnchorCount(mesh, loop, opts.targetAnchorCount, anchorAngleBudgetRad, anchorMaxSpacingMm);
   // Map each anchor VERTEX back to its position within `loop` (for
   // `segmentConfidence`'s sub-path averaging) — `simplifyRidgeLoopIndices`
   // always returns loop-order vertices, so a single forward scan suffices.

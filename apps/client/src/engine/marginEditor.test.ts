@@ -20,7 +20,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MARGIN_SEARCH_RADIUS_MM, type IntakeReport, type MeshStats } from '@dqcad/kernel-workers';
 import type { FdiTooth, MarginAnchor, MarginLine, Vec3 } from '@dqcad/shared-types';
 import {
@@ -29,6 +29,9 @@ import {
   planAnchorDeletion,
   rebuildSegmentsAfterDeletion,
   summarizeAnchorDiff,
+  cameraAlignedFallbackNormal,
+  computeMagnifierSectionNormal,
+  MARGIN_PROPOSAL_ANCHOR_COUNT_DEFAULT,
   type AnchorDiffSummary,
 } from './marginEditor';
 import { caseStore } from './caseStore';
@@ -36,7 +39,7 @@ import { UNRESOLVED_MARGIN_ANCHOR_TRIANGLE_INDEX } from './caseDocumentMigration
 import { createRestoration } from './restorations';
 import { ensureBvhBuilt, getPool, resetBvhCacheForTests } from './workers';
 import { useCaseStore } from '../state/caseStore';
-import { useMarginStore, type LiveMarginSegment } from '../state/marginStore';
+import { useMarginStore, type LiveMarginAnchor, type LiveMarginSegment } from '../state/marginStore';
 
 const EMPTY_REPORT: IntakeReport = { weldEpsilonMm: 1e-6, steps: [] };
 
@@ -513,10 +516,22 @@ describe('marginEditor — auto-propose success + drag latency (real arch-case-0
     expect(proposed.phase).toBe('active');
     expect(proposed.closed).toBe(true);
     expect(proposed.humanEdited).toBe(false); // fresh, unedited proposal -> "proposed" color
-    expect(proposed.anchors.length).toBeGreaterThan(50); // curvature-adaptive density, real report cites 261
+    // Phase 3 editor-enhancement task 1: `runPropose` now threads the
+    // panel's anchor-count slider (default 50 — NOT the dentist's own
+    // literal "suggest 30", per test/golden/margin-anchor-count-fidelity
+    // .test.ts's measured fidelity-cost override, see
+    // `MARGIN_PROPOSAL_ANCHOR_COUNT_DEFAULT`'s own doc) through as
+    // `targetAnchorCount`, so THIS test (which never touches the slider)
+    // now gets the NEW default ~50-anchor proposal, not the old dense
+    // ~261-anchor one (that dense path is still exercised directly —
+    // byte-identical — by the kernel golden suite and
+    // marginRidge.analytic.test.ts's own "omitted: byte-identical to the
+    // default" test).
+    expect(proposed.anchors.length).toBeGreaterThanOrEqual(30);
+    expect(proposed.anchors.length).toBeLessThanOrEqual(70);
     expect(proposed.segments).toHaveLength(proposed.anchors.length);
     expect(proposed.segmentConfidence).not.toBeNull();
-    console.log(`[marginEditor propose] real upperjaw (${triangleCount} triangles), ${proposed.anchors.length} anchors: ${proposeMs.toFixed(1)}ms`);
+    console.log(`[marginEditor propose] real upperjaw (${triangleCount} triangles), ${proposed.anchors.length} anchors (default target 50): ${proposeMs.toFixed(1)}ms`);
 
     // --- Deliverable 5: measure REAL anchor-drag latency on the real fixture ---
     const dragIndex = Math.floor(proposed.anchors.length / 2);
@@ -548,6 +563,44 @@ describe('marginEditor — auto-propose success + drag latency (real arch-case-0
     const history = useCaseStore.getState().document.history;
     expect(history).toHaveLength(historyBefore + 1); // one coalesced commit, not WARM_CALLS+1
     expect(history.at(-1)!.params.gesture).toBe('drag-anchor');
+
+    // --- Phase 3 editor-enhancement task 3: measure the magnifier
+    // cross-section preview's impact on THIS SAME drag-latency budget. Real
+    // UI wiring (ui/MarginOverlay.tsx) fires `updateMagnifierSection` from
+    // the SAME pointermove handler as `updateAnchorDrag`, on the SAME
+    // affinity-routed worker — reproduced here directly rather than
+    // through the DOM/React layer (this file's own tier-2/3 split, module
+    // doc) by calling both engine methods per simulated drag frame, exactly
+    // matching MarginOverlay.tsx's `handleWindowPointerMove`/
+    // `handlePointerMove` call order.
+    marginEditor.beginAnchorDrag(dragIndex);
+    const WITH_SECTION_CALLS = 20; // spans several MAGNIFIER_SECTION_MIN_INTERVAL_MS (100ms) windows
+    const withSectionTimings: number[] = [];
+    const frameIntervalMs = 16; // ~60fps pointermove cadence
+    for (let i = 0; i < WITH_SECTION_CALLS; i++) {
+      const t0 = performance.now();
+      await marginEditor.updateAnchorDrag(dragRay);
+      marginEditor.updateMagnifierSection(dragRay); // fire-and-forget, same as the real UI
+      withSectionTimings.push(performance.now() - t0);
+      // Simulate real pointermove spacing so the section throttle's
+      // wall-clock floor has a realistic cadence to interact with (an
+      // unthrottled tight loop would never let ANY interval elapse,
+      // understating how often a section run can actually start between
+      // drag frames in real use).
+      await new Promise((resolve) => setTimeout(resolve, frameIntervalMs));
+    }
+    const withSectionMax = Math.max(...withSectionTimings);
+    const withSectionAvg = withSectionTimings.reduce((a, b) => a + b, 0) / withSectionTimings.length;
+    console.log(
+      `[marginEditor drag latency + magnifier section] real upperjaw, ${WITH_SECTION_CALLS} drag-update calls WITH ` +
+        `concurrent updateMagnifierSection requests: max ${withSectionMax.toFixed(2)}ms, avg ${withSectionAvg.toFixed(2)}ms ` +
+        `(baseline without section requests, above: max ${maxMs.toFixed(2)}ms, avg ${avgMs.toFixed(2)}ms) — target: < 100ms/edit`,
+    );
+    // The throttled section requests must never blow the SAME per-edit
+    // latency budget the baseline drag test above asserts.
+    expect(withSectionMax).toBeLessThan(100);
+    await marginEditor.endAnchorDrag();
+    marginEditor.clearMagnifierSection();
   }, 60_000);
 });
 
@@ -629,9 +682,37 @@ describe('marginEditor — Task 5 review item 1: seed/proposalDefaults journalin
     expect(seed).toBeDefined();
     expect(seed!.triangleIndex).toBeGreaterThanOrEqual(0);
     expect(seed!.barycentric).toHaveLength(3);
-    const proposalDefaults = op.params.proposalDefaults as { searchRadiusMm: number } | undefined;
+    const proposalDefaults = op.params.proposalDefaults as
+      | { searchRadiusMm: number; targetAnchorCount: number | null }
+      | undefined;
     expect(proposalDefaults).toBeDefined();
     expect(proposalDefaults!.searchRadiusMm).toBe(MARGIN_SEARCH_RADIUS_MM);
+    // Phase 3 editor-enhancement task 1: the anchor-count slider value
+    // ACTUALLY USED by this session's propose (the untouched default here)
+    // is journaled alongside the seed — replay reproducibility.
+    expect(proposalDefaults!.targetAnchorCount).toBe(MARGIN_PROPOSAL_ANCHOR_COUNT_DEFAULT);
+  }, 60_000);
+
+  it('anchor-count slider flows through: propose at targetAnchorCount=30 yields ~30 anchors and journals the chosen value', async () => {
+    const contentHash = 'margin-t1-slider-30';
+    marginEditor.setProposalTargetAnchorCount(30);
+    await proposeOnUpperjaw(23, contentHash);
+
+    const proposed = useMarginStore.getState();
+    // Approximate, curvature-adaptive target (the kernel's own documented
+    // semantics) — a proportional band, not the exact integer.
+    expect(proposed.anchors.length).toBeGreaterThanOrEqual(20);
+    expect(proposed.anchors.length).toBeLessThanOrEqual(45);
+
+    const historyBefore = useCaseStore.getState().document.history.length;
+    await marginEditor.acceptProposal();
+    const history = useCaseStore.getState().document.history;
+    expect(history).toHaveLength(historyBefore + 1);
+    const op = history.at(-1)!;
+    expect(op.params.gesture).toBe('auto-propose');
+    expect(op.params.anchorCount).toBe(proposed.anchors.length);
+    const proposalDefaults = op.params.proposalDefaults as { targetAnchorCount: number | null };
+    expect(proposalDefaults.targetAnchorCount).toBe(30); // the SLIDER value actually used, not the default
   }, 60_000);
 
   it('propose -> accept -> drag: seed/proposalDefaults land on the accept op ONLY — no duplication onto the later drag op', async () => {
@@ -786,5 +867,344 @@ describe('marginEditor — Task 5 review item 4b: concurrent manual handlePick c
     expect(finalState.anchors.length).toBeGreaterThanOrEqual(2); // the first anchor plus at least one racing pick
     expect(finalState.anchors.length).toBeLessThanOrEqual(3);
     expect(finalState.busy).toBe(false); // guard always released, whichever call(s) landed
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 3 editor enhancements, task 3: magnifier cross-section plane
+// derivation (pure — no worker, no mesh; same tier-1 convention as
+// planAnchorDeletion above).
+// ---------------------------------------------------------------------------
+
+function liveAnchor(position: Vec3): LiveMarginAnchor {
+  return { position, triangleIndex: 0, barycentric: [1, 0, 0] };
+}
+
+function dot(a: Vec3, b: Vec3): number {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+describe('cameraAlignedFallbackNormal / computeMagnifierSectionNormal (pure)', () => {
+  const FALLBACK: Vec3 = [1, 0, 0];
+
+  it('fallback normal is unit length and perpendicular to the view ray', () => {
+    const ray: Vec3 = [0.3, -0.5, 0.81];
+    const n = cameraAlignedFallbackNormal(ray);
+    expect(Math.hypot(n[0], n[1], n[2])).toBeCloseTo(1, 12);
+    expect(dot(n, ray)).toBeCloseTo(0, 12);
+  });
+
+  it('fallback stays well-defined looking straight along world-up (degenerate primary cross product)', () => {
+    for (const ray of [[0, 1, 0], [0, -1, 0]] as const) {
+      const n = cameraAlignedFallbackNormal(ray as Vec3);
+      expect(Math.hypot(n[0], n[1], n[2])).toBeCloseTo(1, 12);
+      expect(dot(n, ray as Vec3)).toBeCloseTo(0, 12);
+    }
+  });
+
+  it('no anchors yet: returns the camera fallback unchanged', () => {
+    expect(computeMagnifierSectionNormal([], false, null, [0, 0, 0], FALLBACK)).toEqual(FALLBACK);
+  });
+
+  it('extending an open curve: tangent of the segment about to be created (last anchor -> cursor)', () => {
+    const anchors = [liveAnchor([0, 0, 0]), liveAnchor([1, 0, 0])];
+    const n = computeMagnifierSectionNormal(anchors, false, null, [1, 2, 0], FALLBACK);
+    expect(n[0]).toBeCloseTo(0, 12);
+    expect(n[1]).toBeCloseTo(1, 12);
+    expect(n[2]).toBeCloseTo(0, 12);
+  });
+
+  it('dragging an interior anchor of a closed loop: stable neighbor-to-neighbor tangent, independent of the cursor', () => {
+    const anchors = [liveAnchor([0, 0, 0]), liveAnchor([1, 1, 0]), liveAnchor([2, 0, 0]), liveAnchor([1, -1, 0])];
+    // Dragging anchor 1: tangent = anchors[2] - anchors[0] = [2,0,0] -> +X,
+    // regardless of where the cursor currently is (two different cursor
+    // positions must give the SAME plane — no frame-to-frame jitter).
+    const nA = computeMagnifierSectionNormal(anchors, true, 1, [1, 5, 3], FALLBACK);
+    const nB = computeMagnifierSectionNormal(anchors, true, 1, [-4, 0, 2], FALLBACK);
+    expect(nA).toEqual(nB);
+    expect(nA[0]).toBeCloseTo(1, 12);
+    expect(nA[1]).toBeCloseTo(0, 12);
+    expect(nA[2]).toBeCloseTo(0, 12);
+  });
+
+  it('dragging anchor 0 of a closed loop: wraparound neighbors (last -> 1)', () => {
+    const anchors = [liveAnchor([0, 0, 0]), liveAnchor([1, 1, 0]), liveAnchor([2, 0, 0]), liveAnchor([1, -1, 0])];
+    // Neighbors of anchor 0 on the closed loop: prev = anchors[3] = [1,-1,0],
+    // next = anchors[1] = [1,1,0] -> tangent [0,2,0] -> +Y.
+    const n = computeMagnifierSectionNormal(anchors, true, 0, [0, 0, 0], FALLBACK);
+    expect(n[0]).toBeCloseTo(0, 12);
+    expect(n[1]).toBeCloseTo(1, 12);
+    expect(n[2]).toBeCloseTo(0, 12);
+  });
+
+  it('dragging an open curve ENDPOINT: neighbor-to-cursor direction (only one stable neighbor exists)', () => {
+    const anchors = [liveAnchor([0, 0, 0]), liveAnchor([1, 0, 0]), liveAnchor([2, 0, 0])];
+    // Dragging the last anchor (index 2, open): prev neighbor is anchors[1],
+    // no next -> direction anchors[1] -> cursor.
+    const n = computeMagnifierSectionNormal(anchors, false, 2, [1, 3, 0], FALLBACK);
+    expect(n[0]).toBeCloseTo(0, 12);
+    expect(n[1]).toBeCloseTo(1, 12);
+    // Dragging the FIRST anchor (index 0, open): next neighbor is anchors[1],
+    // no prev -> direction cursor -> anchors[1]... (next - hit).
+    const n0 = computeMagnifierSectionNormal(anchors, false, 0, [1, -3, 0], FALLBACK);
+    expect(n0[0]).toBeCloseTo(0, 12);
+    expect(n0[1]).toBeCloseTo(1, 12);
+  });
+
+  it('closed loop with NO drag in progress: camera fallback (hovering a finished loop has no single local direction)', () => {
+    const anchors = [liveAnchor([0, 0, 0]), liveAnchor([1, 0, 0]), liveAnchor([0, 1, 0])];
+    expect(computeMagnifierSectionNormal(anchors, true, null, [5, 5, 5], FALLBACK)).toEqual(FALLBACK);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 3 editor enhancements, task 2: bulk multi-select state machine (pure
+// store semantics) + bulk deletion journal coalescing (real WorkerPool).
+// ---------------------------------------------------------------------------
+
+describe('marginStore — bulk multi-select semantics', () => {
+  it('toggleAnchorSelection adds then removes; plain single-select clears the bulk set; setActive clears it too', () => {
+    const { nodeId, positions } = registerIcosahedron();
+    const restoration = createRestoration({ type: 'crown', teeth: [16], targetNodeId: nodeId });
+    marginEditor.startForTooth(restoration.id, 16);
+    useMarginStore.getState().setActive({
+      anchors: [0, 1, 2].map((i) => ({ position: pointAt(positions, i), triangleIndex: i, barycentric: [1, 0, 0] })),
+      segments: [],
+      closed: false,
+      segmentConfidence: null,
+      humanEdited: true,
+      mode: 'manual',
+      unresolvedAnchorCount: 0,
+    });
+
+    marginEditor.toggleAnchorSelection(1);
+    marginEditor.toggleAnchorSelection(2);
+    expect([...useMarginStore.getState().selectedAnchorIndices].sort()).toEqual([1, 2]);
+    marginEditor.toggleAnchorSelection(1); // toggle OFF
+    expect([...useMarginStore.getState().selectedAnchorIndices]).toEqual([2]);
+
+    marginEditor.toggleAnchorSelection(99); // out of range -> guarded no-op
+    expect([...useMarginStore.getState().selectedAnchorIndices]).toEqual([2]);
+
+    // A PLAIN single-select always starts a fresh selection (the two
+    // mechanisms never fight — marginStore.selectedAnchorIndices's doc).
+    marginEditor.selectAnchor(0);
+    expect(useMarginStore.getState().selectedAnchorIndices.size).toBe(0);
+    expect(useMarginStore.getState().selectedAnchorIndex).toBe(0);
+
+    // Any fresh anchor set (setActive — every commit publishes through it)
+    // invalidates the selection.
+    marginEditor.toggleAnchorSelection(1);
+    expect(useMarginStore.getState().selectedAnchorIndices.size).toBe(1);
+    useMarginStore.getState().setActive({
+      anchors: [{ position: pointAt(positions, 0), triangleIndex: 0, barycentric: [1, 0, 0] }],
+      segments: [],
+      closed: false,
+      segmentConfidence: null,
+      humanEdited: true,
+      mode: 'manual',
+      unresolvedAnchorCount: 0,
+    });
+    expect(useMarginStore.getState().selectedAnchorIndices.size).toBe(0);
+  });
+});
+
+describe('marginEditor — bulk anchor deletion (real WorkerPool, icosahedron)', () => {
+  async function traceClosedLoop(tooth: FdiTooth, anchorCount: number): Promise<{ restorationId: string }> {
+    const { nodeId, positions } = registerIcosahedron();
+    const restoration = createRestoration({ type: 'crown', teeth: [tooth], targetNodeId: nodeId });
+    marginEditor.startForTooth(restoration.id, tooth);
+    marginEditor.setMode('manual');
+    for (let i = 0; i < anchorCount; i++) {
+      await marginEditor.handlePick(rayAtVertex(pointAt(positions, i), [0, 0, 0]));
+    }
+    await marginEditor.toggleClosed();
+    expect(useMarginStore.getState().anchors).toHaveLength(anchorCount);
+    expect(useMarginStore.getState().closed).toBe(true);
+    return { restorationId: restoration.id };
+  }
+
+  it('deletes a shift-selected group (including the wraparound anchor 0) as ONE coalesced journal op', async () => {
+    const { restorationId } = await traceClosedLoop(24, 6);
+
+    marginEditor.toggleAnchorSelection(0); // wraparound case
+    marginEditor.toggleAnchorSelection(2);
+    marginEditor.toggleAnchorSelection(3); // adjacent pair with 2 — consecutive deletions collapse correctly
+    const historyBefore = useCaseStore.getState().document.history.length;
+
+    await marginEditor.deleteSelectedAnchors();
+
+    const state = useMarginStore.getState();
+    expect(state.anchors).toHaveLength(3);
+    expect(state.segments).toHaveLength(3); // still closed: segments === anchors
+    expect(state.selectedAnchorIndices.size).toBe(0); // selection consumed
+
+    const history = useCaseStore.getState().document.history;
+    expect(history).toHaveLength(historyBefore + 1); // ONE op for the whole batch — never one per anchor
+    const op = history.at(-1)!;
+    expect(op.name).toBe('margin-edit');
+    expect(op.params.gesture).toBe('delete-anchors-bulk');
+    expect(op.params.deletedIndices).toEqual([0, 2, 3]);
+    expect(op.params.deletedCount).toBe(3);
+    const diff = op.params.diff as AnchorDiffSummary;
+    expect(diff.removed).toBe(3);
+    expect(typeof op.outputHashes[0]).toBe('string');
+    expect(op.outputHashes[0]!.length).toBe(64);
+
+    const savedLine = restorationMarginLine(restorationId, 24)!;
+    expect(savedLine.anchors).toHaveLength(3);
+    expect(savedLine.closed).toBe(true);
+  });
+
+  it('refuses (no-op, no journal) a bulk delete that would drop a CLOSED loop below 3 anchors', async () => {
+    await traceClosedLoop(25, 5);
+    [0, 1, 2].forEach((i) => marginEditor.toggleAnchorSelection(i)); // 5 - 3 = 2 < 3
+    const historyBefore = useCaseStore.getState().document.history.length;
+
+    await marginEditor.deleteSelectedAnchors();
+
+    expect(useMarginStore.getState().anchors).toHaveLength(5); // untouched
+    expect(useCaseStore.getState().document.history).toHaveLength(historyBefore); // nothing journaled
+    // Selection deliberately KEPT on refusal — the user can adjust it
+    // instead of rebuilding it from scratch.
+    expect(useMarginStore.getState().selectedAnchorIndices.size).toBe(3);
+  });
+
+  it('open curve: bulk-deleting both endpoints and an interior anchor journals once and leaves a consistent open chain', async () => {
+    const { nodeId, positions } = registerIcosahedron();
+    const restoration = createRestoration({ type: 'crown', teeth: [26], targetNodeId: nodeId });
+    marginEditor.startForTooth(restoration.id, 26);
+    marginEditor.setMode('manual');
+    for (let i = 0; i < 5; i++) {
+      await marginEditor.handlePick(rayAtVertex(pointAt(positions, i), [0, 0, 0]));
+    }
+    await marginEditor.saveOpenTrace(); // first commit — open, 5 anchors, 4 segments
+
+    [0, 2, 4].forEach((i) => marginEditor.toggleAnchorSelection(i));
+    const historyBefore = useCaseStore.getState().document.history.length;
+    await marginEditor.deleteSelectedAnchors();
+
+    const state = useMarginStore.getState();
+    expect(state.anchors).toHaveLength(2);
+    expect(state.closed).toBe(false);
+    expect(state.segments).toHaveLength(1); // open chain invariant: anchors - 1
+    const history = useCaseStore.getState().document.history;
+    expect(history).toHaveLength(historyBefore + 1);
+    expect(history.at(-1)!.params.gesture).toBe('delete-anchors-bulk');
+    expect(history.at(-1)!.params.deletedIndices).toEqual([0, 2, 4]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 3 editor enhancements, task 3: magnifier cross-section engine wiring
+// + throttle behavior (real WorkerPool, icosahedron).
+// ---------------------------------------------------------------------------
+
+describe('marginEditor — magnifier cross-section preview wiring + throttle', () => {
+  function startSession(tooth: FdiTooth): { positions: Float64Array } {
+    const { nodeId, positions } = registerIcosahedron();
+    const restoration = createRestoration({ type: 'crown', teeth: [tooth], targetNodeId: nodeId });
+    marginEditor.startForTooth(restoration.id, tooth);
+    marginEditor.setMode('manual');
+    return { positions };
+  }
+
+  it('publishes a section snapshot (plane-local polylines + finite cursorUV) through the real sectionMesh job', async () => {
+    const { positions } = startSession(34);
+    marginEditor.updateMagnifierSection(rayAtVertex(pointAt(positions, 0), [0, 0, 0]));
+
+    await vi.waitFor(
+      () => {
+        expect(useMarginStore.getState().magnifierSection).not.toBeNull();
+      },
+      { timeout: 5000 },
+    );
+    const snapshot = useMarginStore.getState().magnifierSection!;
+    expect(snapshot.polylines.length).toBeGreaterThanOrEqual(1);
+    expect(Number.isFinite(snapshot.cursorUV[0])).toBe(true);
+    expect(Number.isFinite(snapshot.cursorUV[1])).toBe(true);
+    for (const polyline of snapshot.polylines) {
+      expect(polyline.points.length).toBeGreaterThanOrEqual(2);
+      for (const [u, v] of polyline.points) {
+        expect(Number.isFinite(u)).toBe(true);
+        expect(Number.isFinite(v)).toBe(true);
+      }
+    }
+    marginEditor.clearMagnifierSection();
+  });
+
+  it('throttles a rapid pointermove burst to leading + trailing runs (never one section job per move)', async () => {
+    const { positions } = startSession(35);
+
+    let publishes = 0;
+    let lastSeen = useMarginStore.getState().magnifierSection;
+    const unsubscribe = useMarginStore.subscribe((state) => {
+      if (state.magnifierSection !== lastSeen) {
+        lastSeen = state.magnifierSection;
+        if (state.magnifierSection !== null) publishes++;
+      }
+    });
+    try {
+      const BURST = 25;
+      for (let i = 0; i < BURST; i++) {
+        // Alternate between two rays so the trailing (coalesced-latest)
+        // request is genuinely distinct from the leading one.
+        marginEditor.updateMagnifierSection(rayAtVertex(pointAt(positions, i % 2), [0, 0, 0]));
+      }
+      // Wait past the throttle window + worker round trips for the trailing
+      // edge to settle.
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      await vi.waitFor(
+        () => {
+          expect(useMarginStore.getState().magnifierSection).not.toBeNull();
+        },
+        { timeout: 5000 },
+      );
+      // Leading run + ONE coalesced trailing run — never ~25 jobs. (<= 3
+      // allows one extra interval boundary crossing on a slow CI machine,
+      // still an order of magnitude below per-move.)
+      expect(publishes).toBeGreaterThanOrEqual(1);
+      expect(publishes).toBeLessThanOrEqual(3);
+    } finally {
+      unsubscribe();
+      marginEditor.clearMagnifierSection();
+    }
+  });
+
+  it('clearMagnifierSection clears the snapshot and cancels any pending trailing run (no stale resurrect)', async () => {
+    const { positions } = startSession(36);
+    marginEditor.updateMagnifierSection(rayAtVertex(pointAt(positions, 0), [0, 0, 0]));
+    await vi.waitFor(
+      () => {
+        expect(useMarginStore.getState().magnifierSection).not.toBeNull();
+      },
+      { timeout: 5000 },
+    );
+    // Queue a pending trailing request, then clear before it can run.
+    marginEditor.updateMagnifierSection(rayAtVertex(pointAt(positions, 1), [0, 0, 0]));
+    marginEditor.clearMagnifierSection();
+    expect(useMarginStore.getState().magnifierSection).toBeNull();
+    await new Promise((resolve) => setTimeout(resolve, 300)); // past the throttle interval
+    expect(useMarginStore.getState().magnifierSection).toBeNull(); // never resurrected
+  });
+
+  it('a ray that misses the mesh clears the snapshot (cursor off-surface shows no stale section)', async () => {
+    const { positions } = startSession(37);
+    marginEditor.updateMagnifierSection(rayAtVertex(pointAt(positions, 0), [0, 0, 0]));
+    await vi.waitFor(
+      () => {
+        expect(useMarginStore.getState().magnifierSection).not.toBeNull();
+      },
+      { timeout: 5000 },
+    );
+    // A ray pointing AWAY from the mesh — raycast misses.
+    await new Promise((resolve) => setTimeout(resolve, 150)); // let the throttle window lapse so this runs immediately
+    marginEditor.updateMagnifierSection({ rayOrigin: [100, 100, 100], rayDirection: [1, 0, 0] });
+    await vi.waitFor(
+      () => {
+        expect(useMarginStore.getState().magnifierSection).toBeNull();
+      },
+      { timeout: 5000 },
+    );
   });
 });

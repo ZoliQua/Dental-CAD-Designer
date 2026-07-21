@@ -98,6 +98,11 @@ export interface ProposeMarginPayload {
   maxStepsPerDirection?: number;
   anchorAngleBudgetRad?: number;
   anchorMaxSpacingMm?: number;
+  /** See `ProposeMarginLoopOptions.targetAnchorCount` (@dqcad/kernel) —
+   * approximate, curvature-adaptive anchor-count target (Phase 3
+   * editor-enhancement task 1). `undefined`: kernel default (current
+   * behavior, byte-identical). */
+  targetAnchorCount?: number;
 }
 
 export interface ProposeMarginResult {
@@ -154,6 +159,7 @@ export const proposeMarginJob = async (payload: ProposeMarginPayload, ctx: JobCo
     maxStepsPerDirection: payload.maxStepsPerDirection,
     anchorAngleBudgetRad: payload.anchorAngleBudgetRad,
     anchorMaxSpacingMm: payload.anchorMaxSpacingMm,
+    targetAnchorCount: payload.targetAnchorCount,
   });
 
   ctx.progress(1);

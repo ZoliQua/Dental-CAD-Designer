@@ -13,6 +13,24 @@
 //   the Delete/Backspace key (below) OR ui/MarginPanel.tsx's "Delete anchor"
 //   button (the "select+key or context affordance" this task's brief asks
 //   to document — both are wired to the SAME `deleteSelectedAnchor()` call).
+// - SHIFT-click a handle (Phase 3 editor-enhancement task 2 — "I can't
+//   delete points in groups"): toggles it in/out of the bulk multi-select
+//   set (`marginEditor.toggleAnchorSelection` ->
+//   `marginStore.selectedAnchorIndices`); Delete/Backspace (or
+//   ui/MarginPanel.tsx's "Delete selected" button) then removes the WHOLE
+//   set as ONE coalesced journal op (`deleteSelectedAnchors`). Shift-click
+//   is the DELIBERATE mechanism choice over box/lasso select (this task's
+//   brief: "pick ONE mechanism that fits the existing overlay
+//   interaction"): every per-anchor gesture in this overlay already routes
+//   through the per-handle pointerdown/up machinery (including the
+//   capture-phase pick-priority interception below), so a modifier on the
+//   EXISTING click gesture composes with all of it for free — whereas a
+//   box/lasso drag on the canvas would collide head-on with OrbitControls'
+//   own drag-to-orbit (the exact conflict the pick-priority section below
+//   exists to referee) and would need a whole new projected-rectangle hit
+//   pipeline. With ~20-50 anchors after the task-1 slider (the same
+//   feedback batch), shift-clicking a handful of anchors is fast; a lasso
+//   only pays for itself at the 200+ densities the slider now avoids.
 // - Drag a handle (pointerdown+move past 5px): moves it — LIVE geodesic
 //   re-snap on every pointermove (`marginEditor.updateAnchorDrag`, coalesced
 //   against stale frames), committed + journaled ONCE on pointerup
@@ -101,12 +119,33 @@ import { marginEditor } from '../engine/marginEditor';
 import { declutterScreenPoints, nearestScreenPointWithinRadius, toRenderPoint, toWorldRay } from '../engine/marginFrame';
 import { getActiveSceneManager } from '../engine/viewerController';
 import { useCaseStore } from '../state/caseStore';
-import { useMarginStore } from '../state/marginStore';
+import { useMarginStore, type MagnifierSectionSnapshot } from '../state/marginStore';
 
 const CLICK_DRAG_THRESHOLD_PX = 5;
 const MAGNIFIER_SIZE_PX = 160;
 const MAGNIFIER_SOURCE_CROP_PX = 56;
 const MAGNIFIER_OFFSET_PX = 28;
+/** Half-extent (mm) of the cross-section profile view drawn INSIDE the
+ * magnifier (Phase 3 editor-enhancement task 3) — the lens shows ±this many
+ * mm of the section curve around the cursor's own on-plane position, at a
+ * FIXED mm->px scale (`MAGNIFIER_SIZE_PX / (2 * this)`). Deliberately NOT
+ * aligned/scaled to the magnified screen pixels underneath (that would need
+ * a world-units-per-screen-pixel camera query per frame for a purely
+ * decorative alignment): the curve is a PROFILE READOUT — "is there a dip or
+ * a rise here, and how steep" (the dentist project owner's own ask) — not a
+ * pixel-registered annotation, and the fixed physical scale is exactly what
+ * makes steepness comparable between zoom levels. 2mm comfortably covers a
+ * margin shoulder's own feature scale (shelf widths/step heights are a few
+ * hundred µm to ~1.5mm) while staying well inside the section job's own
+ * `MARGIN_SECTION_PREVIEW_ROI_RADIUS_MM` (4mm) query window, so the drawn
+ * curve is never truncated by the ROI boundary. */
+const MAGNIFIER_SECTION_VIEW_HALF_MM = 2;
+/** Cross-section stroke/marker colors — fixed high-contrast values (not
+ * theme variables: they draw over the magnified SCENE pixels, whose
+ * background is the 3D viewport's own dark-ish clear color in both UI
+ * themes, not the page background). */
+const MAGNIFIER_SECTION_STROKE = '#ffd23f';
+const MAGNIFIER_SECTION_CURSOR = '#ff5c5c';
 /** Minimum on-screen spacing (px) between two RENDERED anchor handles — see
  * this file's top doc, "Handle decluttering". Picked from the brief's own
  * "~18-24px" range. */
@@ -122,6 +161,65 @@ interface HandlePosition {
   yPx: number;
 }
 
+/**
+ * Draws the live cross-section profile (Phase 3 editor-enhancement task 3 —
+ * `marginStore.magnifierSection`, see that type's doc) INTO the magnifier's
+ * 2D canvas, over the already-drawn magnified pixels: every section polyline
+ * in plane-local (u, v) mm, translated so the CURSOR's own on-plane
+ * coordinate (`snapshot.cursorUV`) sits at the lens center (which is also
+ * where the magnified crop is centered — the two stay visually associated),
+ * at the fixed `MAGNIFIER_SECTION_VIEW_HALF_MM` physical scale (see that
+ * constant's doc for why it is deliberately NOT registered to the magnified
+ * screen pixels). v points UP on screen (canvas y grows downward, so v is
+ * negated) — with the plane's u/v basis orthonormal (kernel
+ * `normalizePlane`), the curve reads as a true undistorted profile; its
+ * in-plane ROTATION is whatever the basis happens to be, which is fine for
+ * the "see dips/rises" purpose (a profile's shape, not its heading, is the
+ * signal). A small crosshair marks the cursor position on the profile.
+ * No-op when `snapshot` is `null` (nothing computed yet / cursor off-mesh).
+ */
+function drawMagnifierSection(ctx: CanvasRenderingContext2D, snapshot: MagnifierSectionSnapshot | null): void {
+  if (!snapshot || snapshot.polylines.length === 0) return;
+  const center = MAGNIFIER_SIZE_PX / 2;
+  const pxPerMm = MAGNIFIER_SIZE_PX / (2 * MAGNIFIER_SECTION_VIEW_HALF_MM);
+  const [cu, cv] = snapshot.cursorUV;
+
+  ctx.save();
+  // Clip to the lens circle so the profile never pokes out of the round
+  // magnifier border (the <canvas> itself is square; CSS only rounds it).
+  ctx.beginPath();
+  ctx.arc(center, center, center, 0, Math.PI * 2);
+  ctx.clip();
+
+  ctx.strokeStyle = MAGNIFIER_SECTION_STROKE;
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  for (const polyline of snapshot.polylines) {
+    if (polyline.points.length < 2) continue;
+    ctx.beginPath();
+    polyline.points.forEach(([u, v], i) => {
+      const x = center + (u - cu) * pxPerMm;
+      const y = center - (v - cv) * pxPerMm; // v up on screen
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    if (polyline.closed) ctx.closePath();
+    ctx.stroke();
+  }
+
+  // Cursor crosshair — the fixed lens center by construction.
+  ctx.strokeStyle = MAGNIFIER_SECTION_CURSOR;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(center - 6, center);
+  ctx.lineTo(center + 6, center);
+  ctx.moveTo(center, center - 6);
+  ctx.lineTo(center, center + 6);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   if (target.isContentEditable) return true;
@@ -133,6 +231,7 @@ export function MarginOverlay() {
   const phase = useMarginStore((state) => state.phase);
   const anchors = useMarginStore((state) => state.anchors);
   const selectedAnchorIndex = useMarginStore((state) => state.selectedAnchorIndex);
+  const selectedAnchorIndices = useMarginStore((state) => state.selectedAnchorIndices);
   const draggingAnchorIndex = useMarginStore((state) => state.draggingAnchorIndex);
   const cursorScreenPos = useMarginStore((state) => state.cursorScreenPos);
 
@@ -170,9 +269,17 @@ export function MarginOverlay() {
 
   // Cursor tracking (for the magnifier) — attaches to the MAIN canvas
   // (owned by SceneManager, not this component) while the tool is active.
+  // ALSO the hover-path trigger for the magnifier cross-section preview
+  // (Phase 3 editor-enhancement task 3): every tracked pointermove requests
+  // a (throttled, engine-side — see marginEditor.updateMagnifierSection's
+  // doc) section through the cursor's mesh hit point. The two drag paths
+  // (per-handle drag below, capture-phase priority drag above) fire the
+  // same request from their own pointermove handlers — pointer capture
+  // keeps THIS canvas listener from seeing those moves.
   useEffect(() => {
     if (phase !== 'active') {
       marginEditor.setCursorScreenPos(null);
+      marginEditor.clearMagnifierSection();
       return;
     }
     const sceneManager = getActiveSceneManager();
@@ -181,15 +288,21 @@ export function MarginOverlay() {
     function handleMove(event: PointerEvent): void {
       const rect = canvas!.getBoundingClientRect();
       marginEditor.setCursorScreenPos({ xPx: event.clientX - rect.left, yPx: event.clientY - rect.top });
+      const ray = sceneManager!.rayAtClientPosition(event.clientX, event.clientY);
+      if (ray) {
+        marginEditor.updateMagnifierSection(toWorldRay(ray, caseStore.getRenderWorldOffset()));
+      }
     }
     function handleLeave(): void {
       marginEditor.setCursorScreenPos(null);
+      marginEditor.clearMagnifierSection();
     }
     canvas.addEventListener('pointermove', handleMove);
     canvas.addEventListener('pointerleave', handleLeave);
     return () => {
       canvas.removeEventListener('pointermove', handleMove);
       canvas.removeEventListener('pointerleave', handleLeave);
+      marginEditor.clearMagnifierSection();
     };
   }, [phase]);
 
@@ -230,7 +343,14 @@ export function MarginOverlay() {
       const ray = sceneManager!.rayAtClientPosition(event.clientX, event.clientY);
       if (!ray) return;
       const worldOffset = caseStore.getRenderWorldOffset();
-      void marginEditor.updateAnchorDrag(toWorldRay(ray, worldOffset));
+      const worldRay = toWorldRay(ray, worldOffset);
+      void marginEditor.updateAnchorDrag(worldRay);
+      // Keep the magnifier (and its cross-section preview) following the
+      // cursor during a priority drag too — this window-level listener is
+      // the only pointermove the canvas's own tracking effect never sees.
+      const rect = canvas!.getBoundingClientRect();
+      marginEditor.setCursorScreenPos({ xPx: event.clientX - rect.left, yPx: event.clientY - rect.top });
+      marginEditor.updateMagnifierSection(worldRay);
     }
 
     function endPriorityDrag(): void {
@@ -303,6 +423,7 @@ export function MarginOverlay() {
           } catch {
             // Transient (e.g. a resize mid-frame) — just skip this frame.
           }
+          drawMagnifierSection(ctx, useMarginStore.getState().magnifierSection);
         }
       }
       frameId = requestAnimationFrame(tick);
@@ -311,22 +432,38 @@ export function MarginOverlay() {
     return () => cancelAnimationFrame(frameId);
   }, [phase, cursorScreenPos]);
 
-  // Delete/Backspace deletes the selected anchor — see this file's top doc.
+  // Delete/Backspace deletes the selection — the bulk multi-select set when
+  // non-empty (ONE coalesced journal op — Phase 3 editor-enhancement task
+  // 2), else the single selected anchor (existing behavior, unchanged).
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
-      if (phase !== 'active' || selectedAnchorIndex === null) return;
+      if (phase !== 'active') return;
+      const hasBulkSelection = selectedAnchorIndices.size > 0;
+      if (!hasBulkSelection && selectedAnchorIndex === null) return;
       if (event.key !== 'Delete' && event.key !== 'Backspace') return;
       if (isEditableTarget(event.target)) return;
       event.preventDefault();
-      void marginEditor.deleteSelectedAnchor();
+      if (hasBulkSelection) {
+        void marginEditor.deleteSelectedAnchors();
+      } else {
+        void marginEditor.deleteSelectedAnchor();
+      }
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [phase, selectedAnchorIndex]);
+  }, [phase, selectedAnchorIndex, selectedAnchorIndices]);
 
   function handlePointerDown(event: React.PointerEvent<HTMLDivElement>, index: number): void {
     event.stopPropagation();
-    event.currentTarget.setPointerCapture(event.pointerId);
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // NotFoundError when the pointerId has no active pointer — a pointer
+      // released between event dispatch and this call, or a synthetic
+      // (untrusted) event (browser-lane tests). Capture is an ENHANCEMENT
+      // (keeps a fast drag from escaping the handle), not a correctness
+      // requirement — the gesture still works without it.
+    }
     dragStateRef.current = { index, downX: event.clientX, downY: event.clientY, dragging: false };
   }
 
@@ -344,7 +481,17 @@ export function MarginOverlay() {
     const ray = sceneManager?.rayAtClientPosition(event.clientX, event.clientY);
     if (!ray) return;
     const worldOffset = caseStore.getRenderWorldOffset();
-    void marginEditor.updateAnchorDrag(toWorldRay(ray, worldOffset));
+    const worldRay = toWorldRay(ray, worldOffset);
+    void marginEditor.updateAnchorDrag(worldRay);
+    // Handle-div drags capture the pointer, so the canvas's own cursor
+    // tracking never fires — keep the magnifier + cross-section preview
+    // following from here (same as the priority-drag path).
+    const canvas = sceneManager?.getCanvasElement();
+    if (canvas) {
+      const rect = canvas.getBoundingClientRect();
+      marginEditor.setCursorScreenPos({ xPx: event.clientX - rect.left, yPx: event.clientY - rect.top });
+    }
+    marginEditor.updateMagnifierSection(worldRay);
   }
 
   function handlePointerUp(event: React.PointerEvent<HTMLDivElement>, index: number): void {
@@ -353,6 +500,11 @@ export function MarginOverlay() {
     if (!state) return;
     if (state.dragging) {
       void marginEditor.endAnchorDrag();
+    } else if (event.shiftKey) {
+      // Bulk multi-select toggle (Phase 3 editor-enhancement task 2) — see
+      // this file's top doc, "Anchor interactions", for why shift-click is
+      // the chosen mechanism.
+      marginEditor.toggleAnchorSelection(index);
     } else {
       marginEditor.selectAnchor(index === selectedAnchorIndex ? null : index);
     }
@@ -368,6 +520,7 @@ export function MarginOverlay() {
           className={[
             'margin-overlay__handle',
             handle.index === selectedAnchorIndex ? 'margin-overlay__handle--selected' : '',
+            selectedAnchorIndices.has(handle.index) ? 'margin-overlay__handle--multi-selected' : '',
             handle.index === draggingAnchorIndex ? 'margin-overlay__handle--dragging' : '',
           ]
             .filter(Boolean)

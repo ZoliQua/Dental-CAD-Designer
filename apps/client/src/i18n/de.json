@@ -345,6 +345,10 @@
     "saveOpenButton": "Speichern (offen)",
     "openButton": "Grenze öffnen",
     "deleteAnchorButton": "Anker löschen",
+    "targetAnchorCountLabel": "Vorgeschlagene Anker: ≈{{count}}",
+    "targetAnchorCountHint": "Ungefährer Wert — die Anker folgen der Krümmung der Präparationsgrenze; die gezeichnete Linie bleibt voll detailliert.",
+    "deleteSelectedButton": "{{count}} ausgewählte Anker löschen",
+    "multiSelectHint": "Mehrere Anker mit Umschalt+Klick auswählen, dann Entf drücken.",
     "cancelButton": "Bearbeitung beenden",
     "validation": {
       "checking": "Grenze wird geprüft…",

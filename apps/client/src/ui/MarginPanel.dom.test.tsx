@@ -24,7 +24,7 @@
 // exercising the exact same propose-error -> manual-fallback path, then
 // manual placement -> close -> drag -> commit.
 import { act } from 'react';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import '../i18n';
@@ -194,5 +194,103 @@ describe('MarginPanel — critical path (real component, real store, real worker
     expect(draggedRestoration.marginLines[11]!.anchors[0]!.position).not.toEqual(
       savedRestoration.marginLines[11]!.anchors[0]!.position,
     );
+  }, 30_000);
+});
+
+// ---------------------------------------------------------------------------
+// Phase 3 editor enhancements: anchor-count slider (task 1) + bulk-delete
+// button (task 2) — panel-level UI wiring (the engine/worker flows behind
+// both are covered end-to-end in engine/marginEditor.test.ts and
+// ui/MarginOverlay.dom.test.tsx).
+// ---------------------------------------------------------------------------
+
+describe('MarginPanel — anchor-count slider + bulk-delete button (Phase 3 editor enhancements)', () => {
+  it('shows the slider in auto mode before any anchor exists (default 50), and a change flows to the store', async () => {
+    const user = userEvent.setup();
+    const { nodeId } = registerDieStandin();
+    const restoration = createRestoration({ type: 'crown', teeth: [11], targetNodeId: nodeId });
+
+    render(<MarginPanel />);
+    await user.selectOptions(screen.getByTestId('margin-restoration-select'), restoration.id);
+    await user.selectOptions(screen.getByTestId('margin-tooth-select'), '11');
+    await user.click(screen.getByTestId('margin-start-button'));
+    await waitFor(() => {
+      expect(screen.getByTestId('margin-anchor-count-slider')).toBeTruthy();
+    });
+
+    const slider = screen.getByTestId('margin-anchor-count-slider') as HTMLInputElement;
+    expect(slider.min).toBe('20');
+    expect(slider.max).toBe('200');
+    expect(slider.value).toBe('50'); // measured default — see MARGIN_PROPOSAL_ANCHOR_COUNT_DEFAULT's doc
+    expect(useMarginStore.getState().proposalTargetAnchorCount).toBe(50);
+    // The label echoes the live value (i18n'd, approximate-semantics "≈").
+    expect(screen.getByTestId('margin-anchor-count-field').textContent).toContain('50');
+
+    fireEvent.change(slider, { target: { value: '30' } });
+    expect(useMarginStore.getState().proposalTargetAnchorCount).toBe(30);
+    await waitFor(() => {
+      expect(screen.getByTestId('margin-anchor-count-field').textContent).toContain('30');
+    });
+
+    // The slider is hidden in manual mode (it only affects auto-propose).
+    await user.click(screen.getByTestId('margin-mode-manual'));
+    expect(screen.queryByTestId('margin-anchor-count-slider')).toBeNull();
+  });
+
+  it('shows the bulk-delete button (with live count) whenever the shift-click selection is non-empty, replacing the single-delete button', async () => {
+    const user = userEvent.setup();
+    const { nodeId, positions } = registerDieStandin();
+    const restoration = createRestoration({ type: 'crown', teeth: [11], targetNodeId: nodeId });
+
+    render(<MarginPanel />);
+    await user.selectOptions(screen.getByTestId('margin-restoration-select'), restoration.id);
+    await user.selectOptions(screen.getByTestId('margin-tooth-select'), '11');
+    await user.click(screen.getByTestId('margin-start-button'));
+    await waitFor(() => {
+      expect(useMarginStore.getState().phase).toBe('active');
+    });
+
+    // Trace a real 4-anchor open curve via the engine (real worker jobs).
+    await act(async () => {
+      marginEditor.setMode('manual');
+      for (let i = 0; i < 4; i++) {
+        await marginEditor.handlePick(rayAtVertex(pointAt(positions, i)));
+      }
+    });
+    await waitFor(() => {
+      expect(useMarginStore.getState().anchors.length).toBe(4);
+    });
+
+    // Single selection -> single-delete button only.
+    act(() => {
+      marginEditor.selectAnchor(0);
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('margin-delete-anchor-button')).toBeTruthy();
+    });
+    expect(screen.queryByTestId('margin-delete-selected-button')).toBeNull();
+
+    // Shift-click selection (engine seam) -> bulk button with the count,
+    // single-delete button hidden (never two competing delete affordances).
+    act(() => {
+      marginEditor.toggleAnchorSelection(1);
+      marginEditor.toggleAnchorSelection(2);
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('margin-delete-selected-button')).toBeTruthy();
+    });
+    expect(screen.getByTestId('margin-delete-selected-button').textContent).toContain('2');
+    expect(screen.queryByTestId('margin-delete-anchor-button')).toBeNull();
+
+    // Bulk delete via the button — ONE journaled op (open curve, floor 2).
+    const historyBefore = useCaseStore.getState().document.history.length;
+    await user.click(screen.getByTestId('margin-delete-selected-button'));
+    await waitFor(() => {
+      expect(useMarginStore.getState().anchors.length).toBe(2);
+    });
+    const history = useCaseStore.getState().document.history;
+    expect(history.length).toBe(historyBefore + 1);
+    expect(history.at(-1)!.params.gesture).toBe('delete-anchors-bulk');
+    expect(screen.queryByTestId('margin-delete-selected-button')).toBeNull(); // selection consumed
   }, 30_000);
 });

@@ -201,6 +201,7 @@ export {
   signedDistance,
   ON_PLANE_EPSILON_MM,
   sectionMesh,
+  extractLocalSubmesh,
   projectPolylinesToPlaneXY,
   sectionToSvg,
   type Plane,

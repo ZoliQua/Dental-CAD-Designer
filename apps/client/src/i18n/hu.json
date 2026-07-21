@@ -345,6 +345,10 @@
     "saveOpenButton": "Mentés (nyitott)",
     "openButton": "Margó nyitása",
     "deleteAnchorButton": "Rögzítőpont törlése",
+    "targetAnchorCountLabel": "Javasolt pontok száma: ≈{{count}}",
+    "targetAnchorCountHint": "Hozzávetőleges érték — a pontok a szél görbületét követik; a berajzolt vonal részletessége nem csökken.",
+    "deleteSelectedButton": "{{count}} kijelölt pont törlése",
+    "multiSelectHint": "Shift+kattintással több pont jelölhető ki, majd Delete a törléshez.",
     "cancelButton": "Szerkesztés leállítása",
     "validation": {
       "checking": "Margó ellenőrzése…",

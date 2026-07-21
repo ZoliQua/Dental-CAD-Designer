@@ -42,7 +42,9 @@ import {
   sectionMesh as computeSectionMesh,
   sectionCap,
   normalizePlane,
+  projectToPlaneXY,
   projectPolylinesToPlaneXY,
+  extractLocalSubmesh,
   NonManifoldInputError,
   type Vec3,
 } from '@dqcad/kernel';
@@ -65,6 +67,32 @@ export interface SectionMeshPayload {
    * unexpected error (anything other than `NonManifoldInputError`)
    * propagates. */
   computeCap?: boolean;
+  /** Restricts the section query to a LOCAL region around `point` (Phase 3
+   * editor-enhancement task 3 — the margin editor's magnifier cross-section
+   * preview): triangles are cropped to `extractLocalSubmesh`'s (@dqcad/
+   * kernel, `section/roi.ts`) "at least one vertex within `roiRadiusMm` of
+   * `point`" rule BEFORE running the exact same `sectionMesh` extraction —
+   * see that function's own doc for the precise, zero-precision-loss
+   * semantics (a real windowing of the query DOMAIN, never an
+   * approximation of any reported coordinate). Omitted (default): full-mesh
+   * section, UNCHANGED behavior — every existing caller (e.g. apps/client/
+   * src/engine/section.ts's standalone Section tool) never passes this and
+   * sees zero behavior change. Motivation (this task's report has the
+   * measured numbers): a full-mesh section on the real ~250k-triangle
+   * upperjaw already runs in the low tens of ms in-worker, but the
+   * magnifier's own throttled request cadence (engine/marginEditor.ts's
+   * `updateMagnifierSection`) shares the SAME affinity-routed worker as the
+   * live anchor-drag's `geodesicPath` calls — restricting to a small local
+   * ROI (a few mm around the cursor, comfortably larger than the
+   * magnifier's own visible footprint) keeps each section query cheap
+   * enough that it can never meaningfully queue behind — or delay — a
+   * latency-sensitive drag-update call on the same worker. A non-watertight
+   * mesh cropped this way will essentially never be watertight at its own
+   * new ROI boundary — `computeCap: true` combined with `roiRadiusMm` is
+   * therefore expected to omit the cap via the SAME `NonManifoldInputError`
+   * fallback below as any other non-watertight input (no special-casing
+   * needed). */
+  roiRadiusMm?: number;
 }
 
 export interface SectionMeshResult {
@@ -89,6 +117,16 @@ export interface SectionMeshResult {
    * boundary precision bound). */
   capPositions: Float64Array | null;
   capIndices: Uint32Array | null;
+  /** `payload.point`'s OWN plane-local (u, v) coordinate (`projectToPlaneXY`,
+   * same basis as `points2dFlat`) — since the query point lies ON the plane
+   * by construction, this is exactly the coordinate a caller centers a
+   * cursor-following view on (Phase 3 editor-enhancement task 3's
+   * magnifier cross-section: `apps/client/src/engine/marginEditor.ts` uses
+   * this to draw the section with the cursor pinned at its own local
+   * origin, without `engine/` needing any plane-basis math of its own — the
+   * SAME "project worker-side because engine/ cannot import `@dqcad/kernel`
+   * directly" rationale `points2dFlat`'s own doc already documents). */
+  cursorUV: readonly [number, number];
 }
 
 export const sectionMeshJob = async (
@@ -98,8 +136,10 @@ export const sectionMeshJob = async (
   if (await ctx.cancelled()) throw new JobCancelledError();
   ctx.progress(0);
 
-  const { mesh } = requireCachedBvh(payload.contentHash);
+  const { mesh: fullMesh } = requireCachedBvh(payload.contentHash);
   const plane = { point: payload.point as Vec3, normal: payload.normal as Vec3 };
+  const mesh =
+    payload.roiRadiusMm !== undefined ? extractLocalSubmesh(fullMesh, plane.point, payload.roiRadiusMm) : fullMesh;
 
   const { polylines } = computeSectionMesh(mesh, plane);
   const basis = normalizePlane(plane);
@@ -151,5 +191,6 @@ export const sectionMeshJob = async (
   }
 
   ctx.progress(1);
-  return { pointsFlat, points2dFlat, polylineCounts, polylineClosed, capPositions, capIndices };
+  const cursorUV = projectToPlaneXY(basis, plane.point);
+  return { pointsFlat, points2dFlat, polylineCounts, polylineClosed, capPositions, capIndices, cursorUV };
 };

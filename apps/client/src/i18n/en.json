@@ -345,6 +345,10 @@
     "saveOpenButton": "Save (open)",
     "openButton": "Open margin",
     "deleteAnchorButton": "Delete anchor",
+    "targetAnchorCountLabel": "Proposed anchors: ≈{{count}}",
+    "targetAnchorCountHint": "Approximate — anchors follow the margin’s curvature; the traced line itself stays fully detailed.",
+    "deleteSelectedButton": "Delete {{count}} selected anchor(s)",
+    "multiSelectHint": "Shift-click anchors to select several, then press Delete.",
     "cancelButton": "Stop editing",
     "validation": {
       "checking": "Checking margin…",

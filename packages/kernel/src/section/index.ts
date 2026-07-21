@@ -11,6 +11,7 @@ export {
   type PlaneBasis,
 } from './plane.ts';
 export { ON_PLANE_EPSILON_MM, sectionMesh, type SectionMeshResult, type SectionPolyline } from './polyline.ts';
+export { extractLocalSubmesh } from './roi.ts';
 export {
   projectPolylinesToPlaneXY,
   sectionToSvg,

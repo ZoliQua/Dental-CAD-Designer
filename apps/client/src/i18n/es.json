@@ -345,6 +345,10 @@
     "saveOpenButton": "Guardar (abierto)",
     "openButton": "Abrir margen",
     "deleteAnchorButton": "Eliminar ancla",
+    "targetAnchorCountLabel": "Puntos propuestos: ≈{{count}}",
+    "targetAnchorCountHint": "Valor aproximado — los puntos siguen la curvatura del margen; la línea trazada conserva todo el detalle.",
+    "deleteSelectedButton": "Eliminar {{count}} punto(s) seleccionado(s)",
+    "multiSelectHint": "Mayús+clic para seleccionar varios puntos y pulsa Supr para eliminarlos.",
     "cancelButton": "Detener edición",
     "validation": {
       "checking": "Comprobando el margen…",

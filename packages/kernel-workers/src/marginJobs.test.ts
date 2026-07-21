@@ -217,6 +217,21 @@ describe('proposeMargin job', () => {
     ).rejects.toMatchObject({ name: 'NoRidgeFoundError' });
   });
 
+  it('targetAnchorCount: threads through to a smaller, ~target-sized anchor set (Phase 3 editor-enhancement task 1)', async () => {
+    const pool = createPool({ size: 1 });
+    const { positions, indices } = shoulderMeshBuffers();
+    await pool.run('buildBvh', { contentHash: SHOULDER_HASH, positions, indices });
+    const seed = { triangleIndex: taperSeedTriangleIndex(), barycentric: [1 / 3, 1 / 3, 1 / 3] as const };
+
+    const withoutTarget = await pool.run('proposeMargin', { contentHash: SHOULDER_HASH, seed });
+    const withTarget = await pool.run('proposeMargin', { contentHash: SHOULDER_HASH, seed, targetAnchorCount: 10 });
+
+    expect(withTarget.closed).toBe(true);
+    expect(withTarget.walkVertexCount).toBe(withoutTarget.walkVertexCount); // walked loop unaffected
+    expect(withTarget.triangleIndices.length).toBeLessThan(withoutTarget.triangleIndices.length);
+    expect(Math.abs(withTarget.triangleIndices.length - 10)).toBeLessThanOrEqual(6);
+  });
+
   it('determinism: two identical calls produce bit-identical results', async () => {
     const pool = createPool({ size: 1 });
     const { positions, indices } = shoulderMeshBuffers();

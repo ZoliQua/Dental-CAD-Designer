@@ -11,7 +11,12 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { FdiTooth } from '@dqcad/shared-types';
-import { marginEditor, type MarginErrorKind } from '../engine/marginEditor';
+import {
+  MARGIN_PROPOSAL_ANCHOR_COUNT_MAX,
+  MARGIN_PROPOSAL_ANCHOR_COUNT_MIN,
+  marginEditor,
+  type MarginErrorKind,
+} from '../engine/marginEditor';
 import { useCaseStore } from '../state/caseStore';
 import { useMarginStore, type MarginHardFailureKind, type MarginToolMode } from '../state/marginStore';
 
@@ -63,6 +68,8 @@ export function MarginPanel() {
   const error = useMarginStore((state) => state.error);
   const unresolvedAnchorCount = useMarginStore((state) => state.unresolvedAnchorCount);
   const selectedAnchorIndex = useMarginStore((state) => state.selectedAnchorIndex);
+  const selectedAnchorIndices = useMarginStore((state) => state.selectedAnchorIndices);
+  const proposalTargetAnchorCount = useMarginStore((state) => state.proposalTargetAnchorCount);
   const tooth = useMarginStore((state) => state.tooth);
   const validation = useMarginStore((state) => state.validation);
   const validationBusy = useMarginStore((state) => state.validationBusy);
@@ -249,6 +256,29 @@ export function MarginPanel() {
                 {t('margin.modeManual')}
               </button>
               <p className="margin-panel__hint">{mode === 'auto' ? t('margin.autoHint') : t('margin.manualHint')}</p>
+              {mode === 'auto' && (
+                // Anchor-count slider (Phase 3 editor-enhancement task 1) —
+                // only meaningful BEFORE a proposal runs (this whole block is
+                // already gated on anchors.length === 0); the chosen value is
+                // journaled with the proposal (engine/marginEditor.ts's
+                // `commit()`, `proposalDefaults.targetAnchorCount`). The
+                // target is APPROXIMATE (curvature-adaptive — see the
+                // kernel's `ProposeMarginLoopOptions.targetAnchorCount` doc),
+                // hence the "≈" hint wording.
+                <label className="margin-panel__field margin-panel__anchor-count" data-testid="margin-anchor-count-field">
+                  {t('margin.targetAnchorCountLabel', { count: proposalTargetAnchorCount })}
+                  <input
+                    type="range"
+                    min={MARGIN_PROPOSAL_ANCHOR_COUNT_MIN}
+                    max={MARGIN_PROPOSAL_ANCHOR_COUNT_MAX}
+                    step={1}
+                    value={proposalTargetAnchorCount}
+                    onChange={(event) => marginEditor.setProposalTargetAnchorCount(Number(event.target.value))}
+                    data-testid="margin-anchor-count-slider"
+                  />
+                  <span className="margin-panel__hint">{t('margin.targetAnchorCountHint')}</span>
+                </label>
+              )}
             </div>
           )}
 
@@ -280,7 +310,7 @@ export function MarginPanel() {
             </button>
           )}
 
-          {selectedAnchorIndex !== null && (
+          {selectedAnchorIndex !== null && selectedAnchorIndices.size === 0 && (
             <button
               type="button"
               onClick={() => void marginEditor.deleteSelectedAnchor()}
@@ -289,6 +319,19 @@ export function MarginPanel() {
               {t('margin.deleteAnchorButton')}
             </button>
           )}
+          {selectedAnchorIndices.size > 0 && (
+            // Bulk delete (Phase 3 editor-enhancement task 2) — ONE
+            // coalesced journal op for the whole shift-click selection; see
+            // engine/marginEditor.ts's `deleteSelectedAnchors()`.
+            <button
+              type="button"
+              onClick={() => void marginEditor.deleteSelectedAnchors()}
+              data-testid="margin-delete-selected-button"
+            >
+              {t('margin.deleteSelectedButton', { count: selectedAnchorIndices.size })}
+            </button>
+          )}
+          {anchors.length > 0 && <p className="margin-panel__hint">{t('margin.multiSelectHint')}</p>}
 
           {anchors.length > 0 && (
             <div className="margin-panel__validation" data-testid="margin-validation-badge" data-status={badgeStatus}>

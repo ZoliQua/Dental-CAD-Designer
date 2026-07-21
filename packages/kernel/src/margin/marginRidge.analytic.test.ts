@@ -203,6 +203,93 @@ describe('proposeMarginLoop — determinism and seed stability', () => {
   });
 });
 
+describe('proposeMarginLoop — targetAnchorCount (Phase 3 editor-enhancement task 1)', () => {
+  it('omitted: byte-identical to the default (no-option) call', () => {
+    const fixture = shoulderPrepMesh();
+    const hm = buildHalfedge(fixture.mesh);
+    const curv = computeCurvature(fixture.mesh, hm);
+    const bvh = buildBvh(fixture.mesh);
+    const seed = taperSeed(fixture.mesh, bvh, fixture, TOP_RADIUS_MM, TOTAL_HEIGHT_MM, 1.0);
+
+    const withoutOption = proposeMarginLoop(fixture.mesh, hm, curv, seed);
+    const withUndefinedOption = proposeMarginLoop(fixture.mesh, hm, curv, seed, { targetAnchorCount: undefined });
+    expect(JSON.stringify(withUndefinedOption.anchors)).toBe(JSON.stringify(withoutOption.anchors));
+    expect(withUndefinedOption.segmentConfidence).toEqual(withoutOption.segmentConfidence);
+  });
+
+  it.each([20, 30, 50, 100])('lands within a few anchors of target=%d, stays a valid closed loop', (target) => {
+    const fixture = shoulderPrepMesh();
+    const hm = buildHalfedge(fixture.mesh);
+    const curv = computeCurvature(fixture.mesh, hm);
+    const bvh = buildBvh(fixture.mesh);
+    const seed = taperSeed(fixture.mesh, bvh, fixture, TOP_RADIUS_MM, TOTAL_HEIGHT_MM, 1.0);
+
+    const result = proposeMarginLoop(fixture.mesh, hm, curv, seed, { targetAnchorCount: target });
+    expect(result.closed).toBe(true);
+    expect(result.anchors.length).toBeGreaterThanOrEqual(3);
+    // Discrete search (this file's own `@errorBound` doc) — allow a
+    // proportional tolerance rather than demanding the exact integer. This
+    // fixture is an UNUSUALLY coarse case for that error bound: every one of
+    // its 128 ring vertices shares IDENTICAL curvature/spacing by
+    // construction (module doc's "exact ring" note), so achievable anchor
+    // counts cluster near even divisors of 128 (measured: {19, 32, 43, 128}
+    // for targets {20, 30, 50, 100} — a real, noisy scan's non-uniform
+    // curvature has a far denser set of achievable counts, as this task's
+    // report's real-golden-case measurement demonstrates) — a tight absolute
+    // tolerance here would be testing this fixture's own artificial
+    // uniformity, not the search algorithm.
+    expect(Math.abs(result.anchors.length - target)).toBeLessThanOrEqual(Math.max(3, Math.round(target * 0.3)));
+    expect(result.segmentConfidence.length).toBe(result.anchors.length);
+    // The WALKED loop itself (pre-simplification) must be unaffected by the
+    // target — same ring every time on this fixture.
+    expect(result.walkVertexCount).toBe(128);
+    // Anchors still lie on the analytic margin circle (targeting anchor
+    // COUNT never trades away ON-SURFACE fidelity of the chosen anchors
+    // themselves — see this file's own `@errorBound` doc on what DOES
+    // change with fewer anchors: the caller-side geodesic chain between
+    // them, not the anchors' own on-surface accuracy).
+    const derivedToleranceMm = 1e-9;
+    expect(maxAnchorDeviationMm(fixture.mesh, result.anchors, fixture.marginRadiusMm, fixture.marginHeightMm)).toBeLessThanOrEqual(
+      derivedToleranceMm,
+    );
+  });
+
+  it('deterministic: same seed + target -> bit-identical anchors across repeated calls', () => {
+    const fixture = shoulderPrepMesh();
+    const hm = buildHalfedge(fixture.mesh);
+    const curv = computeCurvature(fixture.mesh, hm);
+    const bvh = buildBvh(fixture.mesh);
+    const seed = taperSeed(fixture.mesh, bvh, fixture, TOP_RADIUS_MM, TOTAL_HEIGHT_MM, 1.0);
+
+    const a = proposeMarginLoop(fixture.mesh, hm, curv, seed, { targetAnchorCount: 30 });
+    const b = proposeMarginLoop(fixture.mesh, hm, curv, seed, { targetAnchorCount: 30 });
+    expect(JSON.stringify(b.anchors)).toBe(JSON.stringify(a.anchors));
+    expect(b.segmentConfidence).toEqual(a.segmentConfidence);
+  });
+
+  it('monotonic: a larger target never yields FEWER anchors than a smaller target on the same loop', () => {
+    const fixture = shoulderPrepMesh();
+    const hm = buildHalfedge(fixture.mesh);
+    const curv = computeCurvature(fixture.mesh, hm);
+    const bvh = buildBvh(fixture.mesh);
+    const seed = taperSeed(fixture.mesh, bvh, fixture, TOP_RADIUS_MM, TOTAL_HEIGHT_MM, 1.0);
+
+    const small = proposeMarginLoop(fixture.mesh, hm, curv, seed, { targetAnchorCount: 20 });
+    const large = proposeMarginLoop(fixture.mesh, hm, curv, seed, { targetAnchorCount: 100 });
+    expect(large.anchors.length).toBeGreaterThanOrEqual(small.anchors.length);
+  });
+
+  it('rejects a target below the 3-anchor structural floor', () => {
+    const fixture = shoulderPrepMesh();
+    const hm = buildHalfedge(fixture.mesh);
+    const curv = computeCurvature(fixture.mesh, hm);
+    const bvh = buildBvh(fixture.mesh);
+    const seed = taperSeed(fixture.mesh, bvh, fixture, TOP_RADIUS_MM, TOTAL_HEIGHT_MM, 1.0);
+    expect(() => proposeMarginLoop(fixture.mesh, hm, curv, seed, { targetAnchorCount: 2 })).toThrow(RangeError);
+    expect(() => proposeMarginLoop(fixture.mesh, hm, curv, seed, { targetAnchorCount: Number.NaN })).toThrow(RangeError);
+  });
+});
+
 describe('proposeMarginLoop — degenerate seed (typed errors)', () => {
   it('throws NoRidgeFoundError for a seed on a large, featureless flat/curved region far from any ridge', () => {
     // A large-radius capped cylinder tube (curvature.test-fixtures.ts) has

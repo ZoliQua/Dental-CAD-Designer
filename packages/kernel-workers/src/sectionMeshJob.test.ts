@@ -95,6 +95,28 @@ describe('WorkerPool — sectionMesh', () => {
     expect(result.capIndices).toBeNull();
   });
 
+  it('cursorUV: the query point projects to a FIXED, finite (u, v) — usable to center a cursor-following view (Phase 3 editor-enhancement task 3)', async () => {
+    const pool = createPool({ size: 1 });
+    const cube = cubeMesh();
+    const contentHash = 'cube-section-cursoruv';
+    await buildBvhFor(pool, contentHash, cube.positions, cube.indices);
+
+    const result = await pool.run('sectionMesh', { contentHash, point: [0.5, 0.5, 0.5], normal: [0, 0, 1] });
+    expect(result.cursorUV).toHaveLength(2);
+    expect(Number.isFinite(result.cursorUV[0])).toBe(true);
+    expect(Number.isFinite(result.cursorUV[1])).toBe(true);
+
+    // Same plane, same query point -> identical cursorUV (deterministic,
+    // no dependence on call order/worker state).
+    const again = await pool.run('sectionMesh', { contentHash, point: [0.5, 0.5, 0.5], normal: [0, 0, 1] });
+    expect(again.cursorUV).toEqual(result.cursorUV);
+
+    // A DIFFERENT query point on the SAME plane must project to a
+    // DIFFERENT (u, v) — proves this isn't a constant/degenerate stub.
+    const shifted = await pool.run('sectionMesh', { contentHash, point: [0.1, 0.5, 0.5], normal: [0, 0, 1] });
+    expect(shifted.cursorUV).not.toEqual(result.cursorUV);
+  });
+
   it('computeCap: true returns a filled cap mesh for a watertight input', async () => {
     const pool = createPool({ size: 1 });
     const cube = cubeMesh();
