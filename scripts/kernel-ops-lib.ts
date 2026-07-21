@@ -802,7 +802,7 @@ export async function computeKernelOpsSnapshot(): Promise<KernelOpsSnapshot> {
     const roiRadiusMm = AXIS_DEFAULT_ROI_RADIUS_MM;
     const region = extractMarginRegion(archMeshForAxis, hmForAxis, seeds, roiRadiusMm);
     if (region.triangleIndices.length === 0) {
-      throw new Error('kernel-ops golden: suggestAxis ROI (tooth 11 reference margin, radius 6mm) extracted zero triangles — investigate before regenerating');
+      throw new Error('kernel-ops golden: suggestAxis ROI (tooth 11 reference margin, radius 2mm) extracted zero triangles — investigate before regenerating');
     }
 
     const started = performance.now();

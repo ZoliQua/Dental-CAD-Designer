@@ -401,6 +401,7 @@ export {
   defaultRefineCapAngleRad,
   AXIS_COARSE_SAMPLE_COUNT,
   AXIS_REFINE_SAMPLE_COUNT,
+  AXIS_SEARCH_PRESETS,
   DEGENERATE_POLE_RELATIVE_EPSILON,
   EmptyRegionError,
   DegenerateRegionNormalError,

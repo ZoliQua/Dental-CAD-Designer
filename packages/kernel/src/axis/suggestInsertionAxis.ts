@@ -172,6 +172,46 @@ export function defaultRefineCapAngleRad(coarseCount: number): number {
   return 2 * Math.sqrt(2 / coarseCount);
 }
 
+/**
+ * Documented search-budget presets for `SuggestInsertionAxisOptions`
+ * (Fix batch item 3a, review follow-up to this task).
+ *
+ * - `interactive` — the module default (`AXIS_COARSE_SAMPLE_COUNT` +
+ *   `AXIS_REFINE_SAMPLE_COUNT` = 24 + 8), tuned for the <2s interactivity
+ *   target measured on the real arch-case-01 upperjaw ROI (see this
+ *   module's `AXIS_COARSE_SAMPLE_COUNT` doc). **Does NOT reach the
+ *   zero-undercut optimum in general** — MEASURED on this module's own cone-
+ *   frustum analytic fixture (`suggestInsertionAxis.analytic.test.ts`'s
+ *   default-budget test): residual `best.scoreMm3 ≈ 28.82 mm³` (4.7% of the
+ *   ROI's ~100.28mm² area still undercut, `maxDepthMm ≈ 8.11mm`) at an
+ *   angular error of `≈9.58°` — a coarse-budget trade, not a bug: it is
+ *   exactly `interactive`'s job to trade precision for speed, and the live
+ *   µm-depth heatmap + manual angle-slider adjustment (this task's other
+ *   deliverable) is the designed accuracy backstop, not an afterthought.
+ * - `precise` — `refineCount: 200`, a FIXED (not `coarseCount`-derived)
+ *   `refineCapAngleRad: 0.3` (~17.2°, narrower than `interactive`'s derived
+ *   ~33° cap, but with 25x the refine directions inside it — the coarse
+ *   sweep's own winner is already measured within ~9.6° of true optimum on
+ *   the same fixture, comfortably inside this narrower cap, so the
+ *   trade-off is pure resolution, not risk of missing the basin). MEASURED
+ *   (this module's high-budget analytic tests) to converge to the TRUE
+ *   zero-undercut optimum — `scoreMm3 = 0` exactly — on the same frustum and
+ *   bridge fixtures, at `≈9.20°` angular error (matching the fixture's own
+ *   ~9.46° zero-undercut cone radius), in `~0.6–0.9s` in-process. Too slow
+ *   for a live per-slider-tick search, but fine for an explicit "refine
+ *   precisely" action a caller could trigger once (e.g. on auto-suggest, or
+ *   a dedicated button) rather than on every interactive adjustment.
+ *
+ * **UI wiring is NOT part of this batch** — `precise` is exposed here as a
+ * documented, tested kernel option only; a future task can wire it to an
+ * explicit UI action (e.g. an "increase precision" button on `AxisPanel`)
+ * without any kernel change.
+ */
+export const AXIS_SEARCH_PRESETS = {
+  interactive: { coarseCount: AXIS_COARSE_SAMPLE_COUNT, refineCount: AXIS_REFINE_SAMPLE_COUNT },
+  precise: { coarseCount: AXIS_COARSE_SAMPLE_COUNT, refineCount: 200, refineCapAngleRad: 0.3 },
+} as const satisfies Record<string, Pick<SuggestInsertionAxisOptions, 'coarseCount' | 'refineCount' | 'refineCapAngleRad'>>;
+
 /** Thrown by `suggestInsertionAxis`/`suggestInsertionAxisForRegions` when
  * given an empty ROI (nothing to score an objective over) — `roi.ts`'s
  * extraction utilities themselves stay permissive and never throw (see that

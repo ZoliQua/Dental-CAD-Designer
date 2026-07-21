@@ -59,6 +59,48 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.6.0] addendum — Fix batch: HONESTY correction to the default-budget accuracy claim + `AXIS_SEARCH_PRESETS` (no version bump)
+
+**Correction.** [0.6.0]'s original "Measured accuracy" prose (below) did not
+itself repeat the false claim, but `.superpowers/sdd/p3-task-9-report.md`'s
+"Analytic accuracies" section did: it stated `best.scoreMm3 = 0` ("zero
+undercut achieved") on the cone-frustum and bridge analytic fixtures under
+the DEFAULT 24+8 search budget. **That was false.** A reviewer reproduced
+the real numbers and they have been re-verified directly here: at the
+default `interactive` budget, the frustum fixture's best candidate has
+**`scoreMm3 ≈ 28.82 mm³`** (4.7% of the ROI still undercut, `maxDepthMm ≈
+8.11mm`) at **9.58°** angular error — a genuine, non-zero residual, not
+zero. The bridge fixture is the same story (`scoreMm3 ≈ 25.8 mm³` per
+abutment). The algorithm itself is NOT broken: at a higher search budget
+(`refineCount: 200`, `refineCapAngleRad: 0.3` — now exposed as
+`AXIS_SEARCH_PRESETS.precise`, see `suggestInsertionAxis.ts`), the SAME
+fixtures converge to `scoreMm3 = 0` exactly at 9.20° (inside the fixture's
+own ~9.46° zero-undercut cone). The default `interactive` budget is a
+deliberate, documented interactivity/precision trade (tuned for <2s on the
+real arch-case-01 upperjaw ROI) — the live µm-depth undercut heatmap plus
+manual angle-slider adjustment is the designed clinical accuracy backstop,
+not a missing feature this correction reveals.
+
+**Golden impact: NONE.** No default parameter changed — `AXIS_SEARCH_PRESETS`
+is a purely additive new export (`{ interactive: {24, 8}, precise: {refineCount:
+200, refineCapAngleRad: 0.3} }`); `suggestInsertionAxis`'s own default options
+are untouched. `test-fixtures/golden/kernel-ops.json`'s `suggestAxis` entry
+(computed with default options) is verified byte-identical. Per this file's
+own policy ("a bump with no corresponding hash diff would be exactly the
+kind of unjustified version churn this policy exists to prevent" — see the
+[0.1.0] addendum below for the same reasoning applied previously), no
+`KERNEL_VERSION` bump.
+
+**New test coverage**: `suggestInsertionAxis.analytic.test.ts` gained (a) a
+documented residual-score upper bound on the existing default-budget frustum
+and bridge tests (so a regression pushing the default search meaningfully
+off-optimum now fails there, not just on angle), and (b) new HIGH-BUDGET
+variant tests (frustum + bridge) asserting `scoreMm3 === 0` at the `precise`
+preset — proving the search genuinely converges to the analytic optimum, not
+just "gets close on angle". See
+`.superpowers/sdd/p3-task-9-report.md`'s corrected "Analytic accuracies"
+section for the full numbers.
+
 ## [0.6.0] — Phase 3 Task 9: insertion-axis auto-suggestion (`axis/` module)
 
 **NEW op.** Adds `packages/kernel/src/axis/` — insertion-axis auto-

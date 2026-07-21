@@ -44,8 +44,45 @@ import {
   suggestInsertionAxisForRegions,
   AXIS_COARSE_SAMPLE_COUNT,
   AXIS_REFINE_SAMPLE_COUNT,
+  AXIS_SEARCH_PRESETS,
   defaultRefineCapAngleRad,
 } from './suggestInsertionAxis.ts';
+
+// ## Fix batch (HONESTY review follow-up): default budget vs. true optimum
+//
+// A prior version of this file's frustum/bridge tests asserted ONLY the
+// angular error of `best.direction`, at a tolerance (~20-33 degrees) wide
+// enough that it could not distinguish "converged near the true optimum"
+// from "landed near, but with a materially non-zero undercut still
+// present". A reviewer measured the actual DEFAULT-budget (`interactive`
+// preset: 24 coarse + 8 refine) residual directly: the frustum fixture's
+// `best.scoreMm3` is `~28.82 mm^3` (NOT the `0` this task's own report
+// previously — incorrectly — claimed), at `9.58` degrees off true axis; the
+// bridge fixture is the same story (`~25.8 mm^3` per abutment). Both tests
+// below now assert TWO independent, honest properties instead of just one:
+//
+// 1. **Default-budget tests** (below, unchanged test names): angle check
+//    (kept) PLUS a documented residual `scoreMm3` UPPER bound, pinned at
+//    1.5x the measured default-budget residual (see each bound's own
+//    derivation comment) — a regression that pushes the DEFAULT search
+//    meaningfully off-optimum now fails HERE, on the score itself, not just
+//    on a wide angle tolerance that a mediocre-but-not-terrible result could
+//    still slip through.
+// 2. **New HIGH-BUDGET variant tests** (`AXIS_SEARCH_PRESETS.precise`:
+//    `refineCount: 200`, `refineCapAngleRad: 0.3` — the reviewer's own
+//    reproduction budget): assert `scoreMm3 === 0` (or, for the bridge's
+//    common-axis aggregate, `<=` a tiny derived epsilon — see that test's
+//    own comment) — proving the SEARCH ALGORITHM genuinely converges to the
+//    analytic zero-undercut optimum, not just "gets close on angle". This is
+//    the test-level fix for the false report claim: the claim was true of
+//    `precise`, false of `interactive`, and now both are asserted precisely
+//    where they're true.
+//
+// Product framing: `interactive` (the module default) deliberately trades
+// precision for the <2s UI interactivity target — the live per-adjustment
+// undercut heatmap + manual angle-slider adjust (this task's other
+// deliverable) is the designed accuracy backstop, not a gap this test
+// change is trying to close by raising the default budget itself.
 
 type Vec3 = readonly [number, number, number];
 
@@ -154,6 +191,84 @@ describe('suggestInsertionAxis — cone frustum (prep-die-like construction axis
     const toleranceRad = derivedRefineAngularToleranceRad(capAngleRad, AXIS_REFINE_SAMPLE_COUNT, 4);
     expect(angleBetweenRad(result.best.direction, trueAxis)).toBeLessThan(toleranceRad);
     expect(result.best).toBe(result.ranked[0]); // best is provably ranked[0] — see suggestInsertionAxis.ts's doc
+
+    // Fix batch (HONESTY review follow-up, see this file's module doc):
+    // the DEFAULT `interactive` budget (24 coarse + 8 refine) does NOT reach
+    // the zero-undercut optimum on this fixture — MEASURED residual
+    // `best.scoreMm3 ~= 28.821 mm^3` (undercut area ~4.7 mm^2 of the ROI's
+    // ~100.28 mm^2, `maxDepthMm ~= 8.11mm`). This bound is pinned at 1.5x
+    // that measured value (~43.23 mm^3) — generous enough to absorb minor,
+    // legitimate numerical noise across platforms/Node versions, but tight
+    // enough that a regression which meaningfully degrades the DEFAULT
+    // search (e.g. a broken refine step, a mis-seeded pole) fails HERE, on
+    // the objective itself, not just via a wide angle tolerance a
+    // mediocre-but-not-terrible result could still pass. The TRUE optimum
+    // (`scoreMm3 = 0`) is separately proven reachable — at a higher search
+    // budget — by this file's own high-budget variant test below; this
+    // bound intentionally does NOT require the default interactive budget to
+    // reach it (that would defeat the <2s interactivity target it's tuned
+    // for — see `AXIS_SEARCH_PRESETS`'s own doc).
+    const DEFAULT_BUDGET_FRUSTUM_RESIDUAL_BOUND_MM3 = 28.821 * 1.5;
+    expect(result.best.scoreMm3).toBeLessThan(DEFAULT_BUDGET_FRUSTUM_RESIDUAL_BOUND_MM3);
+  });
+
+  it('at a HIGH search budget (AXIS_SEARCH_PRESETS.precise), converges to the TRUE zero-undercut optimum (scoreMm3 = 0)', () => {
+    // Same fixture/ROI as the default-budget test above, but with the
+    // reviewer's own reproduction budget (`refineCount: 200`,
+    // `refineCapAngleRad: 0.3` — `AXIS_SEARCH_PRESETS.precise`): proves the
+    // SEARCH ALGORITHM itself genuinely converges to the analytic
+    // zero-undercut optimum (not just "gets close on angle") — this is what
+    // the report's now-corrected claim was actually true of. See this
+    // file's module doc for the full honesty correction.
+    const frustum = coneFrustumMesh(4, 2.5, 9, 64, 12);
+    const bvh = buildBvh(frustum.mesh);
+    const hm = buildHalfedge(frustum.mesh);
+    const seeds = [];
+    const seedCount = 32;
+    const seedZ = 3;
+    const seedRadius = 4 - (4 - 2.5) * (seedZ / 9);
+    for (let i = 0; i < seedCount; i++) {
+      const theta = (2 * Math.PI * i) / seedCount;
+      const ambient: Vec3 = [seedRadius * Math.cos(theta), seedRadius * Math.sin(theta), seedZ];
+      seeds.push(snapToSurface(frustum.mesh, bvh, ambient));
+    }
+    const region = extractMarginRegion(frustum.mesh, hm, seeds, 2.0);
+    const trueAxis: Vec3 = [0, 0, 1];
+
+    const started = performance.now();
+    const result = suggestInsertionAxis(frustum.mesh, bvh, region, AXIS_SEARCH_PRESETS.precise);
+    const elapsedMs = performance.now() - started;
+
+    const measuredAngleDeg = (angleBetweenRad(result.best.direction, trueAxis) * 180) / Math.PI;
+    console.log(
+      `[axis] cone-frustum HIGH BUDGET (precise preset): best direction angular error = ${measuredAngleDeg.toFixed(3)} deg, ` +
+        `scoreMm3=${result.best.scoreMm3}, elapsedMs=${elapsedMs.toFixed(1)} (measured: ~620-900ms in-process, well under a kernel-test-lane budget)`,
+    );
+
+    // The TRUE optimum: no undercut anywhere in the ROI at the winning
+    // direction. `scoreMm3` sums non-negative `area*depth` terms only over
+    // triangles flagged undercut — MEASURED to be EXACTLY 0 (not just
+    // "small") at this budget on this fixture (verified directly, not
+    // inferred): no undercut triangle is ever added to the sum, so no
+    // floating-point accumulation occurs and the value is bit-exact zero,
+    // not merely epsilon-close.
+    expect(result.best.scoreMm3).toBe(0);
+    expect(result.best.undercutTriangleCount).toBe(0);
+    // Still recovers the true axis — well inside the SAME derived tolerance
+    // used by the default-budget test above (a stronger search can only
+    // match or beat the default's own accuracy).
+    const capAngleRad = defaultRefineCapAngleRad(AXIS_COARSE_SAMPLE_COUNT);
+    const toleranceRad = derivedRefineAngularToleranceRad(capAngleRad, AXIS_REFINE_SAMPLE_COUNT, 4);
+    expect(angleBetweenRad(result.best.direction, trueAxis)).toBeLessThan(toleranceRad);
+
+    // Runtime budget for this in-suite high-budget variant: generous vs. the
+    // measured ~620-900ms in-process (this repo's established
+    // contention-tolerant-ceiling convention — see
+    // packages/kernel-workers/src/geodesicJobs.test.ts's Phase 2 Task 12
+    // fix comment for the same precedent/reasoning) — catches a genuine
+    // algorithmic regression (e.g. accidentally re-scanning the whole mesh)
+    // while not flaking under full-suite CPU contention.
+    expect(elapsedMs).toBeLessThan(10_000);
   });
 
   it('is deterministic: two calls with identical inputs produce a bit-identical result', () => {
@@ -220,31 +335,40 @@ describe('suggestInsertionAxis — sphere patch (no undercut anywhere -> determi
   });
 });
 
+/** Shared two-abutment bridge fixture builder — reused by the default-budget
+ * and high-budget (Fix batch: HONESTY review follow-up, see this file's
+ * module doc) variant tests below, so both exercise the IDENTICAL geometry
+ * and only the search budget differs. */
+function buildBridgeFixture() {
+  const die1 = coneFrustumMesh(4, 2.5, 9, 48, 12, [0, 0, 0]);
+  const die2 = coneFrustumMesh(4, 2.5, 9, 48, 12, [30, 0, 0]); // well separated — disjoint regions
+  const combinedMesh = concatMeshes(die1.mesh, die2.mesh);
+  const bvh = buildBvh(combinedMesh);
+  const hm = buildHalfedge(combinedMesh);
+  const die1TriangleCount = die1.mesh.indices.length / 3;
+
+  // Mid-wall seeding — see the cone-frustum test's doc above for why (this
+  // fixture's caps would otherwise skew the derived hemisphere pole).
+  const seedZ = 3;
+  const seedRadius = 4 - (4 - 2.5) * (seedZ / 9);
+  function midWallSeeds(center: Vec3) {
+    const seeds = [];
+    for (let i = 0; i < 24; i++) {
+      const theta = (2 * Math.PI * i) / 24;
+      const ambient: Vec3 = [center[0] + seedRadius * Math.cos(theta), center[1] + seedRadius * Math.sin(theta), center[2] + seedZ];
+      seeds.push(snapToSurface(combinedMesh, bvh, ambient));
+    }
+    return seeds;
+  }
+
+  const region1 = extractMarginRegion(combinedMesh, hm, midWallSeeds([0, 0, 0]), 2.0);
+  const region2 = extractMarginRegion(combinedMesh, hm, midWallSeeds([30, 0, 0]), 2.0);
+  return { combinedMesh, bvh, hm, die1TriangleCount, region1, region2 };
+}
+
 describe('suggestInsertionAxisForRegions — bridge two-abutment fixture', () => {
   it('finds a common axis close to both abutments\' shared true axis, and reports per-abutment stats at it', () => {
-    const die1 = coneFrustumMesh(4, 2.5, 9, 48, 12, [0, 0, 0]);
-    const die2 = coneFrustumMesh(4, 2.5, 9, 48, 12, [30, 0, 0]); // well separated — disjoint regions
-    const combinedMesh = concatMeshes(die1.mesh, die2.mesh);
-    const bvh = buildBvh(combinedMesh);
-    const hm = buildHalfedge(combinedMesh);
-    const die1TriangleCount = die1.mesh.indices.length / 3;
-
-    // Mid-wall seeding — see the cone-frustum test's doc above for why (this
-    // fixture's caps would otherwise skew the derived hemisphere pole).
-    const seedZ = 3;
-    const seedRadius = 4 - (4 - 2.5) * (seedZ / 9);
-    function midWallSeeds(center: Vec3) {
-      const seeds = [];
-      for (let i = 0; i < 24; i++) {
-        const theta = (2 * Math.PI * i) / 24;
-        const ambient: Vec3 = [center[0] + seedRadius * Math.cos(theta), center[1] + seedRadius * Math.sin(theta), center[2] + seedZ];
-        seeds.push(snapToSurface(combinedMesh, bvh, ambient));
-      }
-      return seeds;
-    }
-
-    const region1 = extractMarginRegion(combinedMesh, hm, midWallSeeds([0, 0, 0]), 2.0);
-    const region2 = extractMarginRegion(combinedMesh, hm, midWallSeeds([30, 0, 0]), 2.0);
+    const { combinedMesh, bvh, die1TriangleCount, region1, region2 } = buildBridgeFixture();
     expect(region1.triangleIndices.length).toBeGreaterThan(0);
     expect(region2.triangleIndices.length).toBeGreaterThan(0);
     // Sanity: the two regions really are disjoint (well-separated dies).
@@ -273,5 +397,52 @@ describe('suggestInsertionAxisForRegions — bridge two-abutment fixture', () =>
     expect(Array.from(expectedUnion.triangleIndices).length).toBe(
       region1.triangleIndices.length + region2.triangleIndices.length,
     );
+
+    // Fix batch (HONESTY review follow-up, see this file's module doc): the
+    // DEFAULT `interactive` budget does NOT reach zero undercut on either
+    // abutment — MEASURED `perRegion[i].scoreMm3 ~= 25.757 mm^3` each. Bound
+    // pinned at 1.5x that measured value (~38.64 mm^3), same derivation
+    // rationale as the single-frustum default-budget test above. The TRUE
+    // optimum is separately proven reachable by this describe block's own
+    // high-budget variant test below.
+    const DEFAULT_BUDGET_BRIDGE_PER_ABUTMENT_RESIDUAL_BOUND_MM3 = 25.757 * 1.5;
+    for (const region of perRegion) {
+      expect(region.scoreMm3).toBeLessThan(DEFAULT_BUDGET_BRIDGE_PER_ABUTMENT_RESIDUAL_BOUND_MM3);
+    }
+  });
+
+  it('at a HIGH search budget (AXIS_SEARCH_PRESETS.precise), both abutments converge to the TRUE zero-undercut optimum (scoreMm3 = 0)', () => {
+    // Same fixture as the default-budget test above (shared builder), same
+    // reviewer reproduction budget as the single-frustum high-budget test —
+    // see this file's module doc for the full honesty correction.
+    const { combinedMesh, bvh, region1, region2 } = buildBridgeFixture();
+    const trueAxis: Vec3 = [0, 0, 1];
+
+    const started = performance.now();
+    const { common, perRegion } = suggestInsertionAxisForRegions(combinedMesh, bvh, [region1, region2], AXIS_SEARCH_PRESETS.precise);
+    const elapsedMs = performance.now() - started;
+
+    const measuredAngleDeg = (angleBetweenRad(common.best.direction, trueAxis) * 180) / Math.PI;
+    console.log(
+      `[axis] bridge HIGH BUDGET (precise preset): common axis angular error = ${measuredAngleDeg.toFixed(3)} deg; ` +
+        `perAbutment scoreMm3=[${perRegion.map((c) => c.scoreMm3).join(', ')}], elapsedMs=${elapsedMs.toFixed(1)}`,
+    );
+
+    // MEASURED exactly 0 for both abutments (same bit-exact-zero rationale
+    // as the single-frustum high-budget test: no undercut triangle is ever
+    // added to the sum at this budget on this fixture).
+    expect(common.best.scoreMm3).toBe(0);
+    for (const region of perRegion) {
+      expect(region.scoreMm3).toBe(0);
+      expect(region.undercutTriangleCount).toBe(0);
+    }
+    const capAngleRad = defaultRefineCapAngleRad(AXIS_COARSE_SAMPLE_COUNT);
+    const toleranceRad = derivedRefineAngularToleranceRad(capAngleRad, AXIS_REFINE_SAMPLE_COUNT, 4);
+    expect(angleBetweenRad(common.best.direction, trueAxis)).toBeLessThan(toleranceRad);
+
+    // Same contention-tolerant runtime ceiling convention as the
+    // single-frustum high-budget test above (measured ~870-1000ms
+    // in-process for this two-abutment fixture).
+    expect(elapsedMs).toBeLessThan(10_000);
   });
 });
