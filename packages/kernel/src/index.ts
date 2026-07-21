@@ -32,8 +32,17 @@
  * a NO-OP for every existing kernel-ops.json entry (byte-identical
  * regeneration diff) — bumped anyway per this repo's tuning-discipline
  * convention (a real algorithm change, even where currently a no-op for
- * pinned seeds, goes through the same bump+changelog workflow). */
-export const KERNEL_VERSION = '0.5.0';
+ * pinned seeds, goes through the same bump+changelog workflow). 0.6.0
+ * (Phase 3 Task 9): NEW op — the axis/ module (`suggestInsertionAxis`/
+ * `suggestInsertionAxisForRegions`: ROI extraction via a multi-source
+ * Dijkstra vertex ball around a margin loop, deterministic coarse->fine
+ * Fibonacci-hemisphere direction search scored by `undercutScanBatch`
+ * restricted to the ROI — see axis/suggestInsertionAxis.ts for the full
+ * method, objective, and tie-break) — same "brand-new op, minor bump"
+ * precedent as undercutScan/icpRegister/proposeMargin; the kernel-ops
+ * golden gained one new pinned entry ("suggestAxis"), every other entry
+ * unchanged. */
+export const KERNEL_VERSION = '0.6.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -293,6 +302,8 @@ export {
   undercutScan,
   undercutScanBatch,
   undercutScanRange,
+  undercutScanIndices,
+  undercutScanBatchIndices,
   RAY_ORIGIN_BIAS_MM,
   UNDERCUT_BOUNDARY_EPSILON,
   type UndercutSamplingPolicy,
@@ -302,6 +313,8 @@ export {
   type UndercutTriangleRange,
   type UndercutScanRangeOutput,
   type UndercutScanRangeStats,
+  type UndercutScanIndicesOutput,
+  type UndercutScanIndicesResult,
 } from './undercut/index.ts';
 
 export {
@@ -370,3 +383,30 @@ export {
   type MarginSmoothnessWarning,
   type ValidateMarginLineOptions,
 } from './margin/index.ts';
+
+export {
+  extractMarginRegion,
+  marginRegionVertexBall,
+  unionRegions,
+  regionTriangleAreasMm2,
+  regionAreaWeightedNormalSum,
+  AXIS_DEFAULT_ROI_RADIUS_MM,
+  fibonacciHemisphereDirections,
+  fibonacciCapDirections,
+  orthonormalBasis,
+  GOLDEN_ANGLE_RAD,
+  suggestInsertionAxis,
+  suggestInsertionAxisForRegions,
+  deriveHemispherePole,
+  defaultRefineCapAngleRad,
+  AXIS_COARSE_SAMPLE_COUNT,
+  AXIS_REFINE_SAMPLE_COUNT,
+  DEGENERATE_POLE_RELATIVE_EPSILON,
+  EmptyRegionError,
+  DegenerateRegionNormalError,
+  type AxisRegion,
+  type AxisCandidate,
+  type SuggestInsertionAxisOptions,
+  type SuggestInsertionAxisResult,
+  type SuggestInsertionAxisForRegionsResult,
+} from './axis/index.ts';

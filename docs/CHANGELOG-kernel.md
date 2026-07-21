@@ -59,6 +59,74 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.6.0] — Phase 3 Task 9: insertion-axis auto-suggestion (`axis/` module)
+
+**NEW op.** Adds `packages/kernel/src/axis/` — insertion-axis auto-
+suggestion for the restoration workflow:
+
+- `roi.ts`: `extractMarginRegion`/`marginRegionVertexBall` — the ROI (region
+  of interest) around a margin loop, via a MULTI-SOURCE Dijkstra ball over
+  the mesh's vertex adjacency graph (graph distance, a documented
+  conservative upper bound on true geodesic distance — same method/
+  rationale as `margin/marginRidge.ts`'s `boundedVertexRegion`, generalized
+  to many seed points in one shared expansion). `unionRegions` (bridges: the
+  common-axis search region is the union of every abutment's own ROI).
+  `AXIS_DEFAULT_ROI_RADIUS_MM` (2mm) — measured to keep a full suggestion
+  sweep under ~2s on the real arch-case-01 upperjaw (see below).
+- `hemisphere.ts`: `fibonacciHemisphereDirections`/`fibonacciCapDirections`
+  — deterministic, unseeded-random-free Fibonacci/golden-angle equal-area
+  direction sampling (a full hemisphere for the coarse sweep, a small polar
+  cap for the fine refinement sweep).
+- `suggestInsertionAxis.ts`: `suggestInsertionAxis`/
+  `suggestInsertionAxisForRegions` — deterministic coarse->fine search over
+  the ROI, scored by a depth-weighted undercut-area objective
+  (`undercutScanIndices`/`undercutScanBatchIndices`, see below, restricted
+  to the ROI's own triangles). `deriveHemispherePole` seeds the search
+  around the ROI's own area-weighted outward normal. Documented,
+  tie-break-tested determinism (ties resolve to the pole-nearest, earliest-
+  generated candidate — verified analytically on a sphere patch, "no
+  undercut anywhere" case). Bridges: one COMMON axis over the union region +
+  a per-abutment undercut report at that axis (`suggestInsertionAxisForRegions`).
+
+**NEW primitives in `undercut/undercutScan.ts`**: `undercutScanIndices`/
+`undercutScanBatchIndices` — the SAME per-triangle facing+occlusion rule as
+`undercutScan`/`undercutScanBatch` (refactored into a shared private
+`scanTriangle` helper; existing `undercutScan`/`undercutScanBatch`/
+`undercutScanRange` behavior is UNCHANGED — verified: their own golden entry
+and full test suite are byte-identical), but evaluated ONLY for an explicit,
+arbitrary triangle-index SUBSET rather than the whole mesh. **Why this was
+necessary, not just an optimization:** an earlier draft of `axis/` restricted
+only the SCORING to the ROI and ran `undercutScanBatch` over the FULL mesh
+for every candidate direction, reasoning (from an extrapolation) that a
+~50-direction whole-mesh sweep would cost ~0.5-1s on the real 250k-triangle
+arch-case-01 upperjaw. MEASURED reality: a 48-direction whole-mesh sweep
+actually took ~45 SECONDS — `undercutScan`'s occlusion rule means almost
+every strictly-facing triangle also gets a real BVH raycast, so whole-mesh
+cost is `O(mesh triangleCount)` per direction, not "mostly cheap, raycasts
+only for the interesting few". Restricting the SCAN itself (not just the
+objective) to the ROI's triangles — while every raycast still queries the
+FULL BVH, so occlusion by geometry outside the ROI is still detected
+correctly — brought the real-fixture suggestion timing down to ~1.6-1.7s
+in-process (~1.9s in-worker, incl. postMessage/transfer overhead), meeting
+this task's <2s interactivity target. See `axis/suggestInsertionAxis.ts`'s
+"Why the ROI restricts the SCAN's triangle set" doc for the full account.
+
+**Golden impact:** every existing `kernel-ops.json` entry is UNCHANGED
+(verified — the `undercutScanIndices` refactor is behavior-preserving for
+the pre-existing functions, and no other op touches `axis/`). ONE new
+pinned entry, `suggestAxis` (arch-case-01 upperjaw, ROI extracted from tooth
+11's committed hand-traced reference margin at `roiRadiusMm=2`, default
+`suggestInsertionAxis` params — a fixed margin -> fixed suggestion, with a
+generation-time <8s CI-contention-safe runtime self-check; the real <2s
+interactivity target is measured/reported separately, in isolation).
+
+**Measured accuracy** (this task's report has the full numbers): a
+synthetic tapered-frustum fixture (analytic construction axis `[0,0,1]`)
+recovers the true axis within ~9.6 degrees (coarse+refine defaults: 24 + 8 =
+32 directions); a sphere-patch region with no undercut at any sampled
+direction ties at score 0 everywhere, resolving deterministically to the
+region's own derived pole (tested directly, not just asserted).
+
 ## [0.5.0] — Phase 3 Task 8 tuning: `findRidgeStart` ignores isolated curvature-noise components
 
 Adds `packages/kernel/src/margin/marginRidge.ts`'s

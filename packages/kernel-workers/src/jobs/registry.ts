@@ -207,6 +207,31 @@ export {
 };
 
 import {
+  suggestAxisJob,
+  axisHeatmapJob,
+  EmptyRegionError,
+  DegenerateRegionNormalError,
+  AXIS_DEFAULT_ROI_RADIUS_MM,
+  type SuggestAxisPayload,
+  type SuggestAxisResult,
+  type SuggestAxisCandidatePayload,
+  type AxisHeatmapPayload,
+  type AxisHeatmapResult,
+  type AxisHeatmapAbutmentStats,
+} from './axis.ts';
+export {
+  EmptyRegionError,
+  DegenerateRegionNormalError,
+  AXIS_DEFAULT_ROI_RADIUS_MM,
+  type SuggestAxisPayload,
+  type SuggestAxisResult,
+  type SuggestAxisCandidatePayload,
+  type AxisHeatmapPayload,
+  type AxisHeatmapResult,
+  type AxisHeatmapAbutmentStats,
+};
+
+import {
   affectedSpanIndices,
   fitSurfaceSpline,
   fitSurfaceSplineSpan,
@@ -322,6 +347,8 @@ export interface JobPayloadMap {
   icpRegister: IcpRegisterPayload;
   proposeMargin: ProposeMarginPayload;
   validateMargin: ValidateMarginPayload;
+  suggestAxis: SuggestAxisPayload;
+  axisHeatmap: AxisHeatmapPayload;
 }
 
 export interface JobResultMap {
@@ -359,6 +386,8 @@ export interface JobResultMap {
   icpRegister: IcpRegisterResult;
   proposeMargin: ProposeMarginResult;
   validateMargin: ValidateMarginResult;
+  suggestAxis: SuggestAxisResult;
+  axisHeatmap: AxisHeatmapResult;
 }
 
 export type JobName = keyof JobPayloadMap;
@@ -403,6 +432,8 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   icpRegister: icpRegisterJob,
   proposeMargin: proposeMarginJob,
   validateMargin: validateMarginJob,
+  suggestAxis: suggestAxisJob,
+  axisHeatmap: axisHeatmapJob,
 };
 
 const noopContext: JobContext = {

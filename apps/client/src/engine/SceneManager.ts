@@ -197,6 +197,19 @@ export interface SectionCapEntry {
   indices: Uint32Array;
 }
 
+/** Insertion-axis arrow gizmo (Phase 3 Task 9) — `origin`/`direction` are
+ * RENDER-frame (already offset by the caller, same convention as
+ * `SectionOutlinePolyline`/`MeasurementRenderData.points`); `direction`
+ * need not be unit length (normalized by `syncAxisOverlay`).
+ * `lengthMm` is a purely COSMETIC display length (not a measured
+ * quantity — the caller picks something proportional to the current
+ * restoration/scene scale, e.g. the margin loop's own bounding radius). */
+export interface AxisOverlayRenderData {
+  origin: readonly [number, number, number];
+  direction: readonly [number, number, number];
+  lengthMm: number;
+}
+
 /** A world-space cutting plane already converted to THIS SceneManager's
  * render frame — see `setSectionClipPlane`'s doc for the exact
  * world-to-render conversion (accounting for `RenderNode`s' worldOffset
@@ -294,6 +307,18 @@ const MARGIN_WEAK_CONFIDENCE_COLOR = new Color(0xff4d4d);
  * "part of the 3D scene", but shouldn't fight an active measurement for
  * visual priority. */
 const MARGIN_OVERLAY_RENDER_ORDER = 8;
+
+// Phase 3 Task 9: insertion-axis arrow gizmo — a distinct cyan (not used by
+// any other overlay in this file) so it reads clearly against both the
+// margin curve's yellow/green and any active measurement's amber.
+const AXIS_ARROW_COLOR = new Color(0x4fc3f7);
+const AXIS_OVERLAY_RENDER_ORDER = 7;
+/** Arrowhead "wings" length as a fraction of the shaft's own length, and
+ * their half-angle from the shaft — a fixed, purely cosmetic proportion
+ * (this is a GIZMO, not a measured quantity), same spirit as
+ * `ALIGNMENT_PREVIEW_*`'s fixed display constants elsewhere in this file. */
+const AXIS_ARROWHEAD_LENGTH_FRACTION = 0.18;
+const AXIS_ARROWHEAD_HALF_ANGLE_RAD = (20 * Math.PI) / 180;
 
 interface ThemeColors {
   background: ColorRepresentation;
@@ -486,6 +511,16 @@ export class SceneManager {
   private readonly marginGroup: Group;
   private marginOverlayObjects: LineSegments[] = [];
 
+  /** Insertion-axis arrow gizmo (Phase 3 Task 9) — full rebuild per
+   * `syncAxisOverlay` call, same "changes at most once per suggestion/slider
+   * tick, never per-frame, small relative to mesh geometry" reasoning as
+   * `marginOverlayObjects`/`sectionOutlineObjects` above. A single
+   * `LineSegments` object (shaft + arrowhead wings), not a real 3D cone
+   * mesh — this is a lightweight directional GIZMO, not a measured/exported
+   * quantity. */
+  private readonly axisGroup: Group;
+  private axisOverlayObjects: LineSegments[] = [];
+
   private projectionMode: CameraProjection;
   private shadingPreset: ShadingPreset;
   private wireframeEnabled: boolean;
@@ -565,6 +600,9 @@ export class SceneManager {
 
     this.marginGroup = new Group();
     this.scene.add(this.marginGroup);
+
+    this.axisGroup = new Group();
+    this.scene.add(this.axisGroup);
 
     this.resizeObserver = new ResizeObserver(() => this.handleResize());
     this.resizeObserver.observe(this.container);
@@ -1230,6 +1268,72 @@ export class SceneManager {
       (line.material as LineBasicMaterial).dispose();
     }
     this.marginOverlayObjects = [];
+  }
+
+  // ---------------------------------------------------------------------
+  // Insertion axis (Phase 3 Task 9)
+  // ---------------------------------------------------------------------
+
+  /** Rebuilds the axis arrow gizmo from `data` (or clears it, via `null`) —
+   * `data.origin`/`data.direction` are RENDER-frame (Float32-safe,
+   * re-centered — caller's responsibility, same convention as
+   * `syncSectionOverlay`'s plane point). A single shaft segment from
+   * `origin` to `origin + direction * lengthMm`, plus two short "wing"
+   * segments from the tip back toward the shaft at
+   * `AXIS_ARROWHEAD_HALF_ANGLE_RAD` — a lightweight directional GIZMO (not
+   * a real 3D cone mesh), always drawn with `depthTest: false` so it stays
+   * visible through the mesh it's pointing at/away from (mirrors the
+   * section outline's own always-on-top convention).
+   */
+  syncAxisOverlay(data: AxisOverlayRenderData | null): void {
+    this.clearAxisOverlay();
+    if (!data || data.lengthMm <= 0) return;
+    const direction = new Vector3(data.direction[0], data.direction[1], data.direction[2]);
+    if (direction.lengthSq() === 0) return;
+    direction.normalize();
+    const origin = new Vector3(data.origin[0], data.origin[1], data.origin[2]);
+    const tip = origin.clone().addScaledVector(direction, data.lengthMm);
+
+    // An arbitrary, deterministic vector NOT parallel to `direction`, for a
+    // stable perpendicular "wing" plane (same "pick whichever world axis is
+    // least parallel to the input" construction used throughout graphics —
+    // mirrors @dqcad/kernel's axis/hemisphere.ts `orthonormalBasis`, but
+    // reimplemented locally with THREE.Vector3 since `engine/` may not
+    // import `@dqcad/kernel` directly — CLAUDE.md layer rule).
+    const reference = Math.abs(direction.x) < 0.9 ? new Vector3(1, 0, 0) : new Vector3(0, 1, 0);
+    const perpendicular = new Vector3().crossVectors(reference, direction).normalize();
+
+    const wingLength = data.lengthMm * AXIS_ARROWHEAD_LENGTH_FRACTION;
+    const back = direction.clone().multiplyScalar(-1);
+    function wingTip(sign: 1 | -1): Vector3 {
+      const along = back.clone().multiplyScalar(Math.cos(AXIS_ARROWHEAD_HALF_ANGLE_RAD));
+      const across = perpendicular.clone().multiplyScalar(sign * Math.sin(AXIS_ARROWHEAD_HALF_ANGLE_RAD));
+      return tip.clone().addScaledVector(along.add(across), wingLength);
+    }
+    const wingA = wingTip(1);
+    const wingB = wingTip(-1);
+
+    const positions = new Float32Array([
+      origin.x, origin.y, origin.z, tip.x, tip.y, tip.z,
+      tip.x, tip.y, tip.z, wingA.x, wingA.y, wingA.z,
+      tip.x, tip.y, tip.z, wingB.x, wingB.y, wingB.z,
+    ]);
+    const geometry = new BufferGeometry();
+    geometry.setAttribute('position', new BufferAttribute(positions, 3));
+    const material = new LineBasicMaterial({ color: AXIS_ARROW_COLOR, depthTest: false });
+    const line = new LineSegments(geometry, material);
+    line.renderOrder = AXIS_OVERLAY_RENDER_ORDER;
+    this.axisGroup.add(line);
+    this.axisOverlayObjects.push(line);
+  }
+
+  private clearAxisOverlay(): void {
+    for (const line of this.axisOverlayObjects) {
+      this.axisGroup.remove(line);
+      line.geometry.dispose();
+      (line.material as LineBasicMaterial).dispose();
+    }
+    this.axisOverlayObjects = [];
   }
 
   /** The renderer's own `<canvas>` element — exposed so ui/MarginOverlay.tsx's

@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import type { MeshAsset, SceneNode } from '@dqcad/shared-types';
 import { caseStore } from '../engine/caseStore';
 import { AlignmentPanel } from './AlignmentPanel';
+import { AxisPanel } from './AxisPanel';
 import { CurvaturePanel } from './CurvaturePanel';
 import { ImportPanel } from './ImportPanel';
 import { MarginPanel } from './MarginPanel';
@@ -41,6 +42,7 @@ export function Sidebar() {
       )}
       <RestorationWizard />
       <MarginPanel />
+      <AxisPanel />
       <MeasurementPanel />
       <AlignmentPanel />
       <SurfaceDistancePanel />

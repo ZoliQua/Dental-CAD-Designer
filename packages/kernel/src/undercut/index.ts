@@ -5,6 +5,8 @@ export {
   undercutScan,
   undercutScanBatch,
   undercutScanRange,
+  undercutScanIndices,
+  undercutScanBatchIndices,
   RAY_ORIGIN_BIAS_MM,
   UNDERCUT_BOUNDARY_EPSILON,
   type UndercutSamplingPolicy,
@@ -14,4 +16,6 @@ export {
   type UndercutTriangleRange,
   type UndercutScanRangeOutput,
   type UndercutScanRangeStats,
+  type UndercutScanIndicesOutput,
+  type UndercutScanIndicesResult,
 } from './undercutScan.ts';

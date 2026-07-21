@@ -78,6 +78,15 @@ export {
   type MarginLinePayload,
   type ValidateMarginPayload,
   type ValidateMarginResult,
+  EmptyRegionError,
+  DegenerateRegionNormalError,
+  AXIS_DEFAULT_ROI_RADIUS_MM,
+  type SuggestAxisPayload,
+  type SuggestAxisResult,
+  type SuggestAxisCandidatePayload,
+  type AxisHeatmapPayload,
+  type AxisHeatmapResult,
+  type AxisHeatmapAbutmentStats,
 } from './jobs/registry.js';
 export { meshBuffers, type MeshBuffersPayload, type MeshBuffersResult } from './transfer.js';
 // MeshStats/IntakeReport/Bbox: re-exported here (rather than only living on
