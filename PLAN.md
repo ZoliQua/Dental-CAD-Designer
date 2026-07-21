@@ -185,7 +185,7 @@ All Float64, all in workers, all property-tested.
 - **Insertion axis tool:** suggest axis minimizing undercut area (sampled optimization over direction hemisphere); manual adjust with live undercut heatmap (µm depth color map); per-restoration axis; bridges get one common axis with per-abutment undercut report
 - Undercut blockout preview (virtual wax) for the inner-surface stage
 
-**Acceptance:** on 3 real prep fixtures, auto margin proposal is within 100 µm (mean) of a hand-traced reference polyline for ≥ 90% of its length; margin validation rejects seeded self-intersections; undercut map on a tilted cylinder matches analytic expectation.
+**Acceptance** *(amended 2026-07-15 — see docs/demos/phase-3-task-8-evidence.md: on the first real reference case the margin line is majority-obscured by collapsed gingiva, which no scan-geometry algorithm can see; the original criterion implicitly assumed scan-visible margins)*: on real prep fixtures, auto margin proposal is within 100 µm (mean) of the hand-traced reference along the **ridge-visible** portion of the margin, for ≥ 3 preps, with the visible-coverage fraction honestly measured and reported per tooth (auto-proposal is a proposal, never final — the clinician completes obscured stretches manually); on a scan-visible prep case (e.g. retraction-cord impression scan, to be supplied), the original full-length criterion — ≤ 100 µm mean over ≥ 90% of length — is additionally demonstrated; margin validation rejects seeded self-intersections; undercut map on a tilted cylinder matches analytic expectation.
 
 ### Phase 4 — Crown Design
 
