@@ -26,12 +26,8 @@
 // proposal; findings present/absent in the seeded-bad cases) — the same
 // kind of assertion validate.test.ts already makes, just against the real
 // mesh instead of the analytic one.
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parseStl } from '@dqcad/io';
 import {
-  intake,
   buildHalfedge,
   buildBvh,
   computeCurvature,
@@ -46,15 +42,7 @@ import {
   type MarginLineLike,
   type MarginAnchorLike,
 } from '@dqcad/kernel';
-import { repoRoot } from '../../scripts/kernel-ops-lib.ts';
-
-const ARCH_UPPERJAW_PATH = 'test-fixtures/real-scans/arch-case-01/arch-case-01-upperjaw.stl';
-
-function loadUpperjawMesh(): IndexedMesh {
-  const bytes = readFileSync(join(repoRoot, ARCH_UPPERJAW_PATH));
-  const { soup } = parseStl(new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength));
-  return intake({ kind: 'soup', soup }).mesh;
-}
+import { loadUpperjawMesh } from './upperjaw-mesh.ts';
 
 /** SAME fixed seed as scripts/kernel-ops-lib.ts's pinned `proposeMargin`
  * golden entry ("real anterior shoulder-prep margin ridge vertex") — reusing

@@ -1009,6 +1009,35 @@ describe('marginStore — bulk multi-select semantics', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Phase 3 editor enhancements, task 1 — regression for a disclosed-and-fixed
+// bug: an early draft reset `proposalTargetAnchorCount` on every
+// `startForTooth` call, so the dentist's slider value for tooth A didn't
+// survive moving on to tooth B (defeats the whole "especially with 10
+// prepped teeth" motivation — marginStore.ts's `start`/`proposalTargetAnchorCount`
+// doc). Fixed by threading it through `start`'s `INITIAL` spread override.
+// No worker/mesh needed — `startForTooth` returns right after `store.start()`
+// for a restoration with no saved margin line yet.
+// ---------------------------------------------------------------------------
+
+describe('marginStore — proposalTargetAnchorCount survives the per-tooth start() reset', () => {
+  it('a slider value set for tooth A is still in effect after startForTooth(tooth B); a fresh session defaults to MARGIN_PROPOSAL_ANCHOR_COUNT_DEFAULT', () => {
+    const restoration = createRestoration({ type: 'bridge', teeth: [11, 21], targetNodeId: 'stub-node' });
+
+    marginEditor.startForTooth(restoration.id, 11);
+    expect(useMarginStore.getState().proposalTargetAnchorCount).toBe(MARGIN_PROPOSAL_ANCHOR_COUNT_DEFAULT);
+
+    marginEditor.setProposalTargetAnchorCount(80);
+    expect(useMarginStore.getState().proposalTargetAnchorCount).toBe(80);
+
+    marginEditor.startForTooth(restoration.id, 21);
+    expect(useMarginStore.getState().proposalTargetAnchorCount).toBe(80); // survives the per-tooth reset
+
+    marginEditor.resetForTests(); // test-only: simulates a genuinely fresh session (see its own doc)
+    expect(useMarginStore.getState().proposalTargetAnchorCount).toBe(MARGIN_PROPOSAL_ANCHOR_COUNT_DEFAULT);
+  });
+});
+
 describe('marginEditor — bulk anchor deletion (real WorkerPool, icosahedron)', () => {
   async function traceClosedLoop(tooth: FdiTooth, anchorCount: number): Promise<{ restorationId: string }> {
     const { nodeId, positions } = registerIcosahedron();

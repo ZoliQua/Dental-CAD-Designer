@@ -49,12 +49,8 @@
 // position changes. This is the same "honest, measured, real-case-driven
 // adjustment" discipline this repo's own Task 8/8b margin-acceptance work
 // already established (never silently pick a flattering number).
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parseStl } from '@dqcad/io';
 import {
-  intake,
   buildHalfedge,
   buildBvh,
   computeCurvature,
@@ -66,15 +62,7 @@ import {
   type SurfacePoint,
   type Vec3,
 } from '@dqcad/kernel';
-import { repoRoot } from '../../scripts/kernel-ops-lib.ts';
-
-const ARCH_UPPERJAW_PATH = 'test-fixtures/real-scans/arch-case-01/arch-case-01-upperjaw.stl';
-
-function loadUpperjawMesh(): IndexedMesh {
-  const bytes = readFileSync(join(repoRoot, ARCH_UPPERJAW_PATH));
-  const { soup } = parseStl(new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength));
-  return intake({ kind: 'soup', soup }).mesh;
-}
+import { loadUpperjawMesh } from './upperjaw-mesh.ts';
 
 // scripts/kernel-ops-lib.ts's own pinned golden seed (Phase 3 Task 4) — see
 // this file's module doc.

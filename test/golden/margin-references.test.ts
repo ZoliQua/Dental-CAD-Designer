@@ -35,9 +35,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parseStl } from '@dqcad/io';
 import {
-  intake,
   buildBvh,
   validateMarginLine,
   classifyMarginValidation,
@@ -46,8 +44,8 @@ import {
 } from '@dqcad/kernel';
 import type { MarginReferenceExport } from '@dqcad/shared-types';
 import { repoRoot } from '../../scripts/kernel-ops-lib.ts';
+import { loadUpperjawMesh } from './upperjaw-mesh.ts';
 
-const ARCH_UPPERJAW_PATH = 'test-fixtures/real-scans/arch-case-01/arch-case-01-upperjaw.stl';
 const MARGINS_DIR = 'test-fixtures/margins/arch-case-01';
 const REFERENCE_TEETH = [12, 11, 21, 22] as const;
 
@@ -78,9 +76,7 @@ const EXPECTED_KEYS = [
 let cachedMesh: IndexedMesh | null = null;
 function loadUpperjawMeshOnce(): IndexedMesh {
   if (cachedMesh) return cachedMesh;
-  const bytes = readFileSync(join(repoRoot, ARCH_UPPERJAW_PATH));
-  const { soup } = parseStl(new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength));
-  cachedMesh = intake({ kind: 'soup', soup }).mesh;
+  cachedMesh = loadUpperjawMesh();
   return cachedMesh;
 }
 
