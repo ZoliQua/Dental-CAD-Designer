@@ -144,6 +144,92 @@
 // task's report for the measured wall-clock total and the golden-lane-vs-
 // perf-guard decision it drove (module doc of
 // `test/golden/margin-acceptance.test.ts` records the final choice).
+//
+// ## Task 8b addendum — REFRAMED acceptance (amended criterion, 2026-07-15)
+//
+// PLAN.md's Phase 3 acceptance was amended after Task 8's honest BLOCKED
+// verdict above: the ORIGINAL full-length criterion implicitly assumed the
+// entire hand-traced reference is scan-visible, which Task 8 showed is false
+// on this real case (10.9%-51.1% of each reference's own length sits on
+// `k2`-qualifying ridge terrain at all — see the per-tooth table below). The
+// AMENDED criterion asks a narrower, honest question: on the portion of the
+// margin a curvature-ridge walker could ever plausibly see, how close is the
+// auto-proposal? Everything below is ADDITIVE — the original
+// `runMarginAcceptance()` full-length metrics (`fullLengthMeanDeviationMm`,
+// `bestNinetyPercentMeanDeviationMm`, ...) are unchanged and still computed.
+//
+// 1. **Visible-stretch classification** (`classifyReferenceVisibility`):
+//    each REFERENCE sample point (native, non-uniform density — see
+//    test-fixtures/margins/README.md "Density") is snapped to the mesh
+//    surface (`snapToSurface`, the SAME BVH-projection primitive every other
+//    seed/anchor in this codebase uses) and its `k2` is evaluated as the
+//    barycentric-weighted combination of the containing triangle's 3 vertex
+//    `k2` values (matching this task's own prior ad hoc cross-check,
+//    `.superpowers/sdd/p3-task-8-report.md`'s "Why BLOCKED" section: "BVH
+//    closest point + barycentric-weighted k2"). A sample is RAW-visible iff
+//    `k2 < -MARGIN_MIN_RIDGE_STRENGTH` (the EXACT constant and comparison
+//    `marginRidge.ts`'s own `qualifies()` uses to gate the walk — reused
+//    directly from `@dqcad/kernel`, not re-derived) AND none of its
+//    triangle's 3 vertices is a curvature boundary/isolated vertex
+//    (`curvature.isBoundary` — `qualifies()`'s own `!isBoundary` half,
+//    applied per-vertex here since a reference sample is a barycentric
+//    combination, not a single mesh vertex). This is NOT a reimplementation
+//    of `qualifies()`'s region-BFS bookkeeping (that machinery is specific
+//    to the walk's own bounded-region search and has no meaning for an
+//    independent reference point) — only its qualification RULE (threshold +
+//    comparison + boundary exclusion) is reused, which is the part this
+//    task's brief asks to share.
+// 2. **Run-length smoothing** (`smoothVisibilityRuns`,
+//    `VISIBLE_STRETCH_MIN_RUN_SAMPLES`): a contiguous (circular) run of
+//    RAW-visible reference samples shorter than the threshold is flipped to
+//    NOT-visible before anything downstream sees it — "a single noisy
+//    qualifying point inside an obscured run isn't a visible stretch" (this
+//    task's brief, verbatim). Deliberately ONE-DIRECTIONAL: short
+//    NON-qualifying runs inside a visible stretch are left alone (not
+//    filled in) — CLAUDE.md's "accuracy over speed" favors under- over
+//    over-stating scan-visible coverage, and the brief only asked for the
+//    qualifying-blip case. Count-based (not arc-length-based): the brief's
+//    own wording ("a single... point") is a sample-count concept, and with
+//    reference spacing varying 5µm-1mm across a single tooth (README's own
+//    documented sanity band), a length-based cutoff would filter
+//    inconsistently across regions of different native density; a small
+//    sample-count threshold (3) directly targets isolated 1-2-sample noise
+//    regardless of local density.
+// 3. **Coverage fraction** (`computeVisibleCoverageFraction`): a
+//    length-weighted fraction of the reference's own perimeter classified
+//    visible AFTER smoothing — each sample gets a Voronoi-style weight (half
+//    of each adjacent segment), so denser regions don't get overweighted
+//    relative to sparser ones. This is THE reported per-tooth
+//    "visible-coverage fraction" (this task's brief). A raw, unweighted
+//    POINT-fraction (`rawVisibleFraction`, no smoothing) is also reported
+//    for direct cross-reference against Task 8's own prior ad hoc numbers
+//    (10.9%-51.1%) — expect close but not necessarily identical values
+//    (different weighting, plus this task's smoothing step, both
+//    deliberately applied here and absent from that ad hoc check).
+// 4. **Reframed distance metric**: the EXISTING per-proposal-sample
+//    closest-point-on-reference computation (`closestPointOnClosedPolyline`,
+//    unchanged) already returns which REFERENCE segment each proposal
+//    sample's closest point landed on (`segmentIndex`) — previously
+//    discarded. A proposal sample now also carries a `visible` flag: true
+//    iff EITHER endpoint of that matched reference segment is
+//    (smoothed-)visible. `visibleStretchMeanDeviationMm`/
+//    `visibleStretchMaxDeviationMm`/`visibleStretchFractionWithin100umMm`
+//    are the same full-length statistics, restricted to only the
+//    visible-flagged proposal samples — i.e. "how far is the auto-proposal
+//    from the reference, evaluated only where the reference itself sits on
+//    scan-visible ridge terrain". This keeps the proposal->reference
+//    distance DIRECTION identical to Task 8's original metric (still a
+//    proposal-sample query against the reference curve) while restricting
+//    the DOMAIN to reference-visible locations, per this task's brief.
+// 5. **Tooth 11 (non-closing)**: `proposeMarginLoop` only ever returns a
+//    CLOSED loop or throws — there is no partial walk to measure deviation
+//    against (this task's brief explicitly forbids hacking one). Tooth 11
+//    therefore contributes visible-coverage-fraction evidence ONLY
+//    (computed directly from its own reference points, independent of any
+//    proposal) — `closed: false`, no deviation/acceptance fields. The
+//    amended-criterion ACCEPTANCE ASSERTION set is exactly the 3 closing
+//    teeth (`AMENDED_ACCEPTANCE_ASSERTION_TEETH` = [12, 21, 22]), matching
+//    this task's brief.
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseStl } from '@dqcad/io';
@@ -160,6 +246,8 @@ import {
   NoClosureError,
   NoRidgeFoundError,
   lerpVec3,
+  triangleVertexIndices,
+  MARGIN_MIN_RIDGE_STRENGTH,
   type IndexedMesh,
   type HalfedgeMesh,
   type Bvh,
@@ -197,6 +285,23 @@ export const ARC_LENGTH_STEP_MM = 0.02;
  * as a "worst cluster" rather than isolated single-sample noise. */
 export const MIN_CLUSTER_RUN_SAMPLES = 5;
 
+/** Task 8b (amended criterion). Minimum contiguous run length, in REFERENCE
+ * samples (native, non-uniform density), for a `k2`-qualifying run to count
+ * as a real "visible stretch" rather than isolated curvature-noise — see
+ * this file's module doc, "Task 8b addendum" item 2. */
+export const VISIBLE_STRETCH_MIN_RUN_SAMPLES = 3;
+
+/** Task 8b (amended criterion, PLAN.md, amended 2026-07-15). The 3 teeth
+ * `proposeMarginLoop` actually closes on this fixture — tooth 11 is
+ * evidence-only (see this file's module doc item 5). The amended acceptance
+ * ASSERTION ("≥3 teeth with visible-stretch mean ≤100µm") is evaluated over
+ * exactly this set, per this task's brief. */
+export const AMENDED_ACCEPTANCE_ASSERTION_TEETH: readonly number[] = [12, 21, 22];
+/** ≥3 of the 3 closing teeth must pass the amended (visible-stretch)
+ * criterion — zero slack, matching Task 8's own `ACCEPTANCE_MIN_PASSING_TEETH`
+ * precedent (this task's brief). */
+export const AMENDED_ACCEPTANCE_MIN_PASSING_TEETH = 3;
+
 function dist3(a: Vec3, b: Vec3): number {
   return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 }
@@ -214,16 +319,173 @@ function centroidOf(points: readonly Vec3[]): Vec3 {
   return [x / n, y / n, z / n];
 }
 
+/** Per-segment lengths of a CLOSED polyline (wraps last -> first):
+ * `lens[i]` is the distance from `points[i]` to `points[(i+1) % n]`. Shared
+ * by `closedPolylineLengthMm` and Task 8b's visibility-coverage/stretch
+ * helpers below (single source of truth for "closed loop segmentation"). */
+function computeClosedSegmentLengths(points: readonly Vec3[]): number[] {
+  const n = points.length;
+  const lens: number[] = new Array(n);
+  for (let i = 0; i < n; i++) lens[i] = dist3(points[i]!, points[(i + 1) % n]!);
+  return lens;
+}
+
 /** Closed-loop length (wraps last -> first), matching the reference
  * fixtures' own `resampledPoints`/`closed: true` circumference convention
  * (test/golden/margin-references.test.ts's `polylineSpacingsMm`). */
 function closedPolylineLengthMm(points: readonly Vec3[]): number {
-  let total = 0;
-  const n = points.length;
-  for (let i = 0; i < n; i++) {
-    total += dist3(points[i]!, points[(i + 1) % n]!);
+  return computeClosedSegmentLengths(points).reduce((s, d) => s + d, 0);
+}
+
+// ---------------------------------------------------------------------------
+// Task 8b (amended criterion) — ridge-visibility classification of REFERENCE
+// samples. See this file's module doc, "Task 8b addendum".
+// ---------------------------------------------------------------------------
+
+/** Barycentric-weighted `k2` (and boundary-affected flag) at an arbitrary
+ * `SurfacePoint` — the SAME triangle+barycentric currency `evaluateSurfacePoint`
+ * uses for position, applied to the curvature scalar field instead. Matches
+ * this task's own prior ad hoc cross-check methodology
+ * (`.superpowers/sdd/p3-task-8-report.md`, "BVH closest point +
+ * barycentric-weighted k2"). `boundaryAffected` is true if ANY of the
+ * containing triangle's 3 vertices is a curvature boundary/isolated vertex
+ * (`curvature.isBoundary`) — `k2` is defined as exactly 0 there (see
+ * `curvature/curvature.ts`'s own doc), which would otherwise silently pull
+ * an interpolated value toward "non-qualifying" for the wrong reason. */
+function barycentricK2(mesh: IndexedMesh, curvature: CurvatureResult, sp: SurfacePoint): { k2: number; boundaryAffected: boolean } {
+  const [ia, ib, ic] = triangleVertexIndices(mesh, sp.triangleIndex);
+  const [wa, wb, wc] = sp.barycentric;
+  const boundaryAffected = curvature.isBoundary[ia] === 1 || curvature.isBoundary[ib] === 1 || curvature.isBoundary[ic] === 1;
+  const k2 = curvature.k2[ia]! * wa + curvature.k2[ib]! * wb + curvature.k2[ic]! * wc;
+  return { k2, boundaryAffected };
+}
+
+/** Contiguous (circular) runs of `true` in a boolean array — the same
+ * rotate-to-a-false-start technique `findExceedingRuns` below uses, factored
+ * out since Task 8b's visibility smoothing and stretch-listing both need it
+ * (unlike `findExceedingRuns`, which bakes a numeric threshold AND a minimum
+ * run length into one pass, this returns EVERY run regardless of length —
+ * callers filter afterward). */
+function findCircularTrueRuns(flags: readonly boolean[]): Array<{ start: number; end: number; count: number }> {
+  const n = flags.length;
+  if (n === 0) return [];
+  if (flags.every(Boolean)) return [{ start: 0, end: n - 1, count: n }];
+  if (!flags.some(Boolean)) return [];
+  let rotate = 0;
+  while (flags[rotate]) rotate++;
+  const runs: Array<{ start: number; end: number; count: number }> = [];
+  let idx = 0;
+  while (idx < n) {
+    const actual = (rotate + idx) % n;
+    if (!flags[actual]) {
+      idx++;
+      continue;
+    }
+    const runStart = idx;
+    while (idx < n && flags[(rotate + idx) % n]) idx++;
+    const count = idx - runStart;
+    runs.push({ start: (rotate + runStart) % n, end: (rotate + idx - 1) % n, count });
   }
-  return total;
+  return runs;
+}
+
+/** Flips contiguous `true` runs shorter than `minRunSamples` to `false` —
+ * see this file's module doc, "Task 8b addendum" item 2. Deliberately
+ * one-directional (never fills in short `false` gaps). */
+export function smoothVisibilityRuns(rawVisible: readonly boolean[], minRunSamples: number): boolean[] {
+  const n = rawVisible.length;
+  const out = new Array<boolean>(n).fill(false);
+  for (const run of findCircularTrueRuns(rawVisible)) {
+    if (run.count < minRunSamples) continue; // isolated noisy blip — not a visible stretch
+    for (let k = 0; k < run.count; k++) out[(run.start + k) % n] = true;
+  }
+  return out;
+}
+
+export interface ReferenceVisibilityClassification {
+  /** Per-reference-sample RAW qualification: `k2 < -MARGIN_MIN_RIDGE_STRENGTH`
+   * and not boundary-affected — before run-length smoothing. */
+  readonly rawVisible: readonly boolean[];
+  /** Per-reference-sample classification AFTER `smoothVisibilityRuns` — THE
+   * classification everything downstream (coverage fraction, visible
+   * stretches, reframed distance metric) uses. */
+  readonly visible: readonly boolean[];
+  /** Barycentric-weighted `k2` at each reference sample — reported for
+   * transparency/debugging, not itself an acceptance input. */
+  readonly k2AtPoint: readonly number[];
+}
+
+/** Classifies every point of a (closed) reference polyline as ridge-visible
+ * or obscured — see this file's module doc, "Task 8b addendum" items 1-2. */
+function classifyReferenceVisibility(
+  mesh: IndexedMesh,
+  curvature: CurvatureResult,
+  bvh: Bvh,
+  referencePoints: readonly Vec3[],
+): ReferenceVisibilityClassification {
+  const rawVisible: boolean[] = [];
+  const k2AtPoint: number[] = [];
+  for (const p of referencePoints) {
+    const sp = snapToSurface(mesh, bvh, p);
+    const { k2, boundaryAffected } = barycentricK2(mesh, curvature, sp);
+    k2AtPoint.push(k2);
+    rawVisible.push(!boundaryAffected && k2 < -MARGIN_MIN_RIDGE_STRENGTH);
+  }
+  const visible = smoothVisibilityRuns(rawVisible, VISIBLE_STRETCH_MIN_RUN_SAMPLES);
+  return { rawVisible, visible, k2AtPoint };
+}
+
+/** Length-weighted fraction of the reference's own perimeter classified
+ * visible (post-smoothing) — each sample's weight is the Voronoi-style
+ * average of its two adjacent segment lengths, so the sum of all weights is
+ * exactly the total perimeter regardless of local sample density. THE
+ * reported per-tooth "visible-coverage fraction" (this task's brief). */
+function computeVisibleCoverageFraction(referencePoints: readonly Vec3[], visible: readonly boolean[]): number {
+  const n = referencePoints.length;
+  const segLens = computeClosedSegmentLengths(referencePoints);
+  let totalLength = 0;
+  let visibleLength = 0;
+  for (let i = 0; i < n; i++) totalLength += segLens[i]!;
+  for (let i = 0; i < n; i++) {
+    const weight = (segLens[(i - 1 + n) % n]! + segLens[i]!) / 2;
+    if (visible[i]) visibleLength += weight;
+  }
+  return totalLength > 0 ? visibleLength / totalLength : 0;
+}
+
+export interface VisibleStretch {
+  readonly startIndex: number;
+  readonly endIndex: number;
+  readonly sampleCount: number;
+  readonly lengthMm: number;
+  readonly centroidAmbient: Vec3;
+}
+
+/** Contiguous (circular) visible stretches of the reference, AFTER
+ * smoothing — lets the evidence report say WHERE the scan-visible portion
+ * of each margin sits. */
+function findVisibleStretches(referencePoints: readonly Vec3[], visible: readonly boolean[]): VisibleStretch[] {
+  const n = referencePoints.length;
+  const segLens = computeClosedSegmentLengths(referencePoints);
+  return findCircularTrueRuns(visible).map((run) => {
+    const indices: number[] = [];
+    for (let k = 0; k < run.count; k++) indices.push((run.start + k) % n);
+    // Sum only the INTERNAL segments of the run (count-1 of them) — the
+    // segment leading OUT of the run's last point heads into obscured
+    // territory and doesn't belong to this stretch's own length. A run
+    // spanning the entire loop (count === n) is the one exception: every
+    // segment is internal to it.
+    const segCount = run.count === n ? n : run.count - 1;
+    let lengthMm = 0;
+    for (let k = 0; k < segCount; k++) lengthMm += segLens[(run.start + k) % n]!;
+    return {
+      startIndex: run.start,
+      endIndex: run.end,
+      sampleCount: run.count,
+      lengthMm,
+      centroidAmbient: centroidOf(indices.map((i) => referencePoints[i]!)),
+    };
+  });
 }
 
 /** Exact ambient closest point on a CLOSED polyline (segment-by-segment,
@@ -394,6 +656,40 @@ export interface ToothAcceptanceResult {
   readonly maxDeviationMm?: number;
   readonly worstClusters?: readonly ExceedingRun[];
   readonly passesAcceptance?: boolean;
+
+  // -- Task 8b (amended criterion) — ridge-visibility / reframed metrics.
+  // Reported for EVERY tooth (closing or not — see this file's module doc
+  // item 5) since visibility is a property of the reference alone.
+  /** Number of reference samples classified (raw, pre-smoothing) as
+   * `k2`-qualifying, as a plain point-count fraction (NOT length-weighted)
+   * — reported only for direct cross-reference against Task 8's own prior
+   * ad hoc measurement (10.9%-51.1%); NOT the acceptance-relevant figure. */
+  readonly rawVisibleFraction: number;
+  /** THE reported per-tooth visible-coverage fraction: length-weighted,
+   * post-smoothing (`computeVisibleCoverageFraction`). */
+  readonly visibleCoverageFraction: number;
+  /** Contiguous visible stretches of the reference (post-smoothing). */
+  readonly visibleStretches: readonly VisibleStretch[];
+  readonly referenceSampleCount: number;
+
+  // -- Reframed distance metric (only defined when `closed`).
+  /** Count of PROPOSAL samples whose closest reference segment is
+   * (post-smoothing) visible — the domain the metrics below are computed
+   * over. */
+  readonly visibleStretchSampleCount?: number;
+  /** `visibleStretchSampleCount / sampleCount` — how much of the PROPOSAL
+   * curve maps onto reference-visible locations (cross-check against
+   * `visibleCoverageFraction`; expected to roughly agree for a proposal
+   * that tracks the reference well). */
+  readonly visibleStretchSampleFraction?: number;
+  readonly visibleStretchMeanDeviationMm?: number;
+  readonly visibleStretchMaxDeviationMm?: number;
+  readonly visibleStretchFractionWithin100umMm?: number;
+  /** `visibleStretchMeanDeviationMm <= ACCEPTANCE_THRESHOLD_MM` — THE
+   * amended-criterion per-tooth pass/fail (this task's brief). `false` (not
+   * `undefined`) when there are zero visible-flagged proposal samples, so a
+   * degenerate "no overlap" case never silently reads as a pass. */
+  readonly passesAmendedAcceptance?: boolean;
 }
 
 export interface MarginAcceptanceReport {
@@ -407,6 +703,17 @@ export interface MarginAcceptanceReport {
   readonly passingTeethCount: number;
   readonly measuredTeethCount: number;
   readonly overallPasses: boolean;
+
+  // -- Task 8b (amended criterion).
+  readonly visibleStretchMinRunSamples: number;
+  readonly amendedAcceptanceAssertionTeeth: readonly number[];
+  readonly amendedAcceptanceMinPassingTeeth: number;
+  /** Count of `amendedAcceptanceAssertionTeeth` (the 3 closing teeth) that
+   * pass the amended (visible-stretch) criterion. */
+  readonly amendedPassingTeethCount: number;
+  /** `amendedPassingTeethCount >= amendedAcceptanceMinPassingTeeth` — THE
+   * amended-criterion verdict (PLAN.md, amended 2026-07-15). */
+  readonly amendedOverallPasses: boolean;
 }
 
 function hashMeshContentHex(mesh: IndexedMesh): string {
@@ -439,6 +746,15 @@ function computeToothResult(
   const seed = snapToSurface(mesh, bvh, seedCentroidAmbient);
   const seedAmbient = evaluateSurfacePoint(mesh, seed);
 
+  // Task 8b: visibility classification is a property of the REFERENCE
+  // alone — computed for every tooth regardless of whether the proposal
+  // closes (see this file's module doc, "Task 8b addendum" item 5).
+  const visibility = classifyReferenceVisibility(mesh, curvature, bvh, referencePoints);
+  const rawVisibleFraction = visibility.rawVisible.filter(Boolean).length / visibility.rawVisible.length;
+  const visibleCoverageFraction = computeVisibleCoverageFraction(referencePoints, visibility.visible);
+  const visibleStretches = findVisibleStretches(referencePoints, visibility.visible);
+  const referenceSampleCount = referencePoints.length;
+
   let proposal;
   try {
     proposal = proposeMarginLoop(mesh, hm, curvature, seed);
@@ -451,17 +767,32 @@ function computeToothResult(
         closed: false,
         nonClosureReason: 'NoClosureError',
         nonClosureDetail: { closureDeviationMm: e.closureDeviationMm, closureToleranceMm: e.closureToleranceMm, stepsTaken: e.stepsTaken },
+        rawVisibleFraction,
+        visibleCoverageFraction,
+        visibleStretches,
+        referenceSampleCount,
       };
     }
     if (e instanceof NoRidgeFoundError) {
-      return { tooth: reference.tooth, seedCentroidAmbient, seedAmbient, closed: false, nonClosureReason: 'NoRidgeFoundError' };
+      return {
+        tooth: reference.tooth,
+        seedCentroidAmbient,
+        seedAmbient,
+        closed: false,
+        nonClosureReason: 'NoRidgeFoundError',
+        rawVisibleFraction,
+        visibleCoverageFraction,
+        visibleStretches,
+        referenceSampleCount,
+      };
     }
     throw e;
   }
 
   const proposalDense = buildProposalDensePolyline(mesh, hm, proposal.anchors);
   const proposalResampled = resampleClosedPolylineArcLength(proposalDense, ARC_LENGTH_STEP_MM);
-  const deviations = proposalResampled.map((p) => closestPointOnClosedPolyline(p, referencePoints).distanceMm);
+  const closest = proposalResampled.map((p) => closestPointOnClosedPolyline(p, referencePoints));
+  const deviations = closest.map((c) => c.distanceMm);
 
   const n = deviations.length;
   const fullLengthMeanDeviationMm = deviations.reduce((s, d) => s + d, 0) / n;
@@ -481,6 +812,23 @@ function computeToothResult(
 
   const worstClusters = findExceedingRuns(proposalResampled, deviations, ACCEPTANCE_THRESHOLD_MM, ARC_LENGTH_STEP_MM);
 
+  // Task 8b: restrict to proposal samples whose matched reference segment
+  // is (post-smoothing) visible — see this file's module doc, "Task 8b
+  // addendum" item 4. A reference segment counts as visible if EITHER
+  // endpoint is visible (native reference spacing is fine enough, per
+  // README's own sanity band, that this boundary-inclusion choice affects
+  // at most one native reference segment's worth of proposal samples).
+  const referenceCount = referencePoints.length;
+  const visibleFlags = closest.map((c) => visibility.visible[c.segmentIndex] === true || visibility.visible[(c.segmentIndex + 1) % referenceCount] === true);
+  const visibleDeviations = deviations.filter((_, i) => visibleFlags[i]);
+  const visibleStretchSampleCount = visibleDeviations.length;
+  const visibleStretchSampleFraction = visibleStretchSampleCount / n;
+  const visibleStretchMeanDeviationMm = visibleStretchSampleCount > 0 ? visibleDeviations.reduce((s, d) => s + d, 0) / visibleStretchSampleCount : undefined;
+  const visibleStretchMaxDeviationMm = visibleStretchSampleCount > 0 ? Math.max(...visibleDeviations) : undefined;
+  const visibleStretchFractionWithin100umMm =
+    visibleStretchSampleCount > 0 ? visibleDeviations.filter((d) => d <= ACCEPTANCE_THRESHOLD_MM).length / visibleStretchSampleCount : undefined;
+  const passesAmendedAcceptance = visibleStretchMeanDeviationMm !== undefined && visibleStretchMeanDeviationMm <= ACCEPTANCE_THRESHOLD_MM;
+
   return {
     tooth: reference.tooth,
     seedCentroidAmbient,
@@ -499,6 +847,16 @@ function computeToothResult(
     maxDeviationMm,
     worstClusters,
     passesAcceptance: bestNinetyPercentMeanDeviationMm <= ACCEPTANCE_THRESHOLD_MM,
+    rawVisibleFraction,
+    visibleCoverageFraction,
+    visibleStretches,
+    referenceSampleCount,
+    visibleStretchSampleCount,
+    visibleStretchSampleFraction,
+    visibleStretchMeanDeviationMm,
+    visibleStretchMaxDeviationMm,
+    visibleStretchFractionWithin100umMm,
+    passesAmendedAcceptance,
   };
 }
 
@@ -552,6 +910,18 @@ export function runMarginAcceptance(): MarginAcceptanceReport {
   const measured = teeth.filter((t) => t.closed);
   const passingTeethCount = measured.filter((t) => t.passesAcceptance === true).length;
 
+  // Task 8b (amended criterion): evaluated ONLY over the documented 3
+  // closing teeth (`AMENDED_ACCEPTANCE_ASSERTION_TEETH`) — tooth 11
+  // contributes coverage evidence only (this file's module doc item 5).
+  const amendedAssertionResults = teeth.filter((t) => AMENDED_ACCEPTANCE_ASSERTION_TEETH.includes(t.tooth));
+  if (amendedAssertionResults.length !== AMENDED_ACCEPTANCE_ASSERTION_TEETH.length) {
+    throw new Error(
+      `runMarginAcceptance: expected exactly the amended-criterion assertion teeth [${AMENDED_ACCEPTANCE_ASSERTION_TEETH.join(',')}] among ` +
+        `the 4 measured references, found [${amendedAssertionResults.map((t) => t.tooth).join(',')}] — investigate before trusting the amended verdict.`,
+    );
+  }
+  const amendedPassingTeethCount = amendedAssertionResults.filter((t) => t.passesAmendedAcceptance === true).length;
+
   return {
     kernelVersion: KERNEL_VERSION,
     meshContentHash,
@@ -563,6 +933,11 @@ export function runMarginAcceptance(): MarginAcceptanceReport {
     passingTeethCount,
     measuredTeethCount: measured.length,
     overallPasses: passingTeethCount >= ACCEPTANCE_MIN_PASSING_TEETH,
+    visibleStretchMinRunSamples: VISIBLE_STRETCH_MIN_RUN_SAMPLES,
+    amendedAcceptanceAssertionTeeth: AMENDED_ACCEPTANCE_ASSERTION_TEETH,
+    amendedAcceptanceMinPassingTeeth: AMENDED_ACCEPTANCE_MIN_PASSING_TEETH,
+    amendedPassingTeethCount,
+    amendedOverallPasses: amendedPassingTeethCount >= AMENDED_ACCEPTANCE_MIN_PASSING_TEETH,
   };
 }
 
@@ -580,8 +955,12 @@ function printReport(report: MarginAcceptanceReport): void {
     console.log(`\n--- tooth ${t.tooth} ---`);
     console.log(`  seed centroid (ambient): ${t.seedCentroidAmbient.map((c) => c.toFixed(3)).join(', ')}`);
     console.log(`  seed (on surface):       ${t.seedAmbient.map((c) => c.toFixed(3)).join(', ')}`);
+    console.log(
+      `  [Task 8b] visible coverage: ${(t.visibleCoverageFraction * 100).toFixed(1)}% (length-weighted, post-smoothing) ` +
+        `| raw k2-qualifying: ${(t.rawVisibleFraction * 100).toFixed(1)}% (point fraction, pre-smoothing) | ${t.visibleStretches.length} visible stretch(es), ${t.referenceSampleCount} reference samples`,
+    );
     if (!t.closed) {
-      console.log(`  NON-CLOSING (${t.nonClosureReason}) — EXCLUDED from the acceptance count.`);
+      console.log(`  NON-CLOSING (${t.nonClosureReason}) — EXCLUDED from the acceptance count (coverage evidence only, see Task 8b).`);
       if (t.nonClosureDetail) {
         console.log(
           `    closestApproach=${t.nonClosureDetail.closureDeviationMm.toFixed(4)}mm, tolerance=${t.nonClosureDetail.closureToleranceMm}mm, steps=${t.nonClosureDetail.stepsTaken}`,
@@ -592,10 +971,16 @@ function printReport(report: MarginAcceptanceReport): void {
     console.log(`  anchors=${t.proposalAnchorCount}, walkVertices=${t.proposalWalkVertexCount}, samples=${t.sampleCount} @ ${(t.arcStepMm! * 1000).toFixed(0)}um step`);
     console.log(`  proposalPerimeterMm=${fmt(t.proposalPerimeterMm, 3)}, referencePerimeterMm=${fmt(t.referencePerimeterMm, 3)}`);
     console.log(`  full-length mean deviation:      ${fmt((t.fullLengthMeanDeviationMm ?? 0) * 1000, 1)} um`);
-    console.log(`  best-90%-of-length mean deviation: ${fmt((t.bestNinetyPercentMeanDeviationMm ?? 0) * 1000, 1)} um (kept ${((t.bestNinetyPercentLengthFraction ?? 0) * 100).toFixed(1)}% of length) -- ACCEPTANCE METRIC`);
+    console.log(`  best-90%-of-length mean deviation: ${fmt((t.bestNinetyPercentMeanDeviationMm ?? 0) * 1000, 1)} um (kept ${((t.bestNinetyPercentLengthFraction ?? 0) * 100).toFixed(1)}% of length) -- ORIGINAL FULL-LENGTH METRIC`);
     console.log(`  fraction of length within 100um: ${(((t.fractionOfLengthWithin100umMm ?? 0)) * 100).toFixed(1)}%`);
     console.log(`  max deviation:                    ${fmt((t.maxDeviationMm ?? 0) * 1000, 1)} um`);
-    console.log(`  PASSES: ${t.passesAcceptance}`);
+    console.log(`  PASSES (original full-length criterion): ${t.passesAcceptance}`);
+    console.log(
+      `  [Task 8b] visible-stretch mean deviation: ${fmt((t.visibleStretchMeanDeviationMm ?? NaN) * 1000, 1)} um ` +
+        `(${t.visibleStretchSampleCount ?? 0}/${t.sampleCount} proposal samples, ${(((t.visibleStretchSampleFraction ?? 0)) * 100).toFixed(1)}% -- AMENDED ACCEPTANCE METRIC)`,
+    );
+    console.log(`  [Task 8b] visible-stretch max deviation: ${fmt((t.visibleStretchMaxDeviationMm ?? NaN) * 1000, 1)} um, fraction<=100um: ${(((t.visibleStretchFractionWithin100umMm ?? 0)) * 100).toFixed(1)}%`);
+    console.log(`  [Task 8b] PASSES (amended, visible-stretch criterion): ${t.passesAmendedAcceptance}`);
     if (t.worstClusters && t.worstClusters.length > 0) {
       console.log(`  worst clusters (>100um, contiguous, >= ${MIN_CLUSTER_RUN_SAMPLES} samples):`);
       for (const c of t.worstClusters) {
@@ -607,13 +992,22 @@ function printReport(report: MarginAcceptanceReport): void {
       console.log('  worst clusters: none (no contiguous exceeding run >= threshold sample count)');
     }
   }
-  console.log(`\n[margin-acceptance] VERDICT: ${report.passingTeethCount}/${report.measuredTeethCount} measured teeth pass (need >= ${report.acceptanceMinPassingTeeth} of 4) -- overallPasses=${report.overallPasses}`);
+  console.log(`\n[margin-acceptance] VERDICT (original, full-length criterion): ${report.passingTeethCount}/${report.measuredTeethCount} measured teeth pass (need >= ${report.acceptanceMinPassingTeeth} of 4) -- overallPasses=${report.overallPasses}`);
+  console.log(
+    `[margin-acceptance] VERDICT (Task 8b, amended visible-stretch criterion, PLAN.md amended 2026-07-15): ` +
+      `${report.amendedPassingTeethCount}/${report.amendedAcceptanceAssertionTeeth.length} of teeth [${report.amendedAcceptanceAssertionTeeth.join(',')}] pass ` +
+      `(need >= ${report.amendedAcceptanceMinPassingTeeth}) -- amendedOverallPasses=${report.amendedOverallPasses}`,
+  );
 }
 
 function main(): void {
   const report = runMarginAcceptance();
   printReport(report);
-  if (!report.overallPasses) {
+  // The AMENDED criterion is the one PLAN.md currently states as Phase 3
+  // acceptance (amended 2026-07-15) — the original full-length criterion
+  // moved to a future scan-visible fixture (still reported above, not
+  // hidden). CLI exit code reflects the CURRENTLY GOVERNING criterion.
+  if (!report.amendedOverallPasses) {
     process.exitCode = 1;
   }
 }

@@ -6,8 +6,20 @@ section). This file is NOT that final phase doc — it is the structured
 markdown block Task 11 should lift wholesale (or adapt) into
 `docs/demos/phase-3.md` when it lands, per Task 8's own brief deliverable 4
 ("leave a structured markdown block the T11 task can lift"). Full narrative
-analysis: `.superpowers/sdd/p3-task-8-report.md`. Harness:
-`scripts/margin-acceptance.ts` + `test/golden/margin-acceptance.test.ts`.
+analysis: `.superpowers/sdd/p3-task-8-report.md` (Task 8),
+`.superpowers/sdd/p3-task-8b-report.md` (Task 8b — amended criterion).
+Harness: `scripts/margin-acceptance.ts` + `test/golden/margin-acceptance.test.ts`
+(both Task 8's original measurement and Task 8b's amended-criterion
+extension live in the same two files — see `margin-acceptance.ts`'s module
+doc, "Task 8b addendum", for the extension's own design rationale).
+
+**Task 8b update (2026-07-15): PLAN.md's Phase 3 acceptance criterion was
+AMENDED** after Task 8's BLOCKED verdict below — see "Amended criterion"
+section further down for the reframed (ridge-visible-only) measurement and
+its own verdict. Task 8's ORIGINAL full-length verdict (immediately below)
+is preserved verbatim, unweakened — it is still the honest answer to the
+original question, and the amended criterion is additive, not a
+replacement of this evidence.
 
 ## Phase acceptance criterion (verbatim, PLAN.md / phase-3-margin-axis.md)
 
@@ -97,3 +109,90 @@ specifically; (c) invest in a different/blended scalar field or
 low-signal-region interpolation strategy (a real kernel R&D task, out of
 this task's scope). This task's own scope (brief) ends at "BLOCKED with the
 numbers and analysis" — decision (a)/(b)/(c) is a controller/product call.
+
+---
+
+## Amended criterion (Task 8b, PLAN.md amended 2026-07-15)
+
+**Decision made:** option (b) above — Phase 3's stated acceptance criterion
+(PLAN.md, Phase 3 §Acceptance) now reads: on real prep fixtures, auto
+margin proposal is within 100 µm (mean) of the hand-traced reference along
+the **ridge-visible** portion of the margin, for ≥ 3 preps, with the
+visible-coverage fraction honestly measured and reported per tooth. The
+ORIGINAL full-length criterion (≤100 µm mean over ≥90% of length) moves to
+a **future scan-visible prep fixture** (e.g. a retraction-cord impression
+scan) that has not yet been supplied — see "Pending fixture" below.
+
+**Ridge-visible classification** (see `scripts/margin-acceptance.ts`'s
+module doc, "Task 8b addendum", for the full method): each reference sample
+point is classified visible iff `k2 < -MARGIN_MIN_RIDGE_STRENGTH` (the
+EXACT threshold/comparison `proposeMarginLoop`'s own walk uses — reused
+directly from `@dqcad/kernel`, not re-derived) at that point's
+barycentric-interpolated location, not boundary-affected, AND part of a
+contiguous qualifying run of ≥3 samples (`VISIBLE_STRETCH_MIN_RUN_SAMPLES`
+— filters isolated 1-2-sample curvature-noise blips, not real short
+stretches). The reported **visible-coverage fraction** is length-weighted
+(Voronoi-style per-sample weighting), post-smoothing.
+
+### Amended-criterion table — per tooth
+
+| FDI | Closes? | Reference samples | Raw k2-qualifying (point %, pre-smoothing) | **Visible-coverage fraction (length-weighted, THE reported figure)** | Visible stretches | Full-length mean (for contrast) | **Visible-stretch mean (AMENDED METRIC)** | Visible-stretch max | Passes (≤100µm) |
+|---|---|---|---|---|---|---|---|---|---|
+| 12 | yes | 468 | 38.0% | **28.7%** | 12 | 379.9 µm | **304.9 µm** | 832.2 µm | **NO** |
+| 11 | **NO** (`NoClosureError`) | 513 | 18.9% | **13.9%** | 10 | — (no proposal) | — (coverage evidence only) | — | excluded |
+| 21 | yes | 629 | 50.6% | **40.9%** | 19 | 235.0 µm | **127.0 µm** | 528.0 µm | **NO** |
+| 22 | yes | 367 | 10.9% | **6.6%** | 5 | 648.4 µm | **337.4 µm** | 775.4 µm | **NO** |
+
+KERNEL_VERSION 0.5.0 (unchanged — this is a measurement-only extension;
+`proposeMarginLoop` itself was not modified for Task 8b). Same mesh/hash as
+Task 8's table above. Full per-tooth worst-cluster and visible-stretch
+breakdowns: harness console output / test log
+(`test/golden/margin-acceptance.test.ts`, `Task 8b: logs the full
+amended-criterion evidence table` case).
+
+### Verdict: still **BLOCKED** under the amended criterion — 0 of 3 assertion teeth pass
+
+The amended-criterion assertion set is exactly the 3 closing teeth (12, 21,
+22) — tooth 11 cannot produce a proposal to measure at all
+(`proposeMarginLoop` only ever returns a closed loop or throws; per this
+task's brief, no partial-walk output was hacked together), so it
+contributes visible-coverage-fraction evidence only (13.9% visible, 10
+distinct visible stretches — itself useful evidence that this tooth's
+non-closure correlates with unusually low ridge visibility).
+
+**The reframing is a real, substantial improvement, verified not assumed**:
+visible-stretch mean deviation is 20–46% lower than the full-length mean
+for every closing tooth (12: 379.9→304.9 µm; 21: 235.0→127.0 µm, the
+closest of the three; 22: 648.4→337.4 µm). This was checked against a
+sensitivity concern before trusting it: the visible stretches per tooth are
+numerous (5–19) and each short (≤1.2 mm), and the visible-stretch *sample*
+fraction of the proposal curve (31.1% / 44.8% / 6.2%) closely tracks each
+tooth's own reference-side visible-*coverage* fraction (28.7% / 40.9% /
+6.6%) — consistent with a proposal that broadly tracks the reference shape,
+not a harness artifact concentrating samples in one favorable spot.
+
+**But the improvement does not cross the 100 µm bar for any of the 3
+teeth.** This is the same structural limitation Task 8 already diagnosed,
+not a new one: `marginRidge.ts`'s own module doc documents that a real
+`k2`-qualifying region is a WIDE 2D band around the true crest, not a crisp
+1D curve — the walker's "strongest-`k2`-in-the-band" selection rule doesn't
+always land exactly on the dentist's own hand-traced line even where a
+genuine ridge signal exists throughout. No `proposeMarginLoop` parameter
+retuning was found or applied here (Task 8's own established conclusion —
+"Why BLOCKED" above — already ruled out `MARGIN_MIN_RIDGE_STRENGTH`/
+`MARGIN_LOOKAHEAD_STEPS`/`MARGIN_CLOSURE_TOLERANCE_MM` as fixes for a
+signal-shape issue, not a threshold issue; this task's own stretch-
+fragmentation check corroborates that conclusion rather than finding a new,
+fixable cause).
+
+### Pending fixture
+
+The original full-length criterion (≤100 µm mean over ≥90% of length) is
+**not** demonstrated by this evidence — it awaits a scan-visible prep case
+(e.g. a retraction-cord impression scan) that has not yet been supplied by
+the practice (tracked in the user's own case-fixture memory note,
+`real-scan-cases.md`: "prep-die case still missing"). When that fixture
+lands, re-running this SAME harness (architecture-neutral, per the
+"Recommendation" section above) against it is the intended path to
+demonstrating the original criterion, per PLAN.md's amended acceptance
+text.

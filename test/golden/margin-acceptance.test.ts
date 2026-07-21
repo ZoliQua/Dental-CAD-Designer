@@ -48,6 +48,41 @@
 // numbers are asserted with generous sanity-range bounds (not tight
 // hash-style pins — this is real floating-point geometry, not a
 // bit-identical hash target) and logged in full for CI visibility.
+//
+// ## Task 8b addendum — amended-criterion pins (PLAN.md, amended 2026-07-15)
+//
+// The controller decided (b) above: reframe Phase 3's acceptance to the
+// ridge-VISIBLE portion of the margin (`scripts/margin-acceptance.ts`'s
+// module doc, "Task 8b addendum") — the original full-length criterion
+// moves to a future scan-visible fixture. All the ORIGINAL assertions above
+// are UNCHANGED (still measuring the same, still-honest full-length
+// result); the new block below pins the AMENDED (visible-stretch) verdict
+// with the same "pin the measured outcome, don't force a pass" discipline.
+//
+// Measured (this task): the reframing genuinely helps — visible-stretch
+// mean deviation is 20-46% lower than the full-length mean for every
+// closing tooth (12: 379.9->304.9um, 21: 235.0->127.0um, 22:
+// 648.4->337.4um) — but does NOT cross the 100um bar for any of the 3
+// closing teeth. This was VERIFIED, not assumed (this task's brief
+// explicitly warned not to assume a pass): a sensitivity check confirmed
+// the visible stretches are numerous (5-19 per tooth) and short (each
+// <=1.2mm), matching Task 8's own "spread across many separate arcs, not
+// one absorbable interproximal spot" finding — i.e. this is the SAME
+// structural limitation Task 8 already diagnosed (`marginRidge.ts`'s own
+// module doc: a real `k2`-qualifying region is a WIDE 2D band, not a crisp
+// curve — the walker's "strongest k2 in the band" heuristic doesn't always
+// land exactly where the dentist's hand-trace does, even where a ridge
+// signal genuinely exists), not a new bug. No `proposeMarginLoop` parameter
+// retuning was found or applied for this measurement-only task
+// (KERNEL_VERSION unchanged at 0.5.0) — see this task's own report for the
+// full investigation.
+//
+// ## Runtime lane: still default golden (Task 8b changes nothing here)
+//
+// Task 8b's additions are O(reference sample count) per tooth (a handful of
+// extra `snapToSurface` + barycentric `k2` lookups, no new mesh-scale
+// passes) — negligible next to the existing intake/halfedge/BVH/curvature/
+// `proposeMarginLoop` cost this file already pays. No runtime-lane change.
 import { describe, expect, it } from 'vitest';
 import {
   runMarginAcceptance,
@@ -57,6 +92,9 @@ import {
   ARC_LENGTH_STEP_MM,
   REFERENCE_TEETH,
   EXPECTED_NON_CLOSING_TEETH,
+  VISIBLE_STRETCH_MIN_RUN_SAMPLES,
+  AMENDED_ACCEPTANCE_ASSERTION_TEETH,
+  AMENDED_ACCEPTANCE_MIN_PASSING_TEETH,
 } from '../../scripts/margin-acceptance.ts';
 
 describe('margin acceptance — arch-case-01 (Phase 3 Task 8, phase acceptance measurement)', () => {
@@ -160,5 +198,108 @@ describe('margin acceptance — arch-case-01 (Phase 3 Task 8, phase acceptance m
     expect(t22.passesAcceptance).toBe(false);
     expect(t22.bestNinetyPercentMeanDeviationMm!).toBeGreaterThan(0.4);
     expect(t22.bestNinetyPercentMeanDeviationMm!).toBeLessThan(0.8);
+  });
+
+  // ---------------------------------------------------------------------
+  // Task 8b — amended-criterion constants (PLAN.md, amended 2026-07-15).
+  // ---------------------------------------------------------------------
+  it('Task 8b amended-criterion constants match this task\'s brief', () => {
+    expect(VISIBLE_STRETCH_MIN_RUN_SAMPLES).toBeGreaterThanOrEqual(2); // filters single-sample noise, not real short stretches
+    expect(AMENDED_ACCEPTANCE_ASSERTION_TEETH).toEqual([12, 21, 22]); // the 3 closing teeth — tooth 11 is coverage-evidence-only
+    expect(AMENDED_ACCEPTANCE_MIN_PASSING_TEETH).toBe(3); // >= 3 of 3 — zero slack
+    expect(report.visibleStretchMinRunSamples).toBe(VISIBLE_STRETCH_MIN_RUN_SAMPLES);
+    expect(report.amendedAcceptanceAssertionTeeth).toEqual([...AMENDED_ACCEPTANCE_ASSERTION_TEETH]);
+    expect(report.amendedAcceptanceMinPassingTeeth).toBe(AMENDED_ACCEPTANCE_MIN_PASSING_TEETH);
+  });
+
+  it('Task 8b: every tooth (including non-closing tooth 11) reports visible-coverage evidence', () => {
+    for (const t of report.teeth) {
+      expect(t.referenceSampleCount).toBeGreaterThan(100);
+      expect(t.rawVisibleFraction).toBeGreaterThanOrEqual(0);
+      expect(t.rawVisibleFraction).toBeLessThanOrEqual(1);
+      expect(t.visibleCoverageFraction).toBeGreaterThanOrEqual(0);
+      expect(t.visibleCoverageFraction).toBeLessThanOrEqual(1);
+      expect(t.visibleStretches.length).toBeGreaterThan(0);
+      for (const stretch of t.visibleStretches) {
+        expect(stretch.sampleCount).toBeGreaterThanOrEqual(VISIBLE_STRETCH_MIN_RUN_SAMPLES);
+        // >= 0, not > 0: tooth 11's own reference (measured, real data —
+        // test-fixtures/margins/arch-case-01/11.reference.json) has a
+        // handful of literally-duplicate consecutive `resampledPoints`
+        // (near-coincident hand-placed anchors in a tight interproximal
+        // stretch), which legitimately produces a zero-arc-length visible
+        // run there. Not a harness artifact — verified against the raw
+        // fixture JSON.
+        expect(stretch.lengthMm).toBeGreaterThanOrEqual(0);
+      }
+    }
+
+    // Tooth 11 (non-closing): coverage-evidence-only, no deviation fields.
+    const t11 = report.teeth.find((t) => t.tooth === 11)!;
+    expect(t11.closed).toBe(false);
+    expect(t11.visibleStretchMeanDeviationMm).toBeUndefined();
+    expect(t11.passesAmendedAcceptance).toBeUndefined();
+  });
+
+  it(
+    'Task 8b: logs the full amended-criterion evidence table (CI-visible)',
+    () => {
+      console.log(`[margin-acceptance][Task8b] visibleStretchMinRunSamples=${report.visibleStretchMinRunSamples}`);
+      for (const t of report.teeth) {
+        console.log(
+          `[margin-acceptance][Task8b] tooth ${t.tooth}: rawVisibleFractionPct=${(t.rawVisibleFraction * 100).toFixed(1)} ` +
+            `visibleCoverageFractionPct=${(t.visibleCoverageFraction * 100).toFixed(1)} visibleStretchCount=${t.visibleStretches.length} ` +
+            `visibleStretchMeanUm=${t.visibleStretchMeanDeviationMm !== undefined ? (t.visibleStretchMeanDeviationMm * 1000).toFixed(1) : 'n/a'} ` +
+            `visibleStretchMaxUm=${t.visibleStretchMaxDeviationMm !== undefined ? (t.visibleStretchMaxDeviationMm * 1000).toFixed(1) : 'n/a'} ` +
+            `passesAmended=${t.passesAmendedAcceptance ?? 'n/a (non-closing / coverage-only)'}`,
+        );
+      }
+      console.log(
+        `[margin-acceptance][Task8b] AMENDED VERDICT: ${report.amendedPassingTeethCount}/${report.amendedAcceptanceAssertionTeeth.length} of teeth ` +
+          `[${report.amendedAcceptanceAssertionTeeth.join(',')}] pass (need >= ${report.amendedAcceptanceMinPassingTeeth}) -- amendedOverallPasses=${report.amendedOverallPasses}.`,
+      );
+      expect(report.teeth.length).toBe(4); // the log above always runs for all 4
+    },
+  );
+
+  // ---------------------------------------------------------------------
+  // AMENDED-CRITERION ACCEPTANCE — pins the CURRENT, HONESTLY MEASURED
+  // outcome under PLAN.md's amended (2026-07-15) criterion. Same discipline
+  // as the ORIGINAL "PHASE ACCEPTANCE" test above: this is NOT
+  // `expect(amendedOverallPasses).toBe(true)`. Measured: the visible-stretch
+  // reframing is a REAL, substantial improvement over the full-length
+  // metric for every closing tooth (see this file's module doc, "Task 8b
+  // addendum" for the exact before/after numbers and why — the same
+  // structural "wide qualifying band, not a crisp curve" limitation Task 8
+  // already diagnosed, verified via a stretch-fragmentation sensitivity
+  // check, not assumed) — but it does not cross the 100um bar for any of
+  // the 3 closing teeth on this one real, clinically-challenging fixture.
+  // ---------------------------------------------------------------------
+  it('AMENDED ACCEPTANCE (current honest state): 0 of 3 closing teeth pass the visible-stretch criterion — still BLOCKED, not weakened', () => {
+    expect(report.amendedPassingTeethCount).toBe(0);
+    expect(report.amendedOverallPasses).toBe(false);
+
+    const byTooth = new Map(report.teeth.filter((t) => t.closed).map((t) => [t.tooth, t]));
+
+    const t12 = byTooth.get(12)!;
+    expect(t12.passesAmendedAcceptance).toBe(false);
+    expect(t12.visibleStretchMeanDeviationMm!).toBeGreaterThan(0.2);
+    expect(t12.visibleStretchMeanDeviationMm!).toBeLessThan(0.4);
+    // The reframing must never make the metric WORSE than the full-length
+    // one — restricting to visible-only samples can only remove
+    // (typically worse, obscured-stretch) samples from the full-length
+    // pool.
+    expect(t12.visibleStretchMeanDeviationMm!).toBeLessThanOrEqual(t12.fullLengthMeanDeviationMm! + 1e-9);
+
+    const t21 = byTooth.get(21)!;
+    expect(t21.passesAmendedAcceptance).toBe(false);
+    expect(t21.visibleStretchMeanDeviationMm!).toBeGreaterThan(0.08);
+    expect(t21.visibleStretchMeanDeviationMm!).toBeLessThan(0.2);
+    expect(t21.visibleStretchMeanDeviationMm!).toBeLessThanOrEqual(t21.fullLengthMeanDeviationMm! + 1e-9);
+
+    const t22 = byTooth.get(22)!;
+    expect(t22.passesAmendedAcceptance).toBe(false);
+    expect(t22.visibleStretchMeanDeviationMm!).toBeGreaterThan(0.2);
+    expect(t22.visibleStretchMeanDeviationMm!).toBeLessThan(0.5);
+    expect(t22.visibleStretchMeanDeviationMm!).toBeLessThanOrEqual(t22.fullLengthMeanDeviationMm! + 1e-9);
   });
 });
