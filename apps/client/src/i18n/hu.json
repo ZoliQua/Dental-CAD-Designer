@@ -116,6 +116,14 @@
     "list": {
       "editButton": "Szerkesztés",
       "deleteButton": "Törlés"
+    },
+    "deleteConfirm": {
+      "title": "Törli a pótlást?",
+      "messageMarginsOnly": "Ehhez a pótláshoz {{marginCount}} kézzel megrajzolt peremvonal tartozik. A törlés véglegesen elveszíti ezt a munkát — nem vonható vissza.",
+      "messageAxisOnly": "Ehhez a pótláshoz beállított behelyezési tengely tartozik. A törlés véglegesen elveszíti ezt a munkát — nem vonható vissza.",
+      "messageBoth": "Ehhez a pótláshoz {{marginCount}} kézzel megrajzolt peremvonal és egy beállított behelyezési tengely tartozik. A törlés véglegesen elveszíti ezt a munkát — nem vonható vissza.",
+      "cancelButton": "Pótlás megtartása",
+      "confirmButton": "Törlés mindenképp"
     }
   },
   "viewer": {
@@ -230,6 +238,7 @@
     "selectPlaceholder": "Válasszon…",
     "startButton": "Indítás",
     "needsTargetScan": "Ehhez a pótláshoz még nincs célszkennelés hozzárendelve.",
+    "errorUnresolvedMargin": "A(z) {{teeth}} fog(ak) peremvonalának van feloldatlan rögzítőpontja — előbb illessze újra a peremvonal eszközben, mielőtt a tengely eszközt használná.",
     "suggestButton": "Tengely automatikus javaslata",
     "suggesting": "Számítás…",
     "errorLabel": "A tengelyjavaslat sikertelen: {{message}}",
@@ -248,6 +257,7 @@
     "candidateEntry": "#{{index}}: {{area}} mm² alávágás, {{depth}} µm max. mélység",
     "abutmentTooth": "Fog",
     "abutmentUndercutArea": "Alávágott terület",
+    "abutmentAreaNote": "Az alávágott terület az utolsó automatikusan javasolt tengelynél mért érték; kézi módosításnál nem kerül újraszámításra.",
     "abutmentMaxDepth": "Max. mélység",
     "confirmedLabel": "Tengely megerősítve",
     "confirmButton": "Tengely megerősítése",

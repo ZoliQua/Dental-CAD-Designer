@@ -116,6 +116,14 @@
     "list": {
       "editButton": "Edit",
       "deleteButton": "Delete"
+    },
+    "deleteConfirm": {
+      "title": "Delete restoration?",
+      "messageMarginsOnly": "This restoration has {{marginCount}} hand-traced margin line(s). Deleting it permanently loses this work — it cannot be undone.",
+      "messageAxisOnly": "This restoration has a set insertion axis. Deleting it permanently loses this work — it cannot be undone.",
+      "messageBoth": "This restoration has {{marginCount}} hand-traced margin line(s) and a set insertion axis. Deleting it permanently loses this work — it cannot be undone.",
+      "cancelButton": "Keep restoration",
+      "confirmButton": "Delete anyway"
     }
   },
   "viewer": {
@@ -230,6 +238,7 @@
     "selectPlaceholder": "Select…",
     "startButton": "Start",
     "needsTargetScan": "This restoration has no assigned target scan yet.",
+    "errorUnresolvedMargin": "Margin line for tooth/teeth {{teeth}} has an unresolved anchor — re-snap it in the Margin tool before using the axis tool.",
     "suggestButton": "Auto-suggest axis",
     "suggesting": "Computing…",
     "errorLabel": "Axis suggestion failed: {{message}}",
@@ -248,6 +257,7 @@
     "candidateEntry": "#{{index}}: {{area}} mm² undercut, {{depth}} µm max depth",
     "abutmentTooth": "Tooth",
     "abutmentUndercutArea": "Undercut area",
+    "abutmentAreaNote": "Undercut area is measured at the last auto-suggested axis; it is not recomputed for manual adjustments.",
     "abutmentMaxDepth": "Max depth",
     "confirmedLabel": "Axis confirmed",
     "confirmButton": "Confirm axis",

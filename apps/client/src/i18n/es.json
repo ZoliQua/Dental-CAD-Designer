@@ -116,6 +116,14 @@
     "list": {
       "editButton": "Editar",
       "deleteButton": "Eliminar"
+    },
+    "deleteConfirm": {
+      "title": "¿Eliminar la restauración?",
+      "messageMarginsOnly": "Esta restauración tiene {{marginCount}} línea(s) de margen trazada(s) a mano. Eliminarla pierde este trabajo de forma permanente — no se puede deshacer.",
+      "messageAxisOnly": "Esta restauración tiene un eje de inserción establecido. Eliminarla pierde este trabajo de forma permanente — no se puede deshacer.",
+      "messageBoth": "Esta restauración tiene {{marginCount}} línea(s) de margen trazada(s) a mano y un eje de inserción establecido. Eliminarla pierde este trabajo de forma permanente — no se puede deshacer.",
+      "cancelButton": "Conservar restauración",
+      "confirmButton": "Eliminar de todos modos"
     }
   },
   "viewer": {
@@ -230,6 +238,7 @@
     "selectPlaceholder": "Seleccionar…",
     "startButton": "Iniciar",
     "needsTargetScan": "Esta restauración aún no tiene un escaneo de destino asignado.",
+    "errorUnresolvedMargin": "La línea de margen del diente/dientes {{teeth}} tiene un ancla sin resolver — vuelva a ajustarla en la herramienta de margen antes de usar la herramienta de eje.",
     "suggestButton": "Sugerir eje automáticamente",
     "suggesting": "Calculando…",
     "errorLabel": "Error al sugerir el eje: {{message}}",
@@ -248,6 +257,7 @@
     "candidateEntry": "#{{index}}: {{area}} mm² de socavado, {{depth}} µm de profundidad máxima",
     "abutmentTooth": "Diente",
     "abutmentUndercutArea": "Área de socavado",
+    "abutmentAreaNote": "El área de socavado se mide en el último eje sugerido automáticamente; no se recalcula con los ajustes manuales.",
     "abutmentMaxDepth": "Profundidad máxima",
     "confirmedLabel": "Eje confirmado",
     "confirmButton": "Confirmar eje",

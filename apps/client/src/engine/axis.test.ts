@@ -11,7 +11,7 @@ import type { MarginAnchor, MarginLine, Restoration } from '@dqcad/shared-types'
 import { DEFAULT_RESTORATION_PARAMS } from '@dqcad/clinical-profiles';
 import { useAxisStore } from '../state/axisStore';
 import { caseStore } from './caseStore';
-import { axisEngine, sphericalToDirection, directionToSpherical } from './axis';
+import { axisEngine, sphericalToDirection, directionToSpherical, AxisMarginUnresolvedError } from './axis';
 
 const EMPTY_REPORT: IntakeReport = { weldEpsilonMm: 1e-6, steps: [] };
 
@@ -225,6 +225,49 @@ describe('axisEngine — session lifecycle', () => {
     expect(() => axisEngine.start('r-no-margin')).toThrow(/margin line/);
   });
 
+  it('refuses (typed AxisMarginUnresolvedError, no NaN) a restoration whose margin line has a -1-sentinel (unresolved) anchor — Task-11-review Important 6', () => {
+    setupCrownRestoration();
+    const restoration: Restoration = {
+      id: 'r-unresolved-margin',
+      type: 'crown',
+      teeth: [13],
+      pontics: [],
+      targetNodeId: caseStore.getDocument().scene[0]!.id,
+      marginLines: {
+        13: {
+          anchors: [
+            // A migrated-but-not-yet-re-snapped anchor — same sentinel
+            // shape caseDocumentMigration.ts's v1->v2 migration produces
+            // (UNRESOLVED_MARGIN_ANCHOR_TRIANGLE_INDEX = -1).
+            { position: [0, 0, 0], triangleIndex: -1, barycentric: [1 / 3, 1 / 3, 1 / 3] },
+            { position: [1, 0, 0], triangleIndex: 0, barycentric: [1, 0, 0] },
+            { position: [0, 1, 0], triangleIndex: 0, barycentric: [0, 1, 0] },
+          ],
+          closed: true,
+        },
+      },
+      insertionAxis: [0, 0, 1],
+      params: DEFAULT_RESTORATION_PARAMS,
+      stages: {},
+      qc: null,
+    };
+    caseStore.addRestoration(restoration, {
+      id: 'op3', name: 'restoration-create', params: {}, inputHashes: [], outputHashes: [], kernelVersion: '0.0.0-test', timestamp: new Date().toISOString(),
+    });
+
+    let caught: unknown;
+    try {
+      axisEngine.start('r-unresolved-margin');
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(AxisMarginUnresolvedError);
+    expect((caught as AxisMarginUnresolvedError).teeth).toEqual([13]);
+    // The tool never reaches 'active' — no ROI/NaN computation is ever
+    // attempted against the unresolved anchor.
+    expect(useAxisStore.getState().status).toBe('idle');
+  });
+
   it('start() initializes the store with the restoration\'s persisted axis and abutment teeth', () => {
     const { restorationId, targetNodeId } = setupCrownRestoration();
     axisEngine.start(restorationId);
@@ -286,6 +329,45 @@ describe('axisEngine — manual adjust', () => {
     expect(state.elevationDeg).toBe(80);
     expect(state.confirmed).toBe(false);
     expect(state.heatmapGeneration).toBeGreaterThan(generationBefore);
+  });
+});
+
+describe('axisEngine — heatmap refresh preserves the suggest-time per-abutment undercut area (Task-11-review Critical 1)', () => {
+  it('a manual-adjust heatmap-only recompute does NOT clobber undercutAreaMm2 back to 0', async () => {
+    const { restorationId } = setupCrownRestoration();
+    axisEngine.start(restorationId);
+
+    // Seed a REAL suggest-time area directly via the same store method
+    // `runSuggest()` itself calls — bypasses relying on this fixture's
+    // actual optimum landing on a nonzero undercut area (not guaranteed:
+    // `setupCrownRestoration`'s true axis is [0,0,1], so a well-converged
+    // suggestion may measure ~0 undercut AT ITS OWN winning direction,
+    // which would make a real-geometry-only regression test pass whether
+    // or not the clobbering bug were actually fixed). `axisHeatmap`
+    // (jobs/axis.ts) never computes area at all (this fix batch) — only
+    // `suggestAxis` does, so this is exactly what a real suggest-time
+    // result looks like.
+    useAxisStore.getState().setSuggestResult({
+      direction: useAxisStore.getState().direction,
+      azimuthDeg: useAxisStore.getState().azimuthDeg,
+      elevationDeg: useAxisStore.getState().elevationDeg,
+      ranked: [],
+      perAbutment: [{ tooth: 11, undercutAreaMm2: 1.2345, maxDepthMm: 0.01, undercutTriangleCount: 3, regionTriangleCount: 50 }],
+    });
+    expect(useAxisStore.getState().perAbutment[0]!.undercutAreaMm2).toBe(1.2345);
+
+    const generationBefore = useAxisStore.getState().heatmapGeneration;
+    axisEngine.setElevationDeg(80); // fires a live HEATMAP-ONLY recompute (fire-and-forget) — the exact call site that previously hardcoded undercutAreaMm2: 0
+    for (let i = 0; i < 50 && useAxisStore.getState().heatmapGeneration === generationBefore; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+
+    const state = useAxisStore.getState();
+    expect(state.heatmapGeneration).toBeGreaterThan(generationBefore); // the recompute actually ran
+    expect(state.perAbutment[0]!.tooth).toBe(11);
+    // Previously hardcoded to 0 by the heatmap job's response shape — now
+    // carried forward from the last suggestion instead of being clobbered.
+    expect(state.perAbutment[0]!.undercutAreaMm2).toBe(1.2345);
   });
 });
 

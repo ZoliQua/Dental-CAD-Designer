@@ -116,6 +116,14 @@
     "list": {
       "editButton": "Bearbeiten",
       "deleteButton": "Löschen"
+    },
+    "deleteConfirm": {
+      "title": "Restauration löschen?",
+      "messageMarginsOnly": "Diese Restauration enthält {{marginCount}} handgezeichnete Präparationsgrenze(n). Beim Löschen geht diese Arbeit endgültig verloren — das kann nicht rückgängig gemacht werden.",
+      "messageAxisOnly": "Diese Restauration hat eine festgelegte Einschubachse. Beim Löschen geht diese Arbeit endgültig verloren — das kann nicht rückgängig gemacht werden.",
+      "messageBoth": "Diese Restauration enthält {{marginCount}} handgezeichnete Präparationsgrenze(n) und eine festgelegte Einschubachse. Beim Löschen geht diese Arbeit endgültig verloren — das kann nicht rückgängig gemacht werden.",
+      "cancelButton": "Restauration behalten",
+      "confirmButton": "Trotzdem löschen"
     }
   },
   "viewer": {
@@ -230,6 +238,7 @@
     "selectPlaceholder": "Auswählen…",
     "startButton": "Starten",
     "needsTargetScan": "Dieser Restauration ist noch kein Ziel-Scan zugewiesen.",
+    "errorUnresolvedMargin": "Die Präparationsgrenze für Zahn/Zähne {{teeth}} hat einen nicht aufgelösten Ankerpunkt — bitte zuerst im Präparationsgrenzen-Werkzeug neu einrasten, bevor das Achsenwerkzeug verwendet wird.",
     "suggestButton": "Achse automatisch vorschlagen",
     "suggesting": "Berechnung…",
     "errorLabel": "Achsvorschlag fehlgeschlagen: {{message}}",
@@ -248,6 +257,7 @@
     "candidateEntry": "#{{index}}: {{area}} mm² Unterschnitt, {{depth}} µm max. Tiefe",
     "abutmentTooth": "Zahn",
     "abutmentUndercutArea": "Unterschnittfläche",
+    "abutmentAreaNote": "Die Unterschnittfläche wurde bei der zuletzt automatisch vorgeschlagenen Achse gemessen; sie wird bei manuellen Anpassungen nicht neu berechnet.",
     "abutmentMaxDepth": "Max. Tiefe",
     "confirmedLabel": "Achse bestätigt",
     "confirmButton": "Achse bestätigen",

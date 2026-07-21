@@ -12,7 +12,7 @@
 // — e.g. ui/MarginPanel.tsx/ui/SectionPanel.tsx).
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { axisEngine } from '../engine/axis';
+import { AxisMarginUnresolvedError, axisEngine } from '../engine/axis';
 import { useCaseStore } from '../state/caseStore';
 import { useAxisStore } from '../state/axisStore';
 
@@ -53,7 +53,15 @@ export function AxisPanel() {
     try {
       axisEngine.start(pendingRestorationId);
     } catch (err) {
-      setStartError(err instanceof Error ? err.message : String(err));
+      // Task-11-review Important 6: an unresolved (-1 sentinel) margin
+      // anchor gets a specific, i18n'd "re-snap first" guidance instead of
+      // the raw (untranslated) Error message every other start() failure
+      // falls back to.
+      if (err instanceof AxisMarginUnresolvedError) {
+        setStartError(t('axis.errorUnresolvedMargin', { teeth: err.teeth.join(', ') }));
+      } else {
+        setStartError(err instanceof Error ? err.message : String(err));
+      }
     }
   }
 
@@ -258,6 +266,9 @@ export function AxisPanel() {
 
       {perAbutment.length > 0 && (
         <table className="axis-panel__abutments" data-testid="axis-abutment-table">
+          <caption className="axis-panel__abutment-area-note" data-testid="axis-abutment-area-note">
+            {t('axis.abutmentAreaNote')}
+          </caption>
           <thead>
             <tr>
               <th>{t('axis.abutmentTooth')}</th>

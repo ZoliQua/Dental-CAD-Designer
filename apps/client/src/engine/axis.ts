@@ -45,8 +45,9 @@
 // call site.
 import { KERNEL_VERSION, type SuggestAxisCandidatePayload } from '@dqcad/kernel-workers';
 import { DEFAULT_UNDERCUT_BLOCKOUT_THRESHOLD_MM } from '@dqcad/clinical-profiles';
-import type { FdiTooth, MarginAnchor, Operation, Restoration, Vec3 } from '@dqcad/shared-types';
+import type { FdiTooth, MarginAnchor, MarginLine, Operation, Restoration, Vec3 } from '@dqcad/shared-types';
 import { caseStore } from './caseStore';
+import { UNRESOLVED_MARGIN_ANCHOR_TRIANGLE_INDEX } from './caseDocumentMigration';
 import { ensureBvhBuilt, getPool } from './workers';
 import { computeAutoRange, distancesToVertexColors } from './colormap';
 import { getActiveSceneManager } from './viewerController';
@@ -95,12 +96,59 @@ function toCandidateSummary(c: SuggestAxisCandidatePayload): AxisCandidateSummar
   };
 }
 
-/** A restoration's margin-bearing teeth (abutments; excludes pontics),
- * ONLY those with a confirmed `marginLines` entry — order matches
- * `Restoration.teeth` filtered. */
+/** `true` iff `marginLine` still carries at least one UNRESOLVED anchor
+ * (`triangleIndex === UNRESOLVED_MARGIN_ANCHOR_TRIANGLE_INDEX`, `-1`) — the
+ * v1->v2 migration's documented sentinel (caseDocumentMigration.ts) for an
+ * anchor that hasn't been re-snapped to a real mesh triangle yet. Passing
+ * such an anchor into `toMarginLoopPayload` and on into the worker job
+ * indexes `mesh.indices[-3]` — `undefined`, propagating to `NaN` through the
+ * ROI extraction (Task-11-review Important 6). */
+function hasUnresolvedAnchor(marginLine: MarginLine): boolean {
+  return marginLine.anchors.some((a) => a.triangleIndex === UNRESOLVED_MARGIN_ANCHOR_TRIANGLE_INDEX);
+}
+
+/** A restoration's margin-bearing teeth (abutments; excludes pontics) whose
+ * `marginLines` entry is both PRESENT and fully RESOLVED (no
+ * `UNRESOLVED_MARGIN_ANCHOR_TRIANGLE_INDEX` sentinel anchors) — order
+ * matches `Restoration.teeth` filtered. A tooth with an unresolved margin
+ * is deliberately NOT included here — see `unresolvedAbutmentTeethOf` below
+ * and `AxisEngine.start`'s own doc for why that case throws a typed error
+ * rather than silently omitting the tooth. */
 function abutmentTeethOf(restoration: Restoration): FdiTooth[] {
   const pontics = new Set(restoration.pontics);
-  return restoration.teeth.filter((tooth) => !pontics.has(tooth) && restoration.marginLines[tooth] !== undefined);
+  return restoration.teeth.filter((tooth) => {
+    if (pontics.has(tooth)) return false;
+    const marginLine = restoration.marginLines[tooth];
+    return marginLine !== undefined && !hasUnresolvedAnchor(marginLine);
+  });
+}
+
+/** The subset of a restoration's margin-bearing teeth (abutments; excludes
+ * pontics) that DO have a `marginLines` entry, but it still carries an
+ * unresolved (`-1` sentinel) anchor — i.e. needs a re-snap
+ * (`marginEditor.reSnapUnresolvedAnchors`) before the axis tool can use it.
+ * Disjoint from `abutmentTeethOf`'s result. */
+function unresolvedAbutmentTeethOf(restoration: Restoration): FdiTooth[] {
+  const pontics = new Set(restoration.pontics);
+  return restoration.teeth.filter((tooth) => {
+    if (pontics.has(tooth)) return false;
+    const marginLine = restoration.marginLines[tooth];
+    return marginLine !== undefined && hasUnresolvedAnchor(marginLine);
+  });
+}
+
+/** Thrown by `AxisEngine.start` when one or more of the restoration's
+ * margin-bearing teeth has a margin line that still carries an unresolved
+ * (`-1` sentinel) anchor — Task-11-review Important 6. Typed (not a plain
+ * `Error`) so `ui/AxisPanel.tsx` can render a specific, i18n'd "re-snap
+ * first" guidance instead of an untranslated raw message. */
+export class AxisMarginUnresolvedError extends Error {
+  readonly teeth: readonly FdiTooth[];
+  constructor(teeth: readonly FdiTooth[]) {
+    super(`axisEngine.start: margin line(s) for tooth/teeth ${teeth.join(', ')} still have an unresolved anchor — re-snap before using the axis tool`);
+    this.name = 'AxisMarginUnresolvedError';
+    this.teeth = teeth;
+  }
 }
 
 /** `MarginAnchor[]` -> the worker job's `MarginSurfacePointPayload[]`
@@ -138,9 +186,16 @@ class AxisEngine {
 
   /** Begins (or resumes) the axis tool for `restorationId` — the
    * restoration must already have an assigned target scan AND at least one
-   * confirmed margin line (Task 5).
+   * confirmed margin line (Task 5), and NONE of its margin-bearing teeth
+   * may have an unresolved (`-1` sentinel) anchor (Task-11-review Important
+   * 6 — see `AxisMarginUnresolvedError`'s doc: an unresolved anchor
+   * indexes `mesh.indices[-3]` downstream, producing a `NaN` ROI rather
+   * than a clean error, if it were ever allowed through).
    * @throws {Error} if the restoration doesn't exist, has no target scan,
-   * or has no confirmed margin line yet. */
+   * or has no confirmed margin line yet.
+   * @throws {AxisMarginUnresolvedError} if one or more margin-bearing teeth
+   * has a margin line with an unresolved anchor — re-snap it first
+   * (`marginEditor.reSnapUnresolvedAnchors`). */
   start(restorationId: string): void {
     const restoration = this.findRestoration(restorationId);
     if (!restoration) {
@@ -148,6 +203,10 @@ class AxisEngine {
     }
     if (!restoration.targetNodeId) {
       throw new Error('axisEngine.start: restoration has no assigned target scan yet');
+    }
+    const unresolvedTeeth = unresolvedAbutmentTeethOf(restoration);
+    if (unresolvedTeeth.length > 0) {
+      throw new AxisMarginUnresolvedError(unresolvedTeeth);
     }
     const abutmentTeeth = abutmentTeethOf(restoration);
     if (abutmentTeeth.length === 0) {
@@ -336,9 +395,28 @@ class AxisEngine {
       // suggestion having run — a manual-only session still gets numbers
       // too) — the job itself computes this per abutment (jobs/axis.ts's
       // `AxisHeatmapResult.perAbutment`), same order as `abutmentTeeth`.
+      //
+      // `undercutAreaMm2` is NOT one of the fields `axisHeatmap` computes
+      // (jobs/axis.ts's own doc — a live single-direction preview never
+      // computes area; only `suggestAxis` does, per abutment, at its
+      // winning direction). Previously this overwrote every abutment's area
+      // with a hardcoded `0` on every heatmap recompute — including the
+      // ONE `runSuggest()` fires automatically right after populating the
+      // real value (see `runSuggest()`'s own doc: it awaits
+      // `refreshHeatmap()` so the panel's heatmap stays in sync) — so the
+      // panel's "Undercut area" column always read a fabricated zero the
+      // instant a suggestion finished (Task-11-review Critical 1). Fixed by
+      // CARRYING FORWARD whatever area was already known for that tooth
+      // (from the last `runSuggest()`, if any this session) instead of
+      // clobbering it — the heatmap refresh only ever UPDATES the fields it
+      // actually measures (depth/triangle counts); area only ever changes
+      // when a fresh suggestion runs. `apps/client/src/ui/AxisPanel.tsx`
+      // notes this staleness explicitly (`axis.abutmentAreaNote`) so the
+      // clinician never reads it as a live number.
+      const priorPerAbutment = useAxisStore.getState().perAbutment;
       const perAbutment: AxisAbutmentReadout[] = store.abutmentTeeth.map((tooth, i) => ({
         tooth,
-        undercutAreaMm2: 0,
+        undercutAreaMm2: priorPerAbutment.find((p) => p.tooth === tooth)?.undercutAreaMm2 ?? 0,
         maxDepthMm: result.perAbutment[i]!.maxDepthMm,
         undercutTriangleCount: result.perAbutment[i]!.undercutTriangleCount,
         regionTriangleCount: result.perAbutment[i]!.regionTriangleCount,

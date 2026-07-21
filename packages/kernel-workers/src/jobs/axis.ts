@@ -224,7 +224,26 @@ export interface AxisHeatmapResult {
   triangleIndices: Uint32Array;
   undercut: Uint8Array;
   depthMm: Float64Array;
-  undercutAreaMm2: number;
+  // NO `undercutAreaMm2` field here (Task-11-review Critical 1): unlike
+  // `suggestAxisJob`'s candidate stats (which DO compute a real per-triangle-
+  // area sum — @dqcad/kernel's `suggestInsertionAxis.ts`), this live single-
+  // direction preview never computes area at all — it would need the same
+  // per-triangle geometry the UI doesn't need for a color-only preview (see
+  // the comment at this field's old call site in `axisHeatmapJob` below).
+  // Previously this interface DID carry an `undercutAreaMm2` field, always
+  // hardcoded to `0` — a real-metric-named field that could never hold a
+  // real measurement. `apps/client/src/ui/AxisPanel.tsx` renders an
+  // "Undercut area" column fed by `perAbutment` readouts, and a fabricated
+  // `0` there reads as "confirmed zero undercut area", which is actively
+  // wrong (not merely absent) for a clinician deciding on an insertion
+  // axis. Omitting the field entirely (rather than keeping a
+  // permanently-`0` one) makes the absence a TYPE ERROR at any call site
+  // that tries to read it, instead of a silent wrong number — the honest
+  // choice CLAUDE.md's "a wrong quantitative clinical readout is worse than
+  // none" rule calls for. `apps/client/src/engine/axis.ts`'s
+  // `refreshHeatmap` now preserves the last real (suggest-time)
+  // `undercutAreaMm2` per abutment across a heatmap-only recompute instead
+  // of clobbering it — see that method's own doc.
   maxDepthMm: number;
   undercutTriangleCount: number;
   /** One entry per INPUT abutment loop (same order as
@@ -270,7 +289,6 @@ export const axisHeatmapJob = async (payload: AxisHeatmapPayload, ctx: JobContex
       triangleIndices: new Uint32Array(0),
       undercut: new Uint8Array(0),
       depthMm: new Float64Array(0),
-      undercutAreaMm2: 0,
       maxDepthMm: 0,
       undercutTriangleCount: 0,
       perAbutment: regions.map(() => ({ undercutTriangleCount: 0, maxDepthMm: 0, regionTriangleCount: 0 })),
@@ -300,12 +318,11 @@ export const axisHeatmapJob = async (payload: AxisHeatmapPayload, ctx: JobContex
     triangleIndices: union.triangleIndices,
     undercut: scan.undercut,
     depthMm: scan.depthMm,
-    // Area is only meaningful together with per-triangle geometry the UI
-    // doesn't need for a color-only preview — omitted here (unlike
-    // suggestAxisJob's candidate stats) to keep this hot-path payload
-    // minimal; undercutTriangleCount/maxDepthMm are still useful as a
-    // cheap numeric readout alongside the color map.
-    undercutAreaMm2: 0,
+    // No `undercutAreaMm2` here — see `AxisHeatmapResult`'s own doc above
+    // for why this job never computes one (it's only meaningful together
+    // with per-triangle geometry a color-only preview doesn't need);
+    // undercutTriangleCount/maxDepthMm are still useful as a cheap numeric
+    // readout alongside the color map.
     maxDepthMm: scan.maxDepthMm,
     undercutTriangleCount: scan.undercutTriangleCount,
     perAbutment,
