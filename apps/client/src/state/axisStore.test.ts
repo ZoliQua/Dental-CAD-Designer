@@ -23,7 +23,7 @@ describe('useAxisStore — initial state', () => {
 
 describe('useAxisStore — start', () => {
   it('sets restoration/target/abutments and marks active', () => {
-    useAxisStore.getState().start('r1', 'node1', [11, 21], [0.1, 0.2, 0.97]);
+    useAxisStore.getState().start('r1', 'node1', [11, 21], [0.1, 0.2, 0.97], 0);
     const state = useAxisStore.getState();
     expect(state.restorationId).toBe('r1');
     expect(state.targetNodeId).toBe('node1');
@@ -33,9 +33,9 @@ describe('useAxisStore — start', () => {
   });
 
   it('resets any stale state from a previous session', () => {
-    useAxisStore.getState().start('r1', 'node1', [11], [0, 0, 1]);
+    useAxisStore.getState().start('r1', 'node1', [11], [0, 0, 1], 0);
     useAxisStore.getState().setConfirmed(true);
-    useAxisStore.getState().start('r2', 'node2', [21], [0, 1, 0]);
+    useAxisStore.getState().start('r2', 'node2', [21], [0, 1, 0], 0);
     const state = useAxisStore.getState();
     expect(state.restorationId).toBe('r2');
     expect(state.confirmed).toBe(false);
@@ -44,7 +44,7 @@ describe('useAxisStore — start', () => {
 
 describe('useAxisStore — suggest lifecycle', () => {
   it('setSuggesting -> setSuggestResult transitions status/busy/progress correctly', () => {
-    useAxisStore.getState().start('r1', 'node1', [11], [0, 0, 1]);
+    useAxisStore.getState().start('r1', 'node1', [11], [0, 0, 1], 0);
     useAxisStore.getState().setSuggesting();
     expect(useAxisStore.getState().status).toBe('suggesting');
     expect(useAxisStore.getState().busy).toBe(true);
@@ -71,7 +71,7 @@ describe('useAxisStore — suggest lifecycle', () => {
   });
 
   it('setError keeps status active (never a distinct error phase) and clears busy', () => {
-    useAxisStore.getState().start('r1', 'node1', [11], [0, 0, 1]);
+    useAxisStore.getState().start('r1', 'node1', [11], [0, 0, 1], 0);
     useAxisStore.getState().setSuggesting();
     useAxisStore.getState().setError('boom');
     const state = useAxisStore.getState();
@@ -83,7 +83,7 @@ describe('useAxisStore — suggest lifecycle', () => {
 
 describe('useAxisStore — manual adjust', () => {
   it('setManualDirection marks source manual and clears confirmed', () => {
-    useAxisStore.getState().start('r1', 'node1', [11], [0, 0, 1]);
+    useAxisStore.getState().start('r1', 'node1', [11], [0, 0, 1], 0);
     useAxisStore.getState().setConfirmed(true);
     useAxisStore.getState().setManualDirection({ direction: [0.1, 0, 0.99], azimuthDeg: 0, elevationDeg: 82 });
     const state = useAxisStore.getState();
@@ -97,7 +97,7 @@ describe('useAxisStore — manual adjust', () => {
 
 describe('useAxisStore — heatmap', () => {
   it('setHeatmapResult bumps heatmapGeneration and clears heatmapBusy', () => {
-    useAxisStore.getState().start('r1', 'node1', [11], [0, 0, 1]);
+    useAxisStore.getState().start('r1', 'node1', [11], [0, 0, 1], 0);
     useAxisStore.getState().setHeatmapBusy(true);
     const before = useAxisStore.getState().heatmapGeneration;
     useAxisStore.getState().setHeatmapResult({ perAbutment: [] });
@@ -114,9 +114,50 @@ describe('useAxisStore — heatmap', () => {
   });
 });
 
+describe('useAxisStore — blockout preview (Phase 3 Task 10)', () => {
+  it('start() seeds blockoutThresholdMm from its 5th argument and resets blockout state', () => {
+    useAxisStore.getState().start('r1', 'node1', [11], [0, 0, 1], 0.05);
+    let state = useAxisStore.getState();
+    expect(state.blockoutThresholdMm).toBe(0.05);
+    expect(state.blockoutPreviewVisible).toBe(false);
+    expect(state.blockoutStats).toBeNull();
+
+    useAxisStore.getState().start('r2', 'node2', [21], [0, 1, 0], 0.02);
+    state = useAxisStore.getState();
+    expect(state.blockoutThresholdMm).toBe(0.02);
+  });
+
+  it('setBlockoutPreviewVisible/setBlockoutBusy/setBlockoutResult update independently of the heatmap fields', () => {
+    useAxisStore.getState().start('r1', 'node1', [11], [0, 0, 1], 0);
+    useAxisStore.getState().setBlockoutPreviewVisible(true);
+    expect(useAxisStore.getState().blockoutPreviewVisible).toBe(true);
+
+    useAxisStore.getState().setBlockoutBusy(true);
+    expect(useAxisStore.getState().blockoutPreviewBusy).toBe(true);
+
+    const stats = { blockoutTriangleCount: 12, vertexCount: 20, maxDisplacementMm: 1.5, approxVolumeMm3: 3.2 };
+    useAxisStore.getState().setBlockoutResult(stats);
+    const state = useAxisStore.getState();
+    expect(state.blockoutStats).toEqual(stats);
+    expect(state.blockoutPreviewBusy).toBe(false);
+    // Independent of the heatmap's own generation/busy fields.
+    expect(state.heatmapGeneration).toBe(0);
+    expect(state.heatmapBusy).toBe(false);
+  });
+
+  it('setBlockoutThresholdMm clears confirmed (an unconfirmed edit, same convention as setManualDirection)', () => {
+    useAxisStore.getState().start('r1', 'node1', [11], [0, 0, 1], 0);
+    useAxisStore.getState().setConfirmed(true);
+    useAxisStore.getState().setBlockoutThresholdMm(0.03);
+    const state = useAxisStore.getState();
+    expect(state.blockoutThresholdMm).toBe(0.03);
+    expect(state.confirmed).toBe(false);
+  });
+});
+
 describe('useAxisStore — reset', () => {
   it('returns to the exact initial state', () => {
-    useAxisStore.getState().start('r1', 'node1', [11], [0, 0, 1]);
+    useAxisStore.getState().start('r1', 'node1', [11], [0, 0, 1], 0);
     useAxisStore.getState().setConfirmed(true);
     useAxisStore.getState().reset();
     const state = useAxisStore.getState();

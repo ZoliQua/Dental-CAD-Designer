@@ -41,8 +41,20 @@
  * method, objective, and tie-break) — same "brand-new op, minor bump"
  * precedent as undercutScan/icpRegister/proposeMargin; the kernel-ops
  * golden gained one new pinned entry ("suggestAxis"), every other entry
- * unchanged. */
-export const KERNEL_VERSION = '0.6.0';
+ * unchanged. 0.7.0 (Phase 3 Task 10): NEW op — the blockout/ module
+ * (`blockoutPreview`: display-only undercut blockout preview, "virtual
+ * wax" — per-region triangle SELECTION via `undercutScanIndices`, then a
+ * FRESH, independent per-vertex `sampleDepthAlongAxis` horizon sample for
+ * every selected triangle's vertex, displacing it to
+ * `original + axis * depth` — see blockoutPreview.ts for the full
+ * derivation, scope boundary, and `@errorBound`) — same "brand-new op,
+ * minor bump" precedent as undercutScan/icpRegister/proposeMargin/
+ * suggestAxis; the kernel-ops golden gained one new pinned entry
+ * ("blockoutPreview"), every other entry unchanged. Also adds
+ * `undercut/undercutScan.ts`'s `sampleDepthAlongAxis` — the existing
+ * `depthFromSample` internal made public, no behavior change to any
+ * existing function. */
+export const KERNEL_VERSION = '0.7.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -304,6 +316,7 @@ export {
   undercutScanRange,
   undercutScanIndices,
   undercutScanBatchIndices,
+  sampleDepthAlongAxis,
   RAY_ORIGIN_BIAS_MM,
   UNDERCUT_BOUNDARY_EPSILON,
   type UndercutSamplingPolicy,
@@ -411,3 +424,12 @@ export {
   type SuggestInsertionAxisResult,
   type SuggestInsertionAxisForRegionsResult,
 } from './axis/index.ts';
+
+export {
+  blockoutPreview,
+  toBlockoutPreviewMesh,
+  type BlockoutRegion,
+  type BlockoutPreviewMesh,
+  type BlockoutPreviewOptions,
+  type BlockoutPreviewResult,
+} from './blockout/index.ts';

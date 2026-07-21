@@ -232,6 +232,13 @@ export {
 };
 
 import {
+  blockoutPreviewJob,
+  type BlockoutPreviewPayload,
+  type BlockoutPreviewJobResult,
+} from './blockout.ts';
+export { type BlockoutPreviewPayload, type BlockoutPreviewJobResult };
+
+import {
   affectedSpanIndices,
   fitSurfaceSpline,
   fitSurfaceSplineSpan,
@@ -349,6 +356,7 @@ export interface JobPayloadMap {
   validateMargin: ValidateMarginPayload;
   suggestAxis: SuggestAxisPayload;
   axisHeatmap: AxisHeatmapPayload;
+  blockoutPreview: BlockoutPreviewPayload;
 }
 
 export interface JobResultMap {
@@ -388,6 +396,7 @@ export interface JobResultMap {
   validateMargin: ValidateMarginResult;
   suggestAxis: SuggestAxisResult;
   axisHeatmap: AxisHeatmapResult;
+  blockoutPreview: BlockoutPreviewJobResult;
 }
 
 export type JobName = keyof JobPayloadMap;
@@ -434,6 +443,7 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   validateMargin: validateMarginJob,
   suggestAxis: suggestAxisJob,
   axisHeatmap: axisHeatmapJob,
+  blockoutPreview: blockoutPreviewJob,
 };
 
 const noopContext: JobContext = {

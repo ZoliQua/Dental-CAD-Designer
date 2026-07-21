@@ -204,4 +204,51 @@ describe('AxisPanel — end to end (real WorkerPool, real frustum fixture)', () 
     expect(lastOp.name).toBe('axis-set');
     expect(restoration.insertionAxis).toEqual(lastOp.params.axis);
   }, 20_000);
+
+  it('blockout preview toggle (Phase 3 Task 10): tilting the axis and toggling the preview shows a non-empty readout, and confirm journals the blockout params', async () => {
+    const user = userEvent.setup();
+    const restorationId = setupCrownRestoration();
+
+    render(<AxisPanel />);
+    await user.selectOptions(screen.getByTestId('axis-restoration-select'), restorationId);
+    await user.click(screen.getByTestId('axis-start-button'));
+
+    // Toggle is off by default and no readout/params section is rendered yet.
+    const blockoutToggle = screen.getByTestId('axis-blockout-toggle') as HTMLInputElement;
+    expect(blockoutToggle.checked).toBe(false);
+    expect(screen.queryByTestId('axis-blockout-threshold-input')).toBeNull();
+
+    // Tilt well past the frustum's own zero-undercut cone before enabling
+    // the preview, so there is real material to block out.
+    const elevationSlider = screen.getByTestId('axis-elevation-slider') as HTMLInputElement;
+    fireEvent.change(elevationSlider, { target: { value: '60' } });
+
+    await user.click(blockoutToggle);
+    expect((screen.getByTestId('axis-blockout-toggle') as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByTestId('axis-blockout-threshold-input')).toBeTruthy();
+
+    await waitFor(
+      () => {
+        const readout = screen.getByTestId('axis-blockout-readout');
+        expect(readout.textContent).toMatch(/\d/); // contains the measured triangle count/depth/volume
+      },
+      { timeout: 10_000 },
+    );
+
+    await user.click(screen.getByTestId('axis-confirm-button'));
+    await waitFor(() => {
+      expect(screen.getByTestId('axis-confirmed-indicator')).toBeTruthy();
+    });
+
+    const history = caseStore.getDocument().history;
+    const lastOp = history[history.length - 1]!;
+    expect(lastOp.name).toBe('axis-set');
+    const blockout = lastOp.params.blockout as { previewVisible: boolean; blockoutTriangleCount?: number };
+    expect(blockout.previewVisible).toBe(true);
+    expect(blockout.blockoutTriangleCount).toBeGreaterThan(0);
+
+    // Toggling off removes the params/readout section again.
+    await user.click(screen.getByTestId('axis-blockout-toggle'));
+    expect(screen.queryByTestId('axis-blockout-threshold-input')).toBeNull();
+  }, 20_000);
 });

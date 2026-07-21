@@ -53,6 +53,17 @@ export interface AxisAbutmentReadout {
   regionTriangleCount: number;
 }
 
+/** Undercut blockout PREVIEW readout (Phase 3 Task 10, "virtual wax") — the
+ * measured numbers behind the ghost overlay at the CURRENT direction/
+ * threshold. `null` until a preview has been computed at least once this
+ * session (mirrors `perAbutment`'s own "empty until computed" convention). */
+export interface AxisBlockoutStats {
+  blockoutTriangleCount: number;
+  vertexCount: number;
+  maxDisplacementMm: number;
+  approxVolumeMm3: number;
+}
+
 interface AxisToolState {
   restorationId: string | null;
   targetNodeId: string | null;
@@ -101,7 +112,30 @@ interface AxisToolState {
    * state/marginStore.ts's own `confirmed` reset-on-edit convention). */
   confirmed: boolean;
 
-  start: (restorationId: string, targetNodeId: string, abutmentTeeth: readonly FdiTooth[], initialDirection: Vec3) => void;
+  /** Undercut blockout PREVIEW toggle (Phase 3 Task 10) — `false` by
+   * default (display-only extra, opt-in per this task's brief; the
+   * existing undercut heatmap is the tool's primary always-on readout). */
+  blockoutPreviewVisible: boolean;
+  /** `true` while a blockout preview recompute is in flight — same
+   * "doesn't gate the slider" convention as `heatmapBusy`. */
+  blockoutPreviewBusy: boolean;
+  /** Blockout threshold (mm) — starts at the clinical default
+   * (`engine/blockout.ts` seeds this from `@dqcad/clinical-profiles`'
+   * `DEFAULT_UNDERCUT_BLOCKOUT_THRESHOLD_MM`; this store stays
+   * kernel/clinical-profiles-free per the layer rule, so it only ever
+   * STORES a number handed to it). */
+  blockoutThresholdMm: number;
+  /** Measured readout from the last successful preview recompute — `null`
+   * until one has run this session. */
+  blockoutStats: AxisBlockoutStats | null;
+
+  start: (
+    restorationId: string,
+    targetNodeId: string,
+    abutmentTeeth: readonly FdiTooth[],
+    initialDirection: Vec3,
+    blockoutThresholdMm: number,
+  ) => void;
   setSuggesting: () => void;
   setSuggestProgress: (progress: number) => void;
   setSuggestResult: (input: {
@@ -117,6 +151,10 @@ interface AxisToolState {
   setHeatmapResult: (input: { perAbutment: readonly AxisAbutmentReadout[] }) => void;
   setHeatmapBusy: (busy: boolean) => void;
   setConfirmed: (confirmed: boolean) => void;
+  setBlockoutPreviewVisible: (visible: boolean) => void;
+  setBlockoutThresholdMm: (thresholdMm: number) => void;
+  setBlockoutBusy: (busy: boolean) => void;
+  setBlockoutResult: (stats: AxisBlockoutStats) => void;
   reset: () => void;
 }
 
@@ -132,6 +170,10 @@ const INITIAL: Omit<
   | 'setHeatmapResult'
   | 'setHeatmapBusy'
   | 'setConfirmed'
+  | 'setBlockoutPreviewVisible'
+  | 'setBlockoutThresholdMm'
+  | 'setBlockoutBusy'
+  | 'setBlockoutResult'
   | 'reset'
 > = {
   restorationId: null,
@@ -151,11 +193,15 @@ const INITIAL: Omit<
   heatmapGeneration: 0,
   heatmapBusy: false,
   confirmed: false,
+  blockoutPreviewVisible: false,
+  blockoutPreviewBusy: false,
+  blockoutThresholdMm: 0,
+  blockoutStats: null,
 };
 
 export const useAxisStore = create<AxisToolState>((set) => ({
   ...INITIAL,
-  start: (restorationId, targetNodeId, abutmentTeeth, initialDirection) =>
+  start: (restorationId, targetNodeId, abutmentTeeth, initialDirection, blockoutThresholdMm) =>
     set({
       ...INITIAL,
       restorationId,
@@ -163,6 +209,7 @@ export const useAxisStore = create<AxisToolState>((set) => ({
       abutmentTeeth,
       direction: initialDirection,
       status: 'active',
+      blockoutThresholdMm,
     }),
   setSuggesting: () => set({ status: 'suggesting', busy: true, progress: 0, error: null }),
   setSuggestProgress: (progress) => set({ progress }),
@@ -188,5 +235,9 @@ export const useAxisStore = create<AxisToolState>((set) => ({
     set((state) => ({ perAbutment, heatmapGeneration: state.heatmapGeneration + 1, heatmapBusy: false })),
   setHeatmapBusy: (heatmapBusy) => set({ heatmapBusy }),
   setConfirmed: (confirmed) => set({ confirmed }),
+  setBlockoutPreviewVisible: (blockoutPreviewVisible) => set({ blockoutPreviewVisible }),
+  setBlockoutThresholdMm: (blockoutThresholdMm) => set({ blockoutThresholdMm, confirmed: false }),
+  setBlockoutBusy: (blockoutPreviewBusy) => set({ blockoutPreviewBusy }),
+  setBlockoutResult: (blockoutStats) => set({ blockoutStats, blockoutPreviewBusy: false }),
   reset: () => set({ ...INITIAL }),
 }));

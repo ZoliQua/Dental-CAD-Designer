@@ -44,13 +44,16 @@
 // mode + a precise on-release scan, not a timer retrofit onto this same
 // call site.
 import { KERNEL_VERSION, type SuggestAxisCandidatePayload } from '@dqcad/kernel-workers';
+import { DEFAULT_UNDERCUT_BLOCKOUT_THRESHOLD_MM } from '@dqcad/clinical-profiles';
 import type { FdiTooth, MarginAnchor, Operation, Restoration, Vec3 } from '@dqcad/shared-types';
 import { caseStore } from './caseStore';
 import { ensureBvhBuilt, getPool } from './workers';
 import { computeAutoRange, distancesToVertexColors } from './colormap';
+import { getActiveSceneManager } from './viewerController';
 import {
   useAxisStore,
   type AxisAbutmentReadout,
+  type AxisBlockoutStats,
   type AxisCandidateSummary,
 } from '../state/axisStore';
 
@@ -124,6 +127,15 @@ class AxisEngine {
    * should also invalidate any in-flight manual-adjust heatmap request). */
   private generation = 0;
 
+  /** Bumped on every start/clear/blockout-recompute so a stale, still-in-
+   * flight `refreshBlockoutPreview()` call never overwrites state a NEWER
+   * call already replaced — INDEPENDENT of `generation` above (Phase 3
+   * Task 10): the blockout preview and the undercut heatmap are triggered
+   * from the SAME slider-drag event and run CONCURRENTLY (see
+   * `applyManualAngles`), so sharing one counter would make each call
+   * spuriously invalidate the other's in-flight result. */
+  private blockoutGeneration = 0;
+
   /** Begins (or resumes) the axis tool for `restorationId` — the
    * restoration must already have an assigned target scan AND at least one
    * confirmed margin line (Task 5).
@@ -142,8 +154,11 @@ class AxisEngine {
       throw new Error('axisEngine.start: restoration has no confirmed margin line yet');
     }
     this.generation++;
+    this.blockoutGeneration++;
     this.colors = null;
-    useAxisStore.getState().start(restorationId, restoration.targetNodeId, abutmentTeeth, restoration.insertionAxis);
+    useAxisStore
+      .getState()
+      .start(restorationId, restoration.targetNodeId, abutmentTeeth, restoration.insertionAxis, DEFAULT_UNDERCUT_BLOCKOUT_THRESHOLD_MM);
   }
 
   /** Runs `suggestAxis` (worker), updating the store with the winning
@@ -202,6 +217,9 @@ class AxisEngine {
       // one more fast (tens of ms, this task's report) call costs nothing
       // perceptible.
       await this.refreshHeatmap();
+      if (useAxisStore.getState().blockoutPreviewVisible) {
+        await this.refreshBlockoutPreview();
+      }
     } catch (error) {
       if (myGeneration !== this.generation) return;
       useAxisStore.getState().setError(error instanceof Error ? error.message : String(error));
@@ -224,6 +242,9 @@ class AxisEngine {
     const direction = sphericalToDirection(azimuthDeg, elevationDeg);
     useAxisStore.getState().setManualDirection({ direction, azimuthDeg, elevationDeg });
     void this.refreshHeatmap();
+    if (useAxisStore.getState().blockoutPreviewVisible) {
+      void this.refreshBlockoutPreview();
+    }
   }
 
   /** Applies (selects) one of the last suggestion's other ranked
@@ -232,10 +253,51 @@ class AxisEngine {
     const { azimuthDeg, elevationDeg } = directionToSpherical(candidate.direction);
     useAxisStore.getState().setManualDirection({ direction: candidate.direction, azimuthDeg, elevationDeg });
     await this.refreshHeatmap();
+    if (useAxisStore.getState().blockoutPreviewVisible) {
+      await this.refreshBlockoutPreview();
+    }
   }
 
   setHeatmapVisible(visible: boolean): void {
     useAxisStore.getState().setHeatmapVisible(visible);
+  }
+
+  /** Blockout preview toggle (Phase 3 Task 10, "virtual wax") — turning it
+   * ON always triggers a FRESH recompute at the store's current direction/
+   * threshold (unlike `setHeatmapVisible`, which merely reveals an
+   * already-computed color buffer: the ghost overlay may never have been
+   * computed yet this session, and recomputing is cheap/idempotent — same
+   * "always fire, discard stale" philosophy as the heatmap's own live
+   * recompute). Turning it OFF clears the ghost overlay immediately, no
+   * recompute. Returns a `Promise` (unlike `setHeatmapVisible`) so
+   * callers/tests can await the overlay actually landing. */
+  async setBlockoutPreviewVisible(visible: boolean): Promise<void> {
+    useAxisStore.getState().setBlockoutPreviewVisible(visible);
+    if (visible) {
+      await this.refreshBlockoutPreview();
+    } else {
+      // Bumping `blockoutGeneration` here deliberately ABANDONS any
+      // in-flight recompute (its eventual result must never re-show the
+      // overlay after the user just hid it) — which means that in-flight
+      // call's own `setBlockoutBusy(false)` will never run (its early-
+      // return guard fires first). Reset busy explicitly here so the
+      // panel's "(updating…)" indicator can never get stuck on.
+      this.blockoutGeneration++;
+      useAxisStore.getState().setBlockoutBusy(false);
+      getActiveSceneManager()?.syncBlockoutPreview(null);
+    }
+  }
+
+  /** Blockout threshold (mm) slider — recomputes the preview immediately
+   * if it's currently visible (no-op on the ghost overlay otherwise; the
+   * new threshold still lands in the store for the NEXT
+   * `setBlockoutPreviewVisible(true)`, and is journaled either way on
+   * `confirmAxis()`). */
+  async setBlockoutThresholdMm(thresholdMm: number): Promise<void> {
+    useAxisStore.getState().setBlockoutThresholdMm(thresholdMm);
+    if (useAxisStore.getState().blockoutPreviewVisible) {
+      await this.refreshBlockoutPreview();
+    }
   }
 
   /** Recomputes the live undercut heatmap + per-abutment readout for the
@@ -285,6 +347,85 @@ class AxisEngine {
     } catch {
       if (myGeneration !== this.generation) return;
       useAxisStore.getState().setHeatmapBusy(false);
+    }
+  }
+
+  /** Recomputes the undercut blockout PREVIEW ghost overlay (Phase 3 Task
+   * 10, "virtual wax") for the store's CURRENT direction/threshold — see
+   * `blockoutGeneration`'s own doc for why this uses an INDEPENDENT
+   * staleness counter from `refreshHeatmap`'s `generation`. A no-op
+   * (silently) if the tool isn't active or the mesh record is gone (mirrors
+   * `refreshHeatmap`'s own tolerant handling). Pushes the result STRAIGHT
+   * to `SceneManager.syncBlockoutPreview` (not a pull-based
+   * `getXOverlay()`, unlike the heatmap's per-vertex COLOR overlay) — same
+   * "engine computes, SceneManager just draws whatever it's given" push
+   * pattern as `engine/alignment.ts`'s ICP ghost preview (this task's
+   * brief's own named precedent), because this overlay is a freshly
+   * GENERATED small patch mesh, not a per-vertex color layer on an
+   * existing render entry.
+   */
+  private async refreshBlockoutPreview(): Promise<void> {
+    const store = useAxisStore.getState();
+    if (store.status !== 'active' && store.status !== 'suggesting') return;
+    const targetNodeId = store.targetNodeId;
+    if (!targetNodeId) return;
+    const record = caseStore.getMeshRecord(this.targetContentHashOf(targetNodeId) ?? '');
+    if (!record) return;
+    const restoration = this.findRestoration(store.restorationId ?? '');
+    if (!restoration) return;
+
+    const myGeneration = ++this.blockoutGeneration;
+    useAxisStore.getState().setBlockoutBusy(true);
+
+    try {
+      await ensureBvhBuilt(record.contentHash, record.positions, record.indices);
+      if (myGeneration !== this.blockoutGeneration) return;
+
+      const abutmentMarginLoops = store.abutmentTeeth.map((tooth) => toMarginLoopPayload(restoration.marginLines[tooth]!.anchors));
+      const result = await getPool().run(
+        'blockoutPreview',
+        {
+          contentHash: record.contentHash,
+          abutmentMarginLoops,
+          direction: store.direction,
+          thresholdMm: store.blockoutThresholdMm,
+        },
+        { affinityKey: record.contentHash },
+      );
+      if (myGeneration !== this.blockoutGeneration) return;
+
+      const stats: AxisBlockoutStats = {
+        blockoutTriangleCount: result.blockoutTriangleCount,
+        vertexCount: result.vertexCount,
+        maxDisplacementMm: result.maxDisplacementMm,
+        approxVolumeMm3: result.approxVolumeMm3,
+      };
+      useAxisStore.getState().setBlockoutResult(stats);
+
+      if (result.previewIndices.length === 0) {
+        getActiveSceneManager()?.syncBlockoutPreview(null);
+      } else {
+        // Float64 world/case-frame -> Float32 render-frame (worldOffset
+        // subtracted) — the SAME conversion engine/meshStore.ts's `setLod`
+        // applies to every other kernel-generated Float64 mesh output; see
+        // that method's doc for why (float precision far from the world
+        // origin, CLAUDE.md's render-copy convention).
+        const [ox, oy, oz] = caseStore.getRenderWorldOffset();
+        const renderPositions = new Float32Array(result.previewPositions.length);
+        for (let v = 0; v < result.previewPositions.length / 3; v++) {
+          renderPositions[v * 3] = result.previewPositions[v * 3]! - ox;
+          renderPositions[v * 3 + 1] = result.previewPositions[v * 3 + 1]! - oy;
+          renderPositions[v * 3 + 2] = result.previewPositions[v * 3 + 2]! - oz;
+        }
+        getActiveSceneManager()?.syncBlockoutPreview({ positions: renderPositions, indices: result.previewIndices });
+      }
+    } catch {
+      // Mirrors `refreshHeatmap`'s own tolerant catch: a failed blockout
+      // recompute (e.g. a stale mesh mid-teardown) just clears the busy
+      // flag, same "best-effort live preview" precedent — it must never
+      // clobber the tool's primary suggest/heatmap error state.
+      if (myGeneration !== this.blockoutGeneration) return;
+      useAxisStore.getState().setBlockoutBusy(false);
     }
   }
 
@@ -340,6 +481,16 @@ class AxisEngine {
    * geometry hash (this op mutates case-document bookkeeping only, same
    * "empty inputHashes/outputHashes" precedent as
    * engine/restorations.ts's `restoration-create`/`-update`).
+   *
+   * `params.blockout` (Phase 3 Task 10): the blockout preview's CURRENT
+   * threshold/visibility, plus the last measured readout (if a preview has
+   * been computed this session) — journaled REGARDLESS of whether the
+   * preview toggle is currently on, so a replay/audit can see what
+   * threshold the clinician was working with even if they later hid the
+   * overlay before confirming. Display-only bookkeeping (see
+   * `@dqcad/kernel`'s `blockoutPreview.ts` module doc for the scope
+   * boundary) — no geometry hash here either, same reasoning as the rest
+   * of this op.
    * @throws {Error} if the tool isn't active.
    */
   confirmAxis(): void {
@@ -360,6 +511,17 @@ class AxisEngine {
         elevationDeg: store.elevationDeg,
         ranked: store.ranked.slice(0, 5), // top-5 provenance — full list is worker-session-only, not journal-worthy
         abutmentTeeth: store.abutmentTeeth,
+        blockout: {
+          thresholdMm: store.blockoutThresholdMm,
+          previewVisible: store.blockoutPreviewVisible,
+          ...(store.blockoutStats
+            ? {
+                blockoutTriangleCount: store.blockoutStats.blockoutTriangleCount,
+                maxDisplacementMm: store.blockoutStats.maxDisplacementMm,
+                approxVolumeMm3: store.blockoutStats.approxVolumeMm3,
+              }
+            : {}),
+        },
       },
       inputHashes: [],
       outputHashes: [],
@@ -372,7 +534,9 @@ class AxisEngine {
 
   clear(): void {
     this.generation++;
+    this.blockoutGeneration++;
     this.colors = null;
+    getActiveSceneManager()?.syncBlockoutPreview(null);
     useAxisStore.getState().reset();
   }
 

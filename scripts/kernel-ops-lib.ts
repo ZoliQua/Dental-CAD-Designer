@@ -68,10 +68,12 @@ import {
   extractMarginRegion,
   suggestInsertionAxis,
   AXIS_DEFAULT_ROI_RADIUS_MM,
+  blockoutPreview,
   type IndexedMesh,
   type SurfaceSpline,
   type SurfacePoint,
 } from '@dqcad/kernel';
+import { DEFAULT_UNDERCUT_BLOCKOUT_THRESHOLD_MM } from '@dqcad/clinical-profiles';
 
 export const repoRoot = fileURLToPath(new URL('../', import.meta.url));
 
@@ -860,6 +862,66 @@ export async function computeKernelOpsSnapshot(): Promise<KernelOpsSnapshot> {
         elapsedMs,
       },
     });
+
+    // --- 19. blockoutPreview (Phase 3 Task 10) ---------------------------
+    // SAME real fixture/ROI as suggestAxis above (arch-case-01 upperjaw,
+    // tooth 11's committed reference margin, radiusMm=2) — deliberately
+    // reuses `region`/`archMeshForAxis`/`bvhForAxis` (same lexical scope)
+    // rather than re-deriving them, exactly as this file's own
+    // "intakeStlFixture reuse is legitimate, intake is deterministic"
+    // precedent already establishes for other ops. Direction: the
+    // WORST-scoring candidate `suggestAxis` itself evaluated
+    // (`result.ranked[result.ranked.length - 1].direction`) rather than
+    // `result.best.direction` — the best-scoring axis on a real prep is, by
+    // construction, close to the near-zero-undercut optimum, which would
+    // pin a near-EMPTY (uninteresting) blockoutPreview golden entry; the
+    // worst-ranked candidate the search already evaluated is a real,
+    // reproducible, non-fabricated direction guaranteed to carry genuine
+    // undercut on this real fixture. `thresholdMm`:
+    // `DEFAULT_UNDERCUT_BLOCKOUT_THRESHOLD_MM` (clinical-profiles, PLAN.md
+    // §3's "0 µm" default) — the same clinical value the axis tool's own
+    // blockout preview toggle seeds from.
+    const worstCandidate = result.ranked[result.ranked.length - 1]!;
+    const blockoutResult = blockoutPreview(
+      archMeshForAxis,
+      bvhForAxis,
+      region,
+      worstCandidate.direction,
+      DEFAULT_UNDERCUT_BLOCKOUT_THRESHOLD_MM,
+    );
+    if (blockoutResult.blockoutTriangleCount === 0) {
+      throw new Error(
+        'kernel-ops golden: blockoutPreview on the real upperjaw ROI (worst-ranked suggestAxis candidate) selected ZERO ' +
+          'triangles — this golden entry is meant to exercise a genuine non-empty preview; investigate before regenerating',
+      );
+    }
+
+    ops.push({
+      id: 'blockoutPreview',
+      op: 'blockoutPreview',
+      fixture: 'arch-case-01 upperjaw (post-intake), SAME ROI as suggestAxis (tooth 11 reference margin, radiusMm=2), worst-ranked suggestAxis candidate direction',
+      params: { roiRadiusMm, referenceMarginTooth: 11, thresholdMm: DEFAULT_UNDERCUT_BLOCKOUT_THRESHOLD_MM },
+      hash: sha256Of(
+        blockoutResult.mesh.previewMesh.positions,
+        blockoutResult.mesh.previewMesh.indices,
+        JSON.stringify({
+          directionUnit: blockoutResult.directionUnit,
+          thresholdMm: blockoutResult.thresholdMm,
+          regionTriangleCount: blockoutResult.regionTriangleCount,
+          blockoutTriangleCount: blockoutResult.blockoutTriangleCount,
+          vertexCount: blockoutResult.vertexCount,
+          maxDisplacementMm: blockoutResult.maxDisplacementMm,
+          approxVolumeMm3: blockoutResult.approxVolumeMm3,
+        }),
+      ),
+      meta: {
+        regionTriangleCount: blockoutResult.regionTriangleCount,
+        blockoutTriangleCount: blockoutResult.blockoutTriangleCount,
+        vertexCount: blockoutResult.vertexCount,
+        maxDisplacementMm: blockoutResult.maxDisplacementMm,
+        approxVolumeMm3: blockoutResult.approxVolumeMm3,
+      },
+    });
   }
 
   return {
@@ -878,6 +940,7 @@ export async function computeKernelOpsSnapshot(): Promise<KernelOpsSnapshot> {
       'icpRegister (Phase 3 Task 3, KERNEL_VERSION 0.3.0): NEW pinned entry — arch-case-01 bite0 (src) vs upperjaw (dst), identity initial transform (verified via bbox overlap: same acquisition session, already a valid coarse init), outlierRejectionFraction 0.85 (measured necessary for this partial-overlap real pair — see the op\'s own inline comment above). Every other op entry is UNCHANGED by this bump.',
       'proposeMargin (Phase 3 Task 4, KERNEL_VERSION 0.4.0): NEW pinned entry — arch-case-01 upperjaw, fixed seed on a real anterior shoulder-prep margin ridge vertex, default params, perimeter-in-anatomical-range self-check (15-35mm). Every other op entry is UNCHANGED by this bump.',
       'suggestAxis (Phase 3 Task 9, KERNEL_VERSION 0.6.0): NEW pinned entry — arch-case-01 upperjaw, ROI extracted (radiusMm=2) from tooth 11\'s COMMITTED hand-traced reference margin anchors (Task 7 — a fixed, already-golden-pinned seed, no ambient-point survey needed), default suggestInsertionAxis params, a <2s runtime self-check (this task\'s interactivity target — measured and asserted at generation time, not just reported). Every other op entry is UNCHANGED by this bump.',
+      'blockoutPreview (Phase 3 Task 10, KERNEL_VERSION 0.7.0): NEW pinned entry — SAME real fixture/ROI as suggestAxis (arch-case-01 upperjaw, tooth 11 reference margin, radiusMm=2), direction = the WORST-ranked candidate suggestAxis itself evaluated (a real, reproducible, non-fabricated direction guaranteed to carry genuine undercut on this real fixture, since the BEST candidate is by construction near the zero-undercut optimum and would pin a near-empty golden), thresholdMm = DEFAULT_UNDERCUT_BLOCKOUT_THRESHOLD_MM (clinical-profiles, 0). A non-empty-selection self-check guards against a silently-degenerate regeneration. Every other op entry is UNCHANGED by this bump.',
     ],
     ops,
   };

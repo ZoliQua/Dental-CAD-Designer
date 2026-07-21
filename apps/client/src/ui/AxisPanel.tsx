@@ -35,6 +35,10 @@ export function AxisPanel() {
   const heatmapVisible = useAxisStore((state) => state.heatmapVisible);
   const heatmapBusy = useAxisStore((state) => state.heatmapBusy);
   const confirmed = useAxisStore((state) => state.confirmed);
+  const blockoutPreviewVisible = useAxisStore((state) => state.blockoutPreviewVisible);
+  const blockoutPreviewBusy = useAxisStore((state) => state.blockoutPreviewBusy);
+  const blockoutThresholdMm = useAxisStore((state) => state.blockoutThresholdMm);
+  const blockoutStats = useAxisStore((state) => state.blockoutStats);
 
   const [pendingRestorationId, setPendingRestorationId] = useState('');
   const [startError, setStartError] = useState<string | null>(null);
@@ -186,6 +190,48 @@ export function AxisPanel() {
         {t('axis.heatmapToggle')}
         {heatmapBusy && <span className="axis-panel__heatmap-busy" data-testid="axis-heatmap-busy">{t('axis.heatmapUpdating')}</span>}
       </label>
+
+      <label className="axis-panel__checkbox">
+        <input
+          type="checkbox"
+          checked={blockoutPreviewVisible}
+          onChange={(event) => void axisEngine.setBlockoutPreviewVisible(event.target.checked)}
+          data-testid="axis-blockout-toggle"
+        />
+        {t('axis.blockoutToggle')}
+        {blockoutPreviewBusy && (
+          <span className="axis-panel__blockout-busy" data-testid="axis-blockout-busy">
+            {t('axis.blockoutUpdating')}
+          </span>
+        )}
+      </label>
+
+      {blockoutPreviewVisible && (
+        <div className="axis-panel__blockout-params">
+          <p className="axis-panel__blockout-scope-note">{t('axis.blockoutScopeNote')}</p>
+          <label className="axis-panel__field">
+            {t('axis.blockoutThresholdLabel')}
+            <input
+              type="number"
+              min={0}
+              step={0.01}
+              value={blockoutThresholdMm}
+              onChange={(event) => void axisEngine.setBlockoutThresholdMm(Number(event.target.value))}
+              data-testid="axis-blockout-threshold-input"
+            />
+            <span className="axis-panel__field-value">{(blockoutThresholdMm * 1000).toFixed(0)} µm</span>
+          </label>
+          {blockoutStats && (
+            <p className="axis-panel__blockout-readout" data-testid="axis-blockout-readout">
+              {t('axis.blockoutReadout', {
+                triangles: blockoutStats.blockoutTriangleCount,
+                depth: (blockoutStats.maxDisplacementMm * 1000).toFixed(0),
+                volume: blockoutStats.approxVolumeMm3.toFixed(2),
+              })}
+            </p>
+          )}
+        </div>
+      )}
 
       {ranked.length > 1 && (
         <div className="axis-panel__ranked" data-testid="axis-ranked-list">

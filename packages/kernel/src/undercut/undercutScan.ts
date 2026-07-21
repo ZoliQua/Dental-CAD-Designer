@@ -335,6 +335,38 @@ function depthFromSample(mesh: IndexedMesh, bvh: Bvh, samplePoint: Vec3, d: Vec3
   return hit ? RAY_ORIGIN_BIAS_MM + hit.distance : 0;
 }
 
+/**
+ * Single-point depth-along-axis sample — the SAME biased `+d` raycast
+ * `scanTriangle`'s own per-sample depth check uses internally (see this
+ * module's "Ray origin epsilon policy" doc above), exposed as a PUBLIC
+ * primitive so a caller needing VERTEX-granularity (not just triangle-
+ * sample-granularity) depth can reuse the EXACT SAME ray-casting semantics
+ * instead of re-deriving them. Motivating caller: blockout/blockoutPreview.ts
+ * (Phase 3 Task 10) — a per-VERTEX "how far to the visibility horizon"
+ * displacement needs one depth sample PER VERTEX of an undercut patch, not
+ * one per triangle.
+ *
+ * `point` need not lie exactly on the mesh surface — no assumption beyond
+ * "the biased ray starting near `point` along `+directionUnit` is meaningful
+ * to cast" (same mechanics as `depthFromSample`, generalized to an arbitrary
+ * caller-supplied point rather than only a triangle's own centroid/corner).
+ * Unlike the module-private `depthFromSample` (which trusts its caller's
+ * already-normalized `d`), THIS public entry point normalizes
+ * `directionUnit` itself — a public API should not silently misbehave on an
+ * un-normalized direction. Returns `0` (not `null`/NaN) when no occluding
+ * surface is found along `+directionUnit`, matching this module's "no
+ * error" contract (see "Depth" doc above).
+ *
+ * @throws {RangeError} if `bvh` wasn't built from a mesh with the same
+ * triangle count as `mesh`.
+ * @throws {TypeError} if `directionUnit` is the zero vector.
+ */
+export function sampleDepthAlongAxis(mesh: IndexedMesh, bvh: Bvh, point: Vec3, directionUnit: Vec3): number {
+  validateMeshMatchesBvh(mesh, bvh);
+  const d = normalizeDirection(directionUnit, 'sampleDepthAlongAxis');
+  return depthFromSample(mesh, bvh, point, d);
+}
+
 /** `depthFromSample` over the triangle's sampling-policy point set (see
  * this module's "Sampling policy" doc) — the MAXIMUM `+d` hit distance
  * across those samples, always cast along `d` (never `-d`; see "Occlusion

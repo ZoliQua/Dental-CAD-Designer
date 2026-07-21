@@ -10,7 +10,11 @@
 // tests and may be pulled into kernel-workers' Node worker import closure by
 // future callers — same native-Node-resolution rationale as
 // packages/kernel/src/index.ts (see boolean/manifold.ts's module doc).
-export { DEFAULT_OFFSET_VOXEL_PITCH_MM, DEFAULT_RESTORATION_PARAMS } from './constants.ts';
+export {
+  DEFAULT_OFFSET_VOXEL_PITCH_MM,
+  DEFAULT_RESTORATION_PARAMS,
+  DEFAULT_UNDERCUT_BLOCKOUT_THRESHOLD_MM,
+} from './constants.ts';
 export { STANDARD_ZIRCONIA_PROFILE } from './profiles.ts';
 export type {
   ConnectorAreaTargets,

@@ -7,6 +7,7 @@ export {
   undercutScanRange,
   undercutScanIndices,
   undercutScanBatchIndices,
+  sampleDepthAlongAxis,
   RAY_ORIGIN_BIAS_MM,
   UNDERCUT_BOUNDARY_EPSILON,
   type UndercutSamplingPolicy,

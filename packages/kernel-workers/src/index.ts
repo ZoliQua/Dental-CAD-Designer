@@ -87,6 +87,8 @@ export {
   type AxisHeatmapPayload,
   type AxisHeatmapResult,
   type AxisHeatmapAbutmentStats,
+  type BlockoutPreviewPayload,
+  type BlockoutPreviewJobResult,
 } from './jobs/registry.js';
 export { meshBuffers, type MeshBuffersPayload, type MeshBuffersResult } from './transfer.js';
 // MeshStats/IntakeReport/Bbox: re-exported here (rather than only living on

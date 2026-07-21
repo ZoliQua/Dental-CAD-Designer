@@ -210,6 +210,16 @@ export interface AxisOverlayRenderData {
   lengthMm: number;
 }
 
+/** Undercut blockout PREVIEW ghost mesh (Phase 3 Task 10) — `positions`/
+ * `indices` are RENDER-frame (Float32-safe, already offset by the caller —
+ * same convention as `SectionCapEntry`). A small, DISCONNECTED patch mesh
+ * (`@dqcad/kernel`'s `blockoutPreview` output) — no assumption of
+ * manifoldness/closedness, this is a display overlay, not a solid. */
+export interface BlockoutOverlayRenderData {
+  positions: Float32Array;
+  indices: Uint32Array;
+}
+
 /** A world-space cutting plane already converted to THIS SceneManager's
  * render frame — see `setSectionClipPlane`'s doc for the exact
  * world-to-render conversion (accounting for `RenderNode`s' worldOffset
@@ -313,6 +323,19 @@ const MARGIN_OVERLAY_RENDER_ORDER = 8;
 // margin curve's yellow/green and any active measurement's amber.
 const AXIS_ARROW_COLOR = new Color(0x4fc3f7);
 const AXIS_OVERLAY_RENDER_ORDER = 7;
+
+// Phase 3 Task 10: undercut blockout PREVIEW ("virtual wax") ghost overlay
+// — a warm honey/wax tone, distinct from every other overlay color in this
+// file (measurement amber 0xffb020, section teal 0x2ee6a6, alignment
+// violet 0xc44dff, margin yellow/green/red, axis cyan 0x4fc3f7).
+// Translucent + double-sided, same "ghost" material recipe as
+// `ALIGNMENT_PREVIEW_*` above (ICP preview precedent this task's brief
+// names directly). Render order sits ABOVE the alignment ghost (3) but
+// BELOW the axis arrow gizmo (7) — the axis tool's own direction indicator
+// should never be visually buried under the wax patch it explains.
+const BLOCKOUT_PREVIEW_COLOR = new Color(0xd9a441);
+const BLOCKOUT_PREVIEW_OPACITY = 0.55;
+const BLOCKOUT_PREVIEW_RENDER_ORDER = 4;
 /** Arrowhead "wings" length as a fraction of the shaft's own length, and
  * their half-angle from the shaft — a fixed, purely cosmetic proportion
  * (this is a GIZMO, not a measured quantity), same spirit as
@@ -521,6 +544,18 @@ export class SceneManager {
   private readonly axisGroup: Group;
   private axisOverlayObjects: LineSegments[] = [];
 
+  /** Undercut blockout PREVIEW ghost overlay (Phase 3 Task 10, "virtual
+   * wax") — full rebuild per `syncBlockoutPreview` call, same "changes at
+   * most once per slider tick/toggle, never per-frame, small relative to
+   * mesh geometry" reasoning as `marginOverlayObjects`/`axisOverlayObjects`
+   * above. A DEDICATED `BufferGeometry` per rebuild (unlike
+   * `alignmentPreview`'s SHARED geometry + matrix update) — the blockout
+   * preview mesh's POSITIONS themselves change every recompute (a
+   * kernel-generated small patch, not a transform of an existing entry's
+   * geometry), so there is no live geometry to share a transform against. */
+  private readonly blockoutGroup: Group;
+  private blockoutOverlayObjects: Mesh[] = [];
+
   private projectionMode: CameraProjection;
   private shadingPreset: ShadingPreset;
   private wireframeEnabled: boolean;
@@ -603,6 +638,9 @@ export class SceneManager {
 
     this.axisGroup = new Group();
     this.scene.add(this.axisGroup);
+
+    this.blockoutGroup = new Group();
+    this.scene.add(this.blockoutGroup);
 
     this.resizeObserver = new ResizeObserver(() => this.handleResize());
     this.resizeObserver.observe(this.container);
@@ -1334,6 +1372,45 @@ export class SceneManager {
       (line.material as LineBasicMaterial).dispose();
     }
     this.axisOverlayObjects = [];
+  }
+
+  /**
+   * Rebuilds the undercut blockout PREVIEW ghost overlay (Phase 3 Task 10)
+   * from `data` (or clears it, via `null`). `data.positions`/`data.indices`
+   * are RENDER-frame (Float32-safe, re-centered — caller's responsibility,
+   * same convention as `syncSectionOverlay`'s plane point / `syncAxisOverlay`'s
+   * origin). Display-only — see `@dqcad/kernel`'s `blockoutPreview.ts`
+   * module doc for the full scope boundary this overlay visualizes; this
+   * method has no opinion on that, it only draws whatever patch it's given.
+   */
+  syncBlockoutPreview(data: BlockoutOverlayRenderData | null): void {
+    this.clearBlockoutPreview();
+    if (!data || data.indices.length === 0) return;
+
+    const geometry = new BufferGeometry();
+    geometry.setAttribute('position', new BufferAttribute(data.positions, 3));
+    geometry.setIndex(new BufferAttribute(data.indices, 1));
+    geometry.computeVertexNormals();
+    const material = new MeshBasicMaterial({
+      color: BLOCKOUT_PREVIEW_COLOR,
+      transparent: true,
+      opacity: BLOCKOUT_PREVIEW_OPACITY,
+      side: DoubleSide,
+      depthWrite: false,
+    });
+    const mesh = new Mesh(geometry, material);
+    mesh.renderOrder = BLOCKOUT_PREVIEW_RENDER_ORDER;
+    this.blockoutGroup.add(mesh);
+    this.blockoutOverlayObjects.push(mesh);
+  }
+
+  private clearBlockoutPreview(): void {
+    for (const mesh of this.blockoutOverlayObjects) {
+      this.blockoutGroup.remove(mesh);
+      mesh.geometry.dispose();
+      (mesh.material as MeshBasicMaterial).dispose();
+    }
+    this.blockoutOverlayObjects = [];
   }
 
   /** The renderer's own `<canvas>` element — exposed so ui/MarginOverlay.tsx's

@@ -310,4 +310,84 @@ describe('axisEngine — confirmAxis', () => {
   it('throws if called with no active session', () => {
     expect(() => axisEngine.confirmAxis()).toThrow(/no active session/);
   });
+
+  it('journals blockout params (threshold, visibility, and last measured stats) even if the preview toggle is off', async () => {
+    const { restorationId } = setupCrownRestoration();
+    axisEngine.start(restorationId);
+    axisEngine.setElevationDeg(60); // tilt well past the frustum's zero-undercut cone
+    await axisEngine.setBlockoutPreviewVisible(true);
+    expect(useAxisStore.getState().blockoutStats).not.toBeNull();
+    expect(useAxisStore.getState().blockoutStats!.blockoutTriangleCount).toBeGreaterThan(0);
+    await axisEngine.setBlockoutPreviewVisible(false); // hide before confirming — params must still be journaled
+
+    axisEngine.confirmAxis();
+
+    const lastOp = caseStore.getDocument().history[caseStore.getDocument().history.length - 1]!;
+    const blockout = lastOp.params.blockout as {
+      thresholdMm: number;
+      previewVisible: boolean;
+      blockoutTriangleCount?: number;
+      maxDisplacementMm?: number;
+      approxVolumeMm3?: number;
+    };
+    expect(blockout.previewVisible).toBe(false);
+    expect(typeof blockout.thresholdMm).toBe('number');
+    expect(blockout.blockoutTriangleCount).toBeGreaterThan(0);
+    expect(blockout.maxDisplacementMm).toBeGreaterThan(0);
+    expect(blockout.approxVolumeMm3).toBeGreaterThan(0);
+  });
+});
+
+describe('axisEngine — blockout preview (Phase 3 Task 10)', () => {
+  it('setBlockoutPreviewVisible(true) computes a non-empty preview for a tilted axis, and clears it when hidden', async () => {
+    const { restorationId } = setupCrownRestoration();
+    axisEngine.start(restorationId);
+    axisEngine.setElevationDeg(60);
+
+    await axisEngine.setBlockoutPreviewVisible(true);
+    const state = useAxisStore.getState();
+    expect(state.blockoutPreviewVisible).toBe(true);
+    expect(state.blockoutPreviewBusy).toBe(false);
+    expect(state.blockoutStats).not.toBeNull();
+    expect(state.blockoutStats!.blockoutTriangleCount).toBeGreaterThan(0);
+    expect(state.blockoutStats!.maxDisplacementMm).toBeGreaterThan(0);
+    expect(state.blockoutStats!.approxVolumeMm3).toBeGreaterThan(0);
+
+    await axisEngine.setBlockoutPreviewVisible(false);
+    expect(useAxisStore.getState().blockoutPreviewVisible).toBe(false);
+  });
+
+  it('the true construction axis (no undercut beyond the zero-undercut cone) yields an empty preview (blockoutTriangleCount 0)', async () => {
+    const { restorationId } = setupCrownRestoration();
+    axisEngine.start(restorationId); // starts at the restoration's persisted [0,0,1] axis
+    await axisEngine.setBlockoutPreviewVisible(true);
+    expect(useAxisStore.getState().blockoutStats!.blockoutTriangleCount).toBe(0);
+  });
+
+  it('setBlockoutThresholdMm recomputes live when the preview is visible, shrinking/emptying the selection at a high threshold', async () => {
+    const { restorationId } = setupCrownRestoration();
+    axisEngine.start(restorationId);
+    axisEngine.setElevationDeg(60);
+    await axisEngine.setBlockoutPreviewVisible(true);
+    expect(useAxisStore.getState().blockoutStats!.blockoutTriangleCount).toBeGreaterThan(0);
+
+    await axisEngine.setBlockoutThresholdMm(1000);
+    expect(useAxisStore.getState().blockoutThresholdMm).toBe(1000);
+    expect(useAxisStore.getState().blockoutStats!.blockoutTriangleCount).toBe(0);
+  });
+
+  it('manual slider adjustment refreshes the blockout preview live when visible', async () => {
+    const { restorationId } = setupCrownRestoration();
+    axisEngine.start(restorationId);
+    axisEngine.setElevationDeg(60);
+    await axisEngine.setBlockoutPreviewVisible(true);
+    const firstStats = useAxisStore.getState().blockoutStats!;
+
+    axisEngine.setElevationDeg(50); // tilt further — fire-and-forget refresh
+    for (let i = 0; i < 50 && useAxisStore.getState().blockoutStats === firstStats; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(useAxisStore.getState().blockoutStats).not.toBe(firstStats);
+    expect(useAxisStore.getState().blockoutStats!.blockoutTriangleCount).toBeGreaterThan(0);
+  });
 });

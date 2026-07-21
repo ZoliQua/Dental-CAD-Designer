@@ -59,6 +59,77 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.7.0] — Phase 3 Task 10: undercut blockout preview (`blockout/` module, "virtual wax")
+
+**NEW op.** Adds `packages/kernel/src/blockout/` — `blockoutPreview(mesh, bvh,
+region, directionUnit, thresholdMm, options?)`: a DISPLAY-ONLY preview of
+where/how much material would need to be blocked out (wax-filled) to
+eliminate undercut along a candidate insertion axis, for the insertion-axis
+tool (Phase 3 Task 9) to show DURING axis selection. **Scope boundary,
+repeated because it matters**: this is a preview PATCH mesh, never a
+watertight solid, never unioned with the prep, never fed back into any other
+kernel geometry op (branded `BlockoutPreviewMesh`, mirroring `decimate.ts`'s
+`RenderOnlyMesh`) — the REAL blockout construction, unioned into the
+inner-surface stage, is PLAN.md §5 Phase 4's job.
+
+**Construction** (two granularities of `undercut/undercutScan.ts`'s
+existing `depthMm` machinery, deliberately): (1) triangle SELECTION —
+`undercutScanIndices` over `region.triangleIndices`, keeping triangles where
+`undercut[t] === 1 AND depthMm[t] > thresholdMm`; (2) per-VERTEX
+DISPLACEMENT — for every unique vertex of a selected triangle, a FRESH,
+independent depth sample from that vertex's own position
+(`sampleDepthAlongAxis`, undercut/undercutScan.ts's `depthFromSample` made
+public), displacing it to `original + axis * depth` — the point where the
+`+axis` ray first exits the solid, i.e. the visibility horizon "from above".
+Output triangle winding is REVERSED relative to the source triangles — a
+MEASURED necessity (not cosmetic): a smoothly-varying displacement field
+does not itself flip a triangle's facing sense, but the physical role of the
+surface flips (it now bounds the newly added WAX, not the original cavity)
+— see blockoutPreview.ts's "Winding is REVERSED" doc for the measured
+before/after numbers on the tilted-cylinder fixture.
+
+**`@errorBound`**: two independent, documented approximation sources — (1)
+selection error, inherited verbatim from `undercutScanIndices`'s own
+sampling-policy bound; (2) NEW "displacement incoherence" — independent
+per-vertex rays give no global smoothness guarantee, unbounded in the worst
+case (see blockoutPreview.ts's doc, and the honest measured canopy-fixture
+residual below). No fixed numeric bound is claimed, same character as
+`undercutScan.ts`'s own sampling-policy doc.
+
+**Measured self-consistency** (this task's report has the full numbers):
+re-scanning the PREVIEW mesh (fresh BVH) along the SAME axis —
+- Tilted-cylinder analytic fixture (a=90deg): displaced vertex positions
+  match the derived closed-form horizon point to `~1.3e-15` mm.
+- Cone-frustum "prep-die" fixture, tilts 15/20/25/30/45deg beyond its own
+  ~9.46deg zero-undercut cone: **MEASURED EXACT ZERO** residual undercut at
+  every tilt tested (a single connected solid).
+- Canopy fixture (three DISCONNECTED undercut regions sharing one (x,y)
+  footprint, an adversarial multi-region stress case, not a realistic prep
+  shape): displacement pulls the three regions into mutual vertical
+  alignment, creating NEW inter-region occlusion within the combined
+  preview — **MEASURED 4 of 6 selected triangles residually undercut**
+  (`maxDepthMm = 1`, exactly the canopy's own thickness) — a genuine,
+  documented limitation, not a hidden failure.
+
+**Golden impact**: ONE new pinned entry, `blockoutPreview` (arch-case-01
+upperjaw, SAME ROI as the `suggestAxis` entry — tooth 11's reference margin,
+radiusMm=2 — direction = the WORST-ranked candidate `suggestAxis` itself
+evaluated, deliberately, so this real-fixture golden exercises a genuine
+non-empty preview rather than the near-zero-undercut result the BEST
+candidate would give; `thresholdMm = DEFAULT_UNDERCUT_BLOCKOUT_THRESHOLD_MM`
+= 0). Every other op entry is UNCHANGED (verified — `sampleDepthAlongAxis`
+is new, `depthFromSample`'s existing behavior and every other undercutScan
+function is untouched). Note: the pinned direction is intentionally a
+WORST-CASE, non-clinically-representative axis (chosen to guarantee a
+non-empty golden) — its `maxDisplacementMm` (~20.6mm) is not a realistic
+clinical blockout depth, see this task's report.
+
+**Also adds** `packages/clinical-profiles/src/constants.ts`'s
+`DEFAULT_UNDERCUT_BLOCKOUT_THRESHOLD_MM` (aliases
+`STANDARD_ZIRCONIA_PROFILE.undercutBlockoutThresholdMm`, PLAN.md §3's "0 µm"
+row — the profile field itself already existed, unwired, since Phase 3 Task
+2).
+
 ## [0.6.0] addendum — Fix batch: HONESTY correction to the default-budget accuracy claim + `AXIS_SEARCH_PRESETS` (no version bump)
 
 **Correction.** [0.6.0]'s original "Measured accuracy" prose (below) did not
