@@ -335,6 +335,38 @@ function depthFromSample(mesh: IndexedMesh, bvh: Bvh, samplePoint: Vec3, d: Vec3
   return hit ? RAY_ORIGIN_BIAS_MM + hit.distance : 0;
 }
 
+/**
+ * Single-point depth-along-axis sample — the SAME biased `+d` raycast
+ * `scanTriangle`'s own per-sample depth check uses internally (see this
+ * module's "Ray origin epsilon policy" doc above), exposed as a PUBLIC
+ * primitive so a caller needing VERTEX-granularity (not just triangle-
+ * sample-granularity) depth can reuse the EXACT SAME ray-casting semantics
+ * instead of re-deriving them. Motivating caller: blockout/blockoutPreview.ts
+ * (Phase 3 Task 10) — a per-VERTEX "how far to the visibility horizon"
+ * displacement needs one depth sample PER VERTEX of an undercut patch, not
+ * one per triangle.
+ *
+ * `point` need not lie exactly on the mesh surface — no assumption beyond
+ * "the biased ray starting near `point` along `+directionUnit` is meaningful
+ * to cast" (same mechanics as `depthFromSample`, generalized to an arbitrary
+ * caller-supplied point rather than only a triangle's own centroid/corner).
+ * Unlike the module-private `depthFromSample` (which trusts its caller's
+ * already-normalized `d`), THIS public entry point normalizes
+ * `directionUnit` itself — a public API should not silently misbehave on an
+ * un-normalized direction. Returns `0` (not `null`/NaN) when no occluding
+ * surface is found along `+directionUnit`, matching this module's "no
+ * error" contract (see "Depth" doc above).
+ *
+ * @throws {RangeError} if `bvh` wasn't built from a mesh with the same
+ * triangle count as `mesh`.
+ * @throws {TypeError} if `directionUnit` is the zero vector.
+ */
+export function sampleDepthAlongAxis(mesh: IndexedMesh, bvh: Bvh, point: Vec3, directionUnit: Vec3): number {
+  validateMeshMatchesBvh(mesh, bvh);
+  const d = normalizeDirection(directionUnit, 'sampleDepthAlongAxis');
+  return depthFromSample(mesh, bvh, point, d);
+}
+
 /** `depthFromSample` over the triangle's sampling-policy point set (see
  * this module's "Sampling policy" doc) — the MAXIMUM `+d` hit distance
  * across those samples, always cast along `d` (never `-d`; see "Occlusion
@@ -470,6 +502,60 @@ function validateRange(range: UndercutTriangleRange, triangleCount: number): voi
  * `undercutScan`) or an out-of-bounds `range`. Throws `TypeError` for a
  * zero-length `directionUnit`.
  */
+/** One triangle's undercut/depth verdict against direction `d` — the exact
+ * per-triangle rule this module's top-of-file doc describes (sign
+ * convention, occlusion-as-independent-detector, boundary-epsilon policy),
+ * factored out so `undercutScanRange` (contiguous-range callers) and
+ * `undercutScanIndices` (arbitrary-triangle-SUBSET callers — axis/
+ * suggestInsertionAxis.ts's ROI-restricted sweep) share IDENTICAL logic
+ * rather than risking the two drifting apart. `d` must already be
+ * normalized (callers normalize once, not per-triangle).
+ */
+function scanTriangle(mesh: IndexedMesh, bvh: Bvh, t: number, d: Vec3, sampling: UndercutSamplingPolicy): { undercut: 0 | 1; depthMm: number } {
+  const [a, b, c] = triangleVertices(mesh, t);
+  const n = triangleUnitNormal(a, b, c);
+  const nd = dot(n, d);
+  const undercutByFacing = nd < -UNDERCUT_BOUNDARY_EPSILON;
+  // Occlusion is only checked for triangles STRICTLY facing (`nd >
+  // +UNDERCUT_BOUNDARY_EPSILON`) — a triangle inside the boundary/grazing
+  // band is excluded from BOTH rules, not just the facing one. This is
+  // not merely "reuse the same epsilon for convenience": right at
+  // `nd ~ 0`, `d` is (near-)TANGENT to the triangle's OWN plane, so a
+  // `+d` ray from a sample point on that triangle stays on (or
+  // arbitrarily close to) that triangle's own plane — a genuine geometric
+  // degeneracy, not a self-intersection-bias problem the existing
+  // `RAY_ORIGIN_BIAS_MM` nudge can fix. Concretely, this is exactly what
+  // happens at a flat mesh seam (e.g. a cube's vertical side wall meeting
+  // its top face at a shared edge, or an axis-aligned cylinder's wall
+  // meeting a cap): the ray, moving along the wall's own plane, reaches
+  // the EXACT shared edge with the adjacent, topologically-connected face
+  // and registers a real (non-near-zero-distance, so the bias can't catch
+  // it) but SPURIOUS "occlusion" — not a separate overhang, just the
+  // mesh's own immediately-adjacent geometry at a zero-gap seam. See this
+  // module's top-of-file "Near-perpendicular triangles" doc: a genuinely
+  // grazing/zero-draft surface is, by long-standing manufacturing
+  // convention (and this module's OWN pre-existing `nd >= 0` rule, which
+  // this epsilon band only refines), simply NOT undercut — extending that
+  // same treatment to the occlusion rule is the honest, consistent
+  // choice, not a special case invented to dodge a failing test (verified
+  // against undercutScan.test.ts's cube side-wall test and
+  // undercutScan.overhang.test.ts's dedicated grazing-edge test, both of
+  // which fail with a spurious same-plane seam hit if occlusion is
+  // instead checked unconditionally for every `nd >= -EPSILON` triangle).
+  const eligibleForOcclusion = nd > UNDERCUT_BOUNDARY_EPSILON;
+  if (!undercutByFacing && !eligibleForOcclusion) {
+    return { undercut: 0, depthMm: 0 }; // boundary/grazing band — not undercut by facing, and the occlusion ray is degenerate here.
+  }
+  // This SAME `+d` ray drives both the facing-away triangle's depth AND
+  // the strictly-facing triangle's occlusion check (see "Occlusion as an
+  // INDEPENDENT undercut detector").
+  const depth = maxDepthOverSamples(mesh, bvh, a, b, c, sampling, d);
+  if (undercutByFacing || depth > 0) {
+    return { undercut: 1, depthMm: depth };
+  }
+  return { undercut: 0, depthMm: 0 }; // not undercut.
+}
+
 export function undercutScanRange(
   mesh: IndexedMesh,
   bvh: Bvh,
@@ -488,54 +574,100 @@ export function undercutScanRange(
   let maxDepthMmInRange = 0;
 
   for (let t = range.start; t < range.end; t++) {
-    const [a, b, c] = triangleVertices(mesh, t);
-    const n = triangleUnitNormal(a, b, c);
-    const nd = dot(n, d);
-    const undercutByFacing = nd < -UNDERCUT_BOUNDARY_EPSILON;
-    // Occlusion is only checked for triangles STRICTLY facing (`nd >
-    // +UNDERCUT_BOUNDARY_EPSILON`) — a triangle inside the boundary/grazing
-    // band is excluded from BOTH rules, not just the facing one. This is
-    // not merely "reuse the same epsilon for convenience": right at
-    // `nd ~ 0`, `d` is (near-)TANGENT to the triangle's OWN plane, so a
-    // `+d` ray from a sample point on that triangle stays on (or
-    // arbitrarily close to) that triangle's own plane — a genuine geometric
-    // degeneracy, not a self-intersection-bias problem the existing
-    // `RAY_ORIGIN_BIAS_MM` nudge can fix. Concretely, this is exactly what
-    // happens at a flat mesh seam (e.g. a cube's vertical side wall meeting
-    // its top face at a shared edge, or an axis-aligned cylinder's wall
-    // meeting a cap): the ray, moving along the wall's own plane, reaches
-    // the EXACT shared edge with the adjacent, topologically-connected face
-    // and registers a real (non-near-zero-distance, so the bias can't catch
-    // it) but SPURIOUS "occlusion" — not a separate overhang, just the
-    // mesh's own immediately-adjacent geometry at a zero-gap seam. See this
-    // module's top-of-file "Near-perpendicular triangles" doc: a genuinely
-    // grazing/zero-draft surface is, by long-standing manufacturing
-    // convention (and this module's OWN pre-existing `nd >= 0` rule, which
-    // this epsilon band only refines), simply NOT undercut — extending that
-    // same treatment to the occlusion rule is the honest, consistent
-    // choice, not a special case invented to dodge a failing test (verified
-    // against undercutScan.test.ts's cube side-wall test and
-    // undercutScan.overhang.test.ts's dedicated grazing-edge test, both of
-    // which fail with a spurious same-plane seam hit if occlusion is
-    // instead checked unconditionally for every `nd >= -EPSILON` triangle).
-    const eligibleForOcclusion = nd > UNDERCUT_BOUNDARY_EPSILON;
-    if (!undercutByFacing && !eligibleForOcclusion) {
-      continue; // boundary/grazing band — not undercut by facing, and the occlusion ray is degenerate here. out.undercut[t]/out.depthMm[t] stay 0 (typed arrays zero-init).
-    }
-    // This SAME `+d` ray drives both the facing-away triangle's depth AND
-    // the strictly-facing triangle's occlusion check (see "Occlusion as an
-    // INDEPENDENT undercut detector").
-    const depth = maxDepthOverSamples(mesh, bvh, a, b, c, sampling, d);
-    if (undercutByFacing || depth > 0) {
+    const { undercut, depthMm } = scanTriangle(mesh, bvh, t, d, sampling);
+    if (undercut === 1) {
       out.undercut[t] = 1;
+      out.depthMm[t] = depthMm;
       undercutCountInRange++;
-      out.depthMm[t] = depth;
-      if (depth > maxDepthMmInRange) maxDepthMmInRange = depth;
+      if (depthMm > maxDepthMmInRange) maxDepthMmInRange = depthMm;
     }
-    // else: not undercut — out.undercut[t] stays 0, out.depthMm[t] stays 0 (typed arrays zero-init).
+    // else: not undercut — out.undercut[t]/out.depthMm[t] stay 0 (typed arrays zero-init).
   }
 
   return { undercutCountInRange, maxDepthMmInRange };
+}
+
+// ---------------------------------------------------------------------------
+// Index-subset scanning — for a caller that only cares about undercut/depth
+// on an ARBITRARY, typically small, triangle SUBSET (not a contiguous
+// range) and does not want to pay for iterating/allocating over the WHOLE
+// mesh's triangle count to get there. See `UndercutScanIndicesOutput`'s doc
+// for the motivating use case (axis/suggestInsertionAxis.ts's ROI-restricted
+// hemisphere sweep).
+// ---------------------------------------------------------------------------
+
+export interface UndercutScanIndicesOutput {
+  /** ALIGNED to the caller's `indices` array (`undercut[i]` is
+   * `indices[i]`'s verdict) — NOT a full-mesh-sized sparse array. This is
+   * the whole point of this function: a caller with a small ROI (a few
+   * hundred to a few thousand triangles out of a quarter-million-triangle
+   * mesh) gets an output sized to ITS OWN input, not the mesh's. */
+  undercut: Uint8Array;
+  depthMm: Float64Array;
+}
+
+export interface UndercutScanIndicesResult extends UndercutScanIndicesOutput {
+  directionUnit: Vec3;
+  undercutTriangleCount: number;
+  maxDepthMm: number;
+}
+
+/**
+ * `undercutScan`'s per-triangle rule (see this module's top-of-file doc),
+ * evaluated ONLY for the triangles named in `indices` — every raycast this
+ * function issues still queries the FULL `bvh` (occlusion by geometry
+ * outside `indices` is still detected correctly, exactly as `undercutScan`
+ * would find it), but no work is spent DECIDING undercut status for any
+ * triangle NOT in `indices`. This is a genuine complexity difference, not
+ * just a convenience wrapper: `undercutScan`/`undercutScanBatch` cost is
+ * `O(mesh triangleCount)` per direction (every triangle's facing test, and
+ * for the (typically large) majority that are not in the near-perpendicular
+ * boundary band, a real BVH raycast — see `scanTriangle`'s "Occlusion" doc);
+ * this function's cost is `O(indices.length)` per direction — the
+ * difference that makes a small-ROI, many-direction sweep (axis/
+ * suggestInsertionAxis.ts's coarse->fine search) tractable on a real
+ * quarter-million-triangle mesh (measured: a 48-direction whole-mesh sweep
+ * on arch-case-01's upperjaw took ~45s; the SAME sweep restricted to a
+ * ~1000-triangle ROI is the interactivity-target-meeting alternative this
+ * function exists for — see that module's report for the measured numbers).
+ *
+ * @throws {RangeError} if `bvh` wasn't built from a mesh with the same
+ * triangle count as `mesh`, or any entry of `indices` is out of
+ * `[0, triangleCount)`.
+ * @throws {TypeError} if `directionUnit` is the zero vector.
+ */
+export function undercutScanIndices(
+  mesh: IndexedMesh,
+  bvh: Bvh,
+  directionUnit: Vec3,
+  indices: Uint32Array | readonly number[],
+  options: UndercutScanOptions = {},
+): UndercutScanIndicesResult {
+  validateMeshMatchesBvh(mesh, bvh);
+  const triangleCount = mesh.indices.length / 3;
+  const d = normalizeDirection(directionUnit, 'undercutScanIndices');
+  const sampling = options.sampling ?? 'centroid';
+
+  const undercut = new Uint8Array(indices.length);
+  const depthMm = new Float64Array(indices.length);
+  let undercutTriangleCount = 0;
+  let maxDepthMm = 0;
+
+  for (let i = 0; i < indices.length; i++) {
+    const t = indices[i]!;
+    if (!Number.isInteger(t) || t < 0 || t >= triangleCount) {
+      throw new RangeError(`undercutScanIndices: indices[${i}] = ${t} is out of range [0, ${triangleCount})`);
+    }
+    const verdict = scanTriangle(mesh, bvh, t, d, sampling);
+    undercut[i] = verdict.undercut;
+    depthMm[i] = verdict.depthMm;
+    if (verdict.undercut === 1) {
+      undercutTriangleCount++;
+      if (verdict.depthMm > maxDepthMm) maxDepthMm = verdict.depthMm;
+    }
+  }
+
+  return { directionUnit: d, undercut, depthMm, undercutTriangleCount, maxDepthMm };
 }
 
 /**
@@ -624,6 +756,30 @@ export function undercutScanBatch(
   const results: UndercutScanResult[] = new Array(directions.length);
   for (let i = 0; i < directions.length; i++) {
     results[i] = undercutScan(mesh, bvh, directions[i]!, scanOptions);
+    onProgress?.(i + 1, directions.length);
+  }
+  return results;
+}
+
+/**
+ * `undercutScanIndices` for every direction in `directions`, against the
+ * SAME `bvh` (built exactly once by the caller) — the index-subset analog
+ * of `undercutScanBatch`, and the primitive axis/suggestInsertionAxis.ts's
+ * coarse->fine sweep actually calls (see `undercutScanIndices`'s doc for
+ * why this matters on a real, large mesh: `O(indices.length)`, not
+ * `O(mesh triangleCount)`, per direction).
+ */
+export function undercutScanBatchIndices(
+  mesh: IndexedMesh,
+  bvh: Bvh,
+  directions: readonly Vec3[],
+  indices: Uint32Array | readonly number[],
+  options: UndercutScanBatchOptions = {},
+): UndercutScanIndicesResult[] {
+  const { onProgress, ...scanOptions } = options;
+  const results: UndercutScanIndicesResult[] = new Array(directions.length);
+  for (let i = 0; i < directions.length; i++) {
+    results[i] = undercutScanIndices(mesh, bvh, directions[i]!, indices, scanOptions);
     onProgress?.(i + 1, directions.length);
   }
   return results;

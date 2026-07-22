@@ -162,9 +162,10 @@ jobs:
         # server) itself, including the server's own DB migration step
         # (apps/server/package.json's predev/dev scripts) — no separate
         # migrate step needed here. `playwright test` (no args, `testDir:
-        # './e2e'`) runs every spec under e2e/: smoke.spec.ts (Phase 0) AND
-        # phase1.spec.ts (Task 12's import->intake->view->measure->section->
-        # save->reload acceptance walkthrough — see that file's module doc).
+        # './e2e'`) runs every spec under e2e/: smoke.spec.ts (Phase 0),
+        # phase1.spec.ts (P1 Task 12's import->intake->view->measure->section->
+        # save->reload walkthrough) AND phase3.spec.ts (P3 Task 11's wizard->
+        # margin->axis->blockout->save->reload walkthrough) — auto-discovered.
         # e2e/perf.spec.ts ALSO lives under e2e/ and is picked up by this
         # same command, but self-skips (`test.skip(!RUN_PERF_E2E, ...)`)
         # since RUN_PERF_E2E isn't set here — it shows as "skipped" in this

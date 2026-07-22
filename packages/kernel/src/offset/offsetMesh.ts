@@ -76,7 +76,7 @@ import { weldVertices } from '../intake/weld.ts';
 import { computePseudonormals } from '../sdf/pseudonormals.ts';
 import { computeSdfGridSlice, markCandidateCells, sdfGridDims } from '../sdf/grid.ts';
 import { cleanupMesh } from '../boolean/manifold.ts';
-import { marchingCubes, muClampEpsilon, type ScalarGrid } from './marchingCubes.ts';
+import { marchingCubes, muClampEpsilon, MIN_PITCH_MM, PitchTooSmallError, type ScalarGrid } from './marchingCubes.ts';
 
 /** How many SDF z-slices `offsetMesh` computes between event-loop yields —
  * see the yield note in `offsetMesh`'s doc. At die scale a slice is
@@ -197,6 +197,9 @@ export function maxAbsCoordOf(bbox: Bbox, padding: number): number {
  * offsetMesh.test.ts pins this with a double-run hash).
  *
  * @throws {TypeError} for non-finite `distanceMm` or invalid `pitchMm`.
+ * @throws {PitchTooSmallError} (marchingCubes.ts) if `pitchMm < MIN_PITCH_MM`
+ * — checked up front, before any grid/SDF work, so this fails fast rather
+ * than after the expensive stages.
  * @throws {NonWatertightMeshError} (sdf/pseudonormals.ts) if `mesh` is not
  * closed — signed distance requires a watertight input.
  * @throws {SdfGridTooLargeError} (sdf/grid.ts) if bbox/pitch exceed the
@@ -217,6 +220,12 @@ export async function offsetMesh(
   }
   if (!(Number.isFinite(pitchMm) && pitchMm > 0)) {
     throw new TypeError(`offsetMesh: pitchMm must be finite and > 0, got ${pitchMm}`);
+  }
+  if (pitchMm < MIN_PITCH_MM) {
+    // Checked here (fail-fast, before any grid/SDF work) even though
+    // muClampEpsilon (marchingCubes.ts) would eventually throw the same
+    // error during stage 2 — see PitchTooSmallError's doc for why.
+    throw new PitchTooSmallError(pitchMm);
   }
 
   // Stage 0: bbox + acceleration structures (computePseudonormals is also

@@ -63,6 +63,47 @@ export function snapToSurface(mesh: IndexedMesh, bvh: Bvh, point: Vec3): Surface
  * of a vertex by chance is vanishingly unlikely). */
 export const VERTEX_EXACT_BARYCENTRIC_EPSILON = 1e-9;
 
+// ## Derivation vs. `MESH_WELD_EPSILON_MM` — deliberately NOT the same scale
+//
+// This is a BARYCENTRIC-WEIGHT epsilon (dimensionless, a ratio), unlike
+// `../intake/weld.ts`'s `MESH_WELD_EPSILON_MM` (1e-6 mm, an absolute
+// distance) — the two are not directly comparable, but it's worth deriving
+// the spatial (mm) bound this barycentric epsilon actually implies, so the
+// gap between the two is a stated design choice rather than an unexamined
+// coincidence of two different-looking small numbers.
+//
+// For `sp` with `w0 = 1 - epsilon` (the "vertex-exact at vertex A" case),
+// `evaluateSurfacePoint`'s position is `A + w1*(B-A) + w2*(C-A)` with
+// `w1 + w2 = epsilon`, so the spatial deviation from `A` is bounded by
+// `epsilon * max(|B-A|, |C-A|)` — i.e. `epsilon` scaled by the LONGEST edge
+// incident to the vertex being tested. At real-scan/die mesh scale (edge
+// lengths from the ~20 µm marching-cubes pitch floor up to a few mm for a
+// coarse arch scan — see offset/marchingCubes.ts's pitch floor and
+// intake/weld.ts's own doc), `epsilon = 1e-9` bounds the spatial deviation
+// to roughly `1e-9 * (0.02 to a few) mm ≈ 2e-11 to 1e-8 mm` — several orders
+// tighter than `MESH_WELD_EPSILON_MM`'s 1e-6 mm. That gap is INTENTIONAL:
+// this check exists to recognize points that are the SAME point as a mesh
+// vertex up to floating-point noise (funnel.ts's `surfacePointAtVertex`
+// always emits an exact `[1,0,0]`-style barycentric; a BVH `closestPoint`
+// projection landing ON a vertex is exact up to Float64 rounding only) — it
+// must NOT fire for a genuinely distinct nearby point that a weld pass would
+// still consider mergeable, since firing incorrectly biases the corridor
+// seed (this function's own doc, "vertex-exact endpoints"). A barycentric
+// epsilon at weld-distance scale would be too loose for that purpose.
+//
+// The known LIMIT this leaves undocumented-until-now: because the spatial
+// bound scales with edge length, an edge far longer than this kernel's
+// working volume (this project's clinical scans are bounded to a few
+// hundred mm at most — PLAN.md's working-volume assumption) could in
+// principle push the spatial deviation above `MESH_WELD_EPSILON_MM` while
+// still satisfying `epsilon = 1e-9` in barycentric terms — i.e. a
+// "vertex-exact" classification that a weld pass would NOT agree is the same
+// point. This does not arise at any mesh scale this kernel actually
+// processes (dental restorations, dies, or full arches), so `epsilon` is not
+// tied to `MESH_WELD_EPSILON_MM`/edge length dynamically — but it is a real,
+// stated deficit of a fixed dimensionless threshold rather than a scale-
+// aware one, not a silent assumption.
+
 /**
  * Returns the global mesh vertex index `sp` sits (at least effectively)
  * exactly AT — one barycentric weight within `epsilon` of 1 — or `null` if

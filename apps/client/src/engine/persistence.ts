@@ -59,6 +59,7 @@ import type { CaseDocument, MeshAsset } from '@dqcad/shared-types';
 import { createEmptyCaseDocument, useCaseStore } from '../state/caseStore';
 import { type CaseSummary, usePersistenceStore } from '../state/persistenceStore';
 import { caseStore } from './caseStore';
+import { migrateCaseDocumentIfNeeded } from './caseDocumentMigration';
 import { getPool, releaseBvhForMesh } from './workers';
 
 const API_BASE = '/api';
@@ -279,7 +280,22 @@ export async function createCase(name: string): Promise<void> {
 export async function openCase(id: string, name: string): Promise<void> {
   const registeredThisAttempt: string[] = [];
   try {
-    const document = await requestJson<CaseDocument>('GET', `/cases/${id}`);
+    // `requestJson<unknown>`, not `<CaseDocument>`: the server's GET route
+    // does no validation of its own stored JSON (apps/server/src/app.ts
+    // just echoes back `documentJson` as-is) — a case saved before Phase 3
+    // Task 1's schemaVersion 1 -> 2 evolution can still be schemaVersion 1
+    // on disk until its next successful save. `migrateCaseDocumentIfNeeded`
+    // (engine/caseDocumentMigration.ts) is the ONLY place that boundary is
+    // crossed: every `CaseDocument`-typed value from this point on in the
+    // whole client is guaranteed schemaVersion 2.
+    const rawDocument = await requestJson<unknown>('GET', `/cases/${id}`);
+    const document = migrateCaseDocumentIfNeeded(rawDocument);
+    // Reference inequality is a cheap, exact "was this migrated" signal:
+    // `migrateCaseDocumentIfNeeded` returns `rawDocument` BY REFERENCE,
+    // unchanged, when it was already schemaVersion 2 (see that function's
+    // doc) — a NEW object only ever comes back from an actual v1 -> v2
+    // migration.
+    const wasMigrated = (rawDocument as unknown) !== (document as unknown);
 
     const previousMeshHashes = new Set(caseStore.meshStore.list().map((record) => record.contentHash));
     const liveMeshIds = new Set(document.scene.map((node) => node.meshId));
@@ -334,7 +350,22 @@ export async function openCase(id: string, name: string): Promise<void> {
 
     // Every live mesh the new document needs is now resident — safe to swap
     // atomically. `getRenderNodes()` never observes a dangling `meshId`.
-    lastPersistedDocument = document;
+    //
+    // `lastPersistedDocument` is set to `document` ONLY when it was NOT
+    // migrated: a migrated document genuinely DIFFERS from what the server
+    // still has on disk (the server never sees a schemaVersion-1 document —
+    // it only ever exists transiently, client-side, until the next save),
+    // so treating it as "already in sync" here would be wrong — it must
+    // stay dirty so the normal autosave/`isDirty()` machinery (this file's
+    // module doc's "Autosave" section) picks it up and persists the
+    // migration back to the server. Leaving `lastPersistedDocument` pointing
+    // at whatever it was before (a different case's document, or `null`) is
+    // exactly what makes `useCaseStore.subscribe`'s mutation hook (below)
+    // see a genuine change once `loadDocument` publishes the migrated
+    // document, and mark the case 'unsaved'.
+    if (!wasMigrated) {
+      lastPersistedDocument = document;
+    }
     caseStore.loadDocument(document);
 
     // NOW release whatever the OUTGOING case had that the new document
@@ -348,12 +379,35 @@ export async function openCase(id: string, name: string): Promise<void> {
     }
 
     usePersistenceStore.getState().setActiveCase({ id, name });
-    // GET /api/cases/:id doesn't return `updatedAt` (only the document) — a
-    // freshly loaded document is, by construction, identical to what's on
-    // the server, so "now" is a reasonable (if approximate) "last confirmed
-    // in sync with server" timestamp for the header's status display.
-    usePersistenceStore.getState().setLastSavedAt(new Date().toISOString());
-    usePersistenceStore.getState().setStatus('saved');
+    if (wasMigrated) {
+      // See the `lastPersistedDocument` doc above — a migrated document is
+      // NOT yet in sync with the server (the server never sees a
+      // schemaVersion-1 document at all). Rather than leaving it dirty for
+      // the 30s autosave debounce to eventually notice (this function's
+      // own final `setStatus` below would otherwise race the subscribe
+      // hook's — `useCaseStore.subscribe` bails out early here anyway,
+      // since `setActiveCase` above hasn't run yet the moment
+      // `loadDocument` publishes, so it can't be relied on), persist the
+      // migration explicitly, as part of THIS load — `save()` reads
+      // `isDirty()`/`activeCaseId` off the stores set above, PUTs the
+      // migrated document, and updates `lastPersistedDocument`/status
+      // itself (never throws — failures set status 'error' internally, see
+      // `save()`'s doc), so `openCase`'s own success path doesn't need to
+      // set status afterward for this branch.
+      console.info(
+        `persistence: openCase — case ${id} was migrated from CaseDocument.schemaVersion 1 to 2 on load; ` +
+          'persisting the migration now.',
+      );
+      await save();
+    } else {
+      // GET /api/cases/:id doesn't return `updatedAt` (only the document) —
+      // a freshly loaded, non-migrated document is, by construction,
+      // identical to what's on the server, so "now" is a reasonable (if
+      // approximate) "last confirmed in sync with server" timestamp for the
+      // header's status display.
+      usePersistenceStore.getState().setLastSavedAt(new Date().toISOString());
+      usePersistenceStore.getState().setStatus('saved');
+    }
   } catch (error) {
     // Roll back this FAILED attempt's own newly-registered meshes (see this
     // function's doc) — the outgoing case's document/meshes were never

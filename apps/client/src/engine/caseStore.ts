@@ -18,6 +18,7 @@ import type {
   MeshAsset,
   MeshRole,
   Operation,
+  Restoration,
   SceneNode,
 } from '@dqcad/shared-types';
 import type { MeshStats } from '@dqcad/kernel-workers';
@@ -26,6 +27,7 @@ import { useLodStore } from '../state/lodStore';
 import { shouldUseLod } from './lodPolicy';
 import { MeshStore, type EngineMeshRecord, type RegisterMeshInput } from './meshStore';
 import type { RenderNode } from './renderNode';
+import { renderFrameTransform } from './sceneTransform';
 import { releaseBvhForMesh } from './workers';
 
 /** Identity 4x4 (column-major, per SceneNode's doc) — every newly imported
@@ -70,6 +72,12 @@ class CaseStoreEngine {
   /** Click-picked SceneNode id — see state/caseStore.ts's `selectedNodeId`
    * doc for why this lives outside CaseDocument. */
   private selectedNodeId: string | null = null;
+  /** The restoration currently active in the wizard/sidebar (Phase 3 Task 2)
+   * — same "ephemeral UI state, not part of the persisted document" rationale
+   * as `selectedNodeId` above; drives which restoration's per-tooth chips are
+   * highlighted now, and which restoration later margin/axis tools (Task 4+)
+   * operate on. */
+  private selectedRestorationId: string | null = null;
 
   getDocument(): CaseDocument {
     return this.document;
@@ -91,6 +99,22 @@ class CaseStoreEngine {
       return;
     }
     this.selectedNodeId = nodeId;
+    this.publishSelection();
+  }
+
+  getSelectedRestorationId(): string | null {
+    return this.selectedRestorationId;
+  }
+
+  /** Sets (or clears, via `null`) the active restoration — see
+   * `selectedRestorationId`'s doc. A restoration id that no longer exists in
+   * `document.restorations` is accepted as given (same defensive-no-op
+   * stance `setSelectedNodeId` takes). */
+  setSelectedRestorationId(restorationId: string | null): void {
+    if (this.selectedRestorationId === restorationId) {
+      return;
+    }
+    this.selectedRestorationId = restorationId;
     this.publishSelection();
   }
 
@@ -208,6 +232,53 @@ class CaseStoreEngine {
     this.publish();
   }
 
+  /**
+   * Phase 3 Task 3: commits the alignment tool's EXPLICITLY user-confirmed
+   * result — replaces `nodeId`'s `SceneNode.transform` with `transform`
+   * (a WORLD-frame column-major 16, `icpRegister`'s output) and appends
+   * `operation` (name `'alignment-apply'`) to the journal in the SAME
+   * atomic publish (CLAUDE.md invariant 3: "journal everything
+   * destructive"). No other SceneNode/mesh state changes — unlike
+   * `applyRepair`, this never produces a NEW mesh (the geometry itself is
+   * untouched; only where it's DRAWN moves), so there is no
+   * `outputHashes[0]` mesh to register and no measurement-staleness
+   * clearing to do (a `Measurement`'s points are frozen WORLD-space
+   * snapshots already anchored to the transform-carrying `SceneNode` at
+   * pick time — see `MeasurementPoint`'s doc; they remain valid, since
+   * re-deriving a render-frame point from a `SceneNode.transform` is
+   * exactly what `getRenderNodes()`/`renderFrameTransform` already do for
+   * ANY node, transform included).
+   *
+   * A `SceneNode.transform`-only write is exactly the category
+   * docs/adr/002-scene-ops-not-journaled.md's Decision puts in the
+   * NEVER-journaled bucket (alongside `setSceneNodeOpacity`/
+   * `setSceneNodeVisibility` just above) — journaling it anyway is a
+   * DELIBERATE, bounded exception, not an inconsistency: see that ADR's
+   * "Amendment (Phase 3): alignment-apply" section for why (clinically
+   * consequential, unlike opacity/visibility) and why it needs no
+   * PLAN.md §6.3 replay coverage (no mesh bytes ever change).
+   *
+
+   * @throws {Error} if no SceneNode with id `nodeId` exists — mirrors
+   * `updateRestoration`'s "loud failure on a caller programming error"
+   * stance (unlike e.g. `removeMeasurement`'s tolerant-of-a-stale-id style,
+   * which is for USER-driven races, not this method's caller — see
+   * engine/alignment.ts's `confirm()`, the only caller, which always holds
+   * a freshly-read `srcNodeId` from its own store).
+   */
+  applyAlignment(nodeId: string, transform: readonly number[], operation: Operation): void {
+    const exists = this.document.scene.some((node) => node.id === nodeId);
+    if (!exists) {
+      throw new Error(`applyAlignment: no SceneNode registered for id ${nodeId}`);
+    }
+    this.document = {
+      ...this.document,
+      scene: this.document.scene.map((node) => (node.id === nodeId ? { ...node, transform } : node)),
+      history: [...this.document.history, operation],
+    };
+    this.publish();
+  }
+
   /** Render-ready data for every current SceneNode, resolved against
    * `meshStore`'s Float32 render copies (see meshStore.ts's module doc) —
    * consumed by ui/Viewport.tsx to feed SceneManager's minimal mesh
@@ -228,6 +299,7 @@ class CaseStoreEngine {
     // see engine/lod.ts's module doc for the consumer-by-consumer
     // verification.
     const lodMode = useLodStore.getState().mode;
+    const worldOffset = this.meshStore.getWorldOffset();
     for (const node of this.document.scene) {
       const record = this.meshStore.get(node.meshId);
       if (!record) continue;
@@ -240,6 +312,11 @@ class CaseStoreEngine {
         visible: node.visible,
         opacity: node.opacity,
         role: node.role,
+        // Phase 3 Task 3: converts node.transform (WORLD frame) into THIS
+        // render frame — see engine/sceneTransform.ts's module doc. Every
+        // node stays at identity until the alignment tool ever writes a
+        // non-identity SceneNode.transform (applyAlignment below).
+        transform: renderFrameTransform(node.transform, worldOffset),
       });
     }
     return nodes;
@@ -266,6 +343,65 @@ class CaseStoreEngine {
       ...this.document,
       measurements: this.document.measurements.filter((measurement) => measurement.id !== id),
     };
+    this.publish();
+  }
+
+  // -------------------------------------------------------------------------
+  // Restorations (Phase 3 Task 2): create/update/delete, always journaled —
+  // see engine/restorations.ts for the orchestration layer that builds the
+  // `Restoration`/`Operation` values these methods commit (mirrors
+  // registerImportedMesh's "caller computes, caseStore applies + journals"
+  // split above).
+  // -------------------------------------------------------------------------
+
+  /** Appends a newly created `Restoration` and its `restoration-create`
+   * journal `Operation` as one atomic publish. */
+  addRestoration(restoration: Restoration, operation: Operation): Restoration {
+    this.document = {
+      ...this.document,
+      restorations: [...this.document.restorations, restoration],
+      history: [...this.document.history, operation],
+    };
+    this.publish();
+    return restoration;
+  }
+
+  /** Replaces an existing `Restoration` (by id) with `restoration` (the full,
+   * already-recomputed replacement — same "caller builds the new value,
+   * caseStore commits it" split as `applyRepair`) and appends its
+   * `restoration-update` journal `Operation`.
+   * @throws {Error} if no restoration with `restoration.id` exists. */
+  updateRestoration(restoration: Restoration, operation: Operation): Restoration {
+    const exists = this.document.restorations.some((existing) => existing.id === restoration.id);
+    if (!exists) {
+      throw new Error(`updateRestoration: no restoration registered for id ${restoration.id}`);
+    }
+    this.document = {
+      ...this.document,
+      restorations: this.document.restorations.map((existing) =>
+        existing.id === restoration.id ? restoration : existing,
+      ),
+      history: [...this.document.history, operation],
+    };
+    this.publish();
+    return restoration;
+  }
+
+  /** Removes a `Restoration` by id and appends its `restoration-delete`
+   * journal `Operation` — a no-op body (still journals) if `id` is already
+   * gone, mirroring `removeMeasurement`'s tolerant style. Clears
+   * `selectedRestorationId` if it pointed at the removed restoration, same
+   * as `removeSceneNode` does for `selectedNodeId`. */
+  removeRestoration(id: string, operation: Operation): void {
+    this.document = {
+      ...this.document,
+      restorations: this.document.restorations.filter((existing) => existing.id !== id),
+      history: [...this.document.history, operation],
+    };
+    if (this.selectedRestorationId === id) {
+      this.selectedRestorationId = null;
+      this.publishSelection();
+    }
     this.publish();
   }
 
@@ -325,11 +461,15 @@ class CaseStoreEngine {
   applyRepair(input: ApplyRepairInput): EngineMeshRecord {
     const previous = this.meshStore.get(input.previousContentHash);
     if (!previous) {
-      throw new Error(`applyRepair: no mesh registered for contentHash ${input.previousContentHash}`);
+      throw new Error(
+        `applyRepair: no mesh registered for contentHash ${input.previousContentHash}`,
+      );
     }
     const outputHash = input.operation.outputHashes[0];
     if (!outputHash) {
-      throw new Error('applyRepair: operation.outputHashes must carry the repaired mesh contentHash');
+      throw new Error(
+        'applyRepair: operation.outputHashes must carry the repaired mesh contentHash',
+      );
     }
 
     const record = this.meshStore.register({
@@ -368,7 +508,9 @@ class CaseStoreEngine {
     const remainingMeasurements =
       clearedMeasurements.length === 0
         ? this.document.measurements
-        : this.document.measurements.filter((measurement) => !clearedMeasurements.includes(measurement));
+        : this.document.measurements.filter(
+            (measurement) => !clearedMeasurements.includes(measurement),
+          );
 
     // `measurementsCleared` is always present (even 0) so a journal reader
     // can always find it without checking for its existence first; the id
@@ -447,6 +589,7 @@ class CaseStoreEngine {
   loadDocument(document: CaseDocument): void {
     this.document = document;
     this.selectedNodeId = null;
+    this.selectedRestorationId = null;
     this.publish();
     this.publishSelection();
   }
@@ -457,6 +600,7 @@ class CaseStoreEngine {
 
   private publishSelection(): void {
     useCaseStore.getState().setSelectedNodeId(this.selectedNodeId);
+    useCaseStore.getState().setSelectedRestorationId(this.selectedRestorationId);
   }
 
   /** TEST-ONLY: resets to a fresh empty document + mesh registry so tests
@@ -465,6 +609,7 @@ class CaseStoreEngine {
     this.document = createEmptyCaseDocument();
     this.meshStore.clear();
     this.selectedNodeId = null;
+    this.selectedRestorationId = null;
     this.publish();
     this.publishSelection();
   }

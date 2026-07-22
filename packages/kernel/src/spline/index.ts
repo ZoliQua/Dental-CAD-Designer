@@ -36,4 +36,12 @@ export {
   type SurfaceSplineSpan,
 } from './surfaceSpline.ts';
 
-export { fromMarginLine, toMarginLine, type MarginLineLike } from './marginLine.ts';
+export {
+  fromMarginLine,
+  toMarginLine,
+  MarginAnchorMismatchError,
+  MARGIN_ANCHOR_AGREEMENT_TOLERANCE_MM,
+  type MarginAnchorLike,
+  type MarginLineLike,
+  type MarginAnchorMismatchKind,
+} from './marginLine.ts';

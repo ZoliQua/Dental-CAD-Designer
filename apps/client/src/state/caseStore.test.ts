@@ -8,7 +8,7 @@ beforeEach(() => {
 describe('createEmptyCaseDocument', () => {
   it('produces a schema-valid, empty CaseDocument', () => {
     const doc = createEmptyCaseDocument();
-    expect(doc.schemaVersion).toBe(1);
+    expect(doc.schemaVersion).toBe(2);
     expect(doc.meshes).toEqual([]);
     expect(doc.scene).toEqual([]);
     expect(doc.restorations).toEqual([]);

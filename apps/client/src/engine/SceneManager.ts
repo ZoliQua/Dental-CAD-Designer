@@ -161,6 +161,25 @@ export interface MeasurementRenderData {
   points: ReadonlyArray<readonly [number, number, number]>;
 }
 
+/** One geodesic-snapped segment of a margin curve overlay (Phase 3 Task 5),
+ * render-frame (already offset by the caller — engine/marginFrame.ts's
+ * `toMarginRenderPoints`, same convention as `MeasurementRenderData`). `weak`
+ * mirrors `engine/marginEditor.ts`'s `MARGIN_WEAK_CONFIDENCE_THRESHOLD`
+ * flag for this segment (deliverable 4: "weak-confidence segments visually
+ * distinct"). */
+export interface MarginOverlaySegmentRenderData {
+  points: ReadonlyArray<readonly [number, number, number]>;
+  weak: boolean;
+}
+
+/** A full margin curve overlay — `origin` drives the base color (deliverable
+ * 4: "distinct colors for proposed vs confirmed" — see `MARGIN_PROPOSED_COLOR`/
+ * `MARGIN_CONFIRMED_COLOR`). */
+export interface MarginOverlayRenderData {
+  segments: readonly MarginOverlaySegmentRenderData[];
+  origin: 'proposed' | 'confirmed';
+}
+
 /** One cross-section outline polyline (Task 10) — render-frame (already
  * offset by the caller, same convention as `RenderNode.positions` /
  * `MeasurementRenderData.points`) flat Float32 xyz. `closed` mirrors
@@ -174,6 +193,29 @@ export interface SectionOutlinePolyline {
  * positions, already offset by the caller. Display-only (see
  * `@dqcad/kernel`'s `sectionCap` doc for its precision bound). */
 export interface SectionCapEntry {
+  positions: Float32Array;
+  indices: Uint32Array;
+}
+
+/** Insertion-axis arrow gizmo (Phase 3 Task 9) — `origin`/`direction` are
+ * RENDER-frame (already offset by the caller, same convention as
+ * `SectionOutlinePolyline`/`MeasurementRenderData.points`); `direction`
+ * need not be unit length (normalized by `syncAxisOverlay`).
+ * `lengthMm` is a purely COSMETIC display length (not a measured
+ * quantity — the caller picks something proportional to the current
+ * restoration/scene scale, e.g. the margin loop's own bounding radius). */
+export interface AxisOverlayRenderData {
+  origin: readonly [number, number, number];
+  direction: readonly [number, number, number];
+  lengthMm: number;
+}
+
+/** Undercut blockout PREVIEW ghost mesh (Phase 3 Task 10) — `positions`/
+ * `indices` are RENDER-frame (Float32-safe, already offset by the caller —
+ * same convention as `SectionCapEntry`). A small, DISCONNECTED patch mesh
+ * (`@dqcad/kernel`'s `blockoutPreview` output) — no assumption of
+ * manifoldness/closedness, this is a display overlay, not a solid. */
+export interface BlockoutOverlayRenderData {
   positions: Float32Array;
   indices: Uint32Array;
 }
@@ -238,6 +280,68 @@ const SECTION_OUTLINE_COLOR = new Color(0x2ee6a6);
 const SECTION_OUTLINE_RENDER_ORDER = 9;
 const SECTION_CAP_COLOR = new Color(0x2ee6a6);
 const SECTION_CAP_OPACITY = 0.55;
+
+// Alignment ghost preview (Phase 3 Task 3): a translucent, distinct-color
+// ("ghost") overlay of the SRC mesh at the candidate transform ICP just
+// computed — rendered WITHOUT touching the canonical SceneNode/entry at all
+// (`setAlignmentPreview` below never writes `entry.mesh.matrix` or any
+// caseStore state; it's a purely additive, engine-local overlay object,
+// same "extra visual state independent of RenderNode sync" pattern as the
+// cross-section outline/cap above). A violet/magenta distinct from the
+// measurement overlay's amber, the section overlay's cyan-green, and the
+// selection highlight's blue.
+const ALIGNMENT_PREVIEW_COLOR = new Color(0xc44dff);
+const ALIGNMENT_PREVIEW_OPACITY = 0.45;
+/** Above every mesh/wireframe renderOrder but below the measurement/section
+ * HUD overlays (10/9) — a preview should read as "part of the 3D scene",
+ * not a HUD element. */
+const ALIGNMENT_PREVIEW_RENDER_ORDER = 3;
+
+// Margin editor overlay (Phase 3 Task 5): a HUD-style curve overlay, same
+// `depthTest: false` "always on top" reasoning as the measurement/section
+// overlays. Two base hues distinguish an untouched auto-proposal from a
+// human-confirmed curve (deliverable 4) — warm yellow (distinct from the
+// measurement tool's amber and the alignment preview's violet) for
+// "proposed, not yet human-edited", green for "confirmed" (loaded from the
+// document, manually traced, or edited at least once). A per-SEGMENT weak-
+// confidence flag (engine/marginEditor.ts's `MARGIN_WEAK_CONFIDENCE_THRESHOLD`)
+// overrides either base color with a warning red — implemented via a
+// per-vertex `color` BufferAttribute (not a second material) so one
+// LineSegments object can mix normal- and weak-confidence segments in a
+// single draw call.
+const MARGIN_PROPOSED_COLOR = new Color(0xffd23f);
+const MARGIN_CONFIRMED_COLOR = new Color(0x39d98a);
+const MARGIN_WEAK_CONFIDENCE_COLOR = new Color(0xff4d4d);
+/** Below the measurement/section HUD overlays (10/9) but above the
+ * alignment ghost preview (3) — a margin curve is a HUD-ish annotation, not
+ * "part of the 3D scene", but shouldn't fight an active measurement for
+ * visual priority. */
+const MARGIN_OVERLAY_RENDER_ORDER = 8;
+
+// Phase 3 Task 9: insertion-axis arrow gizmo — a distinct cyan (not used by
+// any other overlay in this file) so it reads clearly against both the
+// margin curve's yellow/green and any active measurement's amber.
+const AXIS_ARROW_COLOR = new Color(0x4fc3f7);
+const AXIS_OVERLAY_RENDER_ORDER = 7;
+
+// Phase 3 Task 10: undercut blockout PREVIEW ("virtual wax") ghost overlay
+// — a warm honey/wax tone, distinct from every other overlay color in this
+// file (measurement amber 0xffb020, section teal 0x2ee6a6, alignment
+// violet 0xc44dff, margin yellow/green/red, axis cyan 0x4fc3f7).
+// Translucent + double-sided, same "ghost" material recipe as
+// `ALIGNMENT_PREVIEW_*` above (ICP preview precedent this task's brief
+// names directly). Render order sits ABOVE the alignment ghost (3) but
+// BELOW the axis arrow gizmo (7) — the axis tool's own direction indicator
+// should never be visually buried under the wax patch it explains.
+const BLOCKOUT_PREVIEW_COLOR = new Color(0xd9a441);
+const BLOCKOUT_PREVIEW_OPACITY = 0.55;
+const BLOCKOUT_PREVIEW_RENDER_ORDER = 4;
+/** Arrowhead "wings" length as a fraction of the shaft's own length, and
+ * their half-angle from the shaft — a fixed, purely cosmetic proportion
+ * (this is a GIZMO, not a measured quantity), same spirit as
+ * `ALIGNMENT_PREVIEW_*`'s fixed display constants elsewhere in this file. */
+const AXIS_ARROWHEAD_LENGTH_FRACTION = 0.18;
+const AXIS_ARROWHEAD_HALF_ANGLE_RAD = (20 * Math.PI) / 180;
 
 interface ThemeColors {
   background: ColorRepresentation;
@@ -418,6 +522,40 @@ export class SceneManager {
    * create/recreate (new entries, shading-preset material swaps). */
   private activeClipPlane: Plane | null = null;
 
+  /** Alignment ghost preview (Phase 3 Task 3) — see `setAlignmentPreview`'s
+   * doc and the `ALIGNMENT_PREVIEW_*` constants above. `null` when no
+   * preview is active. */
+  private alignmentPreview: { nodeId: string; mesh: Mesh; material: MeshBasicMaterial } | null = null;
+
+  /** Margin curve overlay (Phase 3 Task 5) — full rebuild per
+   * `syncMarginOverlay` call, same reasoning as `measurementEntries`/
+   * `sectionOutlineObjects` (a margin curve changes at most once per edit
+   * gesture, never per-frame, and is small relative to mesh geometry). */
+  private readonly marginGroup: Group;
+  private marginOverlayObjects: LineSegments[] = [];
+
+  /** Insertion-axis arrow gizmo (Phase 3 Task 9) — full rebuild per
+   * `syncAxisOverlay` call, same "changes at most once per suggestion/slider
+   * tick, never per-frame, small relative to mesh geometry" reasoning as
+   * `marginOverlayObjects`/`sectionOutlineObjects` above. A single
+   * `LineSegments` object (shaft + arrowhead wings), not a real 3D cone
+   * mesh — this is a lightweight directional GIZMO, not a measured/exported
+   * quantity. */
+  private readonly axisGroup: Group;
+  private axisOverlayObjects: LineSegments[] = [];
+
+  /** Undercut blockout PREVIEW ghost overlay (Phase 3 Task 10, "virtual
+   * wax") — full rebuild per `syncBlockoutPreview` call, same "changes at
+   * most once per slider tick/toggle, never per-frame, small relative to
+   * mesh geometry" reasoning as `marginOverlayObjects`/`axisOverlayObjects`
+   * above. A DEDICATED `BufferGeometry` per rebuild (unlike
+   * `alignmentPreview`'s SHARED geometry + matrix update) — the blockout
+   * preview mesh's POSITIONS themselves change every recompute (a
+   * kernel-generated small patch, not a transform of an existing entry's
+   * geometry), so there is no live geometry to share a transform against. */
+  private readonly blockoutGroup: Group;
+  private blockoutOverlayObjects: Mesh[] = [];
+
   private projectionMode: CameraProjection;
   private shadingPreset: ShadingPreset;
   private wireframeEnabled: boolean;
@@ -449,7 +587,21 @@ export class SceneManager {
     );
     this.orthographicCamera = new OrthographicCamera(-1, 1, 1, -1, CAMERA_NEAR_MM, CAMERA_FAR_MM);
 
-    this.renderer = new WebGLRenderer({ antialias: true });
+    this.renderer = new WebGLRenderer({
+      antialias: true,
+      // Required for ui/MarginOverlay.tsx's magnifier widget (Phase 3 Task
+      // 5): it `drawImage`s a cropped region of THIS canvas from its own,
+      // independently-timed rAF loop. Manual verification caught this: WITHOUT
+      // `preserveDrawingBuffer`, the browser is free to clear/swap the
+      // drawing buffer as soon as compositing finishes, so a read from a
+      // DIFFERENT rAF callback (not the one immediately after `render()`)
+      // reliably sees a blank canvas — not merely a "worst-case one-frame
+      // lag" as this module's original doc speculated, but an ALWAYS-blank
+      // result in practice. `preserveDrawingBuffer: true` keeps the buffer
+      // intact between frames at a small, well-understood perf cost (no
+      // implicit clear-on-present) — acceptable for this app's scale.
+      preserveDrawingBuffer: true,
+    });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     // Always on: an empty `material.clippingPlanes` array (the default,
     // whenever no section clip is active — see `applyClipPlane`) costs
@@ -480,6 +632,15 @@ export class SceneManager {
 
     this.sectionGroup = new Group();
     this.scene.add(this.sectionGroup);
+
+    this.marginGroup = new Group();
+    this.scene.add(this.marginGroup);
+
+    this.axisGroup = new Group();
+    this.scene.add(this.axisGroup);
+
+    this.blockoutGroup = new Group();
+    this.scene.add(this.blockoutGroup);
 
     this.resizeObserver = new ResizeObserver(() => this.handleResize());
     this.resizeObserver.observe(this.container);
@@ -575,6 +736,12 @@ export class SceneManager {
       }
       entry.visible = node.visible;
       entry.mesh.visible = node.visible;
+      // Unconditional every sync (cheap — 16 numbers), same "always mark
+      // dirty" stance `updateEntryGeometry`'s position-attribute doc takes,
+      // for the same reason: nothing here reliably detects "did node.transform
+      // change" via reference equality alone (a fresh RenderNode is built by
+      // caseStore.getRenderNodes() on every publish regardless).
+      entry.mesh.matrix.fromArray(node.transform);
       this.applyOpacity(entry, node.opacity);
       this.applyColors(entry, node);
       entry.wireframeMesh.visible = this.wireframeEnabled && node.visible;
@@ -602,6 +769,15 @@ export class SceneManager {
 
     const mesh = new Mesh(geometry, material);
     mesh.name = node.id;
+    // Phase 3 Task 3 (alignment): this mesh's placement is driven entirely
+    // by `RenderNode.transform` (`applyTransform` below sets `mesh.matrix`
+    // directly every sync) — NOT Three's position/quaternion/scale ->
+    // matrix auto-derivation, which would silently overwrite it. `false`
+    // here disables only THAT auto-derivation; `matrixWorldAutoUpdate`
+    // (Three's separate, still-default-true flag) still recomputes
+    // `matrixWorld = parent.matrixWorld * mesh.matrix` every render, so no
+    // extra bookkeeping is needed to make a `matrix` update actually paint.
+    mesh.matrixAutoUpdate = false;
 
     const wireframeGeometry = new WireframeGeometry(geometry);
     const wireframeMaterial = new LineBasicMaterial({
@@ -816,6 +992,72 @@ export class SceneManager {
   }
 
   // ---------------------------------------------------------------------
+  // Alignment ghost preview (Phase 3 Task 3)
+  // ---------------------------------------------------------------------
+
+  /**
+   * Shows (or clears, via `null`) a translucent "ghost" copy of SceneNode
+   * `preview.nodeId`'s CURRENT geometry at a CANDIDATE render-frame
+   * transform — this is engine/alignment.ts's coarse+ICP result BEFORE the
+   * user has clicked "Confirm". Deliberately does NOT touch
+   * `this.meshEntries.get(preview.nodeId)`'s own `mesh.matrix` (the
+   * CANONICAL entry stays exactly where `RenderNode.transform` — i.e. the
+   * still-unconfirmed `SceneNode.transform` — puts it, per
+   * `syncRenderNodes`) — the ghost is a SEPARATE `Mesh` object, sharing the
+   * live entry's `BufferGeometry` (Three.js supports multiple `Mesh`
+   * objects referencing one shared geometry; no duplication needed) with
+   * its OWN matrix and a translucent material, added directly to the
+   * scene root. `preview.transform` must already be in THIS SceneManager's
+   * RENDER frame (same "engine computes, SceneManager just renders what
+   * it's given" contract as `setSectionClipPlane` — engine/alignment.ts is
+   * responsible for the world-to-render conversion via
+   * engine/sceneTransform.ts's `renderFrameTransform`, exactly like
+   * `getRenderNodes()` does for every ordinary node).
+   *
+   * A no-op (not an error) if `preview.nodeId` has no live mesh entry (the
+   * node was removed from the scene mid-preview) — the caller
+   * (engine/alignment.ts) always clears the preview before that can matter
+   * in practice, but this stays defensive rather than throwing mid-render.
+   */
+  setAlignmentPreview(preview: { nodeId: string; transform: readonly number[] } | null): void {
+    if (!preview) {
+      this.clearAlignmentPreview();
+      return;
+    }
+    const entry = this.meshEntries.get(preview.nodeId);
+    if (!entry) {
+      this.clearAlignmentPreview();
+      return;
+    }
+    if (!this.alignmentPreview || this.alignmentPreview.nodeId !== preview.nodeId) {
+      this.clearAlignmentPreview();
+      const material = new MeshBasicMaterial({
+        color: ALIGNMENT_PREVIEW_COLOR,
+        transparent: true,
+        opacity: ALIGNMENT_PREVIEW_OPACITY,
+        depthWrite: false,
+        side: DoubleSide,
+      });
+      const mesh = new Mesh(entry.geometry, material);
+      mesh.matrixAutoUpdate = false;
+      mesh.renderOrder = ALIGNMENT_PREVIEW_RENDER_ORDER;
+      this.scene.add(mesh);
+      this.alignmentPreview = { nodeId: preview.nodeId, mesh, material };
+    }
+    this.alignmentPreview.mesh.matrix.fromArray(preview.transform);
+  }
+
+  private clearAlignmentPreview(): void {
+    if (!this.alignmentPreview) return;
+    this.scene.remove(this.alignmentPreview.mesh);
+    this.alignmentPreview.material.dispose();
+    // NOT `this.alignmentPreview.mesh.geometry.dispose()` — that geometry is
+    // SHARED with the live mesh entry (see `setAlignmentPreview`'s doc);
+    // disposing it here would break the real, still-visible mesh.
+    this.alignmentPreview = null;
+  }
+
+  // ---------------------------------------------------------------------
   // Measurement (Task 7)
   // ---------------------------------------------------------------------
 
@@ -1014,6 +1256,197 @@ export class SceneManager {
       this.sectionGroup.add(mesh);
       this.sectionCapObjects.push(mesh);
     }
+  }
+
+  // ---------------------------------------------------------------------
+  // Margin editor (Phase 3 Task 5)
+  // ---------------------------------------------------------------------
+
+  /** Rebuilds the margin curve overlay from `data` (or clears it, via
+   * `null`) — see `MarginOverlayRenderData`'s doc. Anchor HANDLES are NOT
+   * drawn here (they're screen-space HTML elements, ui/MarginOverlay.tsx,
+   * positioned via `projectToScreen` — same division of responsibility as
+   * `syncMeasurements`/ui/MeasurementOverlay.tsx's numeric labels): this
+   * only ever draws the curve itself as line segments, with a per-vertex
+   * `color` attribute so normal- and weak-confidence segments can share one
+   * draw call.
+   */
+  syncMarginOverlay(data: MarginOverlayRenderData | null): void {
+    this.clearMarginOverlay();
+    if (!data || data.segments.length === 0) return;
+
+    const baseColor = data.origin === 'confirmed' ? MARGIN_CONFIRMED_COLOR : MARGIN_PROPOSED_COLOR;
+    const positions: number[] = [];
+    const colors: number[] = [];
+    for (const segment of data.segments) {
+      const color = segment.weak ? MARGIN_WEAK_CONFIDENCE_COLOR : baseColor;
+      for (let i = 0; i < segment.points.length - 1; i++) {
+        const a = segment.points[i]!;
+        const b = segment.points[i + 1]!;
+        positions.push(a[0], a[1], a[2], b[0], b[1], b[2]);
+        colors.push(color.r, color.g, color.b, color.r, color.g, color.b);
+      }
+    }
+    if (positions.length === 0) return;
+
+    const geometry = new BufferGeometry();
+    geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new Float32BufferAttribute(colors, 3));
+    const material = new LineBasicMaterial({ vertexColors: true, depthTest: false });
+    const line = new LineSegments(geometry, material);
+    line.renderOrder = MARGIN_OVERLAY_RENDER_ORDER;
+    this.marginGroup.add(line);
+    this.marginOverlayObjects.push(line);
+  }
+
+  private clearMarginOverlay(): void {
+    for (const line of this.marginOverlayObjects) {
+      this.marginGroup.remove(line);
+      line.geometry.dispose();
+      (line.material as LineBasicMaterial).dispose();
+    }
+    this.marginOverlayObjects = [];
+  }
+
+  // ---------------------------------------------------------------------
+  // Insertion axis (Phase 3 Task 9)
+  // ---------------------------------------------------------------------
+
+  /** Rebuilds the axis arrow gizmo from `data` (or clears it, via `null`) —
+   * `data.origin`/`data.direction` are RENDER-frame (Float32-safe,
+   * re-centered — caller's responsibility, same convention as
+   * `syncSectionOverlay`'s plane point). A single shaft segment from
+   * `origin` to `origin + direction * lengthMm`, plus two short "wing"
+   * segments from the tip back toward the shaft at
+   * `AXIS_ARROWHEAD_HALF_ANGLE_RAD` — a lightweight directional GIZMO (not
+   * a real 3D cone mesh), always drawn with `depthTest: false` so it stays
+   * visible through the mesh it's pointing at/away from (mirrors the
+   * section outline's own always-on-top convention).
+   */
+  syncAxisOverlay(data: AxisOverlayRenderData | null): void {
+    this.clearAxisOverlay();
+    if (!data || data.lengthMm <= 0) return;
+    const direction = new Vector3(data.direction[0], data.direction[1], data.direction[2]);
+    if (direction.lengthSq() === 0) return;
+    direction.normalize();
+    const origin = new Vector3(data.origin[0], data.origin[1], data.origin[2]);
+    const tip = origin.clone().addScaledVector(direction, data.lengthMm);
+
+    // An arbitrary, deterministic vector NOT parallel to `direction`, for a
+    // stable perpendicular "wing" plane (same "pick whichever world axis is
+    // least parallel to the input" construction used throughout graphics —
+    // mirrors @dqcad/kernel's axis/hemisphere.ts `orthonormalBasis`, but
+    // reimplemented locally with THREE.Vector3 since `engine/` may not
+    // import `@dqcad/kernel` directly — CLAUDE.md layer rule).
+    const reference = Math.abs(direction.x) < 0.9 ? new Vector3(1, 0, 0) : new Vector3(0, 1, 0);
+    const perpendicular = new Vector3().crossVectors(reference, direction).normalize();
+
+    const wingLength = data.lengthMm * AXIS_ARROWHEAD_LENGTH_FRACTION;
+    const back = direction.clone().multiplyScalar(-1);
+    function wingTip(sign: 1 | -1): Vector3 {
+      const along = back.clone().multiplyScalar(Math.cos(AXIS_ARROWHEAD_HALF_ANGLE_RAD));
+      const across = perpendicular.clone().multiplyScalar(sign * Math.sin(AXIS_ARROWHEAD_HALF_ANGLE_RAD));
+      return tip.clone().addScaledVector(along.add(across), wingLength);
+    }
+    const wingA = wingTip(1);
+    const wingB = wingTip(-1);
+
+    const positions = new Float32Array([
+      origin.x, origin.y, origin.z, tip.x, tip.y, tip.z,
+      tip.x, tip.y, tip.z, wingA.x, wingA.y, wingA.z,
+      tip.x, tip.y, tip.z, wingB.x, wingB.y, wingB.z,
+    ]);
+    const geometry = new BufferGeometry();
+    geometry.setAttribute('position', new BufferAttribute(positions, 3));
+    const material = new LineBasicMaterial({ color: AXIS_ARROW_COLOR, depthTest: false });
+    const line = new LineSegments(geometry, material);
+    line.renderOrder = AXIS_OVERLAY_RENDER_ORDER;
+    this.axisGroup.add(line);
+    this.axisOverlayObjects.push(line);
+  }
+
+  private clearAxisOverlay(): void {
+    for (const line of this.axisOverlayObjects) {
+      this.axisGroup.remove(line);
+      line.geometry.dispose();
+      (line.material as LineBasicMaterial).dispose();
+    }
+    this.axisOverlayObjects = [];
+  }
+
+  /**
+   * Rebuilds the undercut blockout PREVIEW ghost overlay (Phase 3 Task 10)
+   * from `data` (or clears it, via `null`). `data.positions`/`data.indices`
+   * are RENDER-frame (Float32-safe, re-centered — caller's responsibility,
+   * same convention as `syncSectionOverlay`'s plane point / `syncAxisOverlay`'s
+   * origin). Display-only — see `@dqcad/kernel`'s `blockoutPreview.ts`
+   * module doc for the full scope boundary this overlay visualizes; this
+   * method has no opinion on that, it only draws whatever patch it's given.
+   */
+  syncBlockoutPreview(data: BlockoutOverlayRenderData | null): void {
+    this.clearBlockoutPreview();
+    if (!data || data.indices.length === 0) return;
+
+    const geometry = new BufferGeometry();
+    geometry.setAttribute('position', new BufferAttribute(data.positions, 3));
+    geometry.setIndex(new BufferAttribute(data.indices, 1));
+    geometry.computeVertexNormals();
+    const material = new MeshBasicMaterial({
+      color: BLOCKOUT_PREVIEW_COLOR,
+      transparent: true,
+      opacity: BLOCKOUT_PREVIEW_OPACITY,
+      side: DoubleSide,
+      depthWrite: false,
+    });
+    const mesh = new Mesh(geometry, material);
+    mesh.renderOrder = BLOCKOUT_PREVIEW_RENDER_ORDER;
+    this.blockoutGroup.add(mesh);
+    this.blockoutOverlayObjects.push(mesh);
+  }
+
+  private clearBlockoutPreview(): void {
+    for (const mesh of this.blockoutOverlayObjects) {
+      this.blockoutGroup.remove(mesh);
+      mesh.geometry.dispose();
+      (mesh.material as MeshBasicMaterial).dispose();
+    }
+    this.blockoutOverlayObjects = [];
+  }
+
+  /** The renderer's own `<canvas>` element — exposed so ui/MarginOverlay.tsx's
+   * magnifier widget (a small secondary 2D-canvas "lens") can `drawImage`
+   * a cropped, scaled-up region of it every animation frame. See that
+   * component's doc for why this is the CHEAP correct approach chosen over a
+   * genuine secondary Three.js render pass (no duplicate scene/camera, just
+   * a 2D canvas pixel copy of whatever this canvas last painted). */
+  getCanvasElement(): HTMLCanvasElement {
+    return this.renderer.domElement;
+  }
+
+  /**
+   * Computes the render-frame pick ray for an arbitrary client position —
+   * unlike the private, click-driven, `interactionMode`-gated
+   * `pickAtClientPosition`, this is a pure, mode-independent utility for
+   * continuous pointer-driven interactions that live OUTSIDE the canvas's
+   * own click handling (ui/MarginOverlay.tsx's anchor-handle drag: pointer
+   * events land on the HANDLE's own `<div>`, not this canvas, so
+   * `handlePointerDown`/`Up` never fire for them). Returns `null` if the
+   * container has no current size (matches `pickAtClientPosition`'s own
+   * guard).
+   */
+  rayAtClientPosition(
+    clientX: number,
+    clientY: number,
+  ): { rayOrigin: readonly [number, number, number]; rayDirection: readonly [number, number, number] } | null {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+    const ndc = new Vector2(
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -(((clientY - rect.top) / rect.height) * 2 - 1),
+    );
+    this.raycaster.setFromCamera(ndc, this.activeCamera);
+    const { origin, direction } = this.raycaster.ray;
+    return { rayOrigin: [origin.x, origin.y, origin.z], rayDirection: [direction.x, direction.y, direction.z] };
   }
 
   private handlePointerDown = (event: PointerEvent): void => {
@@ -1306,6 +1739,11 @@ export class SceneManager {
     window.removeEventListener('keydown', this.handleKeyDown);
     this.resizeObserver.disconnect();
     this.controls.dispose();
+    // Explicit (not relying on disposeObject3DTree's blanket traversal
+    // below, which WOULD also reach this mesh/material since it's a direct
+    // scene child) — clears `this.alignmentPreview` itself so nothing holds
+    // a dangling reference; harmless if already cleared.
+    this.clearAlignmentPreview();
     // Every geometry/material still attached to the scene graph — mesh
     // entries (incl. wireframe overlays) and the grid — see
     // disposeObject3DTree's doc for why this also fixes the Phase 0

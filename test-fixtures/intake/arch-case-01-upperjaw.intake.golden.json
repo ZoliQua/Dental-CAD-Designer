@@ -1,4 +1,5 @@
 {
+  "kernelVersion": "0.4.1",
   "stats": {
     "watertight": false,
     "manifoldEdges": true,

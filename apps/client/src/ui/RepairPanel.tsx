@@ -52,17 +52,31 @@ export function RepairPanel({ meshId }: RepairPanelProps) {
   // call (same worker job the card itself uses), gating this ONE card
   // asynchronously rather than synchronously like the other three.
   const [bowtieCount, setBowtieCount] = useState<number | null>(null);
+  // Surfaced (not just fail-closed) when detection itself fails — see the
+  // `bowtieDetectionError` render below. Distinct from `bowtieCount === 0`
+  // (a genuine "no bowties found" result), which must NOT show this note.
+  const [bowtieDetectionError, setBowtieDetectionError] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
     setBowtieCount(null);
+    setBowtieDetectionError(null);
     void (async () => {
       const r = caseStore.getMeshRecord(meshId);
       if (!r) return;
       try {
         const preview = await previewSplitNonManifoldVertices(r);
         if (!cancelled) setBowtieCount(preview.report.nonManifoldVertexCountBefore);
-      } catch {
-        if (!cancelled) setBowtieCount(0); // detection failure — fail closed (card stays hidden), same as any other card's own error handling
+      } catch (error) {
+        if (!cancelled) {
+          // Detection failure — fail closed for the CARD itself (stays
+          // hidden: `showSplitNonManifoldVertices` below only ever gates on
+          // a genuine positive count, never on failure-shaped data), but no
+          // longer swallowed silently — `bowtieDetectionError` renders a
+          // visible, i18n'd status line so a repair option that may be
+          // missing has a stated reason instead of just not being there.
+          setBowtieCount(0);
+          setBowtieDetectionError(errorMessage(error));
+        }
       }
     })();
     return () => {
@@ -78,13 +92,24 @@ export function RepairPanel({ meshId }: RepairPanelProps) {
   const showSplitNonManifoldVertices = (bowtieCount ?? 0) > 0;
   const showFillHoles = stats.boundaryEdgeCount > 0;
 
-  if (!showRemoveComponents && !showSplitNonManifold && !showSplitNonManifoldVertices && !showFillHoles) {
+  if (
+    !showRemoveComponents &&
+    !showSplitNonManifold &&
+    !showSplitNonManifoldVertices &&
+    !showFillHoles &&
+    !bowtieDetectionError
+  ) {
     return null;
   }
 
   return (
     <div className="repair-panel" data-testid="repair-panel">
       <h3 className="repair-panel__title">{t('repair.panelTitle')}</h3>
+      {bowtieDetectionError && (
+        <p className="repair-panel__bowtie-detection-error" data-testid="repair-panel-bowtie-detection-error">
+          {t('repair.bowtieDetectionError', { message: bowtieDetectionError })}
+        </p>
+      )}
       {showRemoveComponents && <RemoveComponentsCard key={`remove-components-${meshId}`} meshId={meshId} />}
       {showSplitNonManifold && <SplitNonManifoldEdgesCard key={`split-non-manifold-${meshId}`} meshId={meshId} />}
       {showSplitNonManifoldVertices && (

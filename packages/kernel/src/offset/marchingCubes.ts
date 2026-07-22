@@ -62,6 +62,41 @@ import type { Vec3 } from '../bvh/geometry.ts';
 import { MESH_WELD_EPSILON_MM } from '../intake/weld.ts';
 import { CORNER_OFFSETS, EDGE_CORNERS, EDGE_TABLE, TRI_TABLE } from './mcTables.ts';
 
+/** Hard floor on `pitchMm` accepted anywhere in this module — see
+ * `PitchTooSmallError`'s doc for why. Three orders of magnitude below this
+ * project's clinical default (`DEFAULT_OFFSET_VOXEL_PITCH_MM`,
+ * `clinical-profiles/`, 0.02 mm / 20 µm) and two below the point
+ * (`4 * MESH_WELD_EPSILON_MM = 8e-6` mm) at which `muClampEpsilon`'s second
+ * term alone would reach 0.5 and invert the valid `[eps, 1-eps]` clamp
+ * range — so this floor rejects a misconfigured/degenerate `pitchMm` with a
+ * clear typed error well before the clamp math itself would start silently
+ * misbehaving, not right at the edge of where it does. */
+export const MIN_PITCH_MM = 1e-4;
+
+/** Thrown by `muClampEpsilon` (and therefore every entry point that calls
+ * it — `marchingCubesSlab`/`marchingCubes`, plus
+ * kernel-workers/src/jobs/offset.ts's own per-slab driving of
+ * `marchingCubesSlab`) when `pitchMm < MIN_PITCH_MM`. Below `MIN_PITCH_MM`,
+ * `muClampEpsilon`'s `4 * MESH_WELD_EPSILON_MM / pitchMm` term grows without
+ * bound and can reach or exceed 0.5, at which point the intended
+ * `[eps, 1 - eps]` clamp range for `mu` becomes empty or inverted —
+ * marching cubes would then silently misplace or degenerate edge vertices
+ * instead of failing loudly, exactly the kind of silent-approximation-
+ * failure this kernel's `@errorBound` discipline (CLAUDE.md's "never trade
+ * precision for FPS" rule) exists to prevent. Rejecting outright at the
+ * grid-construction boundary is strictly better than letting the pipeline
+ * run and produce a mesh whose documented `@errorBound` no longer holds. */
+export class PitchTooSmallError extends Error {
+  constructor(pitchMm: number) {
+    super(
+      `marching cubes: pitchMm must be >= ${MIN_PITCH_MM} mm, got ${pitchMm} mm — below this floor, ` +
+        `muClampEpsilon's weld-safety margin can reach/exceed the valid mu-clamp range and silently ` +
+        `degrade output rather than failing (see MIN_PITCH_MM's doc)`,
+    );
+    this.name = 'PitchTooSmallError';
+  }
+}
+
 /**
  * Lower bound on the interpolation parameter's distance from either edge
  * endpoint (`mu` is clamped to `[eps, 1 - eps]`, see `marchingCubesSlab`).
@@ -89,6 +124,9 @@ import { CORNER_OFFSETS, EDGE_CORNERS, EDGE_TABLE, TRI_TABLE } from './mcTables.
  * see the `@errorBound` in this module's doc).
  */
 export function muClampEpsilon(pitchMm: number): number {
+  if (!(Number.isFinite(pitchMm) && pitchMm >= MIN_PITCH_MM)) {
+    throw new PitchTooSmallError(pitchMm);
+  }
   return Math.max(1e-3, (4 * MESH_WELD_EPSILON_MM) / pitchMm);
 }
 

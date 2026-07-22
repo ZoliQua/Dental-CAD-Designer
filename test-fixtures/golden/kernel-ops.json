@@ -1,5 +1,5 @@
 {
-  "kernelVersion": "0.2.1",
+  "kernelVersion": "0.7.1",
   "manifoldVersion": "3.5.1",
   "notes": [
     "Runtime budget: every param here is chosen to keep this suite fast (target: whole suite well under the ~2 min CI budget) — see scripts/kernel-ops-lib.ts's module doc for each choice.",
@@ -10,7 +10,11 @@
     "Repair-op fixtures are small, hand-built, seeded-damage meshes (not committed files) — see scripts/kernel-ops-lib.ts for their exact construction.",
     "Phase 2 Task 11 (KERNEL_VERSION 0.2.0): repairFillSmallHoles' hash CHANGED (curvature-continuity thin-plate solve replaces the Phase 1 fixed-lambda Laplacian relax as the default path — see packages/kernel/src/repair/fillSmallHoles.ts). repairSplitNonManifoldVertices is a NEW pinned entry (bowtie-vertex split). Every other op entry is UNCHANGED by this bump — see docs/CHANGELOG-kernel.md.",
     "undercutScan (Phase 2 Task 9) uses 'corners' sampling (the more expensive, more conservative policy) at a single fixed direction — see packages/kernel/src/undercut/undercutScan.ts for the sign convention and depth semantics.",
-    "KERNEL_VERSION 0.2.1 (Fix batch, post-Task-12): metadata-only bump — this file gained the manifoldVersion field (recording the installed manifold-3d WASM package version alongside kernelVersion) and packages/kernel/package.json now pins manifold-3d to an EXACT version (was ^3.5.1). Every op hash is BYTE-IDENTICAL to 0.2.0 — verified via the regeneration diff — this bump exists solely to move the metadata-only golden-file change through the same bump+changelog discipline every other golden change goes through, per docs/CHANGELOG-kernel.md."
+    "KERNEL_VERSION 0.2.1 (Fix batch, post-Task-12): metadata-only bump — this file gained the manifoldVersion field (recording the installed manifold-3d WASM package version alongside kernelVersion) and packages/kernel/package.json now pins manifold-3d to an EXACT version (was ^3.5.1). Every op hash is BYTE-IDENTICAL to 0.2.0 — verified via the regeneration diff — this bump exists solely to move the metadata-only golden-file change through the same bump+changelog discipline every other golden change goes through, per docs/CHANGELOG-kernel.md.",
+    "icpRegister (Phase 3 Task 3, KERNEL_VERSION 0.3.0): NEW pinned entry — arch-case-01 bite0 (src) vs upperjaw (dst), identity initial transform (verified via bbox overlap: same acquisition session, already a valid coarse init), outlierRejectionFraction 0.85 (measured necessary for this partial-overlap real pair — see the op's own inline comment above). Every other op entry is UNCHANGED by this bump.",
+    "proposeMargin (Phase 3 Task 4, KERNEL_VERSION 0.4.0): NEW pinned entry — arch-case-01 upperjaw, fixed seed on a real anterior shoulder-prep margin ridge vertex, default params, perimeter-in-anatomical-range self-check (15-35mm). Every other op entry is UNCHANGED by this bump.",
+    "suggestAxis (Phase 3 Task 9, KERNEL_VERSION 0.6.0): NEW pinned entry — arch-case-01 upperjaw, ROI extracted (radiusMm=2) from tooth 11's COMMITTED hand-traced reference margin anchors (Task 7 — a fixed, already-golden-pinned seed, no ambient-point survey needed), default suggestInsertionAxis params, a <2s runtime self-check (this task's interactivity target — measured and asserted at generation time, not just reported). Every other op entry is UNCHANGED by this bump.",
+    "blockoutPreview (Phase 3 Task 10, KERNEL_VERSION 0.7.0): NEW pinned entry — SAME real fixture/ROI as suggestAxis (arch-case-01 upperjaw, tooth 11 reference margin, radiusMm=2), direction = the WORST-ranked candidate suggestAxis itself evaluated (a real, reproducible, non-fabricated direction guaranteed to carry genuine undercut on this real fixture, since the BEST candidate is by construction near the zero-undercut optimum and would pin a near-empty golden), thresholdMm = DEFAULT_UNDERCUT_BLOCKOUT_THRESHOLD_MM (clinical-profiles, 0). A non-empty-selection self-check guards against a silently-degenerate regeneration. Every other op entry is UNCHANGED by this bump."
   ],
   "ops": [
     {
@@ -270,6 +274,83 @@
         "triangleCount": 384,
         "undercutTriangleCount": 178,
         "maxDepthMm": 11.166528467912103
+      }
+    },
+    {
+      "id": "icpRegister",
+      "op": "icpRefine",
+      "fixture": "arch-case-01 bite0 (src, post-intake) vs arch-case-01 upperjaw (dst, post-intake), identity initial transform",
+      "params": {
+        "sampleCount": 3000,
+        "seed": 20260715,
+        "maxIterations": 60,
+        "outlierRejectionFraction": 0.85,
+        "initial": "identity"
+      },
+      "hash": "798e654abbe7bdacfae8e8a5450d72d95d2b3067a863f23f37ad3c907096df1d",
+      "meta": {
+        "rmsMm": 0.008282300401543426,
+        "inlierFraction": 0.15,
+        "iterations": 10,
+        "converged": true
+      }
+    },
+    {
+      "id": "proposeMargin",
+      "op": "proposeMarginLoop",
+      "fixture": "arch-case-01 upperjaw (post-intake), fixed seed on a real anterior shoulder-prep margin ridge vertex",
+      "params": {
+        "seedAmbient": [
+          6.675659656524658,
+          -17.737689971923828,
+          10.945829391479492
+        ]
+      },
+      "hash": "96d3a057eb7c6e1ac6cac09ba2e8bdcad8ff492123c407cfd472fc8d8d2fe182",
+      "meta": {
+        "anchorCount": 261,
+        "walkVertexCount": 319,
+        "closureDeviationMm": 0,
+        "perimeterMm": 29.68808397136682
+      }
+    },
+    {
+      "id": "suggestAxis",
+      "op": "suggestInsertionAxis",
+      "fixture": "arch-case-01 upperjaw (post-intake), ROI from tooth 11's committed reference margin anchors, radiusMm=2",
+      "params": {
+        "roiRadiusMm": 2,
+        "referenceMarginTooth": 11
+      },
+      "hash": "6ca6b85e8c78f0b43906d4e685cd8fad30abf113882bd0e5d9cef774659f642c",
+      "meta": {
+        "regionTriangleCount": 13739,
+        "bestDirection": [
+          -0.22110068731611165,
+          -0.6139895195305715,
+          -0.7577145610155324
+        ],
+        "bestScoreMm3": 0.7336022213740642,
+        "bestUndercutAreaMm2": 2.618614351397977,
+        "bestMaxDepthMm": 0.8211216063004829
+      }
+    },
+    {
+      "id": "blockoutPreview",
+      "op": "blockoutPreview",
+      "fixture": "arch-case-01 upperjaw (post-intake), SAME ROI as suggestAxis (tooth 11 reference margin, radiusMm=2), worst-ranked suggestAxis candidate direction",
+      "params": {
+        "roiRadiusMm": 2,
+        "referenceMarginTooth": 11,
+        "thresholdMm": 0
+      },
+      "hash": "76476b9c233af29df3c5d9d2c3c10909bb2ac7cf730ea3378be03c5afac455af",
+      "meta": {
+        "regionTriangleCount": 13739,
+        "blockoutTriangleCount": 13636,
+        "vertexCount": 7016,
+        "maxDisplacementMm": 20.64840462317899,
+        "approxVolumeMm3": 302.9276462059539
       }
     }
   ]

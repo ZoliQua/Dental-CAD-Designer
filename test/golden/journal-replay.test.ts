@@ -23,7 +23,7 @@ describe('journal replay — scripted case journals reproduce every output hash'
   const journals = recordAllFixtures();
 
   it('recorded at least the documented fixture set, each with at least one operation', () => {
-    expect(journals.length).toBeGreaterThanOrEqual(2);
+    expect(journals.length).toBeGreaterThanOrEqual(3);
     for (const journal of journals) {
       expect(journal.operations.length).toBeGreaterThan(0);
       expect(journal.operations.length).toBe(journal.replaySteps.length);
@@ -64,5 +64,29 @@ describe('journal replay — scripted case journals reproduce every output hash'
     ]);
     const archJournal = journals.find((j) => j.fixtureLabel === 'arch-case-01-upperjaw')!;
     expect(archJournal.operations.map((op) => op.name)).toEqual(['import-mesh']);
+  });
+
+  // Phase 3 Task 11: margin/axis journal-replay extension — see
+  // scripts/journal-replay-lib.ts's own module doc section ("Phase 3 Task
+  // 11: margin/axis journal-replay extension") for exactly which margin/
+  // axis Operation kinds are (and are not) replayable, and why.
+  it('margin fixture: a seeded auto-propose journals a replayable "margin-edit" carrying seed + proposalDefaults', () => {
+    const marginJournal = journals.find((j) => j.fixtureLabel === 'arch-case-01-upperjaw-margin-tooth21')!;
+    expect(marginJournal).toBeDefined();
+    expect(marginJournal.operations.map((op) => op.name)).toEqual(['margin-edit']);
+    const op = marginJournal.operations[0]!;
+    expect(op.params).toMatchObject({
+      tooth: 21,
+      gesture: 'accept-proposal',
+      closed: true,
+      seed: { triangleIndex: expect.any(Number), barycentric: expect.any(Array) },
+      proposalDefaults: { targetAnchorCount: 50 },
+    });
+    expect(op.outputHashes).toHaveLength(1);
+    // The margin fixture's own replay proof is already covered by the
+    // generic "every journaled operation output hash reproduces" case
+    // above (it.each over ALL of `recordAllFixtures()`) — this test only
+    // pins down the SHAPE (op name, seed/proposalDefaults params) the
+    // brief asks for, not a second redundant hash check.
   });
 });

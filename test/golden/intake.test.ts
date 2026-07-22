@@ -148,6 +148,15 @@ describe('intake — analytic synthetic fixtures', () => {
 });
 
 interface IntakeGoldenSnapshot {
+  /** The `@dqcad/kernel` `KERNEL_VERSION` this snapshot was generated under
+   * (Phase 3 Task 1 housekeeping: extends the metadata `test-fixtures/golden/
+   * kernel-ops.json` already carries — see scripts/kernel-ops-lib.ts's
+   * `KernelOpsSnapshot.kernelVersion` doc — to this standalone golden too).
+   * No `manifoldVersion` field: plain `intake()` never touches manifold-3d
+   * (weld/orient/dedupe only), so there is no WASM-derived numerics to pin
+   * a second version against — unlike test/golden/offset.test.ts's
+   * snapshot. */
+  kernelVersion: string;
   stats: unknown;
   report: unknown;
   resultSha256: string;
@@ -176,6 +185,22 @@ describe('intake — real fixture (arch-case-01 upperjaw STL)', () => {
     expect(result.stats).toEqual(golden.stats);
     expect(result.report).toEqual(golden.report);
     expect(resultHash).toBe(golden.resultSha256);
+  });
+
+  it('the committed golden file was generated under a well-formed KERNEL_VERSION string', () => {
+    // A cheap, independent sanity check distinct from the hash comparison
+    // above — mirrors test/golden/kernel-ops.test.ts's own kernelVersion
+    // well-formedness check for this SAME metadata field, now extended to
+    // this standalone golden (Phase 3 Task 1 housekeeping). Deliberately
+    // NOT asserted equal to the LIVE `KERNEL_VERSION` — a kernel version
+    // bump that doesn't touch THIS golden's numerics (e.g. a manifold-3d-
+    // only bump elsewhere) legitimately leaves this file's recorded version
+    // behind the current one; the hash comparison above is what actually
+    // gates correctness.
+    const goldenPath = join(intakeGoldenDir, 'arch-case-01-upperjaw.intake.golden.json');
+    const golden = JSON.parse(readFileSync(goldenPath, 'utf8')) as IntakeGoldenSnapshot;
+    expect(typeof golden.kernelVersion).toBe('string');
+    expect(golden.kernelVersion.length).toBeGreaterThan(0);
   });
 
   it('is deterministic: a second full run is hash-identical (double-run determinism)', () => {

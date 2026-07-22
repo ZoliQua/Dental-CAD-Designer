@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
+import { PrismaClient } from '@prisma/client';
 import type { CaseDocument } from '@dqcad/shared-types';
 import { KERNEL_VERSION } from '@dqcad/kernel';
 import { buildApp } from './app.js';
@@ -63,7 +64,7 @@ describe('server app', () => {
     };
     expect(created).toMatchObject({
       name: 'Molar crown, patient A',
-      schemaVersion: 1,
+      schemaVersion: 2,
     });
     expect(typeof created.id).toBe('string');
     expect(typeof created.createdAt).toBe('string');
@@ -202,22 +203,140 @@ describe('server app', () => {
       expect(response.statusCode).toBe(404);
     });
 
-    it('rejects a schemaVersion other than 1 with 400', async () => {
+    // Task-11-review Critical 4: GET must return whatever is actually
+    // stored, EVEN a pre-backfill-v2 (or otherwise legacy-shaped) document
+    // that would never pass the strict `caseDocumentSchema` — that schema
+    // is correctly used to VALIDATE PUT's request body (a client that wants
+    // to save must migrate first), but was ALSO wrongly reused for GET's
+    // response, where fast-json-stringify's strict serializer throws on a
+    // missing required property (here: a `Restoration` missing
+    // `pontics`/`targetNodeId`, backfilled only by the CLIENT's migration
+    // layer) and silently drops any unlisted one (here: a since-removed
+    // `controlPoints` field) — meaning a real pre-migration row could NEVER
+    // reach the client at all. This writes a legacy-shaped document
+    // DIRECTLY via Prisma (bypassing the — correctly strict — PUT route) to
+    // simulate exactly that stored row, then asserts GET hands it back
+    // completely intact.
+    it('GET returns a pre-backfill-v2, legacy-shaped stored document byte-intact (permissive response serialization)', async () => {
       const created = await app
-        .inject({ method: 'POST', url: '/api/cases', payload: { name: 'Bad schema version' } })
+        .inject({ method: 'POST', url: '/api/cases', payload: { name: 'Legacy doc case' } })
         .then((r) => r.json() as { id: string; createdAt: string });
 
-      const document = {
-        ...createEmptyCaseDocument(created.id, created.createdAt),
-        schemaVersion: 2,
+      const legacyDocument = {
+        id: created.id,
+        schemaVersion: 1,
+        createdAt: created.createdAt,
+        meshes: [],
+        scene: [],
+        restorations: [
+          {
+            id: 'restoration-legacy',
+            type: 'crown',
+            teeth: [16],
+            // `pontics`/`targetNodeId` deliberately OMITTED — this is
+            // exactly the pre-backfill-v2 shape (apps/client/src/engine/
+            // caseDocumentMigration.ts's own field-presence backfill exists
+            // to fix this up CLIENT-side, never server-side).
+            marginLines: {},
+            insertionAxis: [0, 0, 1],
+            params: {
+              cementGapMm: 0.05,
+              marginalGapMm: 0.03,
+              spacerStartMm: 0.5,
+              minWallThicknessMm: 0.5,
+              proximalContactPenetrationMm: 0.03,
+              occlusalContactMm: 0.03,
+            },
+            stages: {},
+            qc: null,
+            // A since-removed field a real historical row might still
+            // carry — `caseDocumentSchema`'s `additionalProperties: false`
+            // would have silently DROPPED this on the way out; the
+            // permissive GET path must not.
+            controlPoints: [[0, 0, 0]],
+          },
+        ],
+        measurements: [],
+        history: [],
+        settings: { materialProfileId: 'unassigned', profileVersion: '0.0.0' },
+      };
+
+      const prisma = new PrismaClient();
+      try {
+        await prisma.case.update({
+          where: { id: created.id },
+          data: { schemaVersion: 1, documentJson: JSON.stringify(legacyDocument) },
+        });
+      } finally {
+        await prisma.$disconnect();
+      }
+
+      const getResponse = await app.inject({ method: 'GET', url: `/api/cases/${created.id}` });
+      expect(getResponse.statusCode).toBe(200);
+      expect(getResponse.json()).toEqual(legacyDocument);
+    });
+
+    it('PUT still rejects the same legacy shape with 400 (strict request validation is unchanged by the permissive GET fix)', async () => {
+      const created = await app
+        .inject({ method: 'POST', url: '/api/cases', payload: { name: 'Legacy doc case, PUT attempt' } })
+        .then((r) => r.json() as { id: string; createdAt: string });
+
+      const legacyDocument = {
+        id: created.id,
+        schemaVersion: 1,
+        createdAt: created.createdAt,
+        meshes: [],
+        scene: [],
+        restorations: [
+          {
+            id: 'restoration-legacy',
+            type: 'crown',
+            teeth: [16],
+            marginLines: {},
+            insertionAxis: [0, 0, 1],
+            params: {
+              cementGapMm: 0.05,
+              marginalGapMm: 0.03,
+              spacerStartMm: 0.5,
+              minWallThicknessMm: 0.5,
+              proximalContactPenetrationMm: 0.03,
+              occlusalContactMm: 0.03,
+            },
+            stages: {},
+            qc: null,
+          },
+        ],
+        measurements: [],
+        history: [],
+        settings: { materialProfileId: 'unassigned', profileVersion: '0.0.0' },
       };
 
       const response = await app.inject({
         method: 'PUT',
         url: `/api/cases/${created.id}`,
-        payload: document,
+        payload: legacyDocument,
       });
       expect(response.statusCode).toBe(400);
+    });
+
+    it('rejects a schemaVersion other than 2 with 400 (including a legacy schemaVersion-1 document — Phase 3 Task 1: server never migrates, client must)', async () => {
+      const created = await app
+        .inject({ method: 'POST', url: '/api/cases', payload: { name: 'Bad schema version' } })
+        .then((r) => r.json() as { id: string; createdAt: string });
+
+      for (const schemaVersion of [1, 3]) {
+        const document = {
+          ...createEmptyCaseDocument(created.id, created.createdAt),
+          schemaVersion,
+        };
+
+        const response = await app.inject({
+          method: 'PUT',
+          url: `/api/cases/${created.id}`,
+          payload: document,
+        });
+        expect(response.statusCode).toBe(400);
+      }
     });
 
     it('rejects a document shape that violates the schema (extra property) with 400', async () => {
@@ -235,6 +354,226 @@ describe('server app', () => {
         url: `/api/cases/${created.id}`,
         payload: document,
       });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('rejects a MarginAnchor.barycentric component outside [0, 1] with 400', async () => {
+      const created = await app
+        .inject({ method: 'POST', url: '/api/cases', payload: { name: 'Bad barycentric' } })
+        .then((r) => r.json() as { id: string; createdAt: string });
+
+      const document: CaseDocument = {
+        ...createEmptyCaseDocument(created.id, created.createdAt),
+        restorations: [
+          {
+            id: 'restoration-1',
+            type: 'crown',
+            teeth: [16],
+            pontics: [],
+            targetNodeId: null,
+            marginLines: {
+              16: {
+                anchors: [
+                  {
+                    position: [0, 0, 0],
+                    triangleIndex: 0,
+                    // Out of range: a real barycentric weight is in [0, 1]
+                    // (shared-types' `MarginAnchor.barycentric` doc) —
+                    // 1.5 must be rejected by the schema's per-item bounds.
+                    barycentric: [1.5, -0.5, 0],
+                  },
+                ],
+                closed: false,
+              },
+            },
+            insertionAxis: [0, 0, 1],
+            params: {
+              cementGapMm: 0.05,
+              marginalGapMm: 0.03,
+              spacerStartMm: 0.5,
+              minWallThicknessMm: 0.4,
+              proximalContactPenetrationMm: 0.02,
+              occlusalContactMm: 0.03,
+            },
+            stages: {},
+            qc: null,
+          },
+        ],
+      };
+
+      const response = await app.inject({
+        method: 'PUT',
+        url: `/api/cases/${created.id}`,
+        payload: document,
+      });
+      expect(response.statusCode).toBe(400);
+    });
+
+    // Phase 3 Task 2: restorationSchema tightened to the real shared-types
+    // `Restoration` shape (pontics/targetNodeId, FDI-enum teeth, PLAN.md §3
+    // param bounds, real stages/qc shapes) — this proves a full, realistic
+    // restoration (a bridge, mirroring arch-case-01's 12/11/21/22 span)
+    // round-trips through PUT then GET byte-for-byte.
+    it('round-trips a full CaseDocument with a bridge Restoration (pontics + targetNodeId) through PUT then GET', async () => {
+      const created = await app
+        .inject({ method: 'POST', url: '/api/cases', payload: { name: 'Bridge restoration case' } })
+        .then((r) => r.json() as { id: string; createdAt: string });
+
+      const document: CaseDocument = {
+        ...createEmptyCaseDocument(created.id, created.createdAt),
+        scene: [
+          {
+            id: 'node-1',
+            meshId: 'mesh-1',
+            role: 'upperJaw',
+            transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+            visible: true,
+            opacity: 1,
+          },
+        ],
+        restorations: [
+          {
+            id: 'restoration-1',
+            type: 'bridge',
+            teeth: [12, 11, 21, 22],
+            pontics: [12, 22],
+            targetNodeId: 'node-1',
+            marginLines: {},
+            insertionAxis: [0, 0, 1],
+            params: {
+              cementGapMm: 0.05,
+              marginalGapMm: 0.02,
+              spacerStartMm: 0.8,
+              minWallThicknessMm: 0.5,
+              proximalContactPenetrationMm: 0.02,
+              occlusalContactMm: 0,
+            },
+            stages: {},
+            qc: null,
+          },
+        ],
+        history: [
+          {
+            id: 'op-1',
+            name: 'restoration-create',
+            params: { restorationId: 'restoration-1' },
+            inputHashes: [],
+            outputHashes: [],
+            kernelVersion: '0.0.0',
+            timestamp: '2026-01-01T00:00:00.000Z',
+          },
+        ],
+      };
+
+      const putResponse = await app.inject({
+        method: 'PUT',
+        url: `/api/cases/${created.id}`,
+        payload: document,
+      });
+      expect(putResponse.statusCode).toBe(200);
+
+      const getResponse = await app.inject({ method: 'GET', url: `/api/cases/${created.id}` });
+      expect(getResponse.statusCode).toBe(200);
+      expect(getResponse.json()).toEqual(document);
+    });
+
+    it('rejects a Restoration.teeth entry outside the 32 valid FDI codes with 400', async () => {
+      const created = await app
+        .inject({ method: 'POST', url: '/api/cases', payload: { name: 'Bad FDI tooth' } })
+        .then((r) => r.json() as { id: string; createdAt: string });
+
+      const document: CaseDocument = {
+        ...createEmptyCaseDocument(created.id, created.createdAt),
+        restorations: [
+          {
+            id: 'restoration-1',
+            type: 'crown',
+            teeth: [99 as unknown as CaseDocument['restorations'][number]['teeth'][number]],
+            pontics: [],
+            targetNodeId: null,
+            marginLines: {},
+            insertionAxis: [0, 0, 1],
+            params: {
+              cementGapMm: 0.05,
+              marginalGapMm: 0.02,
+              spacerStartMm: 0.8,
+              minWallThicknessMm: 0.5,
+              proximalContactPenetrationMm: 0.02,
+              occlusalContactMm: 0,
+            },
+            stages: {},
+            qc: null,
+          },
+        ],
+      };
+
+      const response = await app.inject({ method: 'PUT', url: `/api/cases/${created.id}`, payload: document });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('rejects a RestorationParams field outside its PLAN.md §3 range with 400', async () => {
+      const created = await app
+        .inject({ method: 'POST', url: '/api/cases', payload: { name: 'Bad params range' } })
+        .then((r) => r.json() as { id: string; createdAt: string });
+
+      const document: CaseDocument = {
+        ...createEmptyCaseDocument(created.id, created.createdAt),
+        restorations: [
+          {
+            id: 'restoration-1',
+            type: 'crown',
+            teeth: [11],
+            pontics: [],
+            targetNodeId: null,
+            marginLines: {},
+            insertionAxis: [0, 0, 1],
+            params: {
+              cementGapMm: 0.05,
+              marginalGapMm: 0.02,
+              spacerStartMm: 5, // way outside 0.5-1.0 mm
+              minWallThicknessMm: 0.5,
+              proximalContactPenetrationMm: 0.02,
+              occlusalContactMm: 0,
+            },
+            stages: {},
+            qc: null,
+          },
+        ],
+      };
+
+      const response = await app.inject({ method: 'PUT', url: `/api/cases/${created.id}`, payload: document });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('rejects a Restoration missing the pontics/targetNodeId fields with 400', async () => {
+      const created = await app
+        .inject({ method: 'POST', url: '/api/cases', payload: { name: 'Missing new fields' } })
+        .then((r) => r.json() as { id: string; createdAt: string });
+
+      const document = {
+        ...createEmptyCaseDocument(created.id, created.createdAt),
+        restorations: [
+          {
+            id: 'restoration-1',
+            type: 'crown',
+            teeth: [11],
+            marginLines: {},
+            insertionAxis: [0, 0, 1],
+            params: {
+              cementGapMm: 0.05,
+              marginalGapMm: 0.02,
+              spacerStartMm: 0.8,
+              minWallThicknessMm: 0.5,
+              proximalContactPenetrationMm: 0.02,
+              occlusalContactMm: 0,
+            },
+            stages: {},
+            qc: null,
+          },
+        ],
+      };
+
+      const response = await app.inject({ method: 'PUT', url: `/api/cases/${created.id}`, payload: document });
       expect(response.statusCode).toBe(400);
     });
 

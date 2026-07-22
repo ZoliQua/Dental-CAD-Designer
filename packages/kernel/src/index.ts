@@ -10,8 +10,57 @@
  * See docs/CHANGELOG-kernel.md for what changed at each bump — 0.2.0
  * (Phase 2 Task 11): fillSmallHoles' curvature-continuity upgrade. 0.2.1
  * (Fix batch, post-Task-12): metadata-only — golden file gained a recorded
- * manifoldVersion field; no kernel-ops hash changed. */
-export const KERNEL_VERSION = '0.2.1';
+ * manifoldVersion field; no kernel-ops hash changed. 0.2.2 (Phase 3 Task 1
+ * housekeeping): metadata-only again — the standalone intake/curvature/
+ * offset goldens (test-fixtures/{intake,curvature,offset}/*.golden.json)
+ * gained kernelVersion (+manifoldVersion for offset) fields; every hash
+ * unchanged. 0.3.0 (Phase 3 Task 3): NEW op — the register/ module
+ * (coarseAlignFromPointTriples + icpRefine/icpRefineIteration) — minor
+ * bump per the undercutScan (0.0.0 -> 0.1.0) precedent for a brand-new op;
+ * the kernel-ops golden gained one new pinned entry ("icpRegister"), every
+ * other entry unchanged. 0.4.0 (Phase 3 Task 4): NEW op — the margin/
+ * module (proposeMarginLoop: curvature-ridge (k2) bidirectional crest walk
+ * + curvature-adaptive anchor simplification) — same "brand-new op, minor
+ * bump" precedent; the kernel-ops golden gained one new pinned entry
+ * ("proposeMargin"), every other entry unchanged. 0.4.1 (Phase 3 Task 7):
+ * dentist hand-traced reference margins committed (acceptance inputs) — no
+ * kernel change. 0.5.0 (Phase 3 Task 8 tuning): `margin/marginRidge.ts` gains
+ * `MARGIN_MIN_RIDGE_COMPONENT_SIZE` — `findRidgeStart` now ignores isolated
+ * curvature-noise components below this size when picking the "nearest
+ * ridge locus" to a seed (measured necessary for the Task 8 acceptance
+ * harness's reference-derived seeds; see that constant's own doc). Verified
+ * a NO-OP for every existing kernel-ops.json entry (byte-identical
+ * regeneration diff) — bumped anyway per this repo's tuning-discipline
+ * convention (a real algorithm change, even where currently a no-op for
+ * pinned seeds, goes through the same bump+changelog workflow). 0.6.0
+ * (Phase 3 Task 9): NEW op — the axis/ module (`suggestInsertionAxis`/
+ * `suggestInsertionAxisForRegions`: ROI extraction via a multi-source
+ * Dijkstra vertex ball around a margin loop, deterministic coarse->fine
+ * Fibonacci-hemisphere direction search scored by `undercutScanBatch`
+ * restricted to the ROI — see axis/suggestInsertionAxis.ts for the full
+ * method, objective, and tie-break) — same "brand-new op, minor bump"
+ * precedent as undercutScan/icpRegister/proposeMargin; the kernel-ops
+ * golden gained one new pinned entry ("suggestAxis"), every other entry
+ * unchanged. 0.7.0 (Phase 3 Task 10): NEW op — the blockout/ module
+ * (`blockoutPreview`: display-only undercut blockout preview, "virtual
+ * wax" — per-region triangle SELECTION via `undercutScanIndices`, then a
+ * FRESH, independent per-vertex `sampleDepthAlongAxis` horizon sample for
+ * every selected triangle's vertex, displacing it to
+ * `original + axis * depth` — see blockoutPreview.ts for the full
+ * derivation, scope boundary, and `@errorBound`) — same "brand-new op,
+ * minor bump" precedent as undercutScan/icpRegister/proposeMargin/
+ * suggestAxis; the kernel-ops golden gained one new pinned entry
+ * ("blockoutPreview"), every other entry unchanged. Also adds
+ * `undercut/undercutScan.ts`'s `sampleDepthAlongAxis` — the existing
+ * `depthFromSample` internal made public, no behavior change to any
+ * existing function. */
+/** Fix batch (Important 13): drops the WALL-CLOCK `elapsedMs` field from the
+ * kernel-ops golden's `suggestAxis` `meta` — the timing was never a
+ * kernel-algorithm output (no hash depended on it), only a diagnostic
+ * embedded in the committed golden file, which made every regeneration
+ * byte-non-reproducible for no numerical reason. No kernel algorithm or
+ * output hash changes — see docs/CHANGELOG-kernel.md's `[0.7.1]` entry. */
+export const KERNEL_VERSION = '0.7.1';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -136,6 +185,8 @@ export {
   marchingCubes,
   marchingCubesSlab,
   muClampEpsilon,
+  MIN_PITCH_MM,
+  PitchTooSmallError,
   offsetMesh,
   offsetGridSpec,
   offsetErrorBoundMm,
@@ -177,6 +228,7 @@ export {
   signedDistance,
   ON_PLANE_EPSILON_MM,
   sectionMesh,
+  extractLocalSubmesh,
   projectPolylinesToPlaneXY,
   sectionToSvg,
   type Plane,
@@ -231,18 +283,23 @@ export {
   resampleSurfaceSpline,
   fromMarginLine,
   toMarginLine,
+  MarginAnchorMismatchError,
+  MARGIN_ANCHOR_AGREEMENT_TOLERANCE_MM,
   type ArcLengthTable,
   type CatmullRomFitResult,
   type CatmullRomSpan,
   type SurfaceSpline,
   type SurfaceSplineOptions,
   type SurfaceSplineSpan,
+  type MarginAnchorLike,
   type MarginLineLike,
+  type MarginAnchorMismatchKind,
 } from './spline/index.ts';
 
 export {
   decimateMesh,
   beginDecimation,
+  toRenderOnlyMesh,
   zeroQuadric,
   planeQuadric,
   triangleQuadric,
@@ -258,6 +315,7 @@ export {
   type DecimateMeshOptions,
   type DecimateMeshResult,
   type DecimationSession,
+  type RenderOnlyMesh,
   type Quadric,
 } from './decimate/index.ts';
 
@@ -265,6 +323,9 @@ export {
   undercutScan,
   undercutScanBatch,
   undercutScanRange,
+  undercutScanIndices,
+  undercutScanBatchIndices,
+  sampleDepthAlongAxis,
   RAY_ORIGIN_BIAS_MM,
   UNDERCUT_BOUNDARY_EPSILON,
   type UndercutSamplingPolicy,
@@ -274,4 +335,111 @@ export {
   type UndercutTriangleRange,
   type UndercutScanRangeOutput,
   type UndercutScanRangeStats,
+  type UndercutScanIndicesOutput,
+  type UndercutScanIndicesResult,
 } from './undercut/index.ts';
+
+export {
+  coarseAlignFromPointTriples,
+  DegenerateTripleError,
+  COINCIDENT_POINT_EPSILON_MM,
+  COLLINEAR_SIN_SQ_EPSILON,
+  icpRefine,
+  icpRefineIteration,
+  ICP_ABSOLUTE_RMS_CONVERGED_FLOOR_MM,
+  DEFAULT_MAX_ITERATIONS,
+  DEFAULT_CONVERGENCE_REL_TOL,
+  DEFAULT_OUTLIER_REJECTION_FRACTION,
+  samplePointsOnMesh,
+  mulberry32,
+  IDENTITY_MAT4,
+  composeRigid,
+  applyMat4ToPoint,
+  multiplyMat4,
+  invertRigidMat4,
+  type CoarseAlignResult,
+  type DegenerateTripleReason,
+  type IcpRefineOptions,
+  type IcpRefineResult,
+  type IcpIterationResult,
+  type SamplePointsResult,
+  type Rng,
+  type Mat4,
+  type Mat3,
+} from './register/index.ts';
+
+export {
+  proposeMarginLoop,
+  boundedVertexRegion,
+  walkRidge,
+  simplifyRidgeLoopIndices,
+  segmentConfidence,
+  surfacePointAtVertex,
+  NoRidgeFoundError,
+  NoClosureError,
+  MARGIN_SEARCH_RADIUS_MM,
+  MARGIN_WALK_RADIUS_MM,
+  MARGIN_MIN_RIDGE_STRENGTH,
+  MARGIN_MIN_RIDGE_COMPONENT_SIZE,
+  MARGIN_CLOSURE_TOLERANCE_MM,
+  MARGIN_MIN_DIRECTION_SCORE,
+  MARGIN_TANGENT_EMA_WEIGHT,
+  MARGIN_LOOKAHEAD_STEPS,
+  MARGIN_MAX_WALK_STEPS,
+  MARGIN_ANCHOR_ANGLE_BUDGET_RAD,
+  MARGIN_ANCHOR_MAX_SPACING_MM,
+  type ProposeMarginLoopOptions,
+  type ProposeMarginLoopResult,
+  type RidgeWalkResult,
+  validateMarginLine,
+  classifyMarginValidation,
+  MARGIN_SELF_INTERSECTION_TOLERANCE_MM,
+  MARGIN_SELF_INTERSECTION_LENGTH_SCALE_FACTOR,
+  MARGIN_SMOOTHNESS_CURVATURE_THRESHOLD_MM_INV,
+  MARGIN_VALIDATE_ZERO_LENGTH_EPSILON_MM,
+  MARGIN_VALIDATE_MIN_ANCHOR_COUNT,
+  type MarginValidationReport,
+  type MarginValidationClassification,
+  type MarginValidationHardFailureKind,
+  type MarginSelfIntersectionLocation,
+  type MarginOffSurfacePoint,
+  type MarginSmoothnessWarning,
+  type ValidateMarginLineOptions,
+} from './margin/index.ts';
+
+export {
+  extractMarginRegion,
+  marginRegionVertexBall,
+  unionRegions,
+  regionTriangleAreasMm2,
+  regionAreaWeightedNormalSum,
+  AXIS_DEFAULT_ROI_RADIUS_MM,
+  fibonacciHemisphereDirections,
+  fibonacciCapDirections,
+  orthonormalBasis,
+  GOLDEN_ANGLE_RAD,
+  suggestInsertionAxis,
+  suggestInsertionAxisForRegions,
+  deriveHemispherePole,
+  defaultRefineCapAngleRad,
+  AXIS_COARSE_SAMPLE_COUNT,
+  AXIS_REFINE_SAMPLE_COUNT,
+  AXIS_SEARCH_PRESETS,
+  DEGENERATE_POLE_RELATIVE_EPSILON,
+  EmptyRegionError,
+  DegenerateRegionNormalError,
+  type AxisRegion,
+  type AxisCandidate,
+  type SuggestInsertionAxisOptions,
+  type SuggestInsertionAxisResult,
+  type SuggestInsertionAxisForRegionsResult,
+} from './axis/index.ts';
+
+export {
+  blockoutPreview,
+  toBlockoutPreviewMesh,
+  type BlockoutRegion,
+  type BlockoutPreviewMesh,
+  type BlockoutPreviewOptions,
+  type BlockoutPreviewResult,
+} from './blockout/index.ts';

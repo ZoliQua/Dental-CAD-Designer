@@ -21,8 +21,8 @@ const NUM_RUNS = 40;
 
 function hashResult(result: DecimateMeshResult): string {
   const hash = createHash('sha256');
-  const positions = result.mesh.positions;
-  const indices = result.mesh.indices;
+  const positions = result.mesh.renderMesh.positions;
+  const indices = result.mesh.renderMesh.indices;
   hash.update(Buffer.from(positions.buffer, positions.byteOffset, positions.byteLength));
   hash.update(Buffer.from(indices.buffer, indices.byteOffset, indices.byteLength));
   hash.update(String(result.outputTriangleCount));
@@ -64,9 +64,9 @@ describe('decimateMesh — property: output validity', () => {
         expect(result.outputTriangleCount).toBeGreaterThan(0);
         expect(result.outputTriangleCount).toBeLessThanOrEqual(result.inputTriangleCount);
 
-        const hm = buildHalfedge(result.mesh); // throws if non-manifold
+        const hm = buildHalfedge(result.mesh.renderMesh); // throws if non-manifold
         assertValidTopology(hm); // throws on any structural invariant violation
-        const outStats = analyzeMesh(result.mesh);
+        const outStats = analyzeMesh(result.mesh.renderMesh);
         expect(outStats.manifoldEdges).toBe(true);
         expect(outStats.watertight).toBe(true);
       }),

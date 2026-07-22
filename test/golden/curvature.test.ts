@@ -110,6 +110,12 @@ function summarize(result: CurvatureResult): CurvatureSummary {
 }
 
 interface CurvatureGoldenSnapshot {
+  /** See test/golden/intake.test.ts's `IntakeGoldenSnapshot.kernelVersion`
+   * doc (Phase 3 Task 1 housekeeping) — same field, same rationale.
+   * `computeCurvature` is pure kernel math (cotan-Laplacian + mixed-Voronoi
+   * areas), no manifold-3d involvement, so no `manifoldVersion` field here
+   * either — unlike test/golden/offset.test.ts's snapshot. */
+  kernelVersion: string;
   summary: CurvatureSummary;
   resultSha256: string;
 }
@@ -148,6 +154,15 @@ describe('curvature — real fixture (arch-case-01 upperjaw STL)', () => {
 
     expect(summarize(result)).toEqual(golden.summary);
     expect(resultHash).toBe(golden.resultSha256);
+  });
+
+  it('the committed golden file was generated under a well-formed KERNEL_VERSION string', () => {
+    // See test/golden/intake.test.ts's identical check's doc for why this is
+    // a well-formedness check, not an equality-with-live-version assertion.
+    const goldenPath = join(curvatureGoldenDir, 'arch-case-01-upperjaw.curvature.golden.json');
+    const golden = JSON.parse(readFileSync(goldenPath, 'utf8')) as CurvatureGoldenSnapshot;
+    expect(typeof golden.kernelVersion).toBe('string');
+    expect(golden.kernelVersion.length).toBeGreaterThan(0);
   });
 
   it('is deterministic: a second full run is hash-identical (double-run determinism)', () => {

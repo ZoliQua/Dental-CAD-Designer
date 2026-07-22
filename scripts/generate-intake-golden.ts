@@ -17,7 +17,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { parseStl } from '@dqcad/io';
-import { intake, type IntakeResult } from '@dqcad/kernel';
+import { intake, KERNEL_VERSION, type IntakeResult } from '@dqcad/kernel';
 
 const repoRoot = fileURLToPath(new URL('../', import.meta.url));
 const upperjawStlPath = join(repoRoot, 'test-fixtures', 'real-scans', 'arch-case-01', 'arch-case-01-upperjaw.stl');
@@ -40,6 +40,9 @@ const { soup } = parseStl(new Uint8Array(buffer.buffer, buffer.byteOffset, buffe
 const result = intake({ kind: 'soup', soup });
 
 const snapshot = {
+  // Phase 3 Task 1 housekeeping: metadata field, no effect on the hash
+  // below — see test/golden/intake.test.ts's `IntakeGoldenSnapshot` doc.
+  kernelVersion: KERNEL_VERSION,
   stats: result.stats,
   report: result.report,
   resultSha256: hashIntakeResult(result),

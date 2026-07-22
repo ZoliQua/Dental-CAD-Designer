@@ -69,3 +69,66 @@ already covered by CLAUDE.md invariant #2 (determinism).
   that is a SEPARATE, purpose-built log — not an extension of
   `Operation`/`CaseDocument.history`, which stays scoped to mesh-mutating
   steps per this ADR.
+
+## Amendment (Phase 3): alignment-apply
+
+`engine/caseStore.ts`'s `applyAlignment` (Phase 3 Task 3) journals an
+`Operation` named `alignment-apply` for a `SceneNode.transform`-only
+change — the alignment tool's user-confirmed ICP result is written onto
+`nodeId`'s `transform`, and nothing else about the `SceneNode` or any mesh
+changes. By this ADR's own dividing line above ("Only operations that
+MUTATE MESH GEOMETRY... are journaled"), a transform write is exactly the
+category this ADR puts in the NEVER-journaled bucket alongside
+`setSceneNodeOpacity`/`setSceneNodeVisibility` — `alignment-apply` is a
+deliberate, bounded EXCEPTION to that rule, not an oversight, recorded here
+so the exception is visible next to the rule it carves out of.
+
+**Why the exception is legitimate.** The Decision section's own dividing
+line is about REPRODUCIBILITY scope ("a `SceneNode` is a reference... never
+changes any mesh's `contentHash`"), which is true and unaffected by this
+amendment — `alignment-apply` still produces no `outputHashes` (see
+`applyAlignment`'s doc: "there is no `outputHashes[0]` mesh to register").
+But `Operation`/`CaseDocument.history` also functions, in practice, as this
+app's only CLINICAL AUDIT TRAIL of consequential actions (PLAN.md §2.2's
+spirit: a case's history should show what was DONE to it, not just what
+mesh bytes resulted) — and unlike opacity or visibility, moving a mesh via
+ICP registration is clinically consequential: it changes where a scan sits
+relative to every other scan in the case (margin lines, undercut scans,
+QC gates, and any later boolean/measurement all read a `SceneNode`'s
+CURRENT transform), and it carries real, reportable quality metrics (RMS,
+inlier fraction, convergence, the seed/sample-count/overlap-mode-derived
+`outlierRejectionFraction` it was run with — see `AlignmentResult`,
+`state/alignmentStore.ts`) that a clinician or a later reviewer needs to be
+able to see WAS done and HOW WELL it fit, not just infer from the current
+transform value. Opacity/visibility carry no such quality signal and have
+no clinical consequence — that distinction, not the reproducibility
+dividing line, is why `alignment-apply` is journaled while
+`setSceneNodeOpacity` is not.
+
+**Why replay coverage is not required.** PLAN.md §6.3's journal-replay
+harness (Task 8, ADR-001) asserts hash reproducibility — "same inputs +
+params + kernel version ⇒ bit-identical outputs" — over exactly the
+mesh-mutating steps this ADR's Decision section scopes `Operation` to.
+`alignment-apply` never touches mesh bytes (no mesh is read, repaired, or
+re-hashed by it — it reads a mesh only to raycast/sample points FROM it,
+already-immutable geometry it never writes back to); its "output" is a
+`SceneNode.transform`, a value that is NOT content-addressed and has no
+`contentHash` for a replay to reproduce or compare against. Requiring
+§6.3-style replay coverage for it would therefore be a category error: there
+is no mesh-byte output for a replay to assert bit-identity over, so
+"reproducibility" for `alignment-apply` can only ever mean "the recorded
+`params` (seed, sample count, overlap-mode preset, pairs) are sufficient to
+re-derive the same transform," which is a claim about `icpRegister`'s own
+determinism (CLAUDE.md invariant 2, already covered by
+`packages/kernel/src/register`'s and `packages/kernel-workers`'s own
+determinism tests), not something `alignment-apply`'s journal entry itself
+needs its own replay harness to prove.
+
+**Scope of the exception.** This amendment applies ONLY to `alignment-apply`
+— it does not reopen the Decision section's general rule, and it does not by
+itself justify journaling any other transform-only or presentational
+`SceneNode`/`Measurement` change (e.g. `setSceneNodeOpacity`,
+`setSceneNodeVisibility`, `addMeasurement` remain un-journaled per the
+Decision above). A future case for journaling some OTHER non-mesh-mutating
+change should make its own clinical-consequence argument, not cite this
+amendment as precedent by analogy.

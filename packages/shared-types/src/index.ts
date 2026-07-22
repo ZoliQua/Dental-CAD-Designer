@@ -86,12 +86,114 @@ export interface SceneNode {
 // Margin line
 // ---------------------------------------------------------------------------
 
+/**
+ * A control point anchoring a `MarginLine` spline to a mesh surface — the
+ * SAME "triangle + barycentric" currency `@dqcad/kernel`'s `SurfacePoint`
+ * uses (packages/kernel/src/geodesic/types.ts), duplicated here as a plain,
+ * serializable, kernel-independent shape (shared-types has no dependency on
+ * `@dqcad/kernel` — this package is "type declarations only", see this
+ * file's top doc) so a `CaseDocument` can carry it directly.
+ *
+ * `triangleIndex`/`barycentric` are meaningful ONLY relative to whatever
+ * mesh the OWNING `Restoration` currently targets for this tooth — that
+ * association is established by context (the restoration's assigned prepDie
+ * scan, Phase 3 Task 2's wizard), not carried inline on the anchor itself;
+ * `position` is the float-precision echo of the same point (never expected
+ * to disagree with re-evaluating `triangleIndex`/`barycentric` against the
+ * correct mesh — see marginLine.ts's `toMarginLine`/`fromMarginLine`, the
+ * kernel-side adapter that produces/consumes this shape).
+ *
+ * schemaVersion 2 (Phase 3 Task 1) — replaces schemaVersion 1's lossy
+ * `vertexAnchors: readonly number[]` (nearest-VERTEX hint only, no triangle/
+ * barycentric — see this package's CHANGELOG-adjacent migration notes in
+ * apps/client/src/engine/caseDocumentMigration.ts for the v1 -> v2 load-time
+ * migration and its documented, explicit limitation for legacy documents).
+ */
+export interface MarginAnchor {
+  /** Float64 mm world-space position — exact, always trustworthy regardless
+   * of whether `triangleIndex`/`barycentric` have been resolved against a
+   * real mesh (see this interface's doc and the v1->v2 migration's doc for
+   * the one documented case where they haven't: a migrated legacy anchor). */
+  position: Vec3;
+  triangleIndex: number;
+  /** Producer-guaranteed: sums to ~1, each component in [0, 1] (mirrors
+   * kernel/src/geodesic/types.ts's `SurfacePoint.barycentric` doc). */
+  barycentric: readonly [number, number, number];
+}
+
 /** A spline lying on a prep mesh surface, defining a restoration's finish line. */
 export interface MarginLine {
-  /** Indices into the owning mesh's vertex buffer that anchor the spline to the surface. */
-  vertexAnchors: readonly number[];
-  controlPoints: readonly Vec3[];
+  /** Ordered control points anchoring the spline to the surface — see
+   * `MarginAnchor`'s doc. */
+  anchors: readonly MarginAnchor[];
   closed: boolean;
+  /** Optional densely-resampled points along the fitted spline (e.g. for
+   * display or export), Float64 mm world-space — NOT authoritative (
+   * `anchors` is); absent until something actually resamples the spline
+   * (Phase 3's surface-spline fitting, packages/kernel/src/spline/). */
+  resampledPoints?: readonly Vec3[];
+}
+
+/**
+ * Phase 3 Task 7 — the on-disk shape of a hand-traced reference margin
+ * fixture (`test-fixtures/margins/<caseId>/<tooth>.reference.json`),
+ * produced by `apps/client/src/engine/marginEditor.ts`'s dev-only
+ * `exportReferenceMargin()` and consumed by `test/golden/
+ * margin-references.test.ts`'s reference-quality checks (and, later, Task
+ * 8's acceptance harness). See `test-fixtures/margins/README.md` for the
+ * full workflow/schema doc.
+ *
+ * Declared here (not local to `apps/client`) so both the client engine
+ * (which produces it) and root-level `test/golden/` scripts (which consume
+ * it) can import the SAME type without a cross-layer dependency — the same
+ * "file-format shape belongs in shared-types" precedent as `MarginLine`
+ * itself.
+ *
+ * ALLOW-LISTED FIELDS ONLY (CLAUDE.md "no silent data mutation" / no-PHI
+ * export requirement): every field is either a mesh-relative geometric
+ * quantity, a content-hash reference (never a filename or any
+ * patient-identifying string), or build/provenance metadata. A test that
+ * asserts `Object.keys(parsed)` against exactly this field set IS this
+ * fixture's no-PHI check — nothing else may ever be added here without a
+ * matching audit of that assertion.
+ */
+export interface MarginReferenceExport {
+  tooth: FdiTooth;
+  /** Same currency as `MarginLine.anchors` — see `MarginAnchor`'s doc. */
+  anchors: readonly MarginAnchor[];
+  /** A confirmed margin is always closed (Task 6's validation gate blocks
+   * confirm on an open loop — see `MarginHardFailureKind`'s 'open' case,
+   * apps/client/src/state/marginStore.ts) — carried explicitly anyway
+   * (rather than assumed `true`) so a consumer can reconstruct a
+   * self-describing `MarginLineLike` from this file alone, with no implicit
+   * assumption baked into the reader. */
+  closed: boolean;
+  /** Same currency as `MarginLine.resampledPoints`, but REQUIRED here (never
+   * absent) — a reference exported from a confirmed margin always has a
+   * real committed `resampledPoints` array (see `MarginLine.resampledPoints`'s
+   * own doc for when it's legitimately absent on the LIVE editing shape;
+   * that case never reaches a confirm-and-export). */
+  resampledPoints: readonly Vec3[];
+  /** The target mesh's `MeshAsset.contentHash` this margin was traced
+   * against — ties the reference to a specific, immutable, anonymized
+   * fixture mesh (never a filename or scan identifier). */
+  meshContentHash: string;
+  /** Always `'human-reference'` — distinguishes this file, by construction,
+   * from any machine-generated (`proposeMargin`) golden fixture; a fixed
+   * literal rather than a boolean so a future export path (if one is ever
+   * added) can extend the union without an ambiguous `false`. */
+  traced: 'human-reference';
+  /** `apps/client`'s own build/version tag at export time (see
+   * `apps/client/src/appVersion.ts`) — independent of `kernelVersion`
+   * below: a client UI/wiring change bumps this, not that. */
+  appVersion: string;
+  /** `@dqcad/kernel`'s `KERNEL_VERSION` at export time — the same value
+   * every journaled `Operation.kernelVersion` records. */
+  kernelVersion: string;
+  /** ISO-8601 UTC timestamp of the export action itself — provenance only,
+   * never treated as clinically meaningful (no acquisition date is stored
+   * anywhere in this file — see this interface's doc). */
+  exportedAt: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -115,6 +217,27 @@ export interface Restoration {
   type: RestorationType;
   /** Bridges list all abutments and pontics. */
   teeth: readonly FdiTooth[];
+  /**
+   * Bridge-only: the subset of `teeth` that are pontics (no prep — suspended
+   * between abutments, never gets a `marginLines` entry). Every tooth in
+   * `teeth` NOT listed here is an abutment (prepped, load-bearing). Always
+   * `[]` for `crown`/`inlay`/`onlay` (single/few-tooth types with no pontic
+   * concept — Phase 3 Task 2's wizard never lets the user mark one for those
+   * types). See CLAUDE.md's domain vocabulary ("pontic", "abutment") and
+   * docs/plans/phase-3-margin-axis.md Task 2's brief ("multi-select for
+   * bridge: abutments + pontics marked distinctly").
+   */
+  pontics: readonly FdiTooth[];
+  /**
+   * The `SceneNode.id` (role `prepDie`/`upperJaw`/`lowerJaw`) this
+   * restoration's margin lines/insertion axis are resolved against — `null`
+   * until the wizard's "assign target scan" step (Phase 3 Task 2) sets it.
+   * This is the "context" `MarginAnchor`'s doc refers to ("meaningful ONLY
+   * relative to whatever mesh the OWNING Restoration currently targets for
+   * this tooth"). Same naming convention as
+   * apps/client/src/state/heatmapStore.ts's `targetNodeId`.
+   */
+  targetNodeId: string | null;
   marginLines: Partial<Record<FdiTooth, MarginLine>>;
   insertionAxis: Vec3;
   params: RestorationParams;
@@ -213,7 +336,16 @@ export interface CaseSettings {
 
 export interface CaseDocument {
   id: string;
-  schemaVersion: 1;
+  /** 2 (Phase 3 Task 1): `MarginLine` moved from lossy `vertexAnchors:
+   * number[]` to `anchors: MarginAnchor[]` (triangle + barycentric + exact
+   * position — see `MarginAnchor`'s doc). A schemaVersion-1 document loaded
+   * from the server is migrated client-side BEFORE it is ever represented
+   * as a `CaseDocument` — see apps/client/src/engine/
+   * caseDocumentMigration.ts's module doc for the full migration contract
+   * and its documented legacy-anchor limitation. The server's PUT schema
+   * (apps/server/src/schemas.ts) accepts ONLY `2` — migration is exclusively
+   * a client-side, load-time concern, never a server responsibility. */
+  schemaVersion: 2;
   /** ISO 8601 timestamp. */
   createdAt: string;
   /** Optional link to an external record (e.g. DentalQuoter). */

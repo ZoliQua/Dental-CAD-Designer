@@ -113,6 +113,51 @@ the call site during development, never branch on that failure at runtime.
 - **`.ts`-extension relative imports** for every file under `jobs/` — see
   ADR-003; this closure grew from one file to nine with this task's split,
   and every new job module joins it automatically.
+- **contentHash-keyed per-worker caching, when a job legitimately benefits
+  from it** (Phase 3 Task 1 housekeeping formalizes this — `jobs/bvh.ts`'s
+  `bvhCache` is the canonical, original example; `jobs/geodesic.ts`'s
+  `halfedgeCache`, `jobs/curvature.ts`'s result cache, and
+  `jobs/offset.ts`'s (contentHash, distanceMm, pitchMm)-keyed result cache
+  all follow it): the payload takes a `contentHash` (never raw mesh
+  buffers) and requires `buildBvh` to have already cached that mesh ON THIS
+  WORKER (`jobs/bvh.ts`'s `requireCachedBvh`); any additional per-job cache
+  registers an `onBvhRelease` listener so releasing a mesh's BVH evicts
+  every OTHER per-worker cache keyed by the same contentHash, never leaving
+  orphaned entries for a mesh no longer resident. A job whose result has NO
+  repeated-EXACT-query structure to amortize (`jobs/section.ts`'s
+  `sectionMesh` — a different plane is a different query every time) still
+  adopts the contentHash-instead-of-raw-buffers half of this convention
+  (skips the buffer RE-SEND) without adopting a result cache it would never
+  actually hit. Caller side: `apps/client/src/engine/workers.ts`'s
+  `ensureBvhBuilt` + `RunJobOptions.affinityKey: contentHash` on the SAME
+  shared `getPool()` is what makes "build once, query many times on the same
+  worker" hold for a given mesh, while DIFFERENT meshes' jobs still run on
+  DIFFERENT workers in parallel (hash-routed affinity, not a dedicated
+  single-worker pool).
+
+### 4. `@errorBound`/`@approximation` placement convention (Phase 3 Task 1
+   housekeeping)
+
+When a documented error/approximation bound is DERIVED ONCE and shared by
+several functions in the same file (a module round-tripping through one
+lossy boundary, e.g. `boolean/manifold.ts`'s Float64->Float32 manifold-3d
+cast used by `toManifoldMesh`/`fromManifoldMesh`/`cleanupMesh`/`sectionCap`,
+or `curvature/curvature.ts`'s cotan-Laplacian consistency bound used by H/K/
+principal curvatures), the derivation lives ONCE in the file's MODULE-HEADER
+comment (`curvature.ts` is the canonical example this ADR now formalizes),
+under an `@errorBound`/`@approximation` heading; every function-level TSDoc
+that inherits it carries a SHORT reference (`@errorBound See this module's
+header doc — ...`), never a re-derivation. `boolean/manifold.ts` was the
+identified outlier at the time of this task (the same Float64->Float32
+derivation had been copy-pasted across three separate function docs) and was
+moved to this convention as part of this same housekeeping pass.
+
+This does NOT mandate hoisting every single-function, non-shared bound to a
+module header — a genuinely local, one-off bound (e.g. `bvh/build.ts`'s
+"None beyond ordinary Float64 rounding" or `halfedge/build.ts`'s "exact
+combinatorial check, N/A") stays inline at the function it belongs to; the
+convention only applies once a SECOND function would otherwise duplicate (or
+merely reference-without-a-canonical-source) the same derivation.
 
 ## Consequences
 

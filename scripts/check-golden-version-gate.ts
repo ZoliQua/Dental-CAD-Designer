@@ -30,6 +30,16 @@
 // - test-fixtures/curvature/*.golden.json
 // - test-fixtures/offset/*.golden.json (includes the clinical-pitch die
 //   golden, test-fixtures/offset/standin-prep-die.offset.golden.json)
+// - test-fixtures/margins/**/*.reference.json (Phase 3 Task 7's hand-traced
+//   reference margins — NOT machine-regenerated, unlike every other entry
+//   above; see test-fixtures/margins/README.md's "Golden integrity" section
+//   for why this mechanism (rather than a standalone checksums.json) is
+//   this directory's own integrity pin: these are ACCEPTANCE INPUTS for
+//   Task 8's auto-propose comparison harness, so an unreviewed edit to a
+//   committed reference is exactly as consequential as an unreviewed edit
+//   to any other golden-pinned fixture — it must require the same
+//   deliberate KERNEL_VERSION bump + changelog entry, not slip through
+//   because "it's just a fixture, not a script output".
 //
 // ## Base ref selection (documented per event type)
 //
@@ -96,6 +106,10 @@ export const GOLDEN_PATH_PATTERNS: readonly GoldenPathPattern[] = [
   {
     label: 'offset golden fixtures (incl. the clinical-pitch die golden)',
     matches: (f) => f.startsWith('test-fixtures/offset/') && f.endsWith('.golden.json'),
+  },
+  {
+    label: 'hand-traced reference margin fixtures (Phase 3 Task 7 — see test-fixtures/margins/README.md)',
+    matches: (f) => f.startsWith('test-fixtures/margins/') && f.endsWith('.reference.json'),
   },
 ];
 

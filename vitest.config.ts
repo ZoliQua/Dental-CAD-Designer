@@ -31,6 +31,7 @@ export default defineConfig({
     passWithNoTests: true,
     projects: [
       project('shared-types', './packages/shared-types'),
+      project('clinical-profiles', './packages/clinical-profiles'),
       project('kernel', './packages/kernel'),
       project('kernel-workers', './packages/kernel-workers'),
       project('io', './packages/io'),

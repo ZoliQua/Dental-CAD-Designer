@@ -12,19 +12,23 @@
 // re-syncing SceneManager (mirroring engine/heatmap.ts's
 // `getActiveOverlay`).
 //
-// ## Why this runs on the GENERAL pool, not the size:1 measurement pool
+// ## Runs on the shared GENERAL pool, affinity-routed per mesh
 //
-// Unlike measurePointToSurface/raycastMesh/distanceHeatmap (which query a
-// per-worker-CACHED BVH — see engine/workers.ts's module doc), the
-// `sectionMesh` job takes the mesh buffers directly and does one bounded
-// pass over the whole mesh with no cross-call cache to keep warm (see
-// kernel-workers' jobs/section.ts `sectionMesh` job doc) — there is no "build once,
-// query many times on the SAME worker" requirement here, so pinning it to a
-// single-worker pool would only serialize section runs against every other
-// measurement pool user for no correctness benefit. A case with multiple
-// scene nodes (e.g. upper + lower jaw) sections EVERY visible node in one
-// `recompute()` call — running those on the general (multi-worker) pool
-// lets them execute in parallel.
+// `sectionMesh` (kernel-workers' jobs/section.ts) now takes a `contentHash`
+// instead of raw mesh buffers (Phase 3 Task 1 housekeeping: "jobs/section.ts
+// stops re-sending buffers") — the mesh must already be cached on the
+// target worker via `buildBvh` (jobs/bvh.ts's `requireCachedBvh`), same
+// precondition as measurePointToSurface/raycastMesh/distanceHeatmap. This
+// module therefore calls `ensureBvhBuilt` before every `sectionMesh` call
+// and passes `affinityKey: contentHash` — routing a mesh's `buildBvh` call
+// and its later `sectionMesh` call(s) to the SAME worker (workers.ts's
+// module doc), while still letting a case's DIFFERENT scene nodes (e.g.
+// upper + lower jaw) run their section queries on DIFFERENT workers in
+// parallel within one `recompute()` call (hash-routed affinity, not a
+// single-worker pin — see pool.ts's `RunJobOptions.affinityKey` doc).
+// Deliberately no RESULT cache for section itself (unlike jobs/curvature.ts/
+// jobs/offset.ts) — see jobs/section.ts's own module doc for why a section
+// query has no repeated-EXACT-query structure to amortize a cache against.
 //
 // ## Plane construction: axis presets + arbitrary plane sliders
 //
@@ -38,7 +42,7 @@
 // added/removed/hidden) and re-deriving it fresh is far simpler than
 // tracking staleness.
 import { caseStore } from './caseStore';
-import { getPool } from './workers';
+import { ensureBvhBuilt, getPool } from './workers';
 import {
   useSectionStore,
   type SectionAxis,
@@ -239,15 +243,14 @@ class SectionEngine {
         if (!record) continue;
         // Kernel Float64 rule: section polylines come from the master
         // Float64 buffers, never the Float32 render copy (this task's
-        // guardrail). `.slice()` so the worker's transfer never detaches
-        // the mesh's live master buffer (same convention as
-        // engine/workers.ts's `ensureBvhBuilt`).
-        const positions = record.positions.slice();
-        const indices = record.indices.slice();
+        // guardrail) — enforced here by construction: `sectionMesh` reads
+        // the mesh via the worker's cached Float64 master (jobs/bvh.ts's
+        // `requireCachedBvh`), never a payload buffer at all.
+        await ensureBvhBuilt(record.contentHash, record.positions, record.indices);
         const result = await getPool().run(
           'sectionMesh',
-          { positions, indices, point: plane.point, normal: plane.normal, computeCap: store.showCap },
-          { transfer: [positions.buffer, indices.buffer] },
+          { contentHash: record.contentHash, point: plane.point, normal: plane.normal, computeCap: store.showCap },
+          { affinityKey: record.contentHash },
         );
         if (myGeneration !== this.generation) return; // superseded while awaiting
 

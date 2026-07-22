@@ -9,7 +9,7 @@ import type { CaseDocument } from '@dqcad/shared-types';
 export function createEmptyCaseDocument(id: string, createdAt: string): CaseDocument {
   return {
     id,
-    schemaVersion: 1,
+    schemaVersion: 2,
     createdAt,
     meshes: [],
     scene: [],

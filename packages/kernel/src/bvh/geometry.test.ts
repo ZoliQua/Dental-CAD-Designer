@@ -28,7 +28,7 @@
 // in directly (rather than relying on it staying true "by accident" of a
 // refactor) for both signs of zero.
 import { describe, expect, it } from 'vitest';
-import { rayAabbEntry, type Vec3 } from './geometry.ts';
+import { BARYCENTRIC_EPSILON, rayAabbEntry, rayTriangleIntersect, type Vec3 } from './geometry.ts';
 
 describe('rayAabbEntry — signed-zero direction component on an exact boundary', () => {
   const boundsMin: Vec3 = [1, -1, -1];
@@ -93,5 +93,79 @@ describe('rayAabbEntry — signed-zero direction component on an exact boundary'
 
     const entry = rayAabbEntry(origin, direction, invDirection, boundsMin, boundsMax, 0, Infinity);
     expect(entry).toBeNull();
+  });
+});
+
+// Task-11-review Important 11: `rayTriangleIntersect`'s edge tests
+// deliberately ACCEPT a hit up to `BARYCENTRIC_EPSILON` (1e-12) outside the
+// triangle (this module's own "watertight edge policy" doc) — an accepted
+// hit can therefore come back with a barycentric component that is
+// EPSILON-NEGATIVE (or epsilon-over-1). Downstream, that value can end up
+// stored verbatim in a `MarginAnchor.barycentric` (apps/client/src/engine/
+// marginEditor.ts, via jobs/bvh.ts's `raycastMesh`), which the server's
+// `marginAnchorSchema` enforces `minimum: 0` on — one epsilon-negative
+// anchor 400s every subsequent save for that case forever. The fix clamps
+// the returned barycentric to [0, 1] at this producer.
+describe('rayTriangleIntersect — barycentric clamped to [0, 1] even for an accepted near-edge hit (Task-11-review Important 11)', () => {
+  // Axis-aligned right triangle a=(0,0,0), b=(1,0,0), c=(0,1,0), scanned
+  // along -Z from above — chosen so the intersection's (x, y) coordinates
+  // equal (u, v) EXACTLY (every intermediate dot/cross product below only
+  // ever multiplies by literal 0 or 1, so there is zero floating-point
+  // rounding between the injected origin.x and the computed `u` — this
+  // engineers a DETERMINISTIC epsilon-negative `u`, rather than hoping to
+  // stumble on one via incidental rounding).
+  const a: Vec3 = [0, 0, 0];
+  const b: Vec3 = [1, 0, 0];
+  const c: Vec3 = [0, 1, 0];
+  const direction: Vec3 = [0, 0, -1];
+
+  it('a ray landing exactly on the AB edge, offset -1e-13 outside it (within BARYCENTRIC_EPSILON), is accepted with u clamped to 0 — not returned negative', () => {
+    const originX = -1e-13; // |originX| well under BARYCENTRIC_EPSILON (1e-12)
+    expect(Math.abs(originX)).toBeLessThan(BARYCENTRIC_EPSILON);
+    const origin: Vec3 = [originX, 0.3, 1];
+
+    const hit = rayTriangleIntersect(origin, direction, a, b, c);
+
+    expect(hit).not.toBeNull();
+    const [w, u, v] = hit!.barycentric;
+    // Every component clamped into [0, 1] — in particular u, which this
+    // setup drives to exactly `originX` (negative) pre-clamp.
+    expect(w).toBeGreaterThanOrEqual(0);
+    expect(w).toBeLessThanOrEqual(1);
+    expect(u).toBe(0); // clamped from the injected -1e-13
+    expect(u).toBeGreaterThanOrEqual(0);
+    expect(v).toBeGreaterThanOrEqual(0);
+    expect(v).toBeLessThanOrEqual(1);
+  });
+
+  it('a ray landing exactly on the AC edge, offset -1e-13 outside it, is accepted with v clamped to 0', () => {
+    const originY = -1e-13;
+    const origin: Vec3 = [0.3, originY, 1];
+
+    const hit = rayTriangleIntersect(origin, direction, a, b, c);
+
+    expect(hit).not.toBeNull();
+    const [w, u, v] = hit!.barycentric;
+    expect(v).toBe(0); // clamped from the injected -1e-13
+    expect(w).toBeGreaterThanOrEqual(0);
+    expect(w).toBeLessThanOrEqual(1);
+    expect(u).toBeGreaterThanOrEqual(0);
+    expect(u).toBeLessThanOrEqual(1);
+  });
+
+  it('a ray landing just OUTSIDE BARYCENTRIC_EPSILON is still rejected (the fix only clamps ACCEPTED hits, it does not widen acceptance)', () => {
+    const origin: Vec3 = [-(BARYCENTRIC_EPSILON * 10), 0.3, 1];
+    const hit = rayTriangleIntersect(origin, direction, a, b, c);
+    expect(hit).toBeNull();
+  });
+
+  it('a normal, well-interior hit is unaffected by the clamp (components unchanged, still sum to ~1)', () => {
+    const origin: Vec3 = [0.2, 0.3, 1];
+    const hit = rayTriangleIntersect(origin, direction, a, b, c);
+    expect(hit).not.toBeNull();
+    const [w, u, v] = hit!.barycentric;
+    expect(u).toBeCloseTo(0.2, 15);
+    expect(v).toBeCloseTo(0.3, 15);
+    expect(w + u + v).toBeCloseTo(1, 15);
   });
 });

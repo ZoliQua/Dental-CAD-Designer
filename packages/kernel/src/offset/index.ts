@@ -7,6 +7,8 @@ export {
   marchingCubes,
   marchingCubesSlab,
   muClampEpsilon,
+  MIN_PITCH_MM,
+  PitchTooSmallError,
   type ScalarGrid,
   type MarchingCubesSoup,
 } from './marchingCubes.ts';

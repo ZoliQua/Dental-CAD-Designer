@@ -8,14 +8,15 @@ describe('CaseDocument', () => {
     id: 'restoration-1',
     type: 'crown',
     teeth: [upperLeftFirstMolar],
+    pontics: [],
+    targetNodeId: 'node-1',
     marginLines: {
       [upperLeftFirstMolar]: {
-        vertexAnchors: [0, 1, 2, 3],
-        controlPoints: [
-          [0, 0, 0],
-          [1, 0, 0],
-          [1, 1, 0],
-          [0, 1, 0],
+        anchors: [
+          { position: [0, 0, 0], triangleIndex: 0, barycentric: [1, 0, 0] },
+          { position: [1, 0, 0], triangleIndex: 1, barycentric: [1, 0, 0] },
+          { position: [1, 1, 0], triangleIndex: 2, barycentric: [1, 0, 0] },
+          { position: [0, 1, 0], triangleIndex: 3, barycentric: [1, 0, 0] },
         ],
         closed: true,
       },
@@ -35,7 +36,7 @@ describe('CaseDocument', () => {
 
   const caseDocument: CaseDocument = {
     id: 'case-1',
-    schemaVersion: 1,
+    schemaVersion: 2,
     createdAt: '2026-01-01T00:00:00.000Z',
     meshes: [
       {
@@ -66,7 +67,7 @@ describe('CaseDocument', () => {
   };
 
   it('constructs a minimal valid case document', () => {
-    expect(caseDocument.schemaVersion).toBe(1);
+    expect(caseDocument.schemaVersion).toBe(2);
     expect(caseDocument.meshes).toHaveLength(1);
     expect(caseDocument.restorations).toHaveLength(1);
   });
@@ -74,7 +75,8 @@ describe('CaseDocument', () => {
   it('keys margin lines by FDI tooth number', () => {
     const marginLine = caseDocument.restorations[0]?.marginLines[26];
     expect(marginLine?.closed).toBe(true);
-    expect(marginLine?.controlPoints).toHaveLength(4);
+    expect(marginLine?.anchors).toHaveLength(4);
+    expect(marginLine?.anchors[0]?.position).toEqual([0, 0, 0]);
   });
 
   it('stores scene transforms as a 16-element column-major matrix', () => {

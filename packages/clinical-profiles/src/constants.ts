@@ -12,6 +12,7 @@
 // here explicitly. This keeps every clinically-meaningful number in exactly
 // one reviewable, versionable place, per PLAN.md §3's parameter-table
 // philosophy.
+import { STANDARD_ZIRCONIA_PROFILE } from './profiles.ts';
 
 /**
  * Default voxel pitch (grid spacing, mm) for SDF-based offset surfacing of
@@ -28,3 +29,37 @@
  * (pitch/2 = 10 µm at this value).
  */
 export const DEFAULT_OFFSET_VOXEL_PITCH_MM = 0.02;
+
+/**
+ * The `RestorationParams` a freshly created `Restoration` (Phase 3 Task 2's
+ * wizard, `apps/client/src/engine/restorations.ts`) is seeded with before
+ * any per-material profile selection UI exists (Phase 4 — PLAN.md §5).
+ * Deliberately IDENTICAL to `STANDARD_ZIRCONIA_PROFILE.restorationParams`
+ * (`profiles.ts`) rather than an independent hand-copied literal — one
+ * number, one citation, zero drift risk; see
+ * PLAN.md §3's table for each field's citation (repeated verbatim on
+ * `materialProfile.ts`'s `validateMaterialProfileShape`, which is what this
+ * value is actually schema/checksum-VALIDATED against at startup — this
+ * binding is just a convenient, always-in-sync alias for the common case of
+ * "no material chosen yet, use the default").
+ */
+export const DEFAULT_RESTORATION_PARAMS = STANDARD_ZIRCONIA_PROFILE.restorationParams;
+
+/**
+ * Default undercut blockout threshold (mm), relative to the restoration's
+ * confirmed insertion axis — a triangle/vertex only counts as "needs
+ * blockout" once its undercut depth (see
+ * `packages/kernel/src/undercut/undercutScan.ts`'s `depthMm`) exceeds this
+ * value, not merely `> 0`.
+ *
+ * Source: PLAN.md §3, "Undercut blockout threshold | 0 µm | — | Relative to
+ * insertion axis" (row present since Phase 0's parameter table, wired to a
+ * real preview only now, Phase 3 Task 10 —
+ * `packages/kernel/src/blockout/blockoutPreview.ts`). Deliberately IDENTICAL
+ * to `STANDARD_ZIRCONIA_PROFILE.undercutBlockoutThresholdMm` rather than an
+ * independent hand-copied literal — same one-number/one-citation/zero-drift
+ * rationale as `DEFAULT_RESTORATION_PARAMS` above; the profile's own
+ * `undercutBlockoutThresholdMm` field (`materialProfile.ts`) is what this
+ * value is actually schema/checksum-VALIDATED against at startup.
+ */
+export const DEFAULT_UNDERCUT_BLOCKOUT_THRESHOLD_MM = STANDARD_ZIRCONIA_PROFILE.undercutBlockoutThresholdMm;

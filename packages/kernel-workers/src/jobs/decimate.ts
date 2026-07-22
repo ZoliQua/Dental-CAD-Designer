@@ -108,8 +108,12 @@ export const decimateMeshJob = async (
   ctx.progress(1);
 
   return {
-    positions: result.mesh.positions,
-    indices: result.mesh.indices,
+    // `result.mesh` is a `RenderOnlyMesh` (@dqcad/kernel's decimate.ts) —
+    // `.renderMesh` is the one place this job is allowed to reach past the
+    // brand and grab the actual buffers to send back over Comlink (see that
+    // type's doc for why it's nested, not flattened).
+    positions: result.mesh.renderMesh.positions,
+    indices: result.mesh.renderMesh.indices,
     inputTriangleCount: result.inputTriangleCount,
     outputTriangleCount: result.outputTriangleCount,
     collapseCount: result.collapseCount,

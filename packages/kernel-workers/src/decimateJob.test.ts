@@ -114,7 +114,7 @@ describe('decimateMesh job', () => {
       // DecimationSession — jobs/decimate.ts's module doc).
       const direct = decimateMesh({ positions, indices }, { targetTriangleCount: target });
       expect(hashBuffers(jobResult.positions, jobResult.indices)).toBe(
-        hashBuffers(direct.mesh.positions, direct.mesh.indices),
+        hashBuffers(direct.mesh.renderMesh.positions, direct.mesh.renderMesh.indices),
       );
       expect(jobResult.outputTriangleCount).toBe(direct.outputTriangleCount);
       expect(jobResult.collapseCount).toBe(direct.collapseCount);

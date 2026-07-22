@@ -171,6 +171,78 @@ import {
 export type { GeodesicPathPayload, GeodesicPathResult, SnapPolylinePayload, SnapPolylineResult, SurfacePointPayload };
 
 import {
+  icpRegisterJob,
+  DegenerateTripleError,
+  type CoarsePointPair,
+  type IcpRegisterPayload,
+  type IcpRegisterResult,
+} from './register.ts';
+export { DegenerateTripleError, type CoarsePointPair, type IcpRegisterPayload, type IcpRegisterResult };
+
+import {
+  proposeMarginJob,
+  validateMarginJob,
+  NoRidgeFoundError,
+  NoClosureError,
+  MARGIN_SEARCH_RADIUS_MM,
+  type MarginSurfacePointPayload,
+  type ProposeMarginPayload,
+  type ProposeMarginResult,
+  type MarginAnchorPayload,
+  type MarginLinePayload,
+  type ValidateMarginPayload,
+  type ValidateMarginResult,
+} from './margin.ts';
+export {
+  NoRidgeFoundError,
+  NoClosureError,
+  MARGIN_SEARCH_RADIUS_MM,
+  type MarginSurfacePointPayload,
+  type ProposeMarginPayload,
+  type ProposeMarginResult,
+  type MarginAnchorPayload,
+  type MarginLinePayload,
+  type ValidateMarginPayload,
+  type ValidateMarginResult,
+};
+
+import {
+  suggestAxisJob,
+  axisHeatmapJob,
+  EmptyRegionError,
+  DegenerateRegionNormalError,
+  AXIS_DEFAULT_ROI_RADIUS_MM,
+  AXIS_SEARCH_PRESETS,
+  type AxisSearchPresetName,
+  type SuggestAxisPayload,
+  type SuggestAxisResult,
+  type SuggestAxisCandidatePayload,
+  type AxisHeatmapPayload,
+  type AxisHeatmapResult,
+  type AxisHeatmapAbutmentStats,
+} from './axis.ts';
+export {
+  EmptyRegionError,
+  DegenerateRegionNormalError,
+  AXIS_DEFAULT_ROI_RADIUS_MM,
+  AXIS_SEARCH_PRESETS,
+  type AxisSearchPresetName,
+  type SuggestAxisPayload,
+  type SuggestAxisResult,
+  type SuggestAxisCandidatePayload,
+  type AxisHeatmapPayload,
+  type AxisHeatmapResult,
+  type AxisHeatmapAbutmentStats,
+};
+
+import {
+  blockoutPreviewJob,
+  type BlockoutPreviewPayload,
+  type BlockoutPreviewJobResult,
+} from './blockout.ts';
+export { type BlockoutPreviewPayload, type BlockoutPreviewJobResult };
+
+import {
   affectedSpanIndices,
   fitSurfaceSpline,
   fitSurfaceSplineSpan,
@@ -283,6 +355,12 @@ export interface JobPayloadMap {
   snapPolyline: SnapPolylinePayload;
   fitSurfaceSpline: FitSurfaceSplinePayload;
   fitSurfaceSplineSpan: FitSurfaceSplineSpanPayload;
+  icpRegister: IcpRegisterPayload;
+  proposeMargin: ProposeMarginPayload;
+  validateMargin: ValidateMarginPayload;
+  suggestAxis: SuggestAxisPayload;
+  axisHeatmap: AxisHeatmapPayload;
+  blockoutPreview: BlockoutPreviewPayload;
 }
 
 export interface JobResultMap {
@@ -317,6 +395,12 @@ export interface JobResultMap {
   snapPolyline: SnapPolylineResult;
   fitSurfaceSpline: FitSurfaceSplineResult;
   fitSurfaceSplineSpan: FitSurfaceSplineSpanResult;
+  icpRegister: IcpRegisterResult;
+  proposeMargin: ProposeMarginResult;
+  validateMargin: ValidateMarginResult;
+  suggestAxis: SuggestAxisResult;
+  axisHeatmap: AxisHeatmapResult;
+  blockoutPreview: BlockoutPreviewJobResult;
 }
 
 export type JobName = keyof JobPayloadMap;
@@ -358,6 +442,12 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   snapPolyline,
   fitSurfaceSpline,
   fitSurfaceSplineSpan,
+  icpRegister: icpRegisterJob,
+  proposeMargin: proposeMarginJob,
+  validateMargin: validateMarginJob,
+  suggestAxis: suggestAxisJob,
+  axisHeatmap: axisHeatmapJob,
+  blockoutPreview: blockoutPreviewJob,
 };
 
 const noopContext: JobContext = {
