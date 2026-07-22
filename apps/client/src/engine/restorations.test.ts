@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { DEFAULT_RESTORATION_PARAMS } from '@dqcad/clinical-profiles';
-import type { FdiTooth, RestorationParams } from '@dqcad/shared-types';
+import type { FdiTooth, MarginLine, RestorationParams } from '@dqcad/shared-types';
 import { caseStore } from './caseStore';
 import { createRestoration, deleteRestoration, PREP_CAPABLE_ROLES, updateRestoration } from './restorations';
 import { useCaseStore } from '../state/caseStore';
@@ -160,6 +160,43 @@ describe('deleteRestoration', () => {
     expect(op.params['restorationId']).toBe(created.id);
     expect(op.params['type']).toBe('crown');
     expect(op.params['teeth']).toEqual([11]);
+    // A bare restoration (no margins, placeholder axis) still gets the new
+    // fields — empty/placeholder, not omitted (Task-11-review Critical 2).
+    expect(op.params['marginLines']).toEqual({});
+    expect(op.params['insertionAxis']).toEqual([0, 0, 1]);
+  });
+
+  it('delete-with-margins: snapshots marginLines and a non-placeholder insertionAxis into the delete op params (Task-11-review Critical 2 — journal completeness)', () => {
+    const created = createRestoration({ type: 'crown', teeth: [11], targetNodeId: null });
+    const marginLine: MarginLine = {
+      anchors: [
+        { position: [0, 0, 0], triangleIndex: 0, barycentric: [1, 0, 0] },
+        { position: [1, 0, 0], triangleIndex: 0, barycentric: [0, 1, 0] },
+        { position: [0, 1, 0], triangleIndex: 0, barycentric: [0, 0, 1] },
+      ],
+      closed: true,
+    };
+    const current = useCaseStore.getState().document.restorations[0]!;
+    caseStore.updateRestoration(
+      { ...current, marginLines: { 11: marginLine }, insertionAxis: [0.1, 0.2, 0.9746794] },
+      {
+        id: 'op-set-margin',
+        name: 'margin-edit',
+        params: {},
+        inputHashes: [],
+        outputHashes: [],
+        kernelVersion: '0.0.0-test',
+        timestamp: new Date().toISOString(),
+      },
+    );
+
+    deleteRestoration(created.id);
+
+    const doc = useCaseStore.getState().document;
+    const op = doc.history.at(-1)!;
+    expect(op.name).toBe('restoration-delete');
+    expect(op.params['marginLines']).toEqual({ 11: marginLine });
+    expect(op.params['insertionAxis']).toEqual([0.1, 0.2, 0.9746794]);
   });
 
   it('clears selection if the deleted restoration was selected', () => {

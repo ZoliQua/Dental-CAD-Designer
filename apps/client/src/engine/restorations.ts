@@ -40,7 +40,7 @@ export const PREP_CAPABLE_ROLES: readonly MeshRole[] = ['prepDie', 'upperJaw', '
  * DEFAULT rather than a detectable sentinel). Every consumer of
  * `insertionAxis` before Task 9 runs is expected to treat it as "not yet
  * meaningful", exactly like a fresh restoration's empty `marginLines`. */
-const PLACEHOLDER_INSERTION_AXIS: readonly [number, number, number] = [0, 0, 1];
+export const PLACEHOLDER_INSERTION_AXIS: readonly [number, number, number] = [0, 0, 1];
 
 export interface CreateRestorationInput {
   type: RestorationType;
@@ -165,6 +165,21 @@ export function updateRestoration(id: string, patch: UpdateRestorationInput): Re
  * rationale as engine/repair.ts's `paramsFor` capturing headline result
  * counts alongside the request). A no-op (still journals) if `id` is
  * already gone — mirrors `caseStore.removeRestoration`'s tolerant style.
+ *
+ * Task-11-review Critical 2 (journal completeness, CLAUDE.md invariant 5
+ * "no silent data mutation" — a destructive delete is the sharpest case of
+ * this): a restoration's `marginLines` (hand-traced, Phase 3 Task 4/5 —
+ * curvature-ridge walk + per-anchor drag corrections) and `insertionAxis`
+ * (Phase 3 Task 9 — coarse->fine undercut search, or a manual slider
+ * session) are NOT reproducible from anything else in the case document —
+ * deleting the restoration destroyed them permanently, but the OLD
+ * `restoration-delete` op only ever recorded `type`/`teeth`, leaving no
+ * trace of what was actually lost. Both are snapshotted into `params` here
+ * (display-only bookkeeping for audit/support — this op still does not
+ * RESTORE anything on replay, same as before) so a journal reader can see
+ * exactly what a delete removed. `ui/RestorationWizard.tsx`'s
+ * `handleDelete` gates this call behind an explicit confirm dialog whenever
+ * either is present/non-placeholder (same Critical 2 fix).
  */
 export function deleteRestoration(id: string): void {
   const current = caseStore.getDocument().restorations.find((restoration) => restoration.id === id);
@@ -175,6 +190,8 @@ export function deleteRestoration(id: string): void {
       restorationId: id,
       type: current?.type ?? null,
       teeth: current?.teeth ?? [],
+      marginLines: current?.marginLines ?? {},
+      insertionAxis: current?.insertionAxis ?? PLACEHOLDER_INSERTION_AXIS,
     },
     inputHashes: [],
     outputHashes: [],
@@ -182,4 +199,17 @@ export function deleteRestoration(id: string): void {
     timestamp: nowIso(),
   };
   caseStore.removeRestoration(id, operation);
+}
+
+/** Whether `restoration` carries any work Task-11-review Critical 2 requires
+ * an explicit confirm for before deleting: a hand-traced margin line on any
+ * tooth, or an `insertionAxis` that has moved off the fresh-restoration
+ * placeholder (`PLACEHOLDER_INSERTION_AXIS`) — i.e. a real suggest/manual-
+ * adjust session has run (`axis-set`, engine/axis.ts's `confirmAxis`).
+ * Exported so `ui/RestorationWizard.tsx` can decide whether to show the
+ * delete-confirm dialog without duplicating this rule. */
+export function restorationHasIrreplaceableWork(restoration: Restoration): boolean {
+  const hasMarginLines = Object.keys(restoration.marginLines).length > 0;
+  const hasNonPlaceholderAxis = restoration.insertionAxis.some((component, i) => component !== PLACEHOLDER_INSERTION_AXIS[i]);
+  return hasMarginLines || hasNonPlaceholderAxis;
 }

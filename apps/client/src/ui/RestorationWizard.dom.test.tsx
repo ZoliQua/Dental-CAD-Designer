@@ -17,6 +17,13 @@ import { caseStore } from '../engine/caseStore';
 // instead (TypeScript still structurally checks it against
 // `caseStore.registerImportedMesh`'s parameter type).
 import { type MeshStats } from '../engine/repair';
+// `createRestoration` (not a hand-built `Restoration` object literal) keeps
+// this test off `@dqcad/clinical-profiles`'s `DEFAULT_RESTORATION_PARAMS`
+// directly — the `ui` layer may not import `clinical-profiles` either (same
+// CLAUDE.md layer rule as the `MeshStats` note above); `createRestoration`
+// already defaults `params` to it internally.
+import { createRestoration } from '../engine/restorations';
+import type { MarginLine } from '@dqcad/shared-types';
 import { RestorationWizard } from './RestorationWizard';
 
 const EMPTY_REPORT = { weldEpsilonMm: 1e-6, steps: [] };
@@ -123,5 +130,83 @@ describe('RestorationWizard — critical path', () => {
     const warning = await screen.findByTestId('bridge-contiguity-warning');
     expect(warning.textContent).toBeTruthy();
     expect((screen.getByTestId('restoration-submit-button') as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+// Task-11-review Critical 2: deleting a restoration with hand-traced margins
+// or a set insertion axis must go through an explicit confirm dialog and
+// journal a snapshot of what's being lost — see engine/restorations.ts's
+// `deleteRestoration`/`restorationHasIrreplaceableWork` doc.
+describe('RestorationWizard — delete confirm gate (Task-11-review Critical 2)', () => {
+  it('deletes a bare restoration (no margins, placeholder axis) immediately, with no confirm dialog', async () => {
+    const user = userEvent.setup();
+    const node = registerPrepScan('wizard-delete-bare-scan');
+    // `createRestoration` leaves `marginLines: {}` / the placeholder
+    // `insertionAxis` — no margins, no set axis, so no confirm is expected.
+    createRestoration({ type: 'crown', teeth: [11], targetNodeId: node.id });
+
+    render(<RestorationWizard />);
+    expect(await screen.findByTestId('restoration-chip-11')).toBeTruthy();
+
+    await user.click(screen.getByTestId('restoration-delete-button'));
+
+    expect(screen.queryByTestId('restoration-delete-confirm-message')).toBeNull();
+    expect(screen.queryByTestId('restoration-row')).toBeNull();
+    expect(caseStore.getDocument().restorations).toHaveLength(0);
+  });
+
+  it('gates deletion of a restoration with a hand-traced margin line behind a confirm dialog; cancel keeps it, confirm deletes it and journals the margin/axis snapshot', async () => {
+    const user = userEvent.setup();
+    const node = registerPrepScan('wizard-delete-margin-scan');
+    const marginLine: MarginLine = {
+      anchors: [
+        { position: [0, 0, 0], triangleIndex: 0, barycentric: [1, 0, 0] },
+        { position: [1, 0, 0], triangleIndex: 0, barycentric: [0, 1, 0] },
+        { position: [0, 1, 0], triangleIndex: 0, barycentric: [0, 0, 1] },
+      ],
+      closed: true,
+    };
+    const created = createRestoration({ type: 'crown', teeth: [12], targetNodeId: node.id });
+    // Attach the hand-traced margin line directly via caseStore (mirrors
+    // engine/marginEditor.ts's `commit()`'s own "journal-only" pattern —
+    // this test only needs the RESULTING restoration shape, not to drive
+    // the full margin editor UI).
+    caseStore.updateRestoration(
+      { ...created, marginLines: { 12: marginLine } },
+      {
+        id: 'op-set-margin',
+        name: 'margin-edit',
+        params: {},
+        inputHashes: [],
+        outputHashes: [],
+        kernelVersion: '0.0.0-test',
+        timestamp: new Date().toISOString(),
+      },
+    );
+
+    render(<RestorationWizard />);
+    expect(await screen.findByTestId('restoration-chip-12')).toBeTruthy();
+
+    await user.click(screen.getByTestId('restoration-delete-button'));
+    const message = await screen.findByTestId('restoration-delete-confirm-message');
+    expect(message.textContent).toBeTruthy();
+
+    // Cancel: restoration survives.
+    await user.click(screen.getByTestId('restoration-delete-confirm-cancel'));
+    expect(screen.queryByTestId('restoration-delete-confirm-message')).toBeNull();
+    expect(caseStore.getDocument().restorations).toHaveLength(1);
+
+    // Re-open and confirm: restoration is deleted, and the delete op's
+    // params carry the margin snapshot (journal completeness).
+    await user.click(screen.getByTestId('restoration-delete-button'));
+    await screen.findByTestId('restoration-delete-confirm-message');
+    await user.click(screen.getByTestId('restoration-delete-confirm-confirm'));
+
+    expect(screen.queryByTestId('restoration-delete-confirm-message')).toBeNull();
+    expect(caseStore.getDocument().restorations).toHaveLength(0);
+    const deleteOp = caseStore.getDocument().history.at(-1)!;
+    expect(deleteOp.name).toBe('restoration-delete');
+    expect(deleteOp.params['marginLines']).toEqual({ 12: marginLine });
+    expect(deleteOp.params['insertionAxis']).toEqual([0, 0, 1]);
   });
 });

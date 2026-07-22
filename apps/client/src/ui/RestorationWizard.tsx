@@ -26,7 +26,9 @@ import {
 import {
   createRestoration,
   deleteRestoration,
+  PLACEHOLDER_INSERTION_AXIS,
   PREP_CAPABLE_ROLES,
+  restorationHasIrreplaceableWork,
   updateRestoration,
 } from '../engine/restorations';
 import { useCaseStore } from '../state/caseStore';
@@ -74,6 +76,16 @@ export function RestorationWizard() {
   const document = useCaseStore((state) => state.document);
   const selectedRestorationId = useCaseStore((state) => state.selectedRestorationId);
   const [draft, setDraft] = useState<Draft>(emptyDraft());
+  // Task-11-review Critical 2: a restoration carrying hand-traced margin
+  // lines and/or a set insertion axis must never be deleted with no
+  // confirmation — `null` when no delete is pending; set to the target
+  // restoration when `handleDelete` determines it has irreplaceable work
+  // (see `restorationHasIrreplaceableWork`), gating the actual
+  // `deleteRestoration` call behind the dialog below. A restoration with
+  // NEITHER (a bare, freshly-created one) still deletes immediately, same
+  // as before this fix — the confirm is specifically about NOT silently
+  // losing manual work, not about every delete.
+  const [pendingDelete, setPendingDelete] = useState<Restoration | null>(null);
 
   const targetOptions = document.scene.filter((node) => PREP_CAPABLE_ROLES.includes(node.role));
 
@@ -115,10 +127,31 @@ export function RestorationWizard() {
   }
 
   function handleDelete(id: string): void {
+    const target = document.restorations.find((restoration) => restoration.id === id);
+    if (target && restorationHasIrreplaceableWork(target)) {
+      setPendingDelete(target);
+      return;
+    }
+    performDelete(id);
+  }
+
+  function performDelete(id: string): void {
     deleteRestoration(id);
     if (draft.editingId === id) {
       setDraft(emptyDraft());
     }
+    if (pendingDelete?.id === id) {
+      setPendingDelete(null);
+    }
+  }
+
+  function confirmPendingDelete(): void {
+    if (!pendingDelete) return;
+    performDelete(pendingDelete.id);
+  }
+
+  function cancelPendingDelete(): void {
+    setPendingDelete(null);
   }
 
   function handleSubmit(): void {
@@ -259,8 +292,52 @@ export function RestorationWizard() {
           )}
         </div>
       </form>
+
+      {pendingDelete && (
+        <div className="restoration-delete-confirm__backdrop">
+          <div className="restoration-delete-confirm" role="dialog" aria-modal="true">
+            <h3 className="restoration-delete-confirm__title">{t('restoration.deleteConfirm.title')}</h3>
+            <p className="restoration-delete-confirm__message" data-testid="restoration-delete-confirm-message">
+              {t(
+                Object.keys(pendingDelete.marginLines).length > 0 && restorationHasNonPlaceholderAxis(pendingDelete)
+                  ? 'restoration.deleteConfirm.messageBoth'
+                  : Object.keys(pendingDelete.marginLines).length > 0
+                    ? 'restoration.deleteConfirm.messageMarginsOnly'
+                    : 'restoration.deleteConfirm.messageAxisOnly',
+                { marginCount: Object.keys(pendingDelete.marginLines).length },
+              )}
+            </p>
+            <div className="restoration-delete-confirm__actions">
+              <button
+                type="button"
+                onClick={cancelPendingDelete}
+                data-testid="restoration-delete-confirm-cancel"
+              >
+                {t('restoration.deleteConfirm.cancelButton')}
+              </button>
+              <button
+                type="button"
+                onClick={confirmPendingDelete}
+                data-testid="restoration-delete-confirm-confirm"
+              >
+                {t('restoration.deleteConfirm.confirmButton')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
+}
+
+/** `engine/restorations.ts` only exports the COMBINED
+ * `restorationHasIrreplaceableWork` predicate (margins OR axis) — this
+ * picks apart just the axis half, reusing its exported
+ * `PLACEHOLDER_INSERTION_AXIS`, to choose which of the three delete-confirm
+ * message variants to show (margins-only/axis-only/both) — a UI-copy
+ * concern that doesn't belong in the engine layer. */
+function restorationHasNonPlaceholderAxis(restoration: Restoration): boolean {
+  return restoration.insertionAxis.some((component, i) => component !== PLACEHOLDER_INSERTION_AXIS[i]);
 }
 
 function targetOptionLabel(node: SceneNode, meshes: CaseDocument['meshes']): string {
