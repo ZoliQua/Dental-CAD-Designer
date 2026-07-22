@@ -14,7 +14,6 @@ import {
   caseIdParamsSchema,
   createCaseBodySchema,
   createCaseResponseSchema,
-  getCaseResponseSchema,
   healthResponseSchema,
   listCasesResponseSchema,
   meshHashParamsSchema,
@@ -176,9 +175,13 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     },
   );
 
+  // NO `schema.response` here — deliberately (Task-11-review Critical 4):
+  // see schemas.ts's comment where `getCaseResponseSchema` used to live for
+  // why a strict response schema on this route silently corrupts/500s on a
+  // legacy-shaped stored document. `params` validation is unaffected.
   app.get<{ Params: { id: string } }>(
     '/api/cases/:id',
-    { schema: { params: caseIdParamsSchema, response: getCaseResponseSchema } },
+    { schema: { params: caseIdParamsSchema } },
     async (request, reply) => {
       const found = await prisma.case.findUnique({ where: { id: request.params.id } });
       if (!found) {

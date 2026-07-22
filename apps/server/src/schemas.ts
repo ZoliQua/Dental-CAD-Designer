@@ -384,9 +384,29 @@ export const putCaseResponseSchema = {
   200: caseSummarySchema,
 } as const;
 
-export const getCaseResponseSchema = {
-  200: caseDocumentSchema,
-} as const;
+// GET /api/cases/:id has NO response schema (Task-11-review Critical 4) —
+// deliberately, not an oversight. `caseDocumentSchema` above is STRICT
+// (`additionalProperties: false`, a full `required` list) because it is ALSO
+// `putCaseBodySchema` — a gate the CLIENT must satisfy before writing.
+// Reusing it for GET's response was wrong: Fastify compiles any
+// `schema.response` entry through `@fastify/fast-json-stringify-compiler`
+// (fast-json-stringify), which THROWS on a missing required property and
+// SILENTLY DROPS any property not listed in `properties` — so a document
+// stored before a schema migration added a required field (e.g. a
+// pre-backfill-v2 `Restoration` missing `pontics`/`targetNodeId`), or one
+// still carrying a since-removed field (e.g. an old `controlPoints`), could
+// NEVER reach the client: the server 500s (or silently mangles the JSON)
+// before the bytes leave it — even though `apps/client/src/engine/
+// caseDocumentMigration.ts` exists PRECISELY to accept and upgrade exactly
+// that shape once it arrives. Omitting `schema.response` entirely for this
+// route makes Fastify fall back to plain `JSON.stringify` (no schema
+// involved at all) — whatever is in `documentJson` comes back byte-
+// equivalent (as JSON) to what `JSON.parse(found.documentJson)` produced.
+// The client's migration layer is the validator for a GET'd document, not
+// the server's response serializer. `PUT`'s `putCaseBodySchema` (request-
+// side, strict) is UNCHANGED — the server still only ever ACCEPTS a
+// current-shape document; it just no longer refuses to hand back one it
+// already has stored. See docs/adr/005-case-document-schema-evolution.md.
 
 // ---------------------------------------------------------------------------
 // Mesh storage (Task 11): POST/GET/HEAD /api/meshes[/:hash]. The raw-bytes
