@@ -30,6 +30,7 @@ import {
   MARGIN_SMOOTHNESS_CURVATURE_THRESHOLD_MM_INV,
 } from './validate.ts';
 import { shoulderPrepMesh } from './marginRidge.test-fixtures.ts';
+import { icosphereMesh } from '../halfedge/halfedge.test-fixtures.ts';
 
 // ---------------------------------------------------------------------------
 // Fixture helpers
@@ -111,6 +112,86 @@ describe('validateMarginLine — ACCEPTANCE: seeded self-intersection rejection 
     const report = validateMarginLine(mesh, bvh, margin);
     expect(report.selfIntersecting).toBe(false);
     expect(report.selfIntersections).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fix batch (Task-11-final-review Important 8) — a genuine self-intersection
+// between COARSE, mm-spaced MANUAL anchors (no `resampledPoints`, no dense
+// auto-proposal) must still be caught — see `MARGIN_SELF_INTERSECTION_
+// LENGTH_SCALE_FACTOR`'s doc (validate.ts) for the sagitta-driven root
+// cause. Uses a genuinely 3D-curved fixture (an icosphere, not
+// `shoulderPrepMesh`'s flat P2 ring — see this describe block's own doc for
+// why a PLANAR ring cannot reproduce this bug at all: a chord crossing
+// confined to a single plane is EXACT (distance 0) regardless of density,
+// so it can never demonstrate the coarse-chord-on-a-curved-surface gap this
+// fix targets).
+// ---------------------------------------------------------------------------
+
+describe('validateMarginLine — fix batch (Important 8): manual (mm-spaced) self-intersection is caught on curved geometry', () => {
+  // A "figure eight" alternating between two small latitude rings on a real
+  // sphere (radius 5mm) — deliberately NOT a single flat ring (see this
+  // block's own doc): interleaving two rings at +/-latDeg keeps the curve
+  // genuinely out-of-plane, so a reordered crossing is a true 3D secant-vs-
+  // surface (sagitta) gap, not an exact planar intersection.
+  function sphereFigureEight(mesh: IndexedMesh, radius: number, count: number, latDeg: number, lonSpanDeg: number): MarginAnchorLike[] {
+    const bvh = buildBvh(mesh);
+    const half = count / 2;
+    const anchorAt = (lat: number, lon: number): MarginAnchorLike => {
+      const latRad = (lat * Math.PI) / 180;
+      const lonRad = (lon * Math.PI) / 180;
+      const p: [number, number, number] = [
+        radius * Math.cos(latRad) * Math.cos(lonRad),
+        radius * Math.cos(latRad) * Math.sin(lonRad),
+        radius * Math.sin(latRad),
+      ];
+      const sp = snapToSurface(mesh, bvh, p);
+      return { position: evaluateSurfacePoint(mesh, sp), triangleIndex: sp.triangleIndex, barycentric: sp.barycentric };
+    };
+    const ringA: MarginAnchorLike[] = [];
+    const ringB: MarginAnchorLike[] = [];
+    for (let i = 0; i < half; i++) {
+      const lon = -lonSpanDeg / 2 + (i * lonSpanDeg) / (half - 1);
+      ringA.push(anchorAt(latDeg, lon));
+      ringB.push(anchorAt(-latDeg, lon));
+    }
+    const order: MarginAnchorLike[] = [];
+    for (let i = 0; i < half; i++) {
+      order.push(ringA[i]!);
+      order.push(ringB[i]!);
+    }
+    return order;
+  }
+
+  it('a manual, mm-spaced anchor figure-eight (no resampledPoints) reports selfIntersecting: true with the length-scaled tolerance', () => {
+    const radius = 5;
+    const mesh = icosphereMesh(radius, 5);
+    // count=8, latDeg=10, lonSpanDeg=20 -> ~1.7mm anchor spacing (genuinely
+    // "manual, mm apart", not a dense auto-proposal/resampled scale) and a
+    // MEASURED true 3D crossing gap of ~0.05mm — inside this task's cited
+    // ~0.08mm-scale manual-crossing regime and comfortably ABOVE both
+    // `MARGIN_SELF_INTERSECTION_TOLERANCE_MM` (0.015mm) and the real dense-
+    // margin noise floor (~0.006-0.0075mm) this fixed tolerance was tuned
+    // against — i.e. exactly the case the FIXED tolerance alone misses.
+    const anchors = sphereFigureEight(mesh, radius, 8, 10, 20);
+    const margin: MarginLineLike = { anchors, closed: true }; // deliberately NO resampledPoints
+    const report = validateMarginLine(mesh, buildBvh(mesh), margin);
+    expect(report.selfIntersecting).toBe(true);
+    expect(report.selfIntersections.length).toBeGreaterThan(0);
+    for (const hit of report.selfIntersections) {
+      expect(Number.isFinite(hit.pointMm[0])).toBe(true);
+    }
+    expect(classifyMarginValidation(report).blocked).toBe(true);
+  });
+
+  it('REGRESSION PROOF: the SAME figure-eight is MISSED without the length-scaling fix (selfIntersectionLengthScaleFactor: 0 reproduces the pre-fix bug)', () => {
+    const radius = 5;
+    const mesh = icosphereMesh(radius, 5);
+    const anchors = sphereFigureEight(mesh, radius, 8, 10, 20);
+    const margin: MarginLineLike = { anchors, closed: true };
+    const reportPreFix = validateMarginLine(mesh, buildBvh(mesh), margin, { selfIntersectionLengthScaleFactor: 0 });
+    expect(reportPreFix.selfIntersecting).toBe(false);
+    expect(classifyMarginValidation(reportPreFix).blocked).toBe(false);
   });
 });
 

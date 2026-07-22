@@ -43,7 +43,7 @@
 // documented fallback (per this task's brief) is a coarser interactive
 // mode + a precise on-release scan, not a timer retrofit onto this same
 // call site.
-import { KERNEL_VERSION, type SuggestAxisCandidatePayload } from '@dqcad/kernel-workers';
+import { KERNEL_VERSION, AXIS_SEARCH_PRESETS, type SuggestAxisCandidatePayload } from '@dqcad/kernel-workers';
 import { DEFAULT_UNDERCUT_BLOCKOUT_THRESHOLD_MM } from '@dqcad/clinical-profiles';
 import type { FdiTooth, MarginAnchor, MarginLine, Operation, Restoration, Vec3 } from '@dqcad/shared-types';
 import { caseStore } from './caseStore';
@@ -56,6 +56,7 @@ import {
   type AxisAbutmentReadout,
   type AxisBlockoutStats,
   type AxisCandidateSummary,
+  type AxisSearchMode,
 } from '../state/axisStore';
 
 const DEG2RAD = Math.PI / 180;
@@ -151,6 +152,29 @@ export class AxisMarginUnresolvedError extends Error {
   }
 }
 
+/** `AxisStartError`'s discriminant — every KNOWN, enumerable precondition
+ * `start()` itself validates (as opposed to `AxisMarginUnresolvedError`,
+ * which carries its own `teeth` payload and stays a separate class — see
+ * that class's doc). Fix batch (Task-11-final-review Important 12). */
+export type AxisStartErrorCode = 'noRestoration' | 'noTargetScan' | 'noMarginLine';
+
+/** Thrown by `start()` for a KNOWN precondition failure that is NOT the
+ * unresolved-margin-anchor case (`AxisMarginUnresolvedError` covers that
+ * one) — `ui/AxisPanel.tsx` maps `code` to a translated message instead of
+ * falling back to the raw (English) `message`, the same "typed error ->
+ * i18n key" shape `AxisMarginUnresolvedError` already established (Fix
+ * batch, Important 12: this module's start/run error paths previously
+ * hardcoded English strings with no structure for the panel to translate
+ * from). */
+export class AxisStartError extends Error {
+  readonly code: AxisStartErrorCode;
+  constructor(code: AxisStartErrorCode, message: string) {
+    super(message);
+    this.name = 'AxisStartError';
+    this.code = code;
+  }
+}
+
 /** `MarginAnchor[]` -> the worker job's `MarginSurfacePointPayload[]`
  * currency (triangleIndex + barycentric only — `position` is dropped, the
  * job re-evaluates from the mesh itself). */
@@ -191,18 +215,18 @@ class AxisEngine {
    * 6 — see `AxisMarginUnresolvedError`'s doc: an unresolved anchor
    * indexes `mesh.indices[-3]` downstream, producing a `NaN` ROI rather
    * than a clean error, if it were ever allowed through).
-   * @throws {Error} if the restoration doesn't exist, has no target scan,
-   * or has no confirmed margin line yet.
+   * @throws {AxisStartError} if the restoration doesn't exist, has no
+   * target scan, or has no confirmed margin line yet.
    * @throws {AxisMarginUnresolvedError} if one or more margin-bearing teeth
    * has a margin line with an unresolved anchor — re-snap it first
    * (`marginEditor.reSnapUnresolvedAnchors`). */
   start(restorationId: string): void {
     const restoration = this.findRestoration(restorationId);
     if (!restoration) {
-      throw new Error(`axisEngine.start: no restoration registered for id ${restorationId}`);
+      throw new AxisStartError('noRestoration', `axisEngine.start: no restoration registered for id ${restorationId}`);
     }
     if (!restoration.targetNodeId) {
-      throw new Error('axisEngine.start: restoration has no assigned target scan yet');
+      throw new AxisStartError('noTargetScan', 'axisEngine.start: restoration has no assigned target scan yet');
     }
     const unresolvedTeeth = unresolvedAbutmentTeethOf(restoration);
     if (unresolvedTeeth.length > 0) {
@@ -210,7 +234,7 @@ class AxisEngine {
     }
     const abutmentTeeth = abutmentTeethOf(restoration);
     if (abutmentTeeth.length === 0) {
-      throw new Error('axisEngine.start: restoration has no confirmed margin line yet');
+      throw new AxisStartError('noMarginLine', 'axisEngine.start: restoration has no confirmed margin line yet');
     }
     this.generation++;
     this.blockoutGeneration++;
@@ -218,6 +242,15 @@ class AxisEngine {
     useAxisStore
       .getState()
       .start(restorationId, restoration.targetNodeId, abutmentTeeth, restoration.insertionAxis, DEFAULT_UNDERCUT_BLOCKOUT_THRESHOLD_MM);
+  }
+
+  /** Sets the search-budget preset (`AxisSearchMode`) the NEXT
+   * `runSuggest()` will use — see `state/axisStore.ts`'s `AxisSearchMode`/
+   * `AXIS_SEARCH_PRESETS` doc (Fix batch, Important 7). Callable at any
+   * phase, same "only affects a SUBSEQUENT call" reasoning as
+   * `alignmentEngine.setOverlapMode`. */
+  setSearchMode(mode: AxisSearchMode): void {
+    useAxisStore.getState().setSearchMode(mode);
   }
 
   /** Runs `suggestAxis` (worker), updating the store with the winning
@@ -240,9 +273,23 @@ class AxisEngine {
       if (myGeneration !== this.generation) return;
 
       const abutmentMarginLoops = store.abutmentTeeth.map((tooth) => toMarginLoopPayload(restoration.marginLines[tooth]!.anchors));
+      // Fix batch (Important 7): previously this payload never set
+      // coarseCount/refineCount/refineCapAngleRad at all, so `suggestAxis`
+      // silently always ran `AXIS_SEARCH_PRESETS.interactive`'s own kernel
+      // DEFAULTS — `AXIS_SEARCH_PRESETS.precise` (a documented, tested
+      // kernel option) was unreachable from the UI. The budget now always
+      // flows from the store's currently-selected `searchMode` preset.
+      const searchMode = store.searchMode;
+      const preset = AXIS_SEARCH_PRESETS[searchMode];
       const result = await getPool().run(
         'suggestAxis',
-        { contentHash: record.contentHash, abutmentMarginLoops },
+        {
+          contentHash: record.contentHash,
+          abutmentMarginLoops,
+          coarseCount: preset.coarseCount,
+          refineCount: preset.refineCount,
+          refineCapAngleRad: 'refineCapAngleRad' in preset ? preset.refineCapAngleRad : undefined,
+        },
         {
           affinityKey: record.contentHash,
           onProgress: (fraction) => {
@@ -266,6 +313,8 @@ class AxisEngine {
         elevationDeg,
         ranked: result.ranked.map(toCandidateSummary),
         perAbutment,
+        coarseCount: result.coarseCount,
+        refineCount: result.refineCount,
       });
 
       // AWAITED here (unlike the manual-adjust slider path below, which is
@@ -589,6 +638,18 @@ class AxisEngine {
         elevationDeg: store.elevationDeg,
         ranked: store.ranked.slice(0, 5), // top-5 provenance — full list is worker-session-only, not journal-worthy
         abutmentTeeth: store.abutmentTeeth,
+        // Fix batch (Important 7): the search-budget preset (and the
+        // ACTUAL coarseCount/refineCount the last suggestAxis call ran, per
+        // its own result — not merely the currently-selected preset, which
+        // may have changed since) is now journaled alongside the winning
+        // axis — previously unreachable-from-the-UI/unjournaled, unlike
+        // `alignment-apply`'s already-fixed `overlapMode`/
+        // `outlierRejectionFraction` pair (engine/alignment.ts). `null`s
+        // when no suggestion has run this session (a manual-only axis has
+        // no search budget to report).
+        searchMode: store.searchMode,
+        searchCoarseCount: store.lastSearchCoarseCount,
+        searchRefineCount: store.lastSearchRefineCount,
         blockout: {
           thresholdMm: store.blockoutThresholdMm,
           previewVisible: store.blockoutPreviewVisible,

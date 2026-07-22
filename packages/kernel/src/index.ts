@@ -54,7 +54,13 @@
  * `undercut/undercutScan.ts`'s `sampleDepthAlongAxis` — the existing
  * `depthFromSample` internal made public, no behavior change to any
  * existing function. */
-export const KERNEL_VERSION = '0.7.0';
+/** Fix batch (Important 13): drops the WALL-CLOCK `elapsedMs` field from the
+ * kernel-ops golden's `suggestAxis` `meta` — the timing was never a
+ * kernel-algorithm output (no hash depended on it), only a diagnostic
+ * embedded in the committed golden file, which made every regeneration
+ * byte-non-reproducible for no numerical reason. No kernel algorithm or
+ * output hash changes — see docs/CHANGELOG-kernel.md's `[0.7.1]` entry. */
+export const KERNEL_VERSION = '0.7.1';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -277,6 +283,8 @@ export {
   resampleSurfaceSpline,
   fromMarginLine,
   toMarginLine,
+  MarginAnchorMismatchError,
+  MARGIN_ANCHOR_AGREEMENT_TOLERANCE_MM,
   type ArcLengthTable,
   type CatmullRomFitResult,
   type CatmullRomSpan,
@@ -285,6 +293,7 @@ export {
   type SurfaceSplineSpan,
   type MarginAnchorLike,
   type MarginLineLike,
+  type MarginAnchorMismatchKind,
 } from './spline/index.ts';
 
 export {
@@ -385,6 +394,7 @@ export {
   validateMarginLine,
   classifyMarginValidation,
   MARGIN_SELF_INTERSECTION_TOLERANCE_MM,
+  MARGIN_SELF_INTERSECTION_LENGTH_SCALE_FACTOR,
   MARGIN_SMOOTHNESS_CURVATURE_THRESHOLD_MM_INV,
   MARGIN_VALIDATE_ZERO_LENGTH_EPSILON_MM,
   MARGIN_VALIDATE_MIN_ANCHOR_COUNT,

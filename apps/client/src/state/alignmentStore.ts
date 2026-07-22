@@ -10,6 +10,17 @@
 // explicit-confirm lifecycle, not a single measurement's point picks.
 import { create } from 'zustand';
 
+/** `AlignmentEngineError`'s discriminant (engine/alignment.ts) — defined
+ * HERE (not in `engine/`) so this store can type its own `errorCode` field
+ * without importing FROM `engine/` (this repo's established direction is
+ * `engine -> state`, never the reverse — see this file's own
+ * `AlignmentOverlapMode` for the same "type owned by state/, re-exported by
+ * engine/" convention). Every code `engine/alignment.ts` itself
+ * throws/reports for a KNOWN precondition failure — never a job/kernel
+ * crash, which stays free-form (`error` alone, `errorCode: null`). Fix
+ * batch (Task-11-final-review Important 12). */
+export type AlignmentEngineErrorCode = 'missingNode' | 'sameNode' | 'nonIdentityTransform' | 'meshGone';
+
 export type AlignmentPhase =
   | 'idle'
   | 'pickingPairs'
@@ -92,13 +103,20 @@ interface AlignmentState {
   progress: number;
   result: AlignmentResult | null;
   error: string | null;
+  /** The KNOWN, enumerable failure code for `error`, when `error` came from
+   * one of `engine/alignment.ts`'s own precondition checks — `null` for a
+   * downstream job/kernel failure (dynamic, untranslatable message; see
+   * `AlignmentEngineErrorCode`'s doc). `ui/AlignmentPanel.tsx` uses this to
+   * pick a fully translated message instead of the raw `error` string (Fix
+   * batch, Important 12). */
+  errorCode: AlignmentEngineErrorCode | null;
   startPicking: (srcNodeId: string, dstNodeId: string) => void;
   recordPick: (pairCount: number, awaitingSide: 'src' | 'dst') => void;
   setOverlapMode: (overlapMode: AlignmentOverlapMode) => void;
   setRunning: () => void;
   setProgress: (progress: number) => void;
   setResult: (result: AlignmentResult) => void;
-  setError: (error: string) => void;
+  setError: (error: string, errorCode?: AlignmentEngineErrorCode) => void;
   reset: () => void;
 }
 
@@ -115,6 +133,7 @@ const INITIAL_STATE: Omit<
   progress: 0,
   result: null,
   error: null,
+  errorCode: null,
 };
 
 export const useAlignmentStore = create<AlignmentState>((set) => ({
@@ -128,13 +147,14 @@ export const useAlignmentStore = create<AlignmentState>((set) => ({
       awaitingSide: 'src',
       result: null,
       error: null,
+      errorCode: null,
     }),
   recordPick: (pairCount, awaitingSide) =>
     set({ pairCount, awaitingSide, phase: pairCount >= 3 ? 'ready' : 'pickingPairs' }),
   setOverlapMode: (overlapMode) => set({ overlapMode }),
-  setRunning: () => set({ phase: 'running', progress: 0, error: null }),
+  setRunning: () => set({ phase: 'running', progress: 0, error: null, errorCode: null }),
   setProgress: (progress) => set({ progress }),
   setResult: (result) => set({ phase: 'preview', progress: 1, result }),
-  setError: (error) => set({ phase: 'error', error }),
+  setError: (error, errorCode) => set({ phase: 'error', error, errorCode: errorCode ?? null }),
   reset: () => set({ ...INITIAL_STATE }),
 }));

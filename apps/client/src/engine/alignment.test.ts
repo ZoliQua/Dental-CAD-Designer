@@ -10,7 +10,7 @@ import type { IntakeReport, MeshStats } from '@dqcad/kernel-workers';
 import type { Vec3 } from '@dqcad/shared-types';
 import { useCaseStore } from '../state/caseStore';
 import { useAlignmentStore } from '../state/alignmentStore';
-import { alignmentEngine, type AlignPickRequest } from './alignment';
+import { alignmentEngine, AlignmentEngineError, type AlignPickRequest } from './alignment';
 import { caseStore } from './caseStore';
 import { resetBvhCacheForTests } from './workers';
 
@@ -284,5 +284,55 @@ describe('alignmentEngine — picking safety', () => {
       },
     );
     expect(() => alignmentEngine.startPicking(srcNodeId, dstNodeId)).toThrow();
+  });
+});
+
+describe('alignmentEngine — fix batch (Important 12): typed error codes for i18n routing', () => {
+  it('startPicking throws AlignmentEngineError("missingNode") for a nonexistent node', () => {
+    let caught: unknown;
+    try {
+      alignmentEngine.startPicking('nope-1', 'nope-2');
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(AlignmentEngineError);
+    expect((caught as AlignmentEngineError).code).toBe('missingNode');
+  });
+
+  it('startPicking throws AlignmentEngineError("sameNode") when src and dst are the same node', () => {
+    const { srcNodeId } = registerKnownPair();
+    let caught: unknown;
+    try {
+      alignmentEngine.startPicking(srcNodeId, srcNodeId);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(AlignmentEngineError);
+    expect((caught as AlignmentEngineError).code).toBe('sameNode');
+  });
+
+  it('startPicking throws AlignmentEngineError("nonIdentityTransform") for an already-aligned source mesh', () => {
+    const { srcNodeId, dstNodeId } = registerKnownPair();
+    caseStore.applyAlignment(
+      srcNodeId,
+      [0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1, 0, 1, 2, 3, 1],
+      {
+        id: 'op-2',
+        name: 'alignment-apply',
+        params: {},
+        inputHashes: [],
+        outputHashes: [],
+        kernelVersion: '0.0.0',
+        timestamp: new Date().toISOString(),
+      },
+    );
+    let caught: unknown;
+    try {
+      alignmentEngine.startPicking(srcNodeId, dstNodeId);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(AlignmentEngineError);
+    expect((caught as AlignmentEngineError).code).toBe('nonIdentityTransform');
   });
 });

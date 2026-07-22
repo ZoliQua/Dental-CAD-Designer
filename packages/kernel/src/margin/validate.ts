@@ -101,6 +101,20 @@
 // evidence (both fixtures below) that the ambient proxy catches the
 // deliberately-constructed acceptance cases cleanly.
 //
+// **Fix batch (Task-11-final-review Important 8)**: `MARGIN_SELF_
+// INTERSECTION_TOLERANCE_MM` alone was calibrated against DENSE curves
+// only (real `proposeMarginLoop` output / geodesic `resampledPoints`) — a
+// genuine crossing between COARSE, mm-spaced MANUAL anchors (no
+// `resampledPoints`, no dense auto-proposal) can measure a true 3D gap well
+// above that fixed tolerance (the same sagitta effect that makes two
+// straight secant chords of a curved surface diverge from the true
+// on-surface path more as the chord lengthens), and was silently MISSED.
+// `findSelfIntersections` now widens the tolerance PER SEGMENT PAIR,
+// proportional to the MIN of the two involved chords' own lengths — see
+// `MARGIN_SELF_INTERSECTION_LENGTH_SCALE_FACTOR`'s doc for the full
+// derivation, why MIN (not MAX), and why this leaves every dense-path case
+// byte-identical to before.
+//
 // ## On-surface: `MESH_WELD_EPSILON_MM` via BVH `closestPoint`
 //
 // Per this task's brief literally ("every resampled point <= weld epsilon
@@ -183,6 +197,73 @@ import type { MarginLineLike } from '../spline/marginLine.ts';
  * measured genuine-crossing ceiling (~2x) so a real self-crossing is always
  * caught. */
 export const MARGIN_SELF_INTERSECTION_TOLERANCE_MM = 0.015;
+
+/**
+ * Fix batch (Task-11-final-review Important 8): per-pair CHORD-LENGTH
+ * scaling factor for the self-intersection distance tolerance —
+ * `findSelfIntersections` uses `max(MARGIN_SELF_INTERSECTION_TOLERANCE_MM,
+ * MARGIN_SELF_INTERSECTION_LENGTH_SCALE_FACTOR * min(lenSegA, lenSegB))` as
+ * the ACTUAL per-pair tolerance, not the fixed constant alone.
+ *
+ * **The bug this closes**: `MARGIN_SELF_INTERSECTION_TOLERANCE_MM` was
+ * calibrated against DENSE curves only (real `proposeMarginLoop` output and
+ * geodesic-resampled `resampledPoints`, 0.02-0.4mm segment spacing — see
+ * that constant's own derivation doc) — measured genuine crossings there
+ * are 0.0059-0.0075mm. A margin validated with NEITHER `resampledPoints`
+ * NOR a dense auto-proposal — i.e. a hand-placed MANUAL trace, anchors
+ * spaced mm apart — has much LONGER chords between anchors. Two chords
+ * that are straight-line SECANTS of a curved surface (not a geodesic
+ * walk hugging it) deviate from the true on-surface path by an amount
+ * that grows with the chord's own length (the classic sagitta relationship,
+ * `~ chordLength^2 / (8 * curvatureRadius)`) — so two COARSE chords whose
+ * INTENDED (on-surface) crossing is genuine can measure a much LARGER true
+ * 3D closest-approach gap than two fine ones ever would (measured, this
+ * task's own figure-eight-on-mm-spaced-anchors regression: a real crossing
+ * this coarse can measure ~0.08mm, comfortably missed by the fixed
+ * 0.015mm/0.0075mm-scale tolerance the dense path was tuned against).
+ *
+ * **Why MIN of the two segment lengths, not MAX, and why per-PAIR, not a
+ * blanket "resampledPoints absent -> looser tolerance" toggle**: the
+ * anchor-position fallback path (`resampledPoints` absent) is not
+ * exclusively "coarse manual trace" — it is ALSO the path a dense, fine
+ * `proposeMarginLoop` result takes before any resampling
+ * (`MARGIN_SELF_INTERSECTION_TOLERANCE_MM`'s own derivation comment: the
+ * REAL golden 261-anchor proposal that tolerance was tuned against has NO
+ * resampling applied either). A blanket widened tolerance whenever
+ * `resampledPoints` is absent would REOPEN a different hole — weakening
+ * detection for that dense, already-well-tuned case. Scaling per PAIR by
+ * the MIN of the two involved segments' own lengths targets exactly the
+ * genuinely-coarse case (both sides of a manual crossing are, by
+ * construction, mm-scale) while leaving any pair involving at least one
+ * SHORT (dense-scale) segment at the tight, already-validated tolerance —
+ * this specifically protects a legal near-miss pair where one segment
+ * happens to be long (e.g. a long "return leg" elsewhere in the loop) but
+ * the OTHER, nearby segment is short/dense: MIN keeps that pair at the
+ * tight tolerance, so a real close-but-legal approach (this file's own
+ * "legal near-miss" acceptance test, ~0.0222mm) is never misclassified —
+ * only a pair where BOTH sides are genuinely coarse gets the wider
+ * allowance.
+ *
+ * **Chosen value, derivation**: at the documented dense-chord CEILING
+ * (0.4mm — real mesh edge lengths near a margin, per this file's own
+ * locality-window doc), `0.0375 * 0.4mm = 0.015mm`, exactly
+ * `MARGIN_SELF_INTERSECTION_TOLERANCE_MM` — i.e. for any pair where the
+ * shorter segment is at or under the dense ceiling, `max(...)` picks the
+ * FIXED tolerance and this scaling changes NOTHING (byte-identical
+ * behavior to before this fix batch for every dense-path case — the
+ * acceptance-tested dense-path lanes this task's brief requires stay MET).
+ * Only pairs whose shorter segment exceeds 0.4mm (definitionally outside
+ * the dense regime) get a wider, length-proportional allowance.
+ *
+ * @errorBound This is a JUDGMENT constant (like `MARGIN_SELF_INTERSECTION_
+ * TOLERANCE_MM`/`MARGIN_SMOOTHNESS_CURVATURE_THRESHOLD_MM_INV` above), not
+ * an inherited float-rounding bound — the sagitta relationship it
+ * approximates is itself only a first-order estimate of true surface
+ * deviation (exact only for constant curvature); this remains an honest,
+ * documented ambient-proxy heuristic, not a proof, consistent with this
+ * file's module doc, "Self-intersection".
+ */
+export const MARGIN_SELF_INTERSECTION_LENGTH_SCALE_FACTOR = 0.0375;
 
 /** Discrete curvature (turning angle / local mean segment length, mm^-1)
  * above which a point is flagged as a smoothness-warning outlier — see this
@@ -547,6 +628,7 @@ function findSelfIntersections(
   points: readonly Vec3[],
   closed: boolean,
   toleranceMm: number,
+  lengthScaleFactor: number,
 ): MarginSelfIntersectionLocation[] {
   const segments = buildSegments(points, closed);
   const n = segments.length;
@@ -572,8 +654,17 @@ function findSelfIntersections(
       if (separation < window) continue;
       const segA = segments[i]!;
       const segB = segments[j]!;
+      // Fix batch (Important 8): the ACTUAL per-pair tolerance is widened
+      // for a pair of genuinely COARSE (manual-scale) chords — see
+      // `MARGIN_SELF_INTERSECTION_LENGTH_SCALE_FACTOR`'s doc for the full
+      // derivation and why MIN (not MAX) of the two segment lengths. For
+      // any pair involving at least one dense-scale (<=0.4mm) segment this
+      // evaluates to exactly `toleranceMm`, unchanged.
+      const lenA = dist3(segA.a, segA.b);
+      const lenB = dist3(segB.a, segB.b);
+      const effectiveToleranceMm = Math.max(toleranceMm, lengthScaleFactor * Math.min(lenA, lenB));
       const { distance, c1, c2 } = closestPtSegmentSegment(segA.a, segA.b, segB.a, segB.b);
-      if (distance <= toleranceMm) {
+      if (distance <= effectiveToleranceMm) {
         hits.push({ segmentIndexA: i, segmentIndexB: j, pointMm: midpoint3(c1, c2), distanceMm: distance });
       }
     }
@@ -681,6 +772,9 @@ export interface ValidateMarginLineOptions {
   selfIntersectionToleranceMm?: number;
   /** Default `MARGIN_SMOOTHNESS_CURVATURE_THRESHOLD_MM_INV`. */
   smoothnessCurvatureThresholdMmInv?: number;
+  /** Default `MARGIN_SELF_INTERSECTION_LENGTH_SCALE_FACTOR` — see that
+   * constant's doc (Task-11-final-review Important 8). */
+  selfIntersectionLengthScaleFactor?: number;
 }
 
 /**
@@ -702,11 +796,12 @@ export interface ValidateMarginLineOptions {
 export function validateMarginLine(mesh: IndexedMesh, bvh: Bvh, margin: MarginLineLike, opts: ValidateMarginLineOptions = {}): MarginValidationReport {
   const selfIntersectionToleranceMm = opts.selfIntersectionToleranceMm ?? MARGIN_SELF_INTERSECTION_TOLERANCE_MM;
   const smoothnessCurvatureThresholdMmInv = opts.smoothnessCurvatureThresholdMmInv ?? MARGIN_SMOOTHNESS_CURVATURE_THRESHOLD_MM_INV;
+  const selfIntersectionLengthScaleFactor = opts.selfIntersectionLengthScaleFactor ?? MARGIN_SELF_INTERSECTION_LENGTH_SCALE_FACTOR;
 
   const points = validatedPoints(margin);
   const closed = margin.closed;
 
-  const selfIntersections = findSelfIntersections(points, closed, selfIntersectionToleranceMm);
+  const selfIntersections = findSelfIntersections(points, closed, selfIntersectionToleranceMm, selfIntersectionLengthScaleFactor);
   const { onSurface, maxSurfaceDeviationMm, offSurfacePoints } = checkOnSurface(mesh, bvh, points);
   const smoothnessWarnings = computeSmoothnessWarnings(points, closed, smoothnessCurvatureThresholdMmInv);
   const { degenerate, degenerateReasons } = checkDegenerate(margin, points, closed);

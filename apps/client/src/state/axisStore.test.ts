@@ -18,6 +18,18 @@ describe('useAxisStore — initial state', () => {
     expect(state.ranked).toEqual([]);
     expect(state.perAbutment).toEqual([]);
     expect(state.confirmed).toBe(false);
+    expect(state.searchMode).toBe('interactive');
+    expect(state.lastSearchCoarseCount).toBeNull();
+    expect(state.lastSearchRefineCount).toBeNull();
+  });
+});
+
+describe('useAxisStore — setSearchMode (Fix batch, Important 7)', () => {
+  it('changes searchMode without touching other fields', () => {
+    useAxisStore.getState().start('r1', 'node1', [11], [0, 0, 1], 0);
+    useAxisStore.getState().setSearchMode('precise');
+    expect(useAxisStore.getState().searchMode).toBe('precise');
+    expect(useAxisStore.getState().restorationId).toBe('r1');
   });
 });
 
@@ -59,6 +71,8 @@ describe('useAxisStore — suggest lifecycle', () => {
       elevationDeg: 90,
       ranked: [candidate],
       perAbutment: [{ tooth: 11, undercutAreaMm2: 0, maxDepthMm: 0, undercutTriangleCount: 0, regionTriangleCount: 10 }],
+      coarseCount: 24,
+      refineCount: 8,
     });
     const state = useAxisStore.getState();
     expect(state.status).toBe('active');
@@ -68,6 +82,8 @@ describe('useAxisStore — suggest lifecycle', () => {
     expect(state.ranked).toHaveLength(1);
     expect(state.perAbutment).toHaveLength(1);
     expect(state.confirmed).toBe(false);
+    expect(state.lastSearchCoarseCount).toBe(24);
+    expect(state.lastSearchRefineCount).toBe(8);
   });
 
   it('setError keeps status active (never a distinct error phase) and clears busy', () => {

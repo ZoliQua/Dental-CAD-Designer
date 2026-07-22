@@ -5,7 +5,7 @@ import type { Vec3 } from '../bvh/geometry.ts';
 import { evaluateSurfacePoint } from '../geodesic/surfacePoint.ts';
 import { icosphereMesh } from '../halfedge/halfedge.test-fixtures.ts';
 import { fitSurfaceSpline } from './surfaceSpline.ts';
-import { fromMarginLine, toMarginLine, type MarginLineLike } from './marginLine.ts';
+import { fromMarginLine, toMarginLine, MarginAnchorMismatchError, type MarginLineLike } from './marginLine.ts';
 
 // Structural-compatibility check against the REAL shared-types `MarginLine`
 // — this module's top doc claims `MarginLineLike` is a structural twin;
@@ -108,6 +108,81 @@ describe('fromMarginLine', () => {
 
   it('throws RangeError for an empty anchors array', () => {
     expect(() => fromMarginLine({ anchors: [], closed: false })).toThrow(RangeError);
+  });
+
+  describe('fix batch (Task-11-final-review Important 9): optional `mesh` validation', () => {
+    it('with no `mesh` argument, an out-of-range triangleIndex is NOT caught (unchanged pre-fix behavior)', () => {
+      const mesh = icosphereMesh(5, 2);
+      const bvh = buildBvh(mesh);
+      const spline = fitSurfaceSpline(mesh, bvh, [[5, 0, 0], [0, 5, 0], [0, -5, 0]], true, 2);
+      const marginLine = toMarginLine(mesh, spline.controlPoints, spline.closed);
+      const corrupted: MarginLineLike = {
+        ...marginLine,
+        anchors: marginLine.anchors.map((a, i) => (i === 0 ? { ...a, triangleIndex: 999_999 } : a)),
+      };
+      // No throw — this is the documented, still-supported "no mesh in hand"
+      // pure path; the caller gets back whatever the (bogus) triangleIndex
+      // says, same as before this fix batch.
+      const reconstructed = fromMarginLine(corrupted);
+      expect(reconstructed.controlPoints[0]!.triangleIndex).toBe(999_999);
+    });
+
+    it('with `mesh` supplied, an out-of-range triangleIndex throws MarginAnchorMismatchError(outOfRange) instead of silently reconstructing a NaN point', () => {
+      const mesh = icosphereMesh(5, 2);
+      const bvh = buildBvh(mesh);
+      const spline = fitSurfaceSpline(mesh, bvh, [[5, 0, 0], [0, 5, 0], [0, -5, 0]], true, 2);
+      const marginLine = toMarginLine(mesh, spline.controlPoints, spline.closed);
+      const corrupted: MarginLineLike = {
+        ...marginLine,
+        anchors: marginLine.anchors.map((a, i) => (i === 1 ? { ...a, triangleIndex: 999_999 } : a)),
+      };
+      let caught: unknown;
+      try {
+        fromMarginLine(corrupted, mesh);
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeInstanceOf(MarginAnchorMismatchError);
+      expect((caught as MarginAnchorMismatchError).kind).toBe('outOfRange');
+      expect((caught as MarginAnchorMismatchError).index).toBe(1);
+
+      // Confirms the bug this closes: WITHOUT the bounds check, evaluating
+      // an out-of-range triangleIndex silently yields NaN rather than
+      // throwing — `mesh` present now catches it before that ever happens.
+      const rawEval = evaluateSurfacePoint(mesh, { triangleIndex: 999_999, barycentric: [1, 0, 0] });
+      expect(rawEval.some((c) => Number.isNaN(c))).toBe(true);
+    });
+
+    it('with `mesh` supplied, a corrupted barycentric (valid triangleIndex, wrong position) throws MarginAnchorMismatchError(positionMismatch)', () => {
+      const mesh = icosphereMesh(5, 2);
+      const bvh = buildBvh(mesh);
+      const spline = fitSurfaceSpline(mesh, bvh, [[5, 0, 0], [0, 5, 0], [0, -5, 0]], true, 2);
+      const marginLine = toMarginLine(mesh, spline.controlPoints, spline.closed);
+      // Same triangleIndex (valid), but barycentric weights shifted to a
+      // DIFFERENT point on the same triangle — position echo is left
+      // exactly as `toMarginLine` produced it, i.e. now stale/wrong.
+      const corrupted: MarginLineLike = {
+        ...marginLine,
+        anchors: marginLine.anchors.map((a, i) => (i === 2 ? { ...a, barycentric: [0.1, 0.1, 0.8] } : a)),
+      };
+      let caught: unknown;
+      try {
+        fromMarginLine(corrupted, mesh);
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeInstanceOf(MarginAnchorMismatchError);
+      expect((caught as MarginAnchorMismatchError).kind).toBe('positionMismatch');
+      expect((caught as MarginAnchorMismatchError).index).toBe(2);
+    });
+
+    it('with `mesh` supplied, a genuinely clean MarginLine (produced by toMarginLine) validates without throwing', () => {
+      const mesh = icosphereMesh(5, 3);
+      const bvh = buildBvh(mesh);
+      const spline = fitSurfaceSpline(mesh, bvh, [[5, 0, 0], [0, 5, 0], [-5, 0, 0], [0, -5, 0]], true, 2);
+      const marginLine = toMarginLine(mesh, spline.controlPoints, spline.closed);
+      expect(() => fromMarginLine(marginLine, mesh)).not.toThrow();
+    });
   });
 
   it('fitSurfaceSpline accepts fromMarginLine\'s output directly (round-trip through the full spline API)', () => {

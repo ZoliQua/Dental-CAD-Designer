@@ -251,6 +251,10 @@ export interface ValidateMarginPayload {
    * defaults apply when omitted. */
   selfIntersectionToleranceMm?: number;
   smoothnessCurvatureThresholdMmInv?: number;
+  /** See `ValidateMarginLineOptions.selfIntersectionLengthScaleFactor`
+   * (@dqcad/kernel, Task-11-final-review Important 8) — optional, kernel
+   * default applies when omitted. */
+  selfIntersectionLengthScaleFactor?: number;
 }
 
 /** Plain, small-count result (unlike `ProposeMarginResult`'s flattened
@@ -300,6 +304,7 @@ export const validateMarginJob = async (payload: ValidateMarginPayload, ctx: Job
   const report = validateMarginLine(mesh, bvh, margin, {
     selfIntersectionToleranceMm: payload.selfIntersectionToleranceMm,
     smoothnessCurvatureThresholdMmInv: payload.smoothnessCurvatureThresholdMmInv,
+    selfIntersectionLengthScaleFactor: payload.selfIntersectionLengthScaleFactor,
   });
 
   ctx.progress(1);

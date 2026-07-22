@@ -21,15 +21,16 @@
 // only meaningful while the mesh's CURRENT `SceneNode.transform` is
 // identity (the master buffers are never re-baked by a transform; only
 // where a node is DRAWN moves — see engine/sceneTransform.ts's module doc).
-// `startPicking` therefore refuses (surfaces a translated error, does not
-// silently mis-pick) to start a picking session for a src node whose
-// CURRENT transform is already non-identity — re-aligning an
-// already-aligned mesh a second time is out of this task's scope (YAGNI;
-// the common single-alignment-pass workflow this task targets never hits
-// this path).
+// `startPicking` therefore refuses (throws a typed `AlignmentEngineError`,
+// which `ui/AlignmentPanel.tsx` maps to a translated message — Fix batch,
+// Important 12; does not silently mis-pick) to start a picking session for
+// a src node whose CURRENT transform is already non-identity —
+// re-aligning an already-aligned mesh a second time is out of this task's
+// scope (YAGNI; the common single-alignment-pass workflow this task
+// targets never hits this path).
 import type { Operation, SceneNode, Vec3 } from '@dqcad/shared-types';
 import { KERNEL_VERSION, type CoarsePointPair, type IcpRegisterResult, type RaycastMeshResult } from '@dqcad/kernel-workers';
-import { useAlignmentStore, type AlignmentOverlapMode, type AlignmentResult } from '../state/alignmentStore';
+import { useAlignmentStore, type AlignmentOverlapMode, type AlignmentEngineErrorCode, type AlignmentResult } from '../state/alignmentStore';
 import { caseStore } from './caseStore';
 import type { EngineMeshRecord } from './meshStore';
 import { renderFrameTransform } from './sceneTransform';
@@ -98,6 +99,31 @@ function isIdentityTransform(transform: readonly number[]): boolean {
   return transform.every((v, i) => v === IDENTITY_TRANSFORM_16[i]);
 }
 
+/**
+ * Thrown by `startPicking` (and reported, not thrown, via
+ * `useAlignmentStore.setError`'s `code` argument, by `run()`) for every
+ * KNOWN, enumerable precondition this module itself validates — as opposed
+ * to a downstream job/kernel failure (e.g. `icpRegister` throwing), whose
+ * message is inherently dynamic and NOT translated (this module has no
+ * i18n dependency itself — CLAUDE.md layer rule; only `ui/AlignmentPanel.tsx`
+ * may call `t()`). Fix batch (Important 12): this module's OWN top-doc
+ * previously claimed `startPicking` "surfaces a translated error" while
+ * actually throwing a hardcoded English `Error` with no structure for the
+ * panel to translate FROM — `code` is exactly that missing structure:
+ * `ui/AlignmentPanel.tsx` maps `code` to a translated message; `message`
+ * remains a useful English diagnostic for logs/tests (see e.g.
+ * alignment.test.ts's `.toThrow(/non-identity transform/)`-style
+ * assertions, unaffected by this fix).
+ */
+export class AlignmentEngineError extends Error {
+  readonly code: AlignmentEngineErrorCode;
+  constructor(code: AlignmentEngineErrorCode, message: string) {
+    super(message);
+    this.name = 'AlignmentEngineError';
+    this.code = code;
+  }
+}
+
 class AlignmentEngine {
   private pendingSrc: Vec3 | null = null;
   private pairs: { src: Vec3; dst: Vec3 }[] = [];
@@ -114,13 +140,14 @@ class AlignmentEngine {
     const srcNode = scene.find((n) => n.id === srcNodeId);
     const dstNode = scene.find((n) => n.id === dstNodeId);
     if (!srcNode || !dstNode) {
-      throw new Error('alignmentEngine.startPicking: srcNodeId/dstNodeId must reference live SceneNodes');
+      throw new AlignmentEngineError('missingNode', 'alignmentEngine.startPicking: srcNodeId/dstNodeId must reference live SceneNodes');
     }
     if (srcNodeId === dstNodeId) {
-      throw new Error('alignmentEngine.startPicking: srcNodeId and dstNodeId must be different meshes');
+      throw new AlignmentEngineError('sameNode', 'alignmentEngine.startPicking: srcNodeId and dstNodeId must be different meshes');
     }
     if (!isIdentityTransform(srcNode.transform)) {
-      throw new Error(
+      throw new AlignmentEngineError(
+        'nonIdentityTransform',
         'alignmentEngine.startPicking: the source mesh already has a non-identity transform — re-aligning an already-aligned mesh is not supported this phase',
       );
     }
@@ -233,7 +260,7 @@ class AlignmentEngine {
     const srcRecord = srcNode ? caseStore.getMeshRecord(srcNode.meshId) : undefined;
     const dstRecord = dstNode ? caseStore.getMeshRecord(dstNode.meshId) : undefined;
     if (!srcNode || !dstNode || !srcRecord || !dstRecord) {
-      useAlignmentStore.getState().setError('alignmentEngine.run: source/target mesh is no longer in the scene');
+      useAlignmentStore.getState().setError('alignmentEngine.run: source/target mesh is no longer in the scene', 'meshGone');
       return;
     }
 
@@ -328,7 +355,17 @@ class AlignmentEngine {
         transform: renderFrameTransform(result.transform, worldOffset),
       });
     } catch (error) {
-      useAlignmentStore.getState().setError(error instanceof Error ? error.message : String(error));
+      // A downstream job/kernel failure (e.g. `icpRegister` throwing) has no
+      // KNOWN code — `error` alone, translated via the generic wrapped
+      // template (ui/AlignmentPanel.tsx's `alignment.runError`). An
+      // `AlignmentEngineError` (this module's OWN precondition checks) is
+      // not currently thrown from inside this try block, but the check is
+      // kept general/defensive rather than assuming that never changes.
+      if (error instanceof AlignmentEngineError) {
+        useAlignmentStore.getState().setError(error.message, error.code);
+      } else {
+        useAlignmentStore.getState().setError(error instanceof Error ? error.message : String(error));
+      }
     }
   }
 

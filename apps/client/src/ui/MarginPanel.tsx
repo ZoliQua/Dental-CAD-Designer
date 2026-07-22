@@ -15,7 +15,11 @@ import {
   MARGIN_PROPOSAL_ANCHOR_COUNT_MAX,
   MARGIN_PROPOSAL_ANCHOR_COUNT_MIN,
   marginEditor,
+  MarginStartError,
+  MarginConfirmError,
   type MarginErrorKind,
+  type MarginStartErrorCode,
+  type MarginConfirmErrorCode,
 } from '../engine/marginEditor';
 import { useCaseStore } from '../state/caseStore';
 import { useMarginStore, type MarginHardFailureKind, type MarginToolMode } from '../state/marginStore';
@@ -24,6 +28,29 @@ function errorGuidanceKey(kind: MarginErrorKind | null): string {
   if (kind === 'noRidgeFound') return 'margin.errorNoRidgeFound';
   if (kind === 'noClosure') return 'margin.errorNoClosure';
   return 'margin.errorOther';
+}
+
+/** Maps a `MarginStartErrorCode` to its i18n key — same "typed kind -> key"
+ * convention as `errorGuidanceKey` above. Fix batch (Task-11-final-review
+ * Important 12). */
+function marginStartErrorKey(code: MarginStartErrorCode): string {
+  switch (code) {
+    case 'noRestoration':
+      return 'margin.startErrorNoRestoration';
+    case 'noTargetScan':
+      return 'margin.startErrorNoTargetScan';
+  }
+}
+
+/** Maps a `MarginConfirmErrorCode` to its i18n key. Fix batch
+ * (Task-11-final-review Important 12). */
+function marginConfirmErrorKey(code: MarginConfirmErrorCode): string {
+  switch (code) {
+    case 'noActiveSession':
+      return 'margin.confirmErrorNoActiveSession';
+    case 'restorationGone':
+      return 'margin.confirmErrorRestorationGone';
+  }
 }
 
 /** Maps a `MarginHardFailureKind` (state/marginStore.ts) to its i18n key —
@@ -103,7 +130,14 @@ export function MarginPanel() {
     try {
       marginEditor.startForTooth(pendingRestorationId, Number(pendingTooth) as FdiTooth);
     } catch (err) {
-      setStartError(err instanceof Error ? err.message : String(err));
+      // Fix batch (Important 12): a KNOWN precondition failure
+      // (`MarginStartError`) gets a fully translated message; anything else
+      // falls back to a translated wrapper around the raw message.
+      if (err instanceof MarginStartError) {
+        setStartError(t(marginStartErrorKey(err.code)));
+      } else {
+        setStartError(t('margin.startErrorOther', { message: err instanceof Error ? err.message : String(err) }));
+      }
     }
   }
 
@@ -137,7 +171,14 @@ export function MarginPanel() {
       }
       setPendingAcknowledge(outcome.requiresAcknowledgement);
     } catch (err) {
-      setConfirmError(err instanceof Error ? err.message : String(err));
+      // Fix batch (Important 12): a KNOWN precondition failure
+      // (`MarginConfirmError`) gets a fully translated message; anything
+      // else falls back to a translated wrapper around the raw message.
+      if (err instanceof MarginConfirmError) {
+        setConfirmError(t(marginConfirmErrorKey(err.code)));
+      } else {
+        setConfirmError(t('margin.confirmErrorOther', { message: err instanceof Error ? err.message : String(err) }));
+      }
     }
   }
 

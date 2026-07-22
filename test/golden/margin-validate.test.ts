@@ -36,7 +36,6 @@ import {
   toMarginLine,
   validateMarginLine,
   classifyMarginValidation,
-  MARGIN_SELF_INTERSECTION_TOLERANCE_MM,
   MARGIN_SMOOTHNESS_CURVATURE_THRESHOLD_MM_INV,
   type IndexedMesh,
   type MarginLineLike,
@@ -142,7 +141,21 @@ describe('validateMarginLine — real fixture (arch-case-01 upperjaw)', () => {
     expect(report.selfIntersecting).toBe(true);
     expect(report.selfIntersections.length).toBeGreaterThan(0);
     for (const hit of report.selfIntersections) {
-      expect(hit.distanceMm).toBeLessThanOrEqual(MARGIN_SELF_INTERSECTION_TOLERANCE_MM);
+      // Fix batch (Task-11-final-review Important 8): a hit's distance is
+      // no longer bounded by the FIXED `MARGIN_SELF_INTERSECTION_
+      // TOLERANCE_MM` alone — `findSelfIntersections` now widens the
+      // per-pair tolerance proportionally to the pair's own (coarse, here —
+      // only 12 of the real 261 anchors) chord length (see
+      // `MARGIN_SELF_INTERSECTION_LENGTH_SCALE_FACTOR`'s doc,
+      // packages/kernel/src/margin/validate.ts). Every hit is still
+      // finite and well under a clinically-absurd scale — this margin's
+      // own circumference is ~20-35mm (this file's own module doc), so 5mm
+      // is a generous sanity cap, not a tight one; the REAL bound each hit
+      // actually satisfies is `findSelfIntersections`'s own per-pair
+      // effective tolerance, verified by construction (a non-matching pair
+      // is never returned as a hit at all).
+      expect(Number.isFinite(hit.distanceMm)).toBe(true);
+      expect(hit.distanceMm).toBeLessThan(5);
     }
     const classification = classifyMarginValidation(report);
     expect(classification.blocked).toBe(true);

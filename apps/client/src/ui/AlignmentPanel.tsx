@@ -14,9 +14,9 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { SceneNode } from '@dqcad/shared-types';
-import { alignmentEngine, type AlignmentOverlapMode } from '../engine/alignment';
+import { alignmentEngine, AlignmentEngineError, type AlignmentOverlapMode } from '../engine/alignment';
 import { useCaseStore } from '../state/caseStore';
-import { useAlignmentStore } from '../state/alignmentStore';
+import { useAlignmentStore, type AlignmentEngineErrorCode } from '../state/alignmentStore';
 
 const MM_TO_UM = 1000;
 
@@ -26,6 +26,22 @@ function formatUm(mm: number): string {
 
 function formatPercent(fraction: number): string {
   return `${Math.round(fraction * 100)}%`;
+}
+
+/** Maps an `AlignmentEngineErrorCode` to its i18n key — same "typed kind ->
+ * key" convention as ui/MarginPanel.tsx's `errorGuidanceKey`/
+ * `hardFailureReasonKey`. Fix batch (Task-11-final-review Important 12). */
+function alignmentErrorCodeKey(code: AlignmentEngineErrorCode): string {
+  switch (code) {
+    case 'missingNode':
+      return 'alignment.errorMissingNode';
+    case 'sameNode':
+      return 'alignment.errorSameNode';
+    case 'nonIdentityTransform':
+      return 'alignment.errorNonIdentityTransform';
+    case 'meshGone':
+      return 'alignment.errorMeshGone';
+  }
 }
 
 export function AlignmentPanel() {
@@ -38,6 +54,7 @@ export function AlignmentPanel() {
   const progress = useAlignmentStore((state) => state.progress);
   const result = useAlignmentStore((state) => state.result);
   const error = useAlignmentStore((state) => state.error);
+  const errorCode = useAlignmentStore((state) => state.errorCode);
 
   const [pendingSrcId, setPendingSrcId] = useState('');
   const [pendingDstId, setPendingDstId] = useState('');
@@ -57,7 +74,17 @@ export function AlignmentPanel() {
     try {
       alignmentEngine.startPicking(pendingSrcId, pendingDstId);
     } catch (err) {
-      setStartError(err instanceof Error ? err.message : String(err));
+      // Fix batch (Important 12): a KNOWN precondition failure
+      // (`AlignmentEngineError`) gets a fully translated message; anything
+      // else (should not happen for `startPicking` today, but kept
+      // defensive) falls back to a translated wrapper around the raw
+      // message, same "translated frame, dynamic content" pattern as
+      // `alignment.runError` below.
+      if (err instanceof AlignmentEngineError) {
+        setStartError(t(alignmentErrorCodeKey(err.code)));
+      } else {
+        setStartError(t('alignment.startErrorOther', { message: err instanceof Error ? err.message : String(err) }));
+      }
     }
   }
 
@@ -186,7 +213,11 @@ export function AlignmentPanel() {
 
           {phase === 'error' && error && (
             <p className="alignment-panel__error" data-testid="alignment-error">
-              {t('alignment.runError', { message: error })}
+              {/* Fix batch (Important 12): a KNOWN precondition failure
+                  (errorCode set) gets a fully translated message; a
+                  downstream job/kernel failure (errorCode null) falls back
+                  to the translated wrapper around the raw message. */}
+              {errorCode ? t(alignmentErrorCodeKey(errorCode)) : t('alignment.runError', { message: error })}
             </p>
           )}
 

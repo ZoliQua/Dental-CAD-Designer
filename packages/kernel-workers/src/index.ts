@@ -81,6 +81,8 @@ export {
   EmptyRegionError,
   DegenerateRegionNormalError,
   AXIS_DEFAULT_ROI_RADIUS_MM,
+  AXIS_SEARCH_PRESETS,
+  type AxisSearchPresetName,
   type SuggestAxisPayload,
   type SuggestAxisResult,
   type SuggestAxisCandidatePayload,

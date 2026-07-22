@@ -12,18 +12,33 @@
 // — e.g. ui/MarginPanel.tsx/ui/SectionPanel.tsx).
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AxisMarginUnresolvedError, axisEngine } from '../engine/axis';
+import { AxisMarginUnresolvedError, AxisStartError, type AxisStartErrorCode, axisEngine } from '../engine/axis';
 import { useCaseStore } from '../state/caseStore';
-import { useAxisStore } from '../state/axisStore';
+import { useAxisStore, type AxisSearchMode } from '../state/axisStore';
 
 const AZIMUTH_RANGE_DEG = 180;
 const ELEVATION_MIN_DEG = -90;
 const ELEVATION_MAX_DEG = 90;
 
+/** Maps an `AxisStartErrorCode` to its i18n key — same "typed kind -> key"
+ * convention as ui/MarginPanel.tsx's `errorGuidanceKey`. Fix batch
+ * (Task-11-final-review Important 12). */
+function axisStartErrorKey(code: AxisStartErrorCode): string {
+  switch (code) {
+    case 'noRestoration':
+      return 'axis.startErrorNoRestoration';
+    case 'noTargetScan':
+      return 'axis.startErrorNoTargetScan';
+    case 'noMarginLine':
+      return 'axis.startErrorNoMarginLine';
+  }
+}
+
 export function AxisPanel() {
   const { t } = useTranslation();
   const document = useCaseStore((state) => state.document);
   const status = useAxisStore((state) => state.status);
+  const searchMode = useAxisStore((state) => state.searchMode);
   const busy = useAxisStore((state) => state.busy);
   const progress = useAxisStore((state) => state.progress);
   const error = useAxisStore((state) => state.error);
@@ -59,8 +74,10 @@ export function AxisPanel() {
       // falls back to.
       if (err instanceof AxisMarginUnresolvedError) {
         setStartError(t('axis.errorUnresolvedMargin', { teeth: err.teeth.join(', ') }));
+      } else if (err instanceof AxisStartError) {
+        setStartError(t(axisStartErrorKey(err.code)));
       } else {
-        setStartError(err instanceof Error ? err.message : String(err));
+        setStartError(t('axis.startErrorOther', { message: err instanceof Error ? err.message : String(err) }));
       }
     }
   }
@@ -71,12 +88,20 @@ export function AxisPanel() {
     setStartError(null);
   }
 
+  function handleSearchModeChange(mode: AxisSearchMode): void {
+    axisEngine.setSearchMode(mode);
+  }
+
   async function handleSuggest(): Promise<void> {
     setSuggestError(null);
     try {
+      // `runSuggest()` catches its own errors internally and reports them
+      // via `axisStore.error` (rendered below, wrapped by `axis.errorLabel`)
+      // rather than rethrowing — this catch is defensive (kept translated,
+      // per Fix batch Important 12, in case that ever changes).
       await axisEngine.runSuggest();
     } catch (err) {
-      setSuggestError(err instanceof Error ? err.message : String(err));
+      setSuggestError(t('axis.errorLabel', { message: err instanceof Error ? err.message : String(err) }));
     }
   }
 
@@ -125,6 +150,22 @@ export function AxisPanel() {
   return (
     <section className="axis-panel" data-testid="axis-panel">
       <h2 className="axis-panel__title">{t('axis.panelTitle')}</h2>
+
+      <label className="axis-panel__field axis-panel__search-mode">
+        {t('axis.searchModeLabel')}
+        <select
+          value={searchMode}
+          onChange={(event) => handleSearchModeChange(event.target.value as AxisSearchMode)}
+          disabled={busy}
+          data-testid="axis-search-mode-select"
+        >
+          <option value="interactive">{t('axis.searchModeInteractive')}</option>
+          <option value="precise">{t('axis.searchModePrecise')}</option>
+        </select>
+        <span className="axis-panel__hint">
+          {t(searchMode === 'precise' ? 'axis.searchModePreciseHint' : 'axis.searchModeInteractiveHint')}
+        </span>
+      </label>
 
       <button
         type="button"

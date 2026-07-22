@@ -32,6 +32,8 @@ import {
   cameraAlignedFallbackNormal,
   computeMagnifierSectionNormal,
   MARGIN_PROPOSAL_ANCHOR_COUNT_DEFAULT,
+  MarginStartError,
+  MarginConfirmError,
   type AnchorDiffSummary,
 } from './marginEditor';
 import { caseStore } from './caseStore';
@@ -364,6 +366,42 @@ describe('marginEditor — manual mode + editing + journal coalescing', () => {
   it('startForTooth throws for a restoration with no assigned target scan', () => {
     const restoration = createRestoration({ type: 'crown', teeth: [11], targetNodeId: null });
     expect(() => marginEditor.startForTooth(restoration.id, 11)).toThrow(/target scan/);
+  });
+
+  describe('fix batch (Task-11-final-review Important 12): typed error codes for i18n routing', () => {
+    it('startForTooth throws MarginStartError("noTargetScan") for a restoration with no assigned target scan', () => {
+      const restoration = createRestoration({ type: 'crown', teeth: [11], targetNodeId: null });
+      let caught: unknown;
+      try {
+        marginEditor.startForTooth(restoration.id, 11);
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeInstanceOf(MarginStartError);
+      expect((caught as MarginStartError).code).toBe('noTargetScan');
+    });
+
+    it('startForTooth throws MarginStartError("noRestoration") for a nonexistent restoration id', () => {
+      let caught: unknown;
+      try {
+        marginEditor.startForTooth('does-not-exist', 11);
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeInstanceOf(MarginStartError);
+      expect((caught as MarginStartError).code).toBe('noRestoration');
+    });
+
+    it('confirmMargin throws MarginConfirmError("noActiveSession") with no active session', async () => {
+      let caught: unknown;
+      try {
+        await marginEditor.confirmMargin();
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeInstanceOf(MarginConfirmError);
+      expect((caught as MarginConfirmError).code).toBe('noActiveSession');
+    });
   });
 
   // Task-11-review Critical 3: a drag commit landing WHILE confirmMargin()'s

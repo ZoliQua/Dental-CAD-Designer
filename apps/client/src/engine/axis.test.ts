@@ -6,12 +6,13 @@
 // packages/kernel/src/axis/*.test.ts, and the worker job wiring by
 // packages/kernel-workers/src/axisJobs.test.ts.
 import { beforeEach, describe, expect, it } from 'vitest';
+import { AXIS_SEARCH_PRESETS } from '@dqcad/kernel-workers';
 import type { IntakeReport, MeshStats } from '@dqcad/kernel-workers';
 import type { MarginAnchor, MarginLine, Restoration } from '@dqcad/shared-types';
 import { DEFAULT_RESTORATION_PARAMS } from '@dqcad/clinical-profiles';
 import { useAxisStore } from '../state/axisStore';
 import { caseStore } from './caseStore';
-import { axisEngine, sphericalToDirection, directionToSpherical, AxisMarginUnresolvedError } from './axis';
+import { axisEngine, sphericalToDirection, directionToSpherical, AxisMarginUnresolvedError, AxisStartError } from './axis';
 
 const EMPTY_REPORT: IntakeReport = { weldEpsilonMm: 1e-6, steps: [] };
 
@@ -203,6 +204,25 @@ describe('axisEngine — session lifecycle', () => {
       id: 'op', name: 'restoration-create', params: {}, inputHashes: [], outputHashes: [], kernelVersion: '0.0.0-test', timestamp: new Date().toISOString(),
     });
     expect(() => axisEngine.start('r-no-target')).toThrow(/target scan/);
+    let caught: unknown;
+    try {
+      axisEngine.start('r-no-target');
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(AxisStartError);
+    expect((caught as AxisStartError).code).toBe('noTargetScan');
+  });
+
+  it('throws AxisStartError("noRestoration") for a nonexistent restoration id (Fix batch, Important 12)', () => {
+    let caught: unknown;
+    try {
+      axisEngine.start('does-not-exist');
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(AxisStartError);
+    expect((caught as AxisStartError).code).toBe('noRestoration');
   });
 
   it('throws if the restoration has no confirmed margin line', () => {
@@ -223,6 +243,14 @@ describe('axisEngine — session lifecycle', () => {
       id: 'op2', name: 'restoration-create', params: {}, inputHashes: [], outputHashes: [], kernelVersion: '0.0.0-test', timestamp: new Date().toISOString(),
     });
     expect(() => axisEngine.start('r-no-margin')).toThrow(/margin line/);
+    let caught: unknown;
+    try {
+      axisEngine.start('r-no-margin');
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(AxisStartError);
+    expect((caught as AxisStartError).code).toBe('noMarginLine');
   });
 
   it('refuses (typed AxisMarginUnresolvedError, no NaN) a restoration whose margin line has a -1-sentinel (unresolved) anchor — Task-11-review Important 6', () => {
@@ -309,6 +337,62 @@ describe('axisEngine — runSuggest', () => {
   });
 });
 
+describe('axisEngine — search-budget preset (Fix batch, Important 7)', () => {
+  it('defaults to "interactive", and runSuggest uses AXIS_SEARCH_PRESETS.interactive\'s own coarse/refine counts', async () => {
+    const { restorationId } = setupCrownRestoration();
+    axisEngine.start(restorationId);
+    expect(useAxisStore.getState().searchMode).toBe('interactive');
+
+    await axisEngine.runSuggest();
+
+    expect(useAxisStore.getState().lastSearchCoarseCount).toBe(AXIS_SEARCH_PRESETS.interactive.coarseCount);
+    expect(useAxisStore.getState().lastSearchRefineCount).toBe(AXIS_SEARCH_PRESETS.interactive.refineCount);
+  });
+
+  it('setSearchMode("precise") changes the budget passed to the suggestAxis job — the actually-run coarse/refine counts match AXIS_SEARCH_PRESETS.precise, not .interactive', async () => {
+    const { restorationId } = setupCrownRestoration();
+    axisEngine.start(restorationId);
+    axisEngine.setSearchMode('precise');
+    expect(useAxisStore.getState().searchMode).toBe('precise');
+
+    await axisEngine.runSuggest();
+
+    expect(useAxisStore.getState().lastSearchCoarseCount).toBe(AXIS_SEARCH_PRESETS.precise.coarseCount);
+    expect(useAxisStore.getState().lastSearchRefineCount).toBe(AXIS_SEARCH_PRESETS.precise.refineCount);
+    // The two presets actually differ (refineCount 8 vs 200) — a real
+    // assertion that the budget changed, not merely that both fields exist.
+    expect(AXIS_SEARCH_PRESETS.precise.refineCount).not.toBe(AXIS_SEARCH_PRESETS.interactive.refineCount);
+  }, 15000);
+
+  it('confirmAxis journals searchMode and the actually-run search budget', async () => {
+    const { restorationId } = setupCrownRestoration();
+    axisEngine.start(restorationId);
+    axisEngine.setSearchMode('precise');
+    await axisEngine.runSuggest();
+
+    axisEngine.confirmAxis();
+
+    const lastOp = caseStore.getDocument().history[caseStore.getDocument().history.length - 1]!;
+    expect(lastOp.name).toBe('axis-set');
+    expect(lastOp.params.searchMode).toBe('precise');
+    expect(lastOp.params.searchCoarseCount).toBe(AXIS_SEARCH_PRESETS.precise.coarseCount);
+    expect(lastOp.params.searchRefineCount).toBe(AXIS_SEARCH_PRESETS.precise.refineCount);
+  }, 15000);
+
+  it('confirmAxis journals null search-budget fields for a manual-only session (no suggestion ever ran)', () => {
+    const { restorationId } = setupCrownRestoration();
+    axisEngine.start(restorationId);
+    axisEngine.setElevationDeg(45); // manual-only — never calls runSuggest
+
+    axisEngine.confirmAxis();
+
+    const lastOp = caseStore.getDocument().history[caseStore.getDocument().history.length - 1]!;
+    expect(lastOp.params.searchMode).toBe('interactive'); // still the current selection, journaled
+    expect(lastOp.params.searchCoarseCount).toBeNull();
+    expect(lastOp.params.searchRefineCount).toBeNull();
+  });
+});
+
 describe('axisEngine — manual adjust', () => {
   it('setAzimuthDeg/setElevationDeg update direction and provenance, and refresh the heatmap', async () => {
     const { restorationId } = setupCrownRestoration();
@@ -353,6 +437,8 @@ describe('axisEngine — heatmap refresh preserves the suggest-time per-abutment
       elevationDeg: useAxisStore.getState().elevationDeg,
       ranked: [],
       perAbutment: [{ tooth: 11, undercutAreaMm2: 1.2345, maxDepthMm: 0.01, undercutTriangleCount: 3, regionTriangleCount: 50 }],
+      coarseCount: AXIS_SEARCH_PRESETS.interactive.coarseCount,
+      refineCount: AXIS_SEARCH_PRESETS.interactive.refineCount,
     });
     expect(useAxisStore.getState().perAbutment[0]!.undercutAreaMm2).toBe(1.2345);
 

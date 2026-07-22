@@ -153,6 +153,44 @@ export const MAGNIFIER_SECTION_MIN_INTERVAL_MS = 100;
 
 export type MarginErrorKind = 'noRidgeFound' | 'noClosure' | 'other';
 
+/** `MarginStartError`'s discriminant — every KNOWN, enumerable precondition
+ * `startForTooth()` itself validates. Fix batch (Task-11-final-review
+ * Important 12). */
+export type MarginStartErrorCode = 'noRestoration' | 'noTargetScan';
+
+/** Thrown by `startForTooth()` for a KNOWN precondition failure —
+ * `ui/MarginPanel.tsx` maps `code` to a translated message instead of
+ * falling back to the raw (English) `message`, same "typed error -> i18n
+ * key" shape `engine/axis.ts`'s `AxisStartError`/`AxisMarginUnresolvedError`
+ * already established. */
+export class MarginStartError extends Error {
+  readonly code: MarginStartErrorCode;
+  constructor(code: MarginStartErrorCode, message: string) {
+    super(message);
+    this.name = 'MarginStartError';
+    this.code = code;
+  }
+}
+
+/** `MarginConfirmError`'s discriminant — every KNOWN, enumerable
+ * precondition `confirmMargin()` itself validates BEFORE attempting a
+ * journal write (as opposed to a validation FINDING, which is reported via
+ * `MarginConfirmOutcome`, never thrown — see that interface's doc). Fix
+ * batch (Task-11-final-review Important 12). */
+export type MarginConfirmErrorCode = 'noActiveSession' | 'restorationGone';
+
+/** Thrown by `confirmMargin()` for a KNOWN precondition failure —
+ * `ui/MarginPanel.tsx` maps `code` to a translated message instead of
+ * falling back to the raw (English) `message`. */
+export class MarginConfirmError extends Error {
+  readonly code: MarginConfirmErrorCode;
+  constructor(code: MarginConfirmErrorCode, message: string) {
+    super(message);
+    this.name = 'MarginConfirmError';
+    this.code = code;
+  }
+}
+
 /** `confirmMargin()`'s return shape — see that method's doc. `ok: true`
  * means the confirm was journaled; `ok: false` + `requiresAcknowledgement:
  * true` means the caller must re-invoke with `{ acknowledgeWarnings: true
@@ -337,15 +375,15 @@ class MarginEditorEngine {
   // ---------------------------------------------------------------------
 
   /** Begins (or resumes) editing `tooth`'s margin line on `restorationId`.
-   * @throws {Error} if the restoration doesn't exist or has no assigned
-   * target scan yet (Phase 3 Task 2's wizard step). */
+   * @throws {MarginStartError} if the restoration doesn't exist or has no
+   * assigned target scan yet (Phase 3 Task 2's wizard step). */
   startForTooth(restorationId: string, tooth: FdiTooth): void {
     const restoration = this.findRestoration(restorationId);
     if (!restoration) {
-      throw new Error(`marginEditor.startForTooth: no restoration registered for id ${restorationId}`);
+      throw new MarginStartError('noRestoration', `marginEditor.startForTooth: no restoration registered for id ${restorationId}`);
     }
     if (!restoration.targetNodeId) {
-      throw new Error('marginEditor.startForTooth: restoration has no assigned target scan yet');
+      throw new MarginStartError('noTargetScan', 'marginEditor.startForTooth: restoration has no assigned target scan yet');
     }
     useMarginStore.getState().start(restorationId, tooth, restoration.targetNodeId);
     const existing = restoration.marginLines[tooth];
@@ -1177,13 +1215,13 @@ class MarginEditorEngine {
   async confirmMargin(opts: { acknowledgeWarnings?: boolean } = {}): Promise<MarginConfirmOutcome> {
     const store = useMarginStore.getState();
     if (!store.restorationId || store.tooth === null) {
-      throw new Error('marginEditor.confirmMargin: no active session');
+      throw new MarginConfirmError('noActiveSession', 'marginEditor.confirmMargin: no active session');
     }
     const restorationId = store.restorationId;
     const tooth = store.tooth;
     const restoration = this.findRestoration(restorationId);
     if (!restoration) {
-      throw new Error(`marginEditor.confirmMargin: restoration ${restorationId} no longer exists`);
+      throw new MarginConfirmError('restorationGone', `marginEditor.confirmMargin: restoration ${restorationId} no longer exists`);
     }
     // Snapshot of what THIS tooth's committed anchors look like at entry —
     // compared against the fresh value below, after the validation await,
@@ -1218,7 +1256,7 @@ class MarginEditorEngine {
     }
     const freshRestoration = this.findRestoration(restorationId);
     if (!freshRestoration) {
-      throw new Error(`marginEditor.confirmMargin: restoration ${restorationId} no longer exists`);
+      throw new MarginConfirmError('restorationGone', `marginEditor.confirmMargin: restoration ${restorationId} no longer exists`);
     }
     if (freshRestoration.marginLines[tooth]?.anchors !== committedAnchorsAtEntry) {
       return { ok: false, requiresAcknowledgement: false, blocked: false, hardFailureKinds: [], hasWarnings: snapshot.hasWarnings, stale: true };

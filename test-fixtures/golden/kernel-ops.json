@@ -1,5 +1,5 @@
 {
-  "kernelVersion": "0.7.0",
+  "kernelVersion": "0.7.1",
   "manifoldVersion": "3.5.1",
   "notes": [
     "Runtime budget: every param here is chosen to keep this suite fast (target: whole suite well under the ~2 min CI budget) — see scripts/kernel-ops-lib.ts's module doc for each choice.",
@@ -332,8 +332,7 @@
         ],
         "bestScoreMm3": 0.7336022213740642,
         "bestUndercutAreaMm2": 2.618614351397977,
-        "bestMaxDepthMm": 0.8211216063004829,
-        "elapsedMs": 1613.6179160000002
+        "bestMaxDepthMm": 0.8211216063004829
       }
     },
     {

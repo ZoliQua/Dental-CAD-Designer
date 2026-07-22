@@ -27,6 +27,19 @@ export type AxisToolStatus = 'idle' | 'suggesting' | 'active' | 'error';
  * post-hoc geometric comparison). */
 export type AxisAdjustmentSource = 'suggested' | 'manual';
 
+/** Search-budget preset for `suggestAxis` — mirrors `@dqcad/kernel-workers`'
+ * `AxisSearchPresetName` (`@dqcad/kernel`'s `AXIS_SEARCH_PRESETS`: same
+ * "duplicate the trivial shape at the layer boundary" convention this
+ * file's own `AxisCandidateSummary` doc already documents — `state/` may
+ * not import `@dqcad/kernel-workers` directly). `'interactive'`: the
+ * <2s-tuned default. `'precise'`: slower (sub-second to ~1s in-process, per
+ * `AXIS_SEARCH_PRESETS.precise`'s own doc), converges closer to the true
+ * zero-undercut optimum — an explicit opt-in, never the default (Fix batch,
+ * Important 7). */
+export type AxisSearchMode = 'interactive' | 'precise';
+
+export const DEFAULT_AXIS_SEARCH_MODE: AxisSearchMode = 'interactive';
+
 /** One evaluated candidate's summary — mirrors
  * `@dqcad/kernel-workers`' `SuggestAxisCandidatePayload` (this store may
  * not import kernel-workers directly — CLAUDE.md layer rule, `state` ->
@@ -93,6 +106,21 @@ interface AxisToolState {
   azimuthDeg: number;
   elevationDeg: number;
   source: AxisAdjustmentSource;
+  /** Search-budget preset the NEXT `runSuggest()` will use — see
+   * `AxisSearchMode`'s doc (Fix batch, Important 7). Settable any time
+   * (mirrors `state/alignmentStore.ts`'s `overlapMode`: it only affects a
+   * SUBSEQUENT suggestion, no invalid-state hazard in setting it early or
+   * mid-session). */
+  searchMode: AxisSearchMode;
+  /** The search budget ACTUALLY used by the last `runSuggest()` call
+   * (`SuggestAxisResult.coarseCount`/`refineCount`, the job's own
+   * confirmation of what it really ran, not merely what was requested) —
+   * `null` until a suggestion has run this session. Journaled verbatim by
+   * `confirmAxis()` (Fix batch, Important 7) so a replay/audit sees the
+   * REAL executed budget, not just the current preset selection (which may
+   * have changed since the last suggestion ran). */
+  lastSearchCoarseCount: number | null;
+  lastSearchRefineCount: number | null;
   /** Ranked candidates from the last `runSuggest()` call (best first) — for
    * a "try the next-best axis" UI list. Empty until a suggestion has run
    * this session. */
@@ -144,7 +172,10 @@ interface AxisToolState {
     elevationDeg: number;
     ranked: readonly AxisCandidateSummary[];
     perAbutment: readonly AxisAbutmentReadout[];
+    coarseCount: number;
+    refineCount: number;
   }) => void;
+  setSearchMode: (searchMode: AxisSearchMode) => void;
   setError: (error: string) => void;
   setManualDirection: (input: { direction: Vec3; azimuthDeg: number; elevationDeg: number }) => void;
   setHeatmapVisible: (visible: boolean) => void;
@@ -164,6 +195,7 @@ const INITIAL: Omit<
   | 'setSuggesting'
   | 'setSuggestProgress'
   | 'setSuggestResult'
+  | 'setSearchMode'
   | 'setError'
   | 'setManualDirection'
   | 'setHeatmapVisible'
@@ -187,6 +219,9 @@ const INITIAL: Omit<
   azimuthDeg: 0,
   elevationDeg: 90,
   source: 'manual',
+  searchMode: DEFAULT_AXIS_SEARCH_MODE,
+  lastSearchCoarseCount: null,
+  lastSearchRefineCount: null,
   ranked: [],
   perAbutment: [],
   heatmapVisible: true,
@@ -213,7 +248,8 @@ export const useAxisStore = create<AxisToolState>((set) => ({
     }),
   setSuggesting: () => set({ status: 'suggesting', busy: true, progress: 0, error: null }),
   setSuggestProgress: (progress) => set({ progress }),
-  setSuggestResult: ({ direction, azimuthDeg, elevationDeg, ranked, perAbutment }) =>
+  setSearchMode: (searchMode) => set({ searchMode }),
+  setSuggestResult: ({ direction, azimuthDeg, elevationDeg, ranked, perAbutment, coarseCount, refineCount }) =>
     set({
       status: 'active',
       busy: false,
@@ -223,6 +259,8 @@ export const useAxisStore = create<AxisToolState>((set) => ({
       azimuthDeg,
       elevationDeg,
       source: 'suggested',
+      lastSearchCoarseCount: coarseCount,
+      lastSearchRefineCount: refineCount,
       ranked,
       perAbutment,
       confirmed: false,

@@ -40,6 +40,7 @@ import {
   suggestInsertionAxisForRegions,
   undercutScanIndices,
   AXIS_DEFAULT_ROI_RADIUS_MM,
+  AXIS_SEARCH_PRESETS,
   EmptyRegionError,
   DegenerateRegionNormalError,
   type HalfedgeMesh,
@@ -52,7 +53,13 @@ import { JobCancelledError, type JobContext } from './context.ts';
 import type { Vec3Payload } from './shared.ts';
 import type { MarginSurfacePointPayload } from './margin.ts';
 
-export { EmptyRegionError, DegenerateRegionNormalError, AXIS_DEFAULT_ROI_RADIUS_MM };
+export { EmptyRegionError, DegenerateRegionNormalError, AXIS_DEFAULT_ROI_RADIUS_MM, AXIS_SEARCH_PRESETS };
+
+/** `AXIS_SEARCH_PRESETS`' own key type — re-exported so engine code (which
+ * may only import `@dqcad/kernel-workers`, never `@dqcad/kernel` directly —
+ * CLAUDE.md layer rule) can name `'interactive' | 'precise'` without a
+ * direct kernel dependency (Fix batch, Important 7). */
+export type AxisSearchPresetName = keyof typeof AXIS_SEARCH_PRESETS;
 
 // Duplicated per-worker halfedge cache — mirrors jobs/margin.ts's own
 // `halfedgeCache` (that file's doc explains why this is duplicated per

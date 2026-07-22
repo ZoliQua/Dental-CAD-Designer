@@ -832,6 +832,19 @@ export async function computeKernelOpsSnapshot(): Promise<KernelOpsSnapshot> {
           '— investigate before regenerating',
       );
     }
+    // Fix batch (Important 13): `elapsedMs` is WALL-CLOCK timing, not a
+    // property of the op's inputs/outputs — embedding it in the golden-
+    // recorded `meta` made every regeneration byte-non-reproducible (a fresh
+    // `elapsedMs` every run, even with zero real kernel change), which is
+    // exactly the diff noise CLAUDE.md's "a 'small numeric diff' in golden
+    // files is a red flag" policy exists to catch, except here the noise was
+    // structural (guaranteed on every regen), not a real signal. The timing
+    // itself is still measured and enforced (the 8s CI-safe bound check
+    // above is unchanged) — only its presence in the COMMITTED golden file
+    // is removed; logged to the console instead, for a human regenerating
+    // the file to eyeball, same as this task's report already records the
+    // measured number.
+    console.log(`[kernel-ops golden] suggestAxis: ${elapsedMs.toFixed(1)}ms (not recorded in the golden file — see this op's meta comment)`);
 
     ops.push({
       id: 'suggestAxis',
@@ -859,7 +872,6 @@ export async function computeKernelOpsSnapshot(): Promise<KernelOpsSnapshot> {
         bestScoreMm3: result.best.scoreMm3,
         bestUndercutAreaMm2: result.best.undercutAreaMm2,
         bestMaxDepthMm: result.best.maxDepthMm,
-        elapsedMs,
       },
     });
 

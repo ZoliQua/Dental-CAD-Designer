@@ -164,6 +164,12 @@ describe('AxisPanel — end to end (real WorkerPool, real frustum fixture)', () 
     await user.selectOptions(screen.getByTestId('axis-restoration-select'), restorationId);
     await user.click(screen.getByTestId('axis-start-button'));
 
+    // Fix batch (Important 7): the search-budget preset selector defaults
+    // to "interactive" and is reachable from this panel (previously
+    // AXIS_SEARCH_PRESETS.precise was unreachable from the UI at all).
+    const searchModeSelect = screen.getByTestId('axis-search-mode-select') as HTMLSelectElement;
+    expect(searchModeSelect.value).toBe('interactive');
+
     expect(screen.getByTestId('axis-suggest-button')).toBeTruthy();
     await user.click(screen.getByTestId('axis-suggest-button'));
 
@@ -203,6 +209,11 @@ describe('AxisPanel — end to end (real WorkerPool, real frustum fixture)', () 
     const lastOp = history[history.length - 1]!;
     expect(lastOp.name).toBe('axis-set');
     expect(restoration.insertionAxis).toEqual(lastOp.params.axis);
+    // Search-budget provenance (Important 7): the "interactive" preset that
+    // was selected before suggesting is journaled alongside the axis.
+    expect(lastOp.params.searchMode).toBe('interactive');
+    expect(lastOp.params.searchCoarseCount).toBe(24);
+    expect(lastOp.params.searchRefineCount).toBe(8);
   }, 20_000);
 
   it('blockout preview toggle (Phase 3 Task 10): tilting the axis and toggling the preview shows a non-empty readout, and confirm journals the blockout params', async () => {

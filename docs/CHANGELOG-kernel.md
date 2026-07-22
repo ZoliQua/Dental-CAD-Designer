@@ -59,6 +59,31 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.7.1] — Final-review fix batch 2 (Important 13): drop non-reproducible `elapsedMs` from the `suggestAxis` golden meta
+
+No kernel algorithm or output changed — every op's `hash` in
+`test-fixtures/golden/kernel-ops.json` is byte-identical to `[0.7.0]`. The
+ONLY change is that the `suggestAxis` entry's `meta` object no longer
+carries `elapsedMs` (wall-clock timing of that op's real-fixture run,
+`scripts/kernel-ops-lib.ts`'s "18. suggestAxis" block). `elapsedMs` was
+never an input to that entry's `hash` (see the op's own `sha256Of(...)`
+call — it hashes `best`/`rankedCount`/`poleUsed`/`coarseCount`/
+`refineCount` only), so removing it changes NOTHING about what this golden
+verifies; it only removes wall-clock noise from the COMMITTED file itself,
+which previously made `npx tsx scripts/generate-kernel-goldens.ts` produce a
+different `kernel-ops.json` on every single run (a fresh timing number, every
+time) even with zero real kernel change — exactly the "small numeric diff
+in golden files" CLAUDE.md's policy warns against investigating-not-
+regenerating over, except this one was guaranteed to fire on every
+regeneration, not a real signal. The measured timing itself is still
+enforced (the existing <8s CI-safe bound check in `kernel-ops-lib.ts` is
+unchanged) and still printed to the console during generation for a human
+to read — only its presence in the diffed, committed golden file is
+removed. This is a genuine golden-file CHANGE (the JSON file's bytes
+differ), so it goes through the same bump+changelog discipline as any other
+golden change, per this policy's own point 2 — a "more honest" file is
+still a changed file the version-gate must see, not an exemption.
+
 ## [0.7.0] — Phase 3 Task 10: undercut blockout preview (`blockout/` module, "virtual wax")
 
 **NEW op.** Adds `packages/kernel/src/blockout/` — `blockoutPreview(mesh, bvh,
