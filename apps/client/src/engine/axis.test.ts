@@ -455,6 +455,26 @@ describe('axisEngine — heatmap refresh preserves the suggest-time per-abutment
     // carried forward from the last suggestion instead of being clobbered.
     expect(state.perAbutment[0]!.undercutAreaMm2).toBe(1.2345);
   });
+
+  it('a MANUAL-ONLY session (sliders dragged, runSuggest never called) reports undercutAreaMm2 as null, not a fabricated 0 (residual gap, Critical 1 follow-up)', async () => {
+    const { restorationId } = setupCrownRestoration();
+    axisEngine.start(restorationId);
+    expect(useAxisStore.getState().perAbutment).toEqual([]); // nothing measured yet — start() never populates perAbutment
+
+    const generationBefore = useAxisStore.getState().heatmapGeneration;
+    axisEngine.setElevationDeg(80); // manual slider drag — fires a live heatmap-only recompute, `runSuggest()` is never called in this test
+    for (let i = 0; i < 50 && useAxisStore.getState().heatmapGeneration === generationBefore; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+
+    const state = useAxisStore.getState();
+    expect(state.heatmapGeneration).toBeGreaterThan(generationBefore); // the recompute actually ran
+    expect(state.source).toBe('manual');
+    expect(state.perAbutment[0]!.tooth).toBe(11);
+    // The honest "never measured" state — NOT 0, which would read as a
+    // confirmed clinical zero-undercut result.
+    expect(state.perAbutment[0]!.undercutAreaMm2).toBeNull();
+  });
 });
 
 describe('axisEngine — concurrent heatmap + blockout refresh (independent generation counters)', () => {

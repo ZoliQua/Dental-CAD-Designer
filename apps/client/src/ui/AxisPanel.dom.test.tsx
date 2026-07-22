@@ -262,4 +262,41 @@ describe('AxisPanel — end to end (real WorkerPool, real frustum fixture)', () 
     await user.click(screen.getByTestId('axis-blockout-toggle'));
     expect(screen.queryByTestId('axis-blockout-threshold-input')).toBeNull();
   }, 20_000);
+
+  it('a MANUAL-ONLY session (sliders dragged, "Suggest" never clicked) shows an honest "unmeasured" placeholder — never a fabricated 0 mm² (residual gap, Critical 1 follow-up)', async () => {
+    const user = userEvent.setup();
+    const restorationId = setupCrownRestoration();
+
+    render(<AxisPanel />);
+    await user.selectOptions(screen.getByTestId('axis-restoration-select'), restorationId);
+    await user.click(screen.getByTestId('axis-start-button'));
+
+    // Drag the elevation slider directly — `axis-suggest-button` is never
+    // clicked in this test, so `perAbutment` is only ever populated by the
+    // heatmap-only refresh path (engine/axis.ts's `refreshHeatmap`), which
+    // never computes area.
+    const elevationSlider = screen.getByTestId('axis-elevation-slider') as HTMLInputElement;
+    fireEvent.change(elevationSlider, { target: { value: '60' } });
+
+    await waitFor(
+      () => {
+        expect(screen.getByTestId('axis-abutment-table')).toBeTruthy();
+      },
+      { timeout: 10_000 },
+    );
+
+    expect(screen.getByTestId('axis-source').textContent).toContain('manually adjusted');
+
+    // The area cell must show the honest placeholder, never "0.00 mm²".
+    const areaCell = screen.getByTestId('axis-abutment-area-11');
+    expect(areaCell.textContent).toBe('—');
+    expect(areaCell.textContent).not.toContain('0.00');
+
+    // The caption must NOT claim a suggestion ran — it must use the
+    // "unmeasured" wording, not the "measured at the last auto-suggested
+    // axis" one (which would be inaccurate here).
+    const caption = screen.getByTestId('axis-abutment-area-note');
+    expect(caption.textContent).toMatch(/not been measured yet/i);
+    expect(caption.textContent).not.toMatch(/measured at the last auto-suggested axis/i);
+  }, 20_000);
 });

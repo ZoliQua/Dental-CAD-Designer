@@ -267,6 +267,8 @@
     "abutmentTooth": "Diente",
     "abutmentUndercutArea": "Área de socavado",
     "abutmentAreaNote": "El área de socavado se mide en el último eje sugerido automáticamente; no se recalcula con los ajustes manuales.",
+    "abutmentAreaNoteUnmeasured": "El área de socavado aún no se ha medido — ejecute «Sugerir eje automáticamente» para medirla.",
+    "abutmentAreaUnmeasured": "—",
     "abutmentMaxDepth": "Profundidad máxima",
     "confirmedLabel": "Eje confirmado",
     "confirmButton": "Confirmar eje",

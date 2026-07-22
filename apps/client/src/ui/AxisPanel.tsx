@@ -62,6 +62,16 @@ export function AxisPanel() {
   const restorations = document.restorations;
   const selectedRestoration = restorations.find((r) => r.id === pendingRestorationId);
 
+  // Gap fix (residual from Task-11-review Critical 1): `undercutAreaMm2` is
+  // `null` per abutment until a `runSuggest()` has actually run this
+  // session (state/axisStore.ts's `AxisAbutmentReadout` doc) — a
+  // manual-only session (sliders dragged, "Suggest" never clicked) has
+  // genuinely never measured it. All abutments flip from null->measured
+  // together (one `runSuggest()` call populates the whole array in one
+  // shot), so checking whether ANY entry is still unmeasured is equivalent
+  // to checking ALL of them and picks the right caption for both states.
+  const hasMeasuredAbutmentArea = perAbutment.some((readout) => readout.undercutAreaMm2 !== null);
+
   function handleStart(): void {
     if (!pendingRestorationId) return;
     setStartError(null);
@@ -308,7 +318,7 @@ export function AxisPanel() {
       {perAbutment.length > 0 && (
         <table className="axis-panel__abutments" data-testid="axis-abutment-table">
           <caption className="axis-panel__abutment-area-note" data-testid="axis-abutment-area-note">
-            {t('axis.abutmentAreaNote')}
+            {t(hasMeasuredAbutmentArea ? 'axis.abutmentAreaNote' : 'axis.abutmentAreaNoteUnmeasured')}
           </caption>
           <thead>
             <tr>
@@ -321,7 +331,9 @@ export function AxisPanel() {
             {perAbutment.map((readout) => (
               <tr key={readout.tooth} data-testid={`axis-abutment-row-${readout.tooth}`}>
                 <td>{readout.tooth}</td>
-                <td>{readout.undercutAreaMm2.toFixed(2)} mm²</td>
+                <td data-testid={`axis-abutment-area-${readout.tooth}`}>
+                  {readout.undercutAreaMm2 !== null ? `${readout.undercutAreaMm2.toFixed(2)} mm²` : t('axis.abutmentAreaUnmeasured')}
+                </td>
                 <td>{(readout.maxDepthMm * 1000).toFixed(0)} µm</td>
               </tr>
             ))}

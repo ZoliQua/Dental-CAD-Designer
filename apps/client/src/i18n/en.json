@@ -267,6 +267,8 @@
     "abutmentTooth": "Tooth",
     "abutmentUndercutArea": "Undercut area",
     "abutmentAreaNote": "Undercut area is measured at the last auto-suggested axis; it is not recomputed for manual adjustments.",
+    "abutmentAreaNoteUnmeasured": "Undercut area has not been measured yet — run Auto-suggest axis to measure it.",
+    "abutmentAreaUnmeasured": "—",
     "abutmentMaxDepth": "Max depth",
     "confirmedLabel": "Axis confirmed",
     "confirmButton": "Confirm axis",

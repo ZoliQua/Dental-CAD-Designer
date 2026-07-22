@@ -57,10 +57,20 @@ export interface AxisCandidateSummary {
 /** Per-abutment undercut readout at the CURRENT direction (this task's
  * brief: "per-abutment readout for bridges") — populated for every
  * margin-bearing tooth on the restoration, length 1 for a
- * crown/inlay/onlay. */
+ * crown/inlay/onlay.
+ *
+ * `undercutAreaMm2` is `null` until at least one `runSuggest()` has
+ * completed THIS session — `suggestAxis` is the only job that computes area
+ * (engine/axis.ts's `refreshHeatmap` doc); a manual-only session (sliders
+ * dragged, "Suggest" never clicked) has genuinely never measured it. `null`
+ * is a real "unmeasured" state, not a placeholder for `0` — `0` would read
+ * as a confirmed clinical zero-undercut result, which is exactly the
+ * fabricated-zero failure mode this field previously had (Task-11-review
+ * Critical 1 / its residual gap). `ui/AxisPanel.tsx` renders `null` as an
+ * honest "—" with a caption explaining nothing has been measured yet. */
 export interface AxisAbutmentReadout {
   tooth: FdiTooth;
-  undercutAreaMm2: number;
+  undercutAreaMm2: number | null;
   maxDepthMm: number;
   undercutTriangleCount: number;
   regionTriangleCount: number;

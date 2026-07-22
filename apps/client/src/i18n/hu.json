@@ -267,6 +267,8 @@
     "abutmentTooth": "Fog",
     "abutmentUndercutArea": "Alávágott terület",
     "abutmentAreaNote": "Az alávágott terület az utolsó automatikusan javasolt tengelynél mért érték; kézi módosításnál nem kerül újraszámításra.",
+    "abutmentAreaNoteUnmeasured": "Az alávágott terület még nincs megmérve — a méréshez futtassa a „Tengely automatikus javaslata” funkciót.",
+    "abutmentAreaUnmeasured": "—",
     "abutmentMaxDepth": "Max. mélység",
     "confirmedLabel": "Tengely megerősítve",
     "confirmButton": "Tengely megerősítése",

@@ -267,6 +267,8 @@
     "abutmentTooth": "Zahn",
     "abutmentUndercutArea": "Unterschnittfläche",
     "abutmentAreaNote": "Die Unterschnittfläche wurde bei der zuletzt automatisch vorgeschlagenen Achse gemessen; sie wird bei manuellen Anpassungen nicht neu berechnet.",
+    "abutmentAreaNoteUnmeasured": "Die Unterschnittfläche wurde noch nicht gemessen — für eine Messung „Achse automatisch vorschlagen“ ausführen.",
+    "abutmentAreaUnmeasured": "—",
     "abutmentMaxDepth": "Max. Tiefe",
     "confirmedLabel": "Achse bestätigt",
     "confirmButton": "Achse bestätigen",

@@ -459,13 +459,21 @@ class AxisEngine {
       // (from the last `runSuggest()`, if any this session) instead of
       // clobbering it — the heatmap refresh only ever UPDATES the fields it
       // actually measures (depth/triangle counts); area only ever changes
-      // when a fresh suggestion runs. `apps/client/src/ui/AxisPanel.tsx`
-      // notes this staleness explicitly (`axis.abutmentAreaNote`) so the
-      // clinician never reads it as a live number.
+      // when a fresh suggestion runs.
+      //
+      // Residual gap (same report, Critical 1 follow-up): a MANUAL-ONLY
+      // session — sliders dragged, `runSuggest()` never called — has no
+      // prior area to carry forward (`perAbutment` starts empty, per
+      // `AxisToolState.start`'s doc), so the fallback below must be `null`
+      // (genuinely "never measured"), NOT `0` (a fabricated "confirmed
+      // zero-undercut" reading — the exact failure mode this whole doc
+      // comment is about). `ui/AxisPanel.tsx` renders `null` as an honest
+      // "—" placeholder with a caption that only claims "measured at the
+      // last suggestion" when a suggestion has actually run this session.
       const priorPerAbutment = useAxisStore.getState().perAbutment;
       const perAbutment: AxisAbutmentReadout[] = store.abutmentTeeth.map((tooth, i) => ({
         tooth,
-        undercutAreaMm2: priorPerAbutment.find((p) => p.tooth === tooth)?.undercutAreaMm2 ?? 0,
+        undercutAreaMm2: priorPerAbutment.find((p) => p.tooth === tooth)?.undercutAreaMm2 ?? null,
         maxDepthMm: result.perAbutment[i]!.maxDepthMm,
         undercutTriangleCount: result.perAbutment[i]!.undercutTriangleCount,
         regionTriangleCount: result.perAbutment[i]!.regionTriangleCount,
