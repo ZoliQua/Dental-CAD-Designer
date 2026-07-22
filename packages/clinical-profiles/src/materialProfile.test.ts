@@ -72,6 +72,55 @@ describe('validateMaterialProfileShape', () => {
     (raw['connectorAreaMm2'] as Record<string, unknown>)['posteriorMm2'] = 100;
     expect(() => validateMaterialProfileShape(raw)).toThrow(MaterialProfileValidationError);
   });
+
+  // Phase 4 Task 1: occlusalMinWallThicknessMm / maxChordDeviationMm.
+  it('accepts the shipped standard-zirconia profile\'s occlusalMinWallThicknessMm/maxChordDeviationMm', () => {
+    const profile = validateMaterialProfileShape(validRawProfile());
+    expect(profile.occlusalMinWallThicknessMm).toBe(0.5);
+    expect(profile.maxChordDeviationMm).toBe(0.005);
+  });
+
+  it('rejects a missing occlusalMinWallThicknessMm', () => {
+    const raw = validRawProfile();
+    delete raw['occlusalMinWallThicknessMm'];
+    expect(() => validateMaterialProfileShape(raw)).toThrow(/occlusalMinWallThicknessMm/);
+  });
+
+  it('rejects occlusalMinWallThicknessMm below 0.3mm', () => {
+    const raw = validRawProfile();
+    raw['occlusalMinWallThicknessMm'] = 0.1;
+    expect(() => validateMaterialProfileShape(raw)).toThrow(MaterialProfileValidationError);
+  });
+
+  it('rejects maxChordDeviationMm outside the 1-20 µm PLAN.md §3 range', () => {
+    const raw = validRawProfile();
+    raw['maxChordDeviationMm'] = 0.05; // 50 µm, way outside 1-20 µm
+    expect(() => validateMaterialProfileShape(raw)).toThrow(MaterialProfileValidationError);
+    const raw2 = validRawProfile();
+    raw2['maxChordDeviationMm'] = 0.0001; // 0.1 µm, below the 1 µm floor
+    expect(() => validateMaterialProfileShape(raw2)).toThrow(MaterialProfileValidationError);
+  });
+});
+
+describe('EMAX_LITHIUM_DISILICATE_PROFILE — the second real material profile (Phase 4 Task 1)', () => {
+  it('loads with a material-aware occlusal/axial thickness split per PLAN.md §3', async () => {
+    const { EMAX_LITHIUM_DISILICATE_PROFILE } = await import('./profiles.ts');
+    expect(EMAX_LITHIUM_DISILICATE_PROFILE.id).toBe('emax-lithium-disilicate');
+    // "1.0 mm occlusal / 0.8 mm axial" — axial lives on restorationParams
+    // (this profile's OWN convention, see materialProfile.ts's
+    // occlusalMinWallThicknessMm doc), occlusal is the new field.
+    expect(EMAX_LITHIUM_DISILICATE_PROFILE.restorationParams.minWallThicknessMm).toBe(0.8);
+    expect(EMAX_LITHIUM_DISILICATE_PROFILE.occlusalMinWallThicknessMm).toBe(1.0);
+    // Distinct from zirconia's (equal axial/occlusal, monolithic) profile.
+    expect(EMAX_LITHIUM_DISILICATE_PROFILE.occlusalMinWallThicknessMm).not.toBe(
+      EMAX_LITHIUM_DISILICATE_PROFILE.restorationParams.minWallThicknessMm,
+    );
+  });
+
+  it('is a real, independently checksum-verified profile (not sharing zirconia\'s checksum)', async () => {
+    const { EMAX_LITHIUM_DISILICATE_PROFILE, STANDARD_ZIRCONIA_PROFILE } = await import('./profiles.ts');
+    expect(EMAX_LITHIUM_DISILICATE_PROFILE.checksum).not.toBe(STANDARD_ZIRCONIA_PROFILE.checksum);
+  });
 });
 
 describe('loadMaterialProfile — checksum verification', () => {

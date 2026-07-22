@@ -59,8 +59,13 @@
  * kernel-algorithm output (no hash depended on it), only a diagnostic
  * embedded in the committed golden file, which made every regeneration
  * byte-non-reproducible for no numerical reason. No kernel algorithm or
- * output hash changes — see docs/CHANGELOG-kernel.md's `[0.7.1]` entry. */
-export const KERNEL_VERSION = '0.7.1';
+ * output hash changes — see docs/CHANGELOG-kernel.md's `[0.7.1]` entry.
+ * 0.8.0 (Phase 4 Task 1): two NEW ops, `offset/offsetMesh.ts`'s
+ * `offsetMeshRoi` (die-offset ROI-band perf fix) and `margin/band.ts` (the
+ * margin-band primitive) — see docs/CHANGELOG-kernel.md's `[0.8.0]` entry
+ * for the full writeup, including why neither gained a `kernel-ops.json`
+ * pin yet. Every existing golden hash is byte-identical to 0.7.1. */
+export const KERNEL_VERSION = '0.8.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -188,6 +193,7 @@ export {
   MIN_PITCH_MM,
   PitchTooSmallError,
   offsetMesh,
+  offsetMeshRoi,
   offsetGridSpec,
   offsetErrorBoundMm,
   maxAbsCoordOf,
@@ -197,6 +203,8 @@ export {
   type MarchingCubesSoup,
   type OffsetMeshOptions,
   type OffsetMeshResult,
+  type OffsetMeshRoiOptions,
+  type OffsetMeshRoiResult,
 } from './offset/index.ts';
 
 export {
@@ -405,6 +413,18 @@ export {
   type MarginOffSurfacePoint,
   type MarginSmoothnessWarning,
   type ValidateMarginLineOptions,
+  marginLoopPolyline,
+  computeMarginLoopFrame,
+  marginLoopMesh,
+  MARGIN_BAND_MIN_POINT_COUNT,
+  MARGIN_BAND_DEFAULT_HALF_THICKNESS_MM,
+  MarginBandChordCapError,
+  DegenerateMarginBandError,
+  DegenerateMarginLoopNormalError,
+  type MarginBandInput,
+  type MarginLoopFrame,
+  type MarginLoopMeshOptions,
+  type MarginLoopMeshResult,
 } from './margin/index.ts';
 
 export {

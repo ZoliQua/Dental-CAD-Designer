@@ -35,6 +35,7 @@ export default defineConfig({
       project('kernel', './packages/kernel'),
       project('kernel-workers', './packages/kernel-workers'),
       project('io', './packages/io'),
+      project('cad-pipeline', './packages/cad-pipeline'),
       {
         test: {
           name: 'server',

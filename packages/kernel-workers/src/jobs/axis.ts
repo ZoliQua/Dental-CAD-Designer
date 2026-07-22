@@ -6,13 +6,15 @@
 // so this job has exactly one payload shape for both cases, no separate
 // "bridge job".
 //
-// ## Per-worker caches (mirrors jobs/margin.ts's halfedgeCache — same "why a
-// per-worker cache, why contentHash" writeup, duplicated per this repo's
-// established per-domain-module convention rather than shared)
+// ## Per-worker caches (mirrors jobs/bvh.ts's `bvhCache` — same "why a
+// per-worker cache, why contentHash" writeup)
 //
 // `buildBvh` must have been called for `payload.contentHash` on THIS worker
 // first (jobs/bvh.ts's `requireCachedBvh`) — this job builds neither the BVH
-// nor the halfedge overlay itself if a cached copy already exists.
+// nor the halfedge overlay itself if a cached copy already exists. The
+// halfedge overlay comes from `jobs/meshCache.ts`'s CONSOLIDATED per-worker
+// cache (Phase 4 Task 1 carry-in — this file previously kept its own
+// independent `halfedgeCache` copy; see meshCache.ts's module doc).
 //
 // ## Progress & cancellation
 //
@@ -34,7 +36,6 @@
 // `.ts` extension: reachable from the Node worker entry's import closure —
 // see CLAUDE.md's "Import extension convention".
 import {
-  buildHalfedge,
   extractMarginRegion,
   unionRegions,
   suggestInsertionAxisForRegions,
@@ -43,12 +44,11 @@ import {
   AXIS_SEARCH_PRESETS,
   EmptyRegionError,
   DegenerateRegionNormalError,
-  type HalfedgeMesh,
-  type IndexedMesh,
   type SurfacePoint,
   type UndercutSamplingPolicy,
 } from '@dqcad/kernel';
-import { onBvhRelease, requireCachedBvh } from './bvh.ts';
+import { requireCachedBvh } from './bvh.ts';
+import { requireCachedHalfedge } from './meshCache.ts';
 import { JobCancelledError, type JobContext } from './context.ts';
 import type { Vec3Payload } from './shared.ts';
 import type { MarginSurfacePointPayload } from './margin.ts';
@@ -60,24 +60,6 @@ export { EmptyRegionError, DegenerateRegionNormalError, AXIS_DEFAULT_ROI_RADIUS_
  * CLAUDE.md layer rule) can name `'interactive' | 'precise'` without a
  * direct kernel dependency (Fix batch, Important 7). */
 export type AxisSearchPresetName = keyof typeof AXIS_SEARCH_PRESETS;
-
-// Duplicated per-worker halfedge cache — mirrors jobs/margin.ts's own
-// `halfedgeCache` (that file's doc explains why this is duplicated per
-// domain module rather than shared, and notes the existing 3-file repeat as
-// a housekeeping item — this is the same, now-4th, established shape, not a
-// new pattern).
-const halfedgeCache = new Map<string, HalfedgeMesh>();
-onBvhRelease((contentHash) => {
-  halfedgeCache.delete(contentHash);
-});
-
-function requireCachedHalfedge(contentHash: string, mesh: IndexedMesh): HalfedgeMesh {
-  const cached = halfedgeCache.get(contentHash);
-  if (cached) return cached;
-  const hm = buildHalfedge(mesh);
-  halfedgeCache.set(contentHash, hm);
-  return hm;
-}
 
 function toSurfacePoint(sp: MarginSurfacePointPayload): SurfacePoint {
   return { triangleIndex: sp.triangleIndex, barycentric: sp.barycentric as SurfacePoint['barycentric'] };

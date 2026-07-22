@@ -1,12 +1,12 @@
 {
-  "id": "standard-zirconia",
-  "version": "1.1.0",
-  "label": "Standard Zirconia (monolithic)",
+  "id": "emax-lithium-disilicate",
+  "version": "1.0.0",
+  "label": "e.max Lithium Disilicate (monolithic)",
   "restorationParams": {
     "cementGapMm": 0.05,
     "marginalGapMm": 0.02,
     "spacerStartMm": 0.8,
-    "minWallThicknessMm": 0.5,
+    "minWallThicknessMm": 0.8,
     "proximalContactPenetrationMm": 0.02,
     "occlusalContactMm": 0
   },
@@ -15,7 +15,7 @@
     "anteriorMm2": 7
   },
   "undercutBlockoutThresholdMm": 0,
-  "occlusalMinWallThicknessMm": 0.5,
+  "occlusalMinWallThicknessMm": 1.0,
   "maxChordDeviationMm": 0.005,
-  "checksum": "427b574749ccc2243083899cc3608772951bb9d474a235301c0fc1270288def8"
+  "checksum": "bdaa8360faecc5168b994b77ed75c0ee16a7ef020dc5cffc387f8a787e89e1d9"
 }

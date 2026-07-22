@@ -15,7 +15,7 @@ export {
   DEFAULT_RESTORATION_PARAMS,
   DEFAULT_UNDERCUT_BLOCKOUT_THRESHOLD_MM,
 } from './constants.ts';
-export { STANDARD_ZIRCONIA_PROFILE } from './profiles.ts';
+export { STANDARD_ZIRCONIA_PROFILE, EMAX_LITHIUM_DISILICATE_PROFILE } from './profiles.ts';
 export type {
   ConnectorAreaTargets,
   MaterialProfile,

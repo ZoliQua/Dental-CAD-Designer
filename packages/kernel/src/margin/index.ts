@@ -42,3 +42,19 @@ export {
   type MarginSmoothnessWarning,
   type ValidateMarginLineOptions,
 } from './validate.ts';
+
+// Phase 4 Task 1: the margin-band primitive. See band.ts's module doc.
+export {
+  marginLoopPolyline,
+  computeMarginLoopFrame,
+  marginLoopMesh,
+  MARGIN_BAND_MIN_POINT_COUNT,
+  MARGIN_BAND_DEFAULT_HALF_THICKNESS_MM,
+  MarginBandChordCapError,
+  DegenerateMarginBandError,
+  DegenerateMarginLoopNormalError,
+  type MarginBandInput,
+  type MarginLoopFrame,
+  type MarginLoopMeshOptions,
+  type MarginLoopMeshResult,
+} from './band.ts';

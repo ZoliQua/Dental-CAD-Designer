@@ -19,50 +19,24 @@
 // engine/workers.ts's `ensureBvhBuilt` is the call-site convention this
 // assumes).
 //
-// A SEPARATE per-worker `halfedgeCache`, also keyed by `contentHash`, holds
-// the `HalfedgeMesh` overlay `geodesicPath`/`snapPolylineGeodesic` need
+// The `HalfedgeMesh` overlay `geodesicPath`/`snapPolylineGeodesic` need
 // (`buildHalfedge` is a real, if bounded, O(triangles) cost — rebuilding it
 // on every single-segment re-snap call would defeat the whole point of
 // "incremental" being fast; this task's guardrail specifically targets
 // < 100 ms per re-snapped segment on a ~250k-triangle mesh — see
-// geodesicJobs.test.ts's perf test). Built lazily on first use for a given
-// contentHash (from the SAME cached `IndexedMesh` `requireCachedBvh`
-// already holds), then reused for every subsequent `geodesicPath`/
-// `snapPolyline` call on this worker for that mesh.
+// geodesicJobs.test.ts's perf test) comes from `jobs/meshCache.ts`'s
+// CONSOLIDATED per-worker cache (Phase 4 Task 1 carry-in — this file
+// previously kept its own independent `halfedgeCache` copy; see
+// meshCache.ts's module doc for why 4 such copies across this package were
+// merged into one shared pair).
 //
 // `.ts` extension: reachable from the Node worker entry's import closure —
 // see CLAUDE.md's "Import extension convention".
-import {
-  buildHalfedge,
-  geodesicPath,
-  snapPolylineGeodesic,
-  type HalfedgeMesh,
-  type IndexedMesh,
-  type SurfacePoint,
-} from '@dqcad/kernel';
+import { geodesicPath, snapPolylineGeodesic, type SurfacePoint } from '@dqcad/kernel';
 import { JobCancelledError, type JobContext } from './context.ts';
-import { onBvhRelease, requireCachedBvh } from './bvh.ts';
+import { requireCachedBvh } from './bvh.ts';
+import { requireCachedHalfedge } from './meshCache.ts';
 import type { Vec3Payload } from './shared.ts';
-
-const halfedgeCache = new Map<string, HalfedgeMesh>();
-
-// Evict this cache's overlay whenever the SAME contentHash's BVH is
-// released (jobs/bvh.ts's `releaseBvh`) — a released mesh's geodesic jobs
-// would fail on `requireCachedBvh` anyway, so a still-cached halfedge
-// overlay for it is pure leaked memory (tens of MB at real-scan scale). See
-// `onBvhRelease`'s doc for why this is a listener, not a direct import from
-// jobs/bvh.ts's side.
-onBvhRelease((contentHash) => {
-  halfedgeCache.delete(contentHash);
-});
-
-function requireCachedHalfedge(contentHash: string, mesh: IndexedMesh): HalfedgeMesh {
-  const cached = halfedgeCache.get(contentHash);
-  if (cached) return cached;
-  const hm = buildHalfedge(mesh);
-  halfedgeCache.set(contentHash, hm);
-  return hm;
-}
 
 /** Worker-safe `SurfacePoint` shape — a plain tuple/record (structured-
  * cloned, no typed array needed for 4 numbers), same convention as

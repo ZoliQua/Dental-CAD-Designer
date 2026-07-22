@@ -59,6 +59,52 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.8.0] — Phase 4 Task 1: cad-pipeline scaffold carry-ins — `offsetMeshRoi` (die-offset ROI-band perf fix) + `margin/band.ts` (margin-band primitive)
+
+**NEW ops, no existing golden hash changed.** Every entry in
+`test-fixtures/golden/kernel-ops.json` (and every other committed golden —
+intake/curvature/offset/margins) is byte-identical to `[0.7.1]` — verified
+by a full `npm run test:golden` run before this bump. This bump is for two
+genuinely NEW pieces of kernel surface, not a behavior change to anything
+existing:
+
+1. **`offset/offsetMesh.ts`'s `offsetMeshRoi`** — the die-offset ROI-band
+   perf fix (Phase 3 carry-in). Restricts the SDF grid's DOMAIN (bbox) to a
+   caller-supplied ROI instead of the input mesh's own full bbox — every
+   other stage (BVH, pseudonormals, the watertight gate) still runs over the
+   FULL, unrestricted mesh, so a sampled grid point's value is byte-identical
+   to what `offsetMesh`'s full-bbox grid would have produced at that same
+   point (proven by construction — `computeSdfGridSlice`'s per-point value
+   depends only on `mesh`/`bvh`/`pseudonormals`/the point's own world
+   coordinates, never the grid's overall extent — see `offsetMeshRoi`'s
+   module doc for the full argument and `offsetMeshRoi.test.ts` for the
+   byte-identity + interior-accuracy tests). MEASURED on
+   `standin-prep-die.stl` at the clinical default pitch (0.02mm): the
+   existing full-bbox `offsetMesh` golden's own die case took **117.9s**
+   (reproducing P2 Task 7's original 117-126s measurement); the SAME offset
+   restricted to a shoulder-collar ROI (`z in [-0.1, 0.7]`, full XY) took
+   **6.1s** — a 19.3x speedup, comfortably under this task's <10s target
+   (`test/golden/offset.test.ts`'s `RUN_OFFSET_ROI_PERF=1`-gated test).
+   Result is deliberately an OPEN (uncleaned) patch, not a solid — documented
+   in the function's own doc.
+2. **`margin/band.ts`** — the margin-band primitive: `marginLoopPolyline`
+   (dense on-surface loop, CHORD-CAP guarded — never derives geometry from
+   anchor chords), `computeMarginLoopFrame` (Newell's-method plane
+   normal/centroid/orthonormal tangent basis), `marginLoopMesh` (the loop as
+   a thin open ribbon for future boolean stitching). Analytic-tested on a
+   circular margin (`band.test.ts`) — exact centroid/normal/radius, and a
+   halfedge-topology validity check on the ribbon mesh.
+
+**Golden pinning deferred, honestly**: neither op has a `kernel-ops.json`
+entry yet (unlike prior "NEW op" bumps — icpRegister/proposeMargin/
+suggestAxis/blockoutPreview each gained one). Both are Phase 4 Task 1
+SCAFFOLD primitives with no pipeline stage consuming them yet — pinning a
+golden now would fix an interface shape (ROI bbox choice, ribbon
+`halfThicknessMm` default) before Task 3/4 actually wires them into a real
+stage with real fixtures. Each is instead covered by dedicated
+analytic/property/determinism unit tests in this same commit; a golden pin
+is the natural next step once a real stage consumes them.
+
 ## [0.7.1] — Final-review fix batch 2 (Important 13): drop non-reproducible `elapsedMs` from the `suggestAxis` golden meta
 
 No kernel algorithm or output changed — every op's `hash` in

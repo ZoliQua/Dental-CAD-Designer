@@ -8,5 +8,10 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@dqcad/kernel": "*",
+    "@dqcad/io": "*",
+    "@dqcad/shared-types": "*"
   }
 }

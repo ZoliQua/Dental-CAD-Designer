@@ -12,6 +12,7 @@
 // enough, same convention `apps/client/src/i18n/index.ts` already uses for
 // its locale JSON files.
 import standardZirconiaJson from './profiles/standard-zirconia.json';
+import emaxLithiumDisilicateJson from './profiles/emax-lithium-disilicate.json';
 import { loadMaterialProfile, type MaterialProfile } from './materialProfile.ts';
 
 /**
@@ -19,6 +20,30 @@ import { loadMaterialProfile, type MaterialProfile } from './materialProfile.ts'
  * parameter table, "Zirconia default" column. See
  * `profiles/standard-zirconia.json` for the raw, checksummed data and
  * `materialProfile.ts`'s `validateMaterialProfileShape` for each field's
- * PLAN.md §3 citation.
+ * PLAN.md §3 citation. Version 1.1.0 (Phase 4 Task 1): gained
+ * `occlusalMinWallThicknessMm` (== `restorationParams.minWallThicknessMm`
+ * for zirconia's monolithic single-value case — PLAN.md §3's "Monolithic;
+ * framework 0.5") and `maxChordDeviationMm` (5 µm, PLAN.md §3's "Export max
+ * chord deviation" row); checksum bumped accordingly.
  */
 export const STANDARD_ZIRCONIA_PROFILE: MaterialProfile = loadMaterialProfile(standardZirconiaJson);
+
+/**
+ * Phase 4 Task 1: the second real material profile — PLAN.md §3's "Min wall
+ * thickness — lithium disilicate (e.max): 1.0 mm occlusal / 0.8 mm axial"
+ * row is what motivates this profile's existence (thickness gates are
+ * material-aware starting Phase 4 Task 7): `restorationParams.
+ * minWallThicknessMm` (treated as the AXIAL minimum, see
+ * `materialProfile.ts`'s `occlusalMinWallThicknessMm` doc) is 0.8, and
+ * `occlusalMinWallThicknessMm` is 1.0. Every OTHER field reuses
+ * `STANDARD_ZIRCONIA_PROFILE`'s own values (cement/marginal gap, spacer
+ * start, proximal/occlusal contact, connector areas, undercut blockout
+ * threshold, max chord deviation) — PLAN.md §3's table gives no
+ * e.max-specific values for those rows; reusing the zirconia defaults is an
+ * honest, documented placeholder (not a silent guess — see
+ * `profiles/emax-lithium-disilicate.json`), revisit if a real per-material
+ * value becomes available.
+ */
+export const EMAX_LITHIUM_DISILICATE_PROFILE: MaterialProfile = loadMaterialProfile(
+  emaxLithiumDisilicateJson,
+);
