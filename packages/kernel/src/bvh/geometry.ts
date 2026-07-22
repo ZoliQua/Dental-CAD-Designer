@@ -207,7 +207,25 @@ export function rayTriangleIntersect(
     return null;
   }
   const w = 1 - u - v;
-  return { t, barycentric: [w, u, v] };
+  // Clamp to [0, 1] at the PRODUCER (Task-11-review Important 11): the edge
+  // tests above deliberately ACCEPT a hit up to `BARYCENTRIC_EPSILON`
+  // outside the triangle (this function's own "watertight" edge-tolerance
+  // doc above) — a ray landing exactly on a shared edge can come back with,
+  // e.g., `u = -3e-13` from ONE of the two adjacent triangles' independent
+  // floating-point solves. By this point the accept/reject decision is
+  // already FINAL — nothing downstream needs the raw pre-clamp sign, only a
+  // valid barycentric coordinate for the (already accepted) hit. Left
+  // unclamped, that epsilon-negative component propagates downstream into a
+  // stored `MarginAnchor.barycentric` (apps/client/src/engine/
+  // marginEditor.ts's anchor-creation call sites, fed from this same
+  // raycast via jobs/bvh.ts's `raycastMesh`), which the server's
+  // `marginAnchorSchema` (apps/server/src/schemas.ts) enforces `minimum: 0`
+  // on — one epsilon-negative anchor 400s every subsequent PUT for that
+  // case FOREVER. Per-component clamp only (not a sum-to-1 renormalization):
+  // the drift is of order `BARYCENTRIC_EPSILON` (1e-12), and the schema
+  // only constrains each component to `[0, 1]` independently, not the sum.
+  const clamp01 = (x: number): number => (x < 0 ? 0 : x > 1 ? 1 : x);
+  return { t, barycentric: [clamp01(w), clamp01(u), clamp01(v)] };
 }
 
 // ---------------------------------------------------------------------------
