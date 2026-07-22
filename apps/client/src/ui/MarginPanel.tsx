@@ -123,7 +123,18 @@ export function MarginPanel() {
   async function handleConfirm(acknowledgeWarnings: boolean): Promise<void> {
     setConfirmError(null);
     try {
-      const outcome = await marginEditor.confirmMargin({ acknowledgeWarnings });
+      let outcome = await marginEditor.confirmMargin({ acknowledgeWarnings });
+      // `stale: true` (Task-11-review Critical 3): a drag (or other edit)
+      // committed newer geometry WHILE this confirm's validation was in
+      // flight — `confirmMargin` deliberately journaled nothing rather than
+      // risk clobbering that commit (see its own doc). The race window is
+      // just one validation round trip, so a single immediate retry against
+      // the now-settled anchors is expected to succeed and is transparent
+      // to the user — no need to surface this as an error or make them
+      // click confirm again themselves.
+      if (outcome.stale) {
+        outcome = await marginEditor.confirmMargin({ acknowledgeWarnings });
+      }
       setPendingAcknowledge(outcome.requiresAcknowledgement);
     } catch (err) {
       setConfirmError(err instanceof Error ? err.message : String(err));

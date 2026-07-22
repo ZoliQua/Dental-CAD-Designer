@@ -160,13 +160,26 @@ export type MarginErrorKind = 'noRidgeFound' | 'noClosure' | 'other';
  * true` means a hard failure exists and confirm cannot proceed at all
  * (`hardFailureKinds` has the reasons — the UI badge already shows these
  * live via `marginStore.validation`, this is the same data echoed back for
- * a caller that only wants the outcome of ITS OWN confirm attempt). */
+ * a caller that only wants the outcome of ITS OWN confirm attempt).
+ *
+ * `stale` (Task-11-review Critical 3): `true` when a NEWER edit (a drag
+ * commit, or any other `commit()`-going gesture) landed on this tooth's
+ * `marginLines` entry WHILE this call's validation round trip was in
+ * flight, or a drag is actively in progress the instant validation
+ * resolves. In that case `confirmMargin` does NOT journal anything (the
+ * validation snapshot it just computed no longer describes the CURRENT
+ * geometry, so journaling a confirm against it would be dishonest) — the
+ * concurrent commit itself is already safely journaled by `commit()`
+ * regardless, so nothing is lost; the caller is expected to simply retry
+ * (call `confirmMargin` again), which validates the fresh anchors
+ * correctly. `ok` is `false` whenever `stale` is `true`. */
 export interface MarginConfirmOutcome {
   ok: boolean;
   requiresAcknowledgement: boolean;
   blocked: boolean;
   hardFailureKinds: readonly MarginHardFailureKind[];
   hasWarnings: boolean;
+  stale: boolean;
 }
 
 /** Translates a `validateMargin` worker job result (`@dqcad/kernel-workers`'
@@ -1140,16 +1153,43 @@ class MarginEditorEngine {
    * `marginLines[tooth]` (already written by the anchors' own prior
    * `margin-edit` commit), it only records that THIS anchor state was
    * reviewed and accepted, with which (if any) warnings were acknowledged.
+   *
+   * ## Race safety (Task-11-review Critical 3)
+   *
+   * `store`/`restoration` above are captured BEFORE the validation await —
+   * a drag (or any other gesture) can `commit()` a NEWER `marginLines[tooth]`
+   * entry to `caseStore` WHILE this validation round trip is in flight.
+   * Writing the STALE, entry-captured `restoration` back via
+   * `caseStore.updateRestoration` after that would silently REVERT the
+   * just-committed drag (even though this method never intends to change
+   * `marginLines` itself — see the "UNCHANGED" doc above — the OBJECT it
+   * writes back would still be the pre-drag one). Guarded below by
+   * re-fetching the restoration fresh right before the write, and bailing
+   * out (no caseStore write, `stale: true`) if either a drag is actively in
+   * progress, or the tooth's committed anchors changed since entry — in
+   * both cases this confirm's validation snapshot no longer describes the
+   * CURRENT geometry, so the caller must retry rather than have this method
+   * journal a confirm (or worse, clobber a newer commit) against stale
+   * data. The concurrent commit itself is unaffected either way — `commit()`
+   * always re-fetches+writes its own fresh restoration, so it's already
+   * safely journaled by the time this check runs.
    */
   async confirmMargin(opts: { acknowledgeWarnings?: boolean } = {}): Promise<MarginConfirmOutcome> {
     const store = useMarginStore.getState();
     if (!store.restorationId || store.tooth === null) {
       throw new Error('marginEditor.confirmMargin: no active session');
     }
-    const restoration = this.findRestoration(store.restorationId);
+    const restorationId = store.restorationId;
+    const tooth = store.tooth;
+    const restoration = this.findRestoration(restorationId);
     if (!restoration) {
-      throw new Error(`marginEditor.confirmMargin: restoration ${store.restorationId} no longer exists`);
+      throw new Error(`marginEditor.confirmMargin: restoration ${restorationId} no longer exists`);
     }
+    // Snapshot of what THIS tooth's committed anchors look like at entry —
+    // compared against the fresh value below, after the validation await,
+    // to detect a concurrent `commit()` landing mid-flight (see this
+    // method's own "Race safety" doc above).
+    const committedAnchorsAtEntry = restoration.marginLines[tooth]?.anchors;
 
     useMarginStore.getState().setValidationBusy(true);
     let snapshot: MarginValidationSnapshot;
@@ -1162,10 +1202,26 @@ class MarginEditorEngine {
 
     if (snapshot.blocked) {
       useMarginStore.getState().setConfirmed(false);
-      return { ok: false, requiresAcknowledgement: false, blocked: true, hardFailureKinds: snapshot.hardFailureKinds, hasWarnings: snapshot.hasWarnings };
+      return { ok: false, requiresAcknowledgement: false, blocked: true, hardFailureKinds: snapshot.hardFailureKinds, hasWarnings: snapshot.hasWarnings, stale: false };
     }
     if (snapshot.hasWarnings && !opts.acknowledgeWarnings) {
-      return { ok: false, requiresAcknowledgement: true, blocked: false, hardFailureKinds: [], hasWarnings: true };
+      return { ok: false, requiresAcknowledgement: true, blocked: false, hardFailureKinds: [], hasWarnings: true, stale: false };
+    }
+
+    // Re-fetch fresh + bail out on any concurrent change (see this method's
+    // "Race safety" doc) — MUST happen after the gate checks above (a
+    // blocked/needs-acknowledgement outcome is still correct to report even
+    // if a concurrent commit landed, since neither path touches caseStore)
+    // but BEFORE the write below.
+    if (useMarginStore.getState().draggingAnchorIndex !== null) {
+      return { ok: false, requiresAcknowledgement: false, blocked: false, hardFailureKinds: [], hasWarnings: snapshot.hasWarnings, stale: true };
+    }
+    const freshRestoration = this.findRestoration(restorationId);
+    if (!freshRestoration) {
+      throw new Error(`marginEditor.confirmMargin: restoration ${restorationId} no longer exists`);
+    }
+    if (freshRestoration.marginLines[tooth]?.anchors !== committedAnchorsAtEntry) {
+      return { ok: false, requiresAcknowledgement: false, blocked: false, hardFailureKinds: [], hasWarnings: snapshot.hasWarnings, stale: true };
     }
 
     const meshId = caseStore.getDocument().scene.find((n) => n.id === store.targetNodeId)?.meshId;
@@ -1174,8 +1230,8 @@ class MarginEditorEngine {
       id: crypto.randomUUID(),
       name: 'margin-confirm',
       params: {
-        restorationId: store.restorationId,
-        tooth: store.tooth,
+        restorationId,
+        tooth,
         anchorCount: store.anchors.length,
         closed: snapshot.closed,
         // A SINGLE op name covers both the clean-confirm and the
@@ -1194,9 +1250,9 @@ class MarginEditorEngine {
       kernelVersion: KERNEL_VERSION,
       timestamp: nowIso(),
     };
-    caseStore.updateRestoration(restoration, operation);
+    caseStore.updateRestoration(freshRestoration, operation);
     useMarginStore.getState().setConfirmed(true);
-    return { ok: true, requiresAcknowledgement: false, blocked: false, hardFailureKinds: [], hasWarnings: snapshot.hasWarnings };
+    return { ok: true, requiresAcknowledgement: false, blocked: false, hardFailureKinds: [], hasWarnings: snapshot.hasWarnings, stale: false };
   }
 
   // ---------------------------------------------------------------------

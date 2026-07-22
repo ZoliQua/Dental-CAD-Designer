@@ -365,6 +365,88 @@ describe('marginEditor — manual mode + editing + journal coalescing', () => {
     const restoration = createRestoration({ type: 'crown', teeth: [11], targetNodeId: null });
     expect(() => marginEditor.startForTooth(restoration.id, 11)).toThrow(/target scan/);
   });
+
+  // Task-11-review Critical 3: a drag commit landing WHILE confirmMargin()'s
+  // validation round trip is in flight must never be silently reverted by
+  // confirmMargin() writing back the restoration object it captured before
+  // that await. Deterministically reproduced (rather than relying on
+  // incidental real-worker timing) by intercepting the private
+  // `runValidateMarginJob` call confirmMargin() awaits, and running a full
+  // drag gesture to completion from inside that interception — this is
+  // exactly "a drag commit lands during confirm's await".
+  it('confirmMargin(): a drag commit landing during the validation await is not lost — reports stale, and a retry succeeds against the settled (post-drag) geometry', async () => {
+    const { nodeId, positions } = registerIcosahedron();
+    const restoration = createRestoration({ type: 'crown', teeth: [13], targetNodeId: nodeId });
+    marginEditor.startForTooth(restoration.id, 13);
+    marginEditor.setMode('manual');
+    // The closed pentagon of vertex 0's own 1-ring neighbors (face list
+    // order: [0,11,5],[0,5,1],[0,1,7],[0,7,10],[0,10,11]) — a small,
+    // well-behaved, non-self-intersecting loop (unlike an arbitrary 4-vertex
+    // subset, which this test originally used and turned out to validate as
+    // self-intersecting on this fixture — confirmMargin's hard-failure gate
+    // fired before ever reaching the race-detection code this test exists
+    // to exercise).
+    const ring = [11, 5, 1, 7, 10];
+    for (const idx of ring) {
+      await marginEditor.handlePick(rayAtVertex(pointAt(positions, idx), [0, 0, 0]));
+    }
+    await marginEditor.toggleClosed();
+
+    const anchorBeforeDrag = useMarginStore.getState().anchors[0]!.position;
+    const historyBeforeRace = useCaseStore.getState().document.history.length;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- reaching a private method deliberately, to inject a deterministic race window
+    const engineAny = marginEditor as any;
+    const originalRunValidateMarginJob = engineAny.runValidateMarginJob.bind(marginEditor);
+    let racedOnce = false;
+    const spy = vi.spyOn(engineAny, 'runValidateMarginJob').mockImplementation(async (...args: unknown[]) => {
+      if (!racedOnce) {
+        racedOnce = true;
+        // Runs a COMPLETE drag gesture (begin -> move -> end, ending in a
+        // real commit()) to completion BEFORE letting the FIRST
+        // confirmMargin() call's validation resolve — i.e. the drag's
+        // commit lands strictly inside confirmMargin's await window.
+        // Drag anchor 0 (vertex 11) to vertex 2 — an ADJACENT vertex (faces
+        // `[11,10,2]`/`[2,4,11]`), a small local perturbation that keeps the
+        // loop well-behaved after the move (unlike jumping to an arbitrary
+        // far vertex, which risks the RETRY also failing validation for an
+        // unrelated reason).
+        marginEditor.beginAnchorDrag(0);
+        await marginEditor.updateAnchorDrag(rayAtVertex(pointAt(positions, 2), [0, 0, 0]));
+        await marginEditor.endAnchorDrag();
+      }
+      return originalRunValidateMarginJob(...args);
+    });
+
+    const staleOutcome = await marginEditor.confirmMargin();
+    spy.mockRestore();
+
+    expect(staleOutcome.stale).toBe(true);
+    expect(staleOutcome.ok).toBe(false);
+
+    // The drag's own commit is BOTH journaled AND intact — not reverted by
+    // the stale confirm attempt.
+    const historyAfterRace = useCaseStore.getState().document.history;
+    expect(historyAfterRace.length).toBe(historyBeforeRace + 1); // only the drag's op, no bogus margin-confirm
+    expect(historyAfterRace.at(-1)!.params.gesture).toBe('drag-anchor');
+    const draggedAnchor = useMarginStore.getState().anchors[0]!.position;
+    expect(draggedAnchor).not.toEqual(anchorBeforeDrag);
+    const restorationAfterRace = caseStore.getDocument().restorations.find((r) => r.id === restoration.id)!;
+    expect(restorationAfterRace.marginLines[13]!.anchors[0]!.position).toEqual(draggedAnchor);
+
+    // Retry: confirm now succeeds against the SETTLED (post-drag) geometry
+    // — final state is consistent (both ops journaled, dragged position
+    // preserved).
+    const confirmedOutcome = await marginEditor.confirmMargin();
+    expect(confirmedOutcome.stale).toBe(false);
+    expect(confirmedOutcome.ok).toBe(true);
+
+    const historyAfterConfirm = useCaseStore.getState().document.history;
+    expect(historyAfterConfirm.length).toBe(historyBeforeRace + 2);
+    expect(historyAfterConfirm.at(-1)!.name).toBe('margin-confirm');
+    const finalRestoration = caseStore.getDocument().restorations.find((r) => r.id === restoration.id)!;
+    expect(finalRestoration.marginLines[13]!.anchors[0]!.position).toEqual(draggedAnchor);
+  });
 });
 
 function restorationMarginLine(restorationId: string, tooth: number) {
