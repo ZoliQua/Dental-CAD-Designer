@@ -171,6 +171,57 @@ describe('blockoutPreview — cone frustum ("prep-die"), tilted axis: SELF-CONSI
   });
 });
 
+describe('blockoutPreview — winding reversal is a measured necessity, not a cosmetic choice (blockoutPreview.ts module doc citation)', () => {
+  it('un-flipped preview winding re-scans to the SAME undercutTriangleCount as the source selection; this module\'s actual (flipped) output re-scans to ZERO — both measured, on the same fixture the module doc cites', () => {
+    const tiltDeg = 20; // beyond the frustum's ~9.46deg zero-undercut cone (Fixture 2's own doc above)
+    const frustum = coneFrustumMesh(4, 2.5, 9, 64, 12);
+    const bvh = buildBvh(frustum.mesh);
+    const a = (tiltDeg * Math.PI) / 180;
+    const d: [number, number, number] = [Math.sin(a), 0, Math.cos(a)];
+
+    const result = blockoutPreview(frustum.mesh, bvh, { triangleIndices: allTriangleIndices(frustum.mesh) }, d, 0);
+    expect(result.blockoutTriangleCount).toBeGreaterThan(0); // genuine undercut beyond the cone
+
+    const preview = result.mesh.previewMesh;
+
+    // This module's ACTUAL output: winding REVERSED relative to the source
+    // triangles (blockoutPreview.ts's own "Winding is REVERSED" doc —
+    // `localOf(0), localOf(2), localOf(1)` construction order).
+    const flippedBvh = buildBvh(preview);
+    const flippedRescan = undercutScan(preview, flippedBvh, d);
+
+    // The UN-flipped counterpart: IDENTICAL vertex positions, winding
+    // restored to match the SOURCE triangles (swap corners 1 and 2 back) —
+    // isolates winding as the ONLY variable between the two re-scans below.
+    const unflippedIndices = new Uint32Array(preview.indices.length);
+    for (let k = 0; k < preview.indices.length / 3; k++) {
+      unflippedIndices[k * 3] = preview.indices[k * 3]!;
+      unflippedIndices[k * 3 + 1] = preview.indices[k * 3 + 2]!;
+      unflippedIndices[k * 3 + 2] = preview.indices[k * 3 + 1]!;
+    }
+    const unflippedMesh: IndexedMesh = { positions: preview.positions, indices: unflippedIndices };
+    const unflippedBvh = buildBvh(unflippedMesh);
+    const unflippedRescan = undercutScan(unflippedMesh, unflippedBvh, d);
+
+    console.log(
+      `[blockoutPreview analytic] winding-reversal necessity (measured): tilt=${tiltDeg}deg, selected=${result.blockoutTriangleCount} tris -> ` +
+        `UN-flipped rescan undercutTriangleCount=${unflippedRescan.undercutTriangleCount}, maxDepthMm=${unflippedRescan.maxDepthMm} ; ` +
+        `flipped (actual output) rescan undercutTriangleCount=${flippedRescan.undercutTriangleCount}, maxDepthMm=${flippedRescan.maxDepthMm}`,
+    );
+
+    // MEASURED, exactly as blockoutPreview.ts's module doc claims (Task-11
+    // review Critical 5: this test is what makes that citation honest — the
+    // doc previously cited a test with this name/these numbers that did not
+    // exist). A future change to the fixture or the algorithm that alters
+    // these numbers should be reviewed, not silently "fixed" by loosening
+    // these assertions.
+    expect(unflippedRescan.undercutTriangleCount).toBe(result.blockoutTriangleCount);
+    expect(unflippedRescan.maxDepthMm).toBe(0);
+    expect(flippedRescan.undercutTriangleCount).toBe(0);
+    expect(flippedRescan.maxDepthMm).toBe(0);
+  });
+});
+
 describe('blockoutPreview — canopy fixture: HONEST measured residual (multi-region stacking)', () => {
   it('three disconnected undercut regions sharing a footprint create NEW mutual occlusion in the combined preview — measured, not hidden', () => {
     const mesh = canopyMesh(4, 3, 1, 0.5, 1);

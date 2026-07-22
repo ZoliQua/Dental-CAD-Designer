@@ -89,15 +89,16 @@
 // space above it) must satisfy `normal · d > 0`. Keeping the SOURCE
 // triangles' winding therefore leaves the preview patch systematically
 // INSIDE-OUT relative to the volume it is meant to represent — MEASURED
-// directly (not merely argued): on the tilted-cylinder analytic fixture,
-// re-scanning the un-flipped preview patch reports the SAME
-// `undercutTriangleCount` as the source selection (every displaced triangle
-// still "facing away", `depthMm` uniformly `0` since the isolated patch has
-// nothing left to self-occlude), while re-scanning the SAME patch with each
-// triangle's winding reversed (corners 1 and 2 swapped) reports ZERO
-// undercut, exactly (see blockoutPreview.analytic.test.ts's "winding must
-// be reversed" test for the measured numbers on both fixtures this task
-// uses). This module reverses winding accordingly when building the output
+// directly (not merely argued): on the cone-frustum ("prep-die") analytic
+// fixture at a 20deg tilt (beyond its zero-undercut cone), re-scanning the
+// un-flipped preview patch reports the SAME `undercutTriangleCount` (592) as
+// the source selection (every displaced triangle still "facing away",
+// `depthMm` uniformly `0` since the isolated patch has nothing left to
+// self-occlude), while re-scanning the SAME patch with each triangle's
+// winding reversed (corners 1 and 2 swapped) reports ZERO undercut, exactly
+// (see blockoutPreview.analytic.test.ts's "winding reversal is a measured
+// necessity, not a cosmetic choice" describe block for the measured
+// numbers). This module reverses winding accordingly when building the output
 // mesh below.
 //
 // ### Why "sweep to the visibility horizon" is the right description
