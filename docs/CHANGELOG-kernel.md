@@ -67,10 +67,18 @@ new `constructShell` entry was added to `test-fixtures/golden/kernel-ops.json`,
 op count 20 → 21). One new kernel module, `shell/shell.ts`:
 
 - **`constructShell`** — joins the morphed OUTER anatomy (Task 6) and the
-  intaglio INNER surface (Task 4) into a SINGLE WATERTIGHT crown shell. Both are
-  open surfaces sharing the crown's finish-line edge: the outer is an occlusally-
-  capped dome open at its CERVICAL rim; the inner is an occlusally-capped cup
-  open at the MARGIN rim (== the confirmed margin polyline, the ≤10 µm seal). The
+  intaglio INNER surface (Task 4) into a SINGLE WATERTIGHT crown shell. The
+  Task-6 morphed tooth is a CLOSED watertight solid (it inherits the placed
+  library tooth's topology), so `constructShell` first TRIMS it to an open-
+  cervical dome at the margin (`trimClosedOuterToMargin`: discard triangles on
+  the apical side of the margin-centroid plane ⟂ the insertion axis) — this is
+  the pipeline connection (closed morphed tooth → watertight shell, unblocking
+  Task 12). Only the OUTER is cut; the inner intaglio is stitched to its EXACT
+  margin rim, so the ≤10 µm marginal seal is preserved untouched (measured: the
+  confirmed margin lies 0.00 µm from the resulting shell). A pre-opened dome
+  (one cervical rim already) skips the trim. Both surfaces then share the
+  crown's finish-line edge: the outer dome open at its CERVICAL rim, the inner
+  cup open at the MARGIN rim (== the confirmed margin polyline). The
   two rims are bridged by a **margin-band seam** — a ruled annulus stitched with
   the same deterministic azimuth-fraction zipper `offset/innerSurfaceSolid.ts`'s
   skirt uses (strictly monotone, robust to a jagged marching-cubes rim),
@@ -82,12 +90,16 @@ op count 20 → 21). One new kernel module, `shell/shell.ts`:
   (`analyzeMesh`), throwing `ShellNotWatertightError` otherwise — a non-watertight
   stitch can never masquerade as a shell.
 - **`measureWallThickness`** — minimum wall thickness as the inner↔outer closest-
-  surface distance, sampled at BOTH meshes' vertices (min of both directions). The
-  straight-line nearest distance is a LOWER BOUND on the true through-material
-  thickness, so it OVER-reports thinness (fail-safe: never silently passes a thin
-  wall). `@errorBound`: pointwise distance is exact Float64; the only
-  approximation is discrete sampling (reported as `sampleSpacingMm`, surfaced to
-  the QC report). Occlusal vs axial classification via the insertion axis.
+  surface distance. Every triangle of BOTH surfaces is GRID-SAMPLED at ≤
+  `maxSampleSpacingMm` (default 0.1 mm — not just at vertices), so a thin spot
+  BETWEEN vertices cannot be missed; the min is over both directions. Two error
+  sources handled separately: the straight-line distance is a lower bound on the
+  through-material thickness (that dimension over-reports thinness), and the
+  discrete-sampling gap (the DANGEROUS direction) is bounded by the sample
+  spacing and reported as `sampleSpacingMm`, which `minWallThicknessGate`
+  SUBTRACTS from the measured minimum before comparing to the threshold — so a
+  wall that could be thinner than the threshold within sampling error FAILS.
+  Occlusal vs axial classification via the insertion axis.
 - **`autoThickenOuter`** — user-invoked, bounded, deterministic outward
   displacement of OUTER vertices whose local wall is below the profile minimum
   (directly away from the nearest inner point; total displacement capped at

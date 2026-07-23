@@ -115,9 +115,12 @@
  * docs/CHANGELOG-kernel.md's `[0.12.0]` entry.
  * 0.13.0 (Phase 4 Task 7): NEW ops — `shell/shell.ts`'s `constructShell` (join
  * outer anatomy + inner intaglio at the margin-band seam into a watertight
- * crown shell, validated through the manifold-3d wrapper), `measureWallThickness`
- * (conservative inner↔outer min wall thickness), and `autoThickenOuter`
- * (bounded outward thickening of thin walls). `constructShell`'s output goes
+ * crown shell, validated through the manifold-3d wrapper; a CLOSED morphed
+ * tooth is trimmed to the margin first, so the pipeline connects closed tooth →
+ * watertight shell with the intaglio seal preserved), `measureWallThickness`
+ * (grid-DENSE inner↔outer min wall thickness with a reported sampling gap the
+ * gate folds into pass/fail), and `autoThickenOuter` (bounded outward
+ * thickening of thin walls). `constructShell`'s output goes
  * through manifold-3d's Float32 boundary (cleanupMesh), so its hash is pinned
  * in the manifoldVersion-guarded `kernel-ops.json` golden (a DELIBERATE golden
  * change — the shell op is added to the snapshot this version); the two
@@ -489,7 +492,9 @@ export {
   constructShell,
   measureWallThickness,
   autoThickenOuter,
+  DEFAULT_WALL_THICKNESS_SAMPLE_SPACING_MM,
   ShellBoundaryError,
+  ShellClosedOuterNeedsMarginError,
   ShellNotWatertightError,
   type ConstructShellParams,
   type ConstructShellHooks,

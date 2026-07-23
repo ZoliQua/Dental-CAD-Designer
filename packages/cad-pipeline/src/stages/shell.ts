@@ -64,8 +64,9 @@ export class MissingClinicalParamError extends Error {
 }
 
 export interface ShellStageOptions {
-  /** The morphed OUTER anatomy (Task 6 output) — an occlusally-capped,
-   * open-cervical dome. */
+  /** The morphed OUTER anatomy (Task 6 output) — the CLOSED library tooth
+   * solid; `constructShell` trims it to the margin. (A pre-opened dome also
+   * works — the trim is skipped when the outer already has a cervical rim.) */
   readonly outerAnatomyMesh: PipelineMeshHandle;
   /** The intaglio INNER surface (Task 4 output) — an open cup whose boundary
    * is the margin polyline. */
@@ -153,10 +154,15 @@ export async function runShellStage(
   }
 
   // --- construct the watertight shell (outer + inner joined at the margin band) ---
-  const shell = await constructShell(outerMesh, innerMesh, { insertionAxis });
+  // Pass the margin loop so a CLOSED morphed tooth (the Task-6 output) is
+  // trimmed to an open-cervical dome at the margin before stitching — this is
+  // the pipeline connection (closed morphed tooth -> watertight shell).
+  const shell = await constructShell(outerMesh, innerMesh, { insertionAxis, marginLoop });
 
   // --- measure the shell's min wall thickness (for the journal + report) ---
-  const thickness = measureWallThickness(innerMesh, outerMesh, {
+  // Measure against the TRIMMED outer the shell actually used (a closed tooth's
+  // sub-margin cap would otherwise read a spurious 0-thickness margin shelf).
+  const thickness = measureWallThickness(innerMesh, shell.outerUsedMesh, {
     insertionAxis,
     marginLoop,
     marginExclusionMm,

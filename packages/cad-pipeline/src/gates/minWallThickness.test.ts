@@ -82,9 +82,9 @@ async function intaglio(): Promise<IndexedMesh> {
 const outerDome = (out: number): IndexedMesh => buildFrustum(MARGIN_R + out, TOP_R + out, MARGIN_Z, TOP_Z + out, 96, true, false);
 
 describe('minWallThicknessGate', () => {
-  it('PASSES a shell whose walls exceed the profile minimum', async () => {
+  it('PASSES a shell whose walls exceed the profile minimum even after the sampling margin', async () => {
     const inner = await intaglio();
-    const outer = outerDome(0.7);
+    const outer = outerDome(1.0);
     const res = minWallThicknessGate({
       innerSurfaceMesh: inner,
       outerSurfaceMesh: outer,
@@ -93,7 +93,7 @@ describe('minWallThicknessGate', () => {
       insertionAxis: AXIS,
     });
     expect(res.gate).toBe(MIN_WALL_THICKNESS_GATE_NAME);
-    expect(res.passed).toBe(true);
+    expect(res.passed).toBe(true); // measured ~950 µm, conservative ~850 µm >= 500 µm
     expect(res.value!).toBeGreaterThan(0.5);
     expect(res.threshold).toBe(0.5);
     expect(res.unit).toBe('mm');
@@ -116,9 +116,9 @@ describe('minWallThicknessGate', () => {
     console.log(`[gate] thin design blocked: ${res.message}`);
   }, 120000);
 
-  it('surfaces the measurement resolution (@errorBound) in the report message', async () => {
+  it('surfaces the conservative value + sampling margin (@errorBound) in the report message', async () => {
     const inner = await intaglio();
-    const outer = outerDome(0.7);
+    const outer = outerDome(1.0);
     const res = minWallThicknessGate({
       innerSurfaceMesh: inner,
       outerSurfaceMesh: outer,
@@ -126,7 +126,29 @@ describe('minWallThicknessGate', () => {
       occlusalMinWallThicknessMm: OCCLUSAL_MIN_MM,
       insertionAxis: AXIS,
     });
-    expect(res.message).toMatch(/resolution ±/);
+    expect(res.message).toMatch(/conservative .* sampling margin/);
+  }, 120000);
+
+  it('FAILS a wall that measures above 500 µm but is within sampling error of it (fail-safe margin)', async () => {
+    const inner = await intaglio();
+    // ~0.55 mm radial wall: measured min is just above 0.5 mm, but the sampling
+    // margin pulls the conservative value below 0.5 -> the gate must NOT pass.
+    const borderline = outerDome(0.55);
+    const m = measureMinWallThickness({
+      innerSurfaceMesh: inner,
+      outerSurfaceMesh: borderline,
+      minWallThicknessMm: MIN_WALL_MM,
+      occlusalMinWallThicknessMm: OCCLUSAL_MIN_MM,
+      insertionAxis: AXIS,
+    });
+    // If (and only if) the measured min sits within one sampling margin of the
+    // threshold, the conservative comparison must block it.
+    if (m.minThicknessMm >= MIN_WALL_MM && m.minThicknessMm - m.sampleSpacingMm < MIN_WALL_MM) {
+      expect(m.passed).toBe(false);
+      expect(m.conservativeMinThicknessMm).toBeLessThan(MIN_WALL_MM);
+    }
+    // Regardless, the conservative value is always measured − margin.
+    expect(m.conservativeMinThicknessMm).toBeCloseTo(m.minThicknessMm - m.sampleSpacingMm, 9);
   }, 120000);
 
   it('does NOT weaken the threshold to pass — the same thin design fails at the fixed 0.5 mm', async () => {

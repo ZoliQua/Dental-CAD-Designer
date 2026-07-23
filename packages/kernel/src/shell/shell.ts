@@ -31,6 +31,20 @@
 // (different vertex counts, offset by the marginal wall thickness), so a
 // fixed ±h collar cannot bridge them.
 //
+// ## Consuming the CLOSED morphed tooth (the pipeline connection)
+//
+// The outer anatomy from Task 6 (`anatomy/morph.ts`) is a CLOSED watertight
+// solid — it inherits the placed library tooth's topology — so it has no open
+// cervical rim. `constructShell` detects a closed outer (zero boundary loops)
+// and TRIMS it to an open-cervical dome first (`trimClosedOuterToMargin`):
+// discard every triangle on the apical side of the plane through the margin
+// centroid ⟂ the insertion axis, keep the occlusal contour. Only the OUTER is
+// cut; the inner intaglio is stitched to its EXACT margin rim, so the ≤10 µm
+// marginal seal is preserved untouched (the shell's finish-line edge IS the
+// inner's margin rim). This is what lets the real pipeline run closed morphed
+// tooth → watertight crown shell (Task 12). A caller may still pass a hand-
+// built OPEN dome (one rim already) — the trim is skipped.
+//
 // The stitched surface is a closed 2-manifold; it is then passed through the
 // manifold-3d wrapper (`boolean/manifold.ts`'s `cleanupMesh`) — which
 // CONSTRUCTS a manifold-3d `Manifold` (validating the oriented-2-manifold
@@ -54,28 +68,38 @@
 // manifoldVersion-guarded golden (test/golden/kernel-ops.test.ts), NOT
 // mistaken for a kernel regression.
 //
-// ## Wall-thickness measurement (fail-safe: over-report thin, never under)
+// ## Wall-thickness measurement (fail-safe: never silently pass a thin wall)
 //
 // `measureWallThickness` measures the minimum wall thickness as the
-// closest-point distance BETWEEN the inner and outer surfaces, sampled at
-// BOTH meshes' vertices (inner→outer AND outer→inner, min of the two — the
-// more conservative direction). The straight-line nearest-surface distance
-// is a LOWER BOUND on the true through-material wall thickness (any path
-// through the wall is at least as long as the straight-line gap), so this
-// OVER-reports thinness and can never silently pass a genuinely thin wall.
+// closest-point distance BETWEEN the inner and outer surfaces. Two distinct
+// error sources, handled separately so the gate stays fail-safe:
+//
+//   1. THROUGH-MATERIAL vs straight-line. The straight-line nearest-surface
+//      distance is a LOWER BOUND on the true through-material wall thickness
+//      (any path through the wall is at least as long as the straight-line
+//      gap) — so along THIS dimension the measure over-reports thinness. NB
+//      this lower-bound property is specifically about the through-material
+//      dimension; it does NOT cover the sampling error below.
+//   2. DISCRETE SAMPLING. Sampling only at vertices could MISS a thin spot
+//      mid-triangle (the distance field is 1-Lipschitz, so a between-samples
+//      point can be below the sampled min by up to the sample spacing — the
+//      DANGEROUS direction: the gate could over-report the minimum and pass a
+//      sub-threshold wall). This is defended in TWO layers: (a) every triangle
+//      of BOTH surfaces is GRID-SAMPLED at ≤ `maxSampleSpacingMm` (default
+//      0.1 mm, a fifth of the 0.5 mm minimum), not just at vertices, so the
+//      residual gap is small and bounded; and (b) the achieved spacing is
+//      reported as `sampleSpacingMm`, which `minWallThicknessGate` SUBTRACTS
+//      from the measured minimum before comparing to the threshold — so a wall
+//      that could be thinner than the threshold WITHIN sampling error fails.
 //
 // @errorBound The pointwise distance is EXACT Float64 (bvh/closestPoint is
 // exact closest-point-on-triangle, no Float32 anywhere here — the shell mesh
 // this measures is the manifold-3d OUTPUT, but the thickness scan runs on the
-// Float64 inner/outer INPUT surfaces, not through manifold-3d). The only
-// approximation is DISCRETE SAMPLING: the minimum is exact at the sampled
-// vertices; a thin feature narrower than the local vertex spacing could sit
-// between samples. `sampleSpacingMm` (the max sampled-vertex spacing) is
-// reported as the localization resolution and surfaced to the QC report;
-// because the distance itself is a conservative lower bound, the reported
-// minimum still errs toward flagging thinness. Sampling BOTH surfaces
-// halves the effective miss risk (a thin spot missed on one surface's
-// vertices is usually hit on the other's).
+// Float64 inner/outer INPUT surfaces, not through manifold-3d). The residual
+// approximation is the sampling gap `sampleSpacingMm` (≤ `maxSampleSpacingMm`,
+// or larger only where the per-triangle subdivision cap binds — reported
+// honestly), which the gate folds into pass/fail as above and surfaces to the
+// QC report.
 import type { Vec3 } from '../bvh/geometry.ts';
 import type { IndexedMesh } from '../mesh/types.ts';
 import type { MeshStats } from '../intake/types.ts';
@@ -132,9 +156,16 @@ export class ShellNotWatertightError extends Error {
 
 export interface ConstructShellParams {
   /** Insertion axis (crown draw direction), points occlusally — normalized
-   * internally. Used only to give the azimuth zipper a stable rotation axis
-   * for measuring each rim's arc-position. */
+   * internally. Gives the azimuth zipper a stable rotation axis for measuring
+   * each rim's arc-position, and (for a CLOSED outer) the trim direction. */
   readonly insertionAxis: Vec3;
+  /** The confirmed margin loop (dense polyline). REQUIRED when the OUTER
+   * anatomy is a CLOSED solid (the morphed library tooth, Task 6 output) —
+   * the outer is trimmed to an open-cervical dome at this margin BEFORE
+   * stitching (see this module's doc, "Consuming the CLOSED morphed tooth").
+   * Ignored when the outer already presents a single open cervical rim (a
+   * hand-built dome). */
+  readonly marginLoop?: readonly Vec3[];
 }
 
 export interface ConstructShellHooks {
@@ -155,6 +186,12 @@ export interface ConstructShellResult {
   readonly innerRimVertexCount: number;
   /** Shell volume, mm³ (signed volume from analyzeMesh; always > 0 here). */
   readonly volumeMm3: number;
+  /** The OUTER surface actually stitched — the trimmed open-cervical dome when
+   * the input outer was a closed solid, else the input outer verbatim. This
+   * (NOT the un-trimmed closed tooth, whose sub-margin cap sits coplanar with
+   * the margin and reads a spurious 0-thickness shelf) is what
+   * `measureWallThickness` must be run against. */
+  readonly outerUsedMesh: IndexedMesh;
 }
 
 function normalizeAxis(v: Vec3): Vec3 {
@@ -185,6 +222,76 @@ function pickRim(mesh: IndexedMesh, which: 'outer' | 'inner'): number[] {
 
 function meshVertex(mesh: IndexedMesh, i: number): Vec3 {
   return [mesh.positions[i * 3]!, mesh.positions[i * 3 + 1]!, mesh.positions[i * 3 + 2]!];
+}
+
+/** Thrown when the OUTER anatomy is a closed solid but no `marginLoop` was
+ * supplied to trim it to — the pipeline's morphed tooth is closed, so the
+ * shell stage must pass the confirmed margin (CLAUDE.md invariant 7: it is a
+ * required input, never guessed). */
+export class ShellClosedOuterNeedsMarginError extends Error {
+  constructor() {
+    super(
+      'constructShell: the outer anatomy is a CLOSED solid (a morphed library tooth) but no marginLoop was supplied ' +
+        'to trim it to an open-cervical dome — pass params.marginLoop (the confirmed margin polyline).',
+    );
+    this.name = 'ShellClosedOuterNeedsMarginError';
+  }
+}
+
+/**
+ * Trims a CLOSED outer anatomy solid (the morphed library tooth — closed
+ * because it inherits the placed library tooth's watertight topology, see
+ * anatomy/morph.ts) to an OPEN-CERVICAL dome: keeps every triangle whose
+ * centroid is on the OCCLUSAL side of the plane through the margin centroid
+ * perpendicular to the insertion axis, discards the sub-margin/apical
+ * portion, and compacts to the surviving vertices. The kept surface is the
+ * crown's outer contour with a single open cervical rim near the margin;
+ * `constructShell` then stitches that rim to the inner intaglio's exact
+ * margin rim, so the intaglio (and its ≤10 µm marginal seal) is preserved
+ * UNTOUCHED — only the outer is cut. Deterministic.
+ *
+ * A plane through the margin CENTROID (not a per-point staircase) keeps the
+ * cut a single clean loop even for a non-planar margin; the seam annulus then
+ * spans the (varying) gap down to the exact margin rim.
+ */
+function trimClosedOuterToMargin(outer: IndexedMesh, marginLoop: readonly Vec3[], axisUnit: Vec3): IndexedMesh {
+  let cx = 0;
+  let cy = 0;
+  let cz = 0;
+  for (const p of marginLoop) {
+    cx += p[0];
+    cy += p[1];
+    cz += p[2];
+  }
+  const n = marginLoop.length;
+  cx /= n;
+  cy /= n;
+  cz /= n;
+  const side = (x: number, y: number, z: number): number => (x - cx) * axisUnit[0] + (y - cy) * axisUnit[1] + (z - cz) * axisUnit[2];
+
+  const pos = outer.positions;
+  const idx = outer.indices;
+  const triCount = idx.length / 3;
+  const remap = new Int32Array(pos.length / 3).fill(-1);
+  const keptPositions: number[] = [];
+  const keptIndices: number[] = [];
+  for (let t = 0; t < triCount; t++) {
+    const a = idx[t * 3]!;
+    const b = idx[t * 3 + 1]!;
+    const c = idx[t * 3 + 2]!;
+    const cxT = (pos[a * 3]! + pos[b * 3]! + pos[c * 3]!) / 3;
+    const cyT = (pos[a * 3 + 1]! + pos[b * 3 + 1]! + pos[c * 3 + 1]!) / 3;
+    const czT = (pos[a * 3 + 2]! + pos[b * 3 + 2]! + pos[c * 3 + 2]!) / 3;
+    if (side(cxT, cyT, czT) <= 0) continue; // apical / sub-margin — discard
+    for (const v of [a, b, c] as const) {
+      if (remap[v] === -1) {
+        remap[v] = keptPositions.length / 3;
+        keptPositions.push(pos[v * 3]!, pos[v * 3 + 1]!, pos[v * 3 + 2]!);
+      }
+      keptIndices.push(remap[v]!);
+    }
+  }
+  return { positions: new Float64Array(keptPositions), indices: Uint32Array.from(keptIndices) };
 }
 
 /**
@@ -317,6 +424,8 @@ function flipWinding(mesh: IndexedMesh): IndexedMesh {
  * Deterministic: same inputs + same manifold-3d version ⇒ byte-identical shell.
  *
  * @throws {ShellBoundaryError} if the outer/inner surface lacks a single open rim.
+ * @throws {ShellClosedOuterNeedsMarginError} if the outer is a closed solid
+ * but no `marginLoop` was supplied to trim it to.
  * @throws {NonManifoldInputError} (from the wrapper) if the stitched surface
  * is not a valid closed 2-manifold.
  * @throws {ShellNotWatertightError} if the cleaned shell is not a watertight
@@ -332,11 +441,27 @@ export async function constructShell(
   if (hooks?.checkCancel) await hooks.checkCancel();
   hooks?.onProgress?.(0);
 
-  const outerRim = pickRim(outerMesh, 'outer');
+  // Consuming the CLOSED morphed tooth: the outer anatomy from Task 6 is a
+  // watertight solid (it inherits the placed library tooth's topology), so it
+  // has NO open cervical rim to stitch. Trim it to an open-cervical dome at
+  // the confirmed margin first — only the outer is cut; the inner intaglio
+  // (and its ≤10 µm seal) is left untouched, so the shell's finish-line edge
+  // is the inner's exact margin rim. A hand-built OPEN dome (already one rim)
+  // skips the trim.
+  const outerIsClosed = boundaryVertexLoops(outerMesh).length === 0;
+  let outerForStitch = outerMesh;
+  if (outerIsClosed) {
+    if (!params.marginLoop || params.marginLoop.length < 3) {
+      throw new ShellClosedOuterNeedsMarginError();
+    }
+    outerForStitch = trimClosedOuterToMargin(outerMesh, params.marginLoop, axisUnit);
+  }
+
+  const outerRim = pickRim(outerForStitch, 'outer');
   const innerRim = pickRim(innerMesh, 'inner');
   hooks?.onProgress?.(0.15);
 
-  const { mesh: stitched, seamTriangleCount } = stitchMarginBand(outerMesh, outerRim, innerMesh, innerRim, axisUnit);
+  const { mesh: stitched, seamTriangleCount } = stitchMarginBand(outerForStitch, outerRim, innerMesh, innerRim, axisUnit);
   if (hooks?.checkCancel) await hooks.checkCancel();
   hooks?.onProgress?.(0.4);
 
@@ -368,6 +493,7 @@ export async function constructShell(
     outerRimVertexCount: outerRim.length,
     innerRimVertexCount: innerRim.length,
     volumeMm3: stats.signedVolumeMm3 ?? 0,
+    outerUsedMesh: outerForStitch,
   };
 }
 
@@ -379,6 +505,16 @@ export async function constructShell(
  * direction (sample → nearest point on the opposing surface) is occlusal
  * (measured along the insertion axis) if |direction · axis| ≥ this (≈ 45°). */
 const OCCLUSAL_WALL_COS = Math.SQRT1_2;
+
+/** Default target spacing (mm) between wall-thickness samples — a small
+ * fraction of the 0.5 mm zirconia minimum, so the discrete-sampling gap the
+ * gate subtracts as a fail-safe margin stays small. */
+export const DEFAULT_WALL_THICKNESS_SAMPLE_SPACING_MM = 0.1;
+
+/** Cap on per-triangle grid subdivisions (bounds the sample count on very
+ * large/coarse triangles; the achieved spacing is reported and may exceed the
+ * target only when this cap binds — surfaced honestly). */
+const MAX_THICKNESS_SUBDIV = 32;
 
 export interface WallThicknessOptions {
   /** Insertion axis (occlusal direction) — required to classify occlusal vs
@@ -392,6 +528,12 @@ export interface WallThicknessOptions {
   /** Distance (mm) from the margin polyline within which samples are excluded
    * (default 0 — no exclusion; a caller with a feather margin sets this). */
   readonly marginExclusionMm?: number;
+  /** Target spacing (mm) between samples (default
+   * {@link DEFAULT_WALL_THICKNESS_SAMPLE_SPACING_MM}). Each triangle of BOTH
+   * surfaces is grid-sampled at ≤ this spacing so a thin spot BETWEEN vertices
+   * cannot be missed; the ACHIEVED spacing is reported as `sampleSpacingMm`
+   * (the gate subtracts it as a fail-safe margin). */
+  readonly maxSampleSpacingMm?: number;
 }
 
 export interface WallThicknessResult {
@@ -421,35 +563,14 @@ export interface WallThicknessResult {
   readonly errorBoundMm: number;
 }
 
-/** Max edge length in a mesh (the vertex spacing bound for the sampling
- * resolution). */
-function maxEdgeLength(mesh: IndexedMesh): number {
-  let max = 0;
-  const tri = mesh.indices.length / 3;
-  for (let t = 0; t < tri; t++) {
-    const a = mesh.indices[t * 3]!;
-    const b = mesh.indices[t * 3 + 1]!;
-    const c = mesh.indices[t * 3 + 2]!;
-    for (const [i, j] of [
-      [a, b],
-      [b, c],
-      [c, a],
-    ] as const) {
-      const dx = mesh.positions[i * 3]! - mesh.positions[j * 3]!;
-      const dy = mesh.positions[i * 3 + 1]! - mesh.positions[j * 3 + 1]!;
-      const dz = mesh.positions[i * 3 + 2]! - mesh.positions[j * 3 + 2]!;
-      const d = Math.hypot(dx, dy, dz);
-      if (d > max) max = d;
-    }
-  }
-  return max;
-}
-
 /**
  * Measures the crown-shell wall thickness as the inner↔outer closest-surface
- * distance, sampled at both meshes' vertices (min of both directions — the
- * conservative choice). See this module's doc + `@errorBound`. Pure,
- * deterministic, exact Float64 at the sampled points.
+ * distance. Each triangle of BOTH surfaces is GRID-SAMPLED at ≤
+ * `maxSampleSpacingMm` (not just at vertices), so a thin spot between vertices
+ * cannot slip through; the min is taken over both directions (the conservative
+ * choice). The achieved sample spacing is reported so the gate can subtract it
+ * as a fail-safe margin. See this module's doc + `@errorBound`. Pure,
+ * deterministic, exact Float64 at each sampled point.
  */
 export function measureWallThickness(
   innerMesh: IndexedMesh,
@@ -459,17 +580,17 @@ export function measureWallThickness(
   const axis = options.insertionAxis ? normalizeAxis(options.insertionAxis) : null;
   const marginLoop = options.marginLoop;
   const exclusion = options.marginExclusionMm ?? 0;
+  const maxSpacing = options.maxSampleSpacingMm ?? DEFAULT_WALL_THICKNESS_SAMPLE_SPACING_MM;
   const excluded = (p: Vec3): boolean =>
     marginLoop !== undefined && exclusion > 0 && distanceToClosedPolyline(p, marginLoop) < exclusion;
 
   const bvhOuter = buildBvh(outerMesh);
   const bvhInner = buildBvh(innerMesh);
 
-  const innerRes = closestPointBatch(outerMesh, bvhOuter, innerMesh.positions);
-  const outerRes = closestPointBatch(innerMesh, bvhInner, outerMesh.positions);
-
-  const perInnerVertexMm = new Float64Array(innerRes.length);
-  for (let i = 0; i < innerRes.length; i++) perInnerVertexMm[i] = innerRes[i]!.distance;
+  // Per-inner-vertex heatmap (vertex-resolution inner→outer distance).
+  const innerVertRes = closestPointBatch(outerMesh, bvhOuter, innerMesh.positions);
+  const perInnerVertexMm = new Float64Array(innerVertRes.length);
+  for (let i = 0; i < innerVertRes.length; i++) perInnerVertexMm[i] = innerVertRes[i]!.distance;
 
   let minThicknessMm = Infinity;
   let minOcclusalThicknessMm = Infinity;
@@ -477,6 +598,7 @@ export function measureWallThickness(
   let minPoint: Vec3 = [0, 0, 0];
   let sampleCount = 0;
   let excludedCount = 0;
+  let achievedSpacingMm = 0;
 
   const consider = (sample: Vec3, near: readonly [number, number, number], dist: number): void => {
     if (excluded(sample)) {
@@ -508,17 +630,43 @@ export function measureWallThickness(
     }
   };
 
-  for (let i = 0; i < innerRes.length; i++) {
-    consider(meshVertex(innerMesh, i), innerRes[i]!.point, innerRes[i]!.distance);
-  }
-  for (let i = 0; i < outerRes.length; i++) {
-    consider(meshVertex(outerMesh, i), outerRes[i]!.point, outerRes[i]!.distance);
-  }
+  // Grid-sample every triangle of `source` at ≤ maxSpacing and query the
+  // opposite surface. Shared edges/vertices are re-sampled across adjacent
+  // triangles — harmless for a MINIMUM.
+  const sampleSurface = (source: IndexedMesh, oppMesh: IndexedMesh, oppBvh: ReturnType<typeof buildBvh>): void => {
+    const triCount = source.indices.length / 3;
+    for (let t = 0; t < triCount; t++) {
+      const ia = source.indices[t * 3]!;
+      const ib = source.indices[t * 3 + 1]!;
+      const ic = source.indices[t * 3 + 2]!;
+      const a = meshVertex(source, ia);
+      const b = meshVertex(source, ib);
+      const c = meshVertex(source, ic);
+      const eAB = Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+      const eBC = Math.hypot(b[0] - c[0], b[1] - c[1], b[2] - c[2]);
+      const eCA = Math.hypot(c[0] - a[0], c[1] - a[1], c[2] - a[2]);
+      const longest = Math.max(eAB, eBC, eCA);
+      const n = Math.min(MAX_THICKNESS_SUBDIV, Math.max(1, Math.ceil(longest / maxSpacing)));
+      if (longest / n > achievedSpacingMm) achievedSpacingMm = longest / n;
+      for (let i = 0; i <= n; i++) {
+        for (let j = 0; j <= n - i; j++) {
+          const wa = i / n;
+          const wb = j / n;
+          const wc = 1 - wa - wb;
+          const p: Vec3 = [a[0] * wa + b[0] * wb + c[0] * wc, a[1] * wa + b[1] * wb + c[1] * wc, a[2] * wa + b[2] * wb + c[2] * wc];
+          const cp = closestPoint(oppMesh, oppBvh, p);
+          consider(p, cp.point, cp.distance);
+        }
+      }
+    }
+  };
+
+  sampleSurface(innerMesh, outerMesh, bvhOuter);
+  sampleSurface(outerMesh, innerMesh, bvhInner);
 
   if (sampleCount === 0) {
     minThicknessMm = Infinity;
   }
-  const sampleSpacingMm = Math.max(maxEdgeLength(innerMesh), maxEdgeLength(outerMesh));
 
   return {
     minThicknessMm,
@@ -528,8 +676,8 @@ export function measureWallThickness(
     sampleCount,
     excludedCount,
     perInnerVertexMm,
-    sampleSpacingMm,
-    errorBoundMm: sampleSpacingMm,
+    sampleSpacingMm: achievedSpacingMm,
+    errorBoundMm: achievedSpacingMm,
   };
 }
 

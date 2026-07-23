@@ -122,7 +122,7 @@ export const constructShellJob = async (
   const shell = await constructShell(
     outerMesh,
     innerMesh,
-    { insertionAxis: payload.insertionAxis },
+    { insertionAxis: payload.insertionAxis, marginLoop },
     {
       onProgress: (f) => ctx.progress(0.15 + 0.75 * f),
       checkCancel: async () => {
@@ -132,7 +132,9 @@ export const constructShellJob = async (
   );
   ctx.progress(0.9);
 
-  const thickness = measureWallThickness(innerMesh, outerMesh, {
+  // Measure against the TRIMMED outer the shell actually used (a closed tooth's
+  // sub-margin cap would otherwise read a spurious 0-thickness margin shelf).
+  const thickness = measureWallThickness(innerMesh, shell.outerUsedMesh, {
     insertionAxis: payload.insertionAxis,
     marginLoop,
     marginExclusionMm,

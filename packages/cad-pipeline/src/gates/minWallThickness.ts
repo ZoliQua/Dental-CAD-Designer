@@ -18,13 +18,18 @@
 // overriding rule: accuracy over speed, and a thickness gate that under-reports
 // is a patient-safety defect).
 //
-// ## @errorBound surfaced to the QC report
+// ## Sampling-margin fail-safe (the dangerous direction is defended)
 //
-// The pointwise distance is exact Float64; the only approximation is DISCRETE
-// SAMPLING at mesh vertices (a thin feature narrower than the local vertex
-// spacing could sit between samples). The kernel reports that resolution as
-// `sampleSpacingMm`; this gate surfaces it in the `QcGateResult.message` (the
-// report), so a reviewer sees the localization resolution behind the number.
+// Discrete sampling could MISS a thin spot between samples — the distance
+// field is 1-Lipschitz, so a between-samples point can be below the sampled
+// minimum by up to the sample spacing. That is the DANGEROUS direction (the
+// gate over-reporting the minimum and passing a sub-threshold wall). The
+// kernel already grid-samples both surfaces at a small spacing; this gate
+// closes the residual gap by SUBTRACTING the achieved `sampleSpacingMm` from
+// the measured minimum before comparing to the threshold — so a wall that
+// could be thinner than the threshold WITHIN sampling error FAILS. Both the
+// measured minimum and the conservative (margin-subtracted) value are surfaced
+// in the `QcGateResult.message` (the report).
 //
 // ## Dual-validation: ZERO DOM/Three/browser deps
 //
@@ -76,8 +81,12 @@ export interface MinWallThicknessMeasurement extends WallThicknessResult {
   /** The governing threshold (mm) the OVERALL min is judged against — the
    * region minimum that is (or is closest to being) violated. */
   readonly governingThresholdMm: number;
+  /** The conservative minimum used for pass/fail: measured minimum MINUS the
+   * achieved sample spacing (the fail-safe sampling margin — see this file's
+   * doc). This, not the raw measured min, is compared to the threshold. */
+  readonly conservativeMinThicknessMm: number;
   /** True iff every occlusal sample ≥ occlusal min AND every axial sample ≥
-   * axial min. */
+   * axial min, each after subtracting the sampling margin. */
   readonly passed: boolean;
 }
 
@@ -100,21 +109,28 @@ export function measureMinWallThickness(input: MinWallThicknessGateInput): MinWa
     marginExclusionMm: input.marginExclusionMm,
   });
 
+  // Fail-safe sampling margin: compare (measured − sampleSpacing) to the
+  // threshold, so a wall that could be thinner than the threshold within
+  // sampling error fails (see this file's doc).
+  const margin = m.sampleSpacingMm;
+  const consOcclusal = m.minOcclusalThicknessMm - margin;
+  const consAxial = m.minAxialThicknessMm - margin;
   // A region with no samples (Infinity) trivially satisfies its threshold.
-  const occlusalOk = !Number.isFinite(m.minOcclusalThicknessMm) || m.minOcclusalThicknessMm >= input.occlusalMinWallThicknessMm;
-  const axialOk = !Number.isFinite(m.minAxialThicknessMm) || m.minAxialThicknessMm >= input.minWallThicknessMm;
+  const occlusalOk = !Number.isFinite(m.minOcclusalThicknessMm) || consOcclusal >= input.occlusalMinWallThicknessMm;
+  const axialOk = !Number.isFinite(m.minAxialThicknessMm) || consAxial >= input.minWallThicknessMm;
   const passed = m.sampleCount > 0 && occlusalOk && axialOk;
+  const conservativeMinThicknessMm = m.minThicknessMm - margin;
 
   // Governing threshold: whichever region's deficit is worst (for the reported
   // `value <= threshold` framing). Default to the axial minimum.
-  const axialDeficit = input.minWallThicknessMm - m.minAxialThicknessMm;
-  const occlusalDeficit = input.occlusalMinWallThicknessMm - m.minOcclusalThicknessMm;
+  const axialDeficit = input.minWallThicknessMm - consAxial;
+  const occlusalDeficit = input.occlusalMinWallThicknessMm - consOcclusal;
   const governingThresholdMm =
     Number.isFinite(m.minOcclusalThicknessMm) && occlusalDeficit > axialDeficit
       ? input.occlusalMinWallThicknessMm
       : input.minWallThicknessMm;
 
-  return { ...m, governingThresholdMm, passed };
+  return { ...m, governingThresholdMm, conservativeMinThicknessMm, passed };
 }
 
 /**
@@ -133,12 +149,11 @@ export function minWallThicknessGate(input: MinWallThicknessGateInput): QcGateRe
     m.sampleCount === 0
       ? `min wall thickness UNMEASURABLE (no samples — inner/outer surfaces do not face each other)`
       : m.passed
-        ? `min wall thickness ${um(m.minThicknessMm)} >= ${um(m.governingThresholdMm)} ` +
-          `(axial ${um(m.minAxialThicknessMm)} >= ${um(input.minWallThicknessMm)}, occlusal ${um(m.minOcclusalThicknessMm)} >= ${um(input.occlusalMinWallThicknessMm)}; ` +
-          `${m.excludedCount} margin sample(s) excluded; scan resolution ±${um(m.sampleSpacingMm)})`
-        : `min wall thickness ${um(m.minThicknessMm)} BELOW minimum ` +
-          `(axial ${um(m.minAxialThicknessMm)} vs ${um(input.minWallThicknessMm)}, occlusal ${um(m.minOcclusalThicknessMm)} vs ${um(input.occlusalMinWallThicknessMm)}; ` +
-          `scan resolution ±${um(m.sampleSpacingMm)}) — thin wall; thicken (autoThicken) or acknowledge`;
+        ? `min wall thickness ${um(m.minThicknessMm)} (conservative ${um(m.conservativeMinThicknessMm)} after −${um(m.sampleSpacingMm)} sampling margin) >= ${um(m.governingThresholdMm)} ` +
+          `(axial ${um(m.minAxialThicknessMm)}, occlusal ${um(m.minOcclusalThicknessMm)}; ${m.excludedCount} margin sample(s) excluded)`
+        : `min wall thickness ${um(m.minThicknessMm)} (conservative ${um(m.conservativeMinThicknessMm)} after −${um(m.sampleSpacingMm)} sampling margin) BELOW minimum ` +
+          `(axial ${um(m.minAxialThicknessMm)} vs ${um(input.minWallThicknessMm)}, occlusal ${um(m.minOcclusalThicknessMm)} vs ${um(input.occlusalMinWallThicknessMm)}) ` +
+          `— thin wall; thicken (autoThicken) or acknowledge`;
   return {
     gate: MIN_WALL_THICKNESS_GATE_NAME,
     passed: m.passed,

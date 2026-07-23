@@ -99,6 +99,8 @@ const PROFILE: PipelineMaterialProfile = {
 
 const outerDome = (out: number): IndexedMesh => buildFrustum(MARGIN_R + out, TOP_R + out, MARGIN_Z, TOP_Z + out, 96, true, false);
 const thinAxialDome = (out: number): IndexedMesh => buildFrustum(MARGIN_R + out, TOP_R + out, MARGIN_Z, TOP_Z + 0.9, 96, true, false);
+/** The CLOSED library tooth (both caps) — the topology the Task-6 morph outputs. */
+const closedTooth = (out: number): IndexedMesh => buildFrustum(MARGIN_R + out, TOP_R + out, MARGIN_Z, TOP_Z + out, 96, true, true);
 
 let INNER: IndexedMesh;
 async function intaglio(): Promise<IndexedMesh> {
@@ -134,11 +136,12 @@ function makeContext(overrides?: Partial<PipelineContext>): PipelineContext {
 }
 
 describe('runShellStage — orchestration', () => {
-  it('builds a watertight shell; returns a journalable result', async () => {
+  it('builds a watertight shell from the CLOSED morphed tooth; returns a journalable result', async () => {
     const inner = await intaglio();
     const ctx = makeContext();
+    // The pipeline input: a CLOSED library-tooth solid (Task-6 morph topology).
     const result = await runShellStage(ctx, TOOTH, {
-      outerAnatomyMesh: handle('morph-11', outerDome(0.7)),
+      outerAnatomyMesh: handle('morph-11', closedTooth(1.0)),
       innerSurfaceMesh: handle('inner-11', inner),
       hashMesh,
     });
@@ -149,6 +152,7 @@ describe('runShellStage — orchestration', () => {
     expect(result.operationName).toBe('shell.construct');
     expect(result.inputHashes).toEqual(['morph-11', 'inner-11']);
     expect(analyzeMesh(result.mesh!).watertight).toBe(true);
+    expect(analyzeMesh(result.mesh!).componentCount).toBe(1);
 
     // Journaled facts.
     expect(result.params['tooth']).toBe(TOOTH);

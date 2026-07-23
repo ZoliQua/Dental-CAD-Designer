@@ -14,11 +14,14 @@ import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import {
   analyzeMesh,
+  buildBvh,
   buildInnerSurface,
+  closestPointBatch,
   constructShell,
   measureWallThickness,
   autoThickenOuter,
-  ShellBoundaryError,
+  ShellClosedOuterNeedsMarginError,
+  ShellNotWatertightError,
   volume,
   type IndexedMesh,
   type Vec3,
@@ -126,6 +129,13 @@ function thinAxialDome(out: number): IndexedMesh {
   return buildFrustum(MARGIN_R + out, TOP_R + out, MARGIN_Z, TOP_Z + 0.9, 96, true, false);
 }
 
+/** A CLOSED tooth — an occlusally-AND-cervically-capped solid (both caps), the
+ * topology the Task-6 morphed library tooth has (it is watertight). The
+ * pipeline feeds THIS into constructShell, which trims it to the margin. */
+function closedTooth(out: number): IndexedMesh {
+  return buildFrustum(MARGIN_R + out, TOP_R + out, MARGIN_Z, TOP_Z + out, 96, true, true);
+}
+
 describe('constructShell — watertight crown shell', () => {
   it('joins outer + inner at the margin band into a watertight, manifold, single-component solid', async () => {
     const inner = await buildIntaglio();
@@ -146,10 +156,75 @@ describe('constructShell — watertight crown shell', () => {
     expect(shell.volumeMm3).toBeCloseTo(vol, 3);
   }, 120000);
 
-  it('rejects a CLOSED outer (no cervical rim to stitch) with a typed error', async () => {
+  // THE PIPELINE CONNECTION: the Task-6 morphed tooth is a CLOSED solid;
+  // constructShell must consume it (trim to margin -> stitch) into a watertight
+  // shell WITHOUT perturbing the inner intaglio's margin seal.
+  it('consumes a CLOSED tooth (trimmed to margin) into a watertight shell, margin fit preserved (<=10 um)', async () => {
     const inner = await buildIntaglio();
-    const closedOuter = buildFrustum(MARGIN_R + 0.7, TOP_R + 0.7, MARGIN_Z, TOP_Z + 0.7, 96, true, true);
-    await expect(constructShell(closedOuter, inner, { insertionAxis: AXIS })).rejects.toBeInstanceOf(ShellBoundaryError);
+    const margin = marginCircle(MARGIN_R, MARGIN_Z, 240);
+    const closed = closedTooth(1.0);
+    expect(analyzeMesh(closed).watertight).toBe(true); // it really is a closed solid
+
+    const shell = await constructShell(closed, inner, { insertionAxis: AXIS, marginLoop: margin });
+    const stats = analyzeMesh(shell.mesh);
+    expect(stats.watertight).toBe(true);
+    expect(stats.componentCount).toBe(1);
+    expect(stats.boundaryEdgeCount).toBe(0);
+
+    // Margin fit preserved: every confirmed margin point lies on the shell
+    // surface (the intaglio's exact margin rim survived — only the outer was cut).
+    const bvhShell = buildBvh(shell.mesh);
+    const marginFlat = new Float64Array(margin.flatMap((p) => [p[0], p[1], p[2]]));
+    const res = closestPointBatch(shell.mesh, bvhShell, marginFlat);
+    let maxMarginFitMm = 0;
+    for (const r of res) if (r.distance > maxMarginFitMm) maxMarginFitMm = r.distance;
+    expect(maxMarginFitMm).toBeLessThanOrEqual(0.010);
+    console.log(`[closed-tooth] watertight shell from CLOSED tooth; margin fit ${(maxMarginFitMm * 1000).toFixed(2)} um (<= 10 um), seam ${shell.seamTriangleCount} tris`);
+  }, 120000);
+
+  it('is deterministic on the CLOSED-tooth path (byte-identical shell hash)', async () => {
+    const inner = await buildIntaglio();
+    const margin = marginCircle(MARGIN_R, MARGIN_Z, 240);
+    const closed = closedTooth(1.0);
+    const a = await constructShell(closed, inner, { insertionAxis: AXIS, marginLoop: margin });
+    const b = await constructShell(closed, inner, { insertionAxis: AXIS, marginLoop: margin });
+    expect(hashMesh(a.mesh)).toBe(hashMesh(b.mesh));
+  }, 120000);
+
+  it('rejects a CLOSED outer with NO marginLoop to trim to (typed error)', async () => {
+    const inner = await buildIntaglio();
+    await expect(constructShell(closedTooth(1.0), inner, { insertionAxis: AXIS })).rejects.toBeInstanceOf(
+      ShellClosedOuterNeedsMarginError,
+    );
+  }, 120000);
+
+  // Re-validation path: a broken stitch must be REJECTED, never returned as a
+  // shell. (a) an OPEN-TUBE outer (two rims) leaves the un-stitched rim open ->
+  // the manifold wrapper rejects the non-watertight construction.
+  it('rejects a broken stitch: an open-tube outer leaves an unsealed rim', async () => {
+    const inner = await buildIntaglio();
+    // Tube: no top cap, no bottom cap -> TWO boundary rims; only one gets stitched.
+    const tube = buildFrustum(MARGIN_R + 0.7, TOP_R + 0.7, MARGIN_Z, TOP_Z + 0.7, 96, false, false);
+    await expect(constructShell(tube, inner, { insertionAxis: AXIS })).rejects.toThrow();
+  }, 120000);
+
+  // (b) a disjoint extra closed component makes the cleaned result multi-
+  // component -> the analyzeMesh re-validation throws ShellNotWatertightError.
+  it('rejects a multi-component result with ShellNotWatertightError', async () => {
+    const inner = await buildIntaglio();
+    // inner intaglio + a disjoint far-away closed tetrahedron (its own component).
+    const tetra: IndexedMesh = {
+      positions: new Float64Array([50, 50, 50, 51, 50, 50, 50, 51, 50, 50, 50, 51]),
+      indices: Uint32Array.from([0, 2, 1, 0, 1, 3, 1, 2, 3, 0, 3, 2]),
+    };
+    const vCount = inner.positions.length / 3;
+    const merged: IndexedMesh = {
+      positions: new Float64Array([...inner.positions, ...tetra.positions]),
+      indices: Uint32Array.from([...inner.indices, ...[...tetra.indices].map((i) => i + vCount)]),
+    };
+    await expect(constructShell(outerDome(0.7), merged, { insertionAxis: AXIS })).rejects.toBeInstanceOf(
+      ShellNotWatertightError,
+    );
   }, 120000);
 
   it('is deterministic: two runs produce a byte-identical shell hash (same manifold-3d version)', async () => {
@@ -174,19 +249,19 @@ describe('constructShell — watertight crown shell', () => {
 });
 
 describe('measureWallThickness', () => {
-  it('measures the nominal wall thickness of a uniform-offset dome (conservative lower bound)', async () => {
+  it('measures the wall thickness of a uniform-offset dome, DENSELY (samples between vertices)', async () => {
     const inner = await buildIntaglio();
-    const outer = outerDome(0.7);
+    const outer = outerDome(1.0);
     const t = measureWallThickness(inner, outer, { insertionAxis: AXIS });
-    // Dome offset radially by 0.7 mm; the true min wall thickness is ~0.7 mm
-    // (slightly less due to the taper/curvature). Measured value is a lower
-    // bound; report it.
-    expect(t.minThicknessMm).toBeGreaterThan(0.5);
-    expect(t.minThicknessMm).toBeLessThanOrEqual(0.72);
-    expect(t.sampleCount).toBeGreaterThan(0);
+    // Dome offset ~1.0 mm; measured min ~0.9-1.0 mm.
+    expect(t.minThicknessMm).toBeGreaterThan(0.8);
+    expect(t.minThicknessMm).toBeLessThanOrEqual(1.05);
+    expect(t.sampleCount).toBeGreaterThan(1000); // DENSE grid sampling, not just vertices
+    // Achieved spacing is bounded well below the 0.5 mm threshold (the fail-safe).
+    expect(t.sampleSpacingMm).toBeLessThanOrEqual(0.12);
     expect(t.errorBoundMm).toBe(t.sampleSpacingMm);
     expect(t.perInnerVertexMm.length).toBe(inner.positions.length / 3);
-    console.log(`[thickness] uniform 0.7mm dome -> measured min ${(t.minThicknessMm * 1000).toFixed(0)} µm, spacing ${(t.sampleSpacingMm * 1000).toFixed(0)} µm`);
+    console.log(`[thickness] uniform 1.0mm dome -> measured min ${(t.minThicknessMm * 1000).toFixed(0)} µm, ${t.sampleCount} samples, spacing ${(t.sampleSpacingMm * 1000).toFixed(0)} µm`);
   }, 120000);
 
   it('flags a deliberately-thin dome at the right (sub-0.5mm) value', async () => {
@@ -206,9 +281,9 @@ describe('autoThickenOuter', () => {
     const before = measureWallThickness(inner, thin, { insertionAxis: AXIS });
     expect(before.minThicknessMm).toBeLessThan(0.5);
 
-    // Overshoot 2.0 clears the discretization gap so the RE-MEASURED min
-    // (which includes the intaglio's own vertices) reaches the floor.
-    const thickened = autoThickenOuter(thin, inner, { minThicknessMm: 0.5, maxDisplacementMm: 1.0, overshoot: 2.0, passes: 6 });
+    // Overshoot clears the discretization gap so the DENSELY RE-MEASURED min
+    // reaches the floor (over-thickening is bounded + clinically safe).
+    const thickened = autoThickenOuter(thin, inner, { minThicknessMm: 0.5, maxDisplacementMm: 1.5, overshoot: 4.0, passes: 10 });
     expect(thickened.displacedVertexCount).toBeGreaterThan(0);
     expect(thickened.clampedVertexCount).toBe(0);
 
