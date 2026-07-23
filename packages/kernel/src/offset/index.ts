@@ -39,3 +39,11 @@ export {
   type InnerSurfaceOffsetParams,
   type InnerSurfaceOffsetResult,
 } from './innerSurfaceOffset.ts';
+export {
+  buildInnerSurface,
+  INNER_SURFACE_ROI_RADIUS_FACTOR,
+  NoBoundaryLoopError,
+  type InnerSurfaceSolidParams,
+  type InnerSurfaceSolidResult,
+  type InnerSurfaceSolidHooks,
+} from './innerSurfaceSolid.ts';

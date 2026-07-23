@@ -32,16 +32,20 @@
 // seating/draw direction — Phase 3's confirmed axis), so "prep region" is the
 // margin-plane-positive half.
 //
-// ## Output: the two-zone offset PATCH (open) — later stages skirt/stitch it
+// ## Output: the FULL sealed inner surface (Task 4 — offset + blockout + skirt)
 //
-// This stage delivers the two-zone, C1-blended offset surface itself (an open
-// patch cropped to the prep ROI, per `innerSurfaceOffsetRoi`). Skirting it to
-// the margin line and stitching it into the closed crown shell is a later
-// Phase 4 stage (Task 4+), not this one.
+// Task 3 shipped this stage producing only the open two-zone offset patch.
+// Task 4 completes it: the kernel op is now `buildInnerSurface`, which does the
+// two-zone offset + SOLID undercut blockout (draft-close along the insertion
+// axis) + SKIRT-TO-MARGIN in ONE journaled op. The output is the finished
+// intaglio: an open patch whose single boundary loop == the confirmed margin
+// polyline (the marginal seal), undercut-free along the axis. The crown shell
+// (Task 7) caps it against the outer anatomy at the margin band. The ≤10 µm
+// margin fit is a phase acceptance criterion, re-measured by `gates/marginFit.ts`.
 import type { FdiTooth, Vec3 } from '@dqcad/shared-types';
 import {
+  buildInnerSurface,
   computeMarginLoopFrame,
-  innerSurfaceOffsetRoi,
   marginLoopPolyline,
   INNER_SURFACE_DEFAULT_BLEND_WIDTH_MM,
   type IndexedMesh,
@@ -167,18 +171,27 @@ export async function runInnerSurfaceStage(
   assertFiniteParam('marginalGapMm', rp.marginalGapMm);
   assertFiniteParam('cementGapMm', rp.cementGapMm);
   assertFiniteParam('spacerStartMm', rp.spacerStartMm);
+  // NOTE on `undercutBlockoutThresholdMm` (profile): this task's SOLID blockout
+  // always does a FULL draft-close (fills ALL undercut, i.e. threshold-0
+  // semantics), so the profile threshold does not influence the output. It is
+  // therefore DELIBERATELY NOT journaled as an op param here — journaling a
+  // clinical value the op ignored would be a false audit record. Honouring a
+  // RETENTIVE (nonzero) threshold (leaving shallow undercut for retention) is
+  // future work; when added, it must be wired to the kernel op AND journaled.
 
   const blendWidthMm = options.blendWidthMm ?? INNER_SURFACE_DEFAULT_BLEND_WIDTH_MM;
-  const roiBboxMm = prepRegionRoiBbox(context.targetMesh.mesh, loop, context.insertionAxis);
 
-  const result = await innerSurfaceOffsetRoi(context.targetMesh.mesh, {
+  // ONE op: two-zone offset + solid undercut blockout + skirt-to-margin. The
+  // finished intaglio's boundary loop == the margin polyline (the marginal
+  // seal); the marginFitGate re-measures that coincidence.
+  const result = await buildInnerSurface(context.targetMesh.mesh, {
     marginalGapMm: rp.marginalGapMm,
     cementGapMm: rp.cementGapMm,
     spacerStartMm: rp.spacerStartMm,
     blendWidthMm,
     pitchMm: options.pitchMm,
     marginLoop: loop,
-    roiBboxMm,
+    insertionAxis: context.insertionAxis,
   });
 
   const meshContentHash = options.hashMesh(result.mesh);
@@ -187,7 +200,7 @@ export async function runInnerSurfaceStage(
     stage: 'innerSurface',
     mesh: result.mesh,
     meshContentHash,
-    operationName: 'innerSurface.twoZoneOffset',
+    operationName: 'innerSurface.build',
     params: {
       tooth,
       pitchMm: options.pitchMm,
@@ -196,8 +209,10 @@ export async function runInnerSurfaceStage(
       spacerStartMm: rp.spacerStartMm,
       blendWidthMm,
       insertionAxis: context.insertionAxis,
-      roiBboxMm,
       marginLoopPointCount: loop.length,
+      patchTriangleCount: result.patchTriangleCount,
+      skirtTriangleCount: result.skirtTriangleCount,
+      marginVertexCount: result.marginVertexCount,
       errorBoundMm: result.errorBoundMm,
       flatZoneErrorBoundMm: result.flatZoneErrorBoundMm,
     },

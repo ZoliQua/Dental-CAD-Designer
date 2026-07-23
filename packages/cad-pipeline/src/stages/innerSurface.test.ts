@@ -26,6 +26,7 @@ import {
   type IndexedMesh,
 } from '@dqcad/kernel';
 import type { PipelineContext, PipelineMaterialProfile } from '../pipeline/context.ts';
+import { marginFitGate } from '../gates/index.ts';
 import {
   MissingClinicalParamError,
   MissingMarginLoopError,
@@ -169,32 +170,36 @@ describe('runInnerSurfaceStage — orchestration', () => {
     { timeout: 120_000 },
     async () => {
       const ctx = makeContext();
-      const result = await runInnerSurfaceStage(ctx, TOOTH, { pitchMm: 0.02, hashMesh });
+      const result = await runInnerSurfaceStage(ctx, TOOTH, { pitchMm: 0.06, hashMesh });
 
       expect(result.stage).toBe('innerSurface');
       expect(result.mesh).not.toBeNull();
       expect(result.meshContentHash).toBe(hashMesh(result.mesh!));
-      expect(result.operationName).toBe('innerSurface.twoZoneOffset');
+      expect(result.operationName).toBe('innerSurface.build');
       expect(result.inputHashes).toEqual(['die-hash-abc']);
       expect(result.errorBoundMm).toBeGreaterThan(0);
 
-      // Journaled params carry the RESOLVED profile gaps (proof they came
-      // from the profile, not a kernel/pipeline default).
+      // Journaled params carry the RESOLVED profile gaps + undercut threshold
+      // (proof they came from the profile, not a kernel/pipeline default).
       expect(result.params['marginalGapMm']).toBe(0.02);
       expect(result.params['cementGapMm']).toBe(0.05);
       expect(result.params['spacerStartMm']).toBe(0.8);
-      expect(result.params['pitchMm']).toBe(0.02);
+      // undercutBlockoutThresholdMm is DELIBERATELY absent — the full draft-close
+      // ignores it, so journaling it would be a false audit record (see stage doc).
+      expect(result.params['undercutBlockoutThresholdMm']).toBeUndefined();
+      expect(result.params['pitchMm']).toBe(0.06);
       expect(result.params['blendWidthMm']).toBe(INNER_SURFACE_DEFAULT_BLEND_WIDTH_MM);
       expect(result.params['tooth']).toBe(TOOTH);
+      expect(result.params['skirtTriangleCount']).toBeGreaterThan(0);
 
-      // A non-empty surface. (Whether it is watertight or open depends on
-      // whether the ROI crops the offset — this small frustum's ROI happens
-      // to enclose the whole offset, so it comes out closed; a real prep's
-      // taller ROI leaves it open. Openness is ROI-dependent, not a stage
-      // contract, so it is not asserted here — see the kernel analytic test
-      // for the deliberately-cropped open-patch case.)
       analyzeMesh(result.mesh!);
       expect(result.mesh!.indices.length).toBeGreaterThan(0);
+
+      // ACCEPTANCE: the finished inner surface's boundary == the margin loop
+      // (the skirt) -> margin-fit gate PASSES at ~0 (<< 10 µm).
+      const fit = marginFitGate({ innerSurfaceMesh: result.mesh!, marginResampledPoints: marginCircle(480) });
+      expect(fit.passed).toBe(true);
+      expect(fit.value!).toBeLessThanOrEqual(0.010);
 
       // Spot-check the gaps actually landed on the geometry: near-margin
       // vertices offset ~marginalGap, high vertices ~cementGap.
@@ -221,8 +226,8 @@ describe('runInnerSurfaceStage — orchestration', () => {
   );
 
   it('is deterministic — journal-replay reproduces an identical hash + params', { timeout: 120_000 }, async () => {
-    const a = await runInnerSurfaceStage(makeContext(), TOOTH, { pitchMm: 0.05, hashMesh });
-    const b = await runInnerSurfaceStage(makeContext(), TOOTH, { pitchMm: 0.05, hashMesh });
+    const a = await runInnerSurfaceStage(makeContext(), TOOTH, { pitchMm: 0.07, hashMesh });
+    const b = await runInnerSurfaceStage(makeContext(), TOOTH, { pitchMm: 0.07, hashMesh });
     expect(b.meshContentHash).toBe(a.meshContentHash);
     expect(b.params).toEqual(a.params);
     expect(b.errorBoundMm).toBe(a.errorBoundMm);

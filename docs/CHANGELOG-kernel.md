@@ -59,6 +59,67 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.10.0] — Phase 4 Task 4: crown inner surface completed — `offset/innerSurfaceSolid.ts`'s `buildInnerSurface` (solid undercut blockout + skirt-to-margin)
+
+**NEW op, no existing golden hash changed.** Every entry in
+`test-fixtures/golden/kernel-ops.json` (and every other committed golden —
+intake/curvature/offset/margins) is byte-identical to `[0.9.0]` — this bump is
+purely additive: it adds one new op file (`offset/innerSurfaceSolid.ts`) and
+does not touch any pinned kernel-op's inputs or code path. Verified by a full
+`npm run test:golden` run against this bump.
+
+### What the new op is
+
+`buildInnerSurface(mesh, params)` completes the crown intaglio Task 3
+(`innerSurfaceOffsetRoi`) started. It produces the FINISHED fit surface — an
+open patch whose single boundary loop is exactly the confirmed margin — with
+two new construction stages on top of Task 3's two-zone offset:
+
+1. **Solid undercut blockout (draft-close).** In a frame rotated so the
+   insertion axis is `+Z`, the cement-gap field `F(x) = signedDistance(x) −
+   gap(h(x))` is DENSELY sampled (not banded — a draft-fill wall leaves the
+   thin offset band, so the running-minimum needs a correctly-signed field
+   everywhere in the ROI; accuracy over speed) and draft-closed by a per-column
+   running minimum `G[z] = min(F[z], G[z+1])`. The resulting `{G = 0}` surface
+   is downward-closed along the axis, hence undercut-free BY CONSTRUCTION: a
+   short proof (`G(x−s·d) ≤ G(x)`) shows the cavity is closed under stepping
+   toward the margin, so its upper boundary is single-valued along every axis
+   column (no overhang, no self-occlusion, `normal·axis ≥ 0` everywhere). The
+   self-consistency test re-scans the WHOLE finished intaglio (patch + skirt +
+   occlusion) with `undercutScan`: on any CLINICALLY VALID (in-taper) insertion
+   axis — the die's `+Z` and an ~11.5° in-taper tilt — the ENTIRE mesh has ZERO
+   undercut (measured), and the die genuinely has undercut before blockout (a
+   control asserts that). This closes the P3 composite-interaction gap: the
+   morphological field operation handles occlusion the display-only
+   `blockoutPreview` could not. On an axis EXCEEDING the die taper (~15° — an
+   UNSEATABLE axis, on which the confirmed margin itself cannot draw) the
+   offset/blockout PATCH is STILL undercut-free (0 patch facing, 0 patch
+   occlusion — measured); the only residual there is the marginal-seal SKIRT
+   near the margin (NOT occlusal-cap self-occlusion — measured 0).
+
+2. **Skirt-to-margin (the ≤10 µm marginal seal).** The blocked patch's open
+   boundary loop is stitched onto the dense margin `resampledPoints` (CHORD-CAP,
+   never anchor chords) by a deterministic index-fraction zipper; the skirt's
+   bottom rim vertices ARE the margin points, so the finished boundary loop ==
+   the margin polyline (measured margin fit ~0, `<<` the 10 µm gate). Winding is
+   made consistent + outward by `orientNormalsConsistently` + a reference-triangle
+   flip.
+
+`@errorBound`: the offset magnitude keeps Task 3's chord bound; the blockout
+adds a `pitchMm/2` position error on draft-fill walls; the skirt adds NO margin
+error (boundary vertices are the margin points). Margin-fit and self-consistency
+residuals are MEASURED (not bounded a priori) — see
+`offset/innerSurfaceSolid.analytic.test.ts` and `cad-pipeline`'s
+`gates/marginFit.ts`.
+
+### Why no `kernel-ops.json` pin
+
+Same precedent as `[0.8.0]`/`[0.9.0]`: the op is regression-pinned by its own
+analytic determinism (byte-identical double-run hash) + acceptance tests, which
+also assert margin fit ≤ 10 µm and zero facing/draft residual. Adding it to the
+shared `kernel-ops.json` snapshot is deferred (its runtime is dominated by the
+dense SDF field; the compact-die always-on run is already its regression pin).
+
 ## [0.9.0] — Phase 4 Task 3: crown inner surface — `offset/innerSurfaceOffset.ts`'s `innerSurfaceOffsetRoi` (two-zone cement-gap offset + C1 blend)
 
 **NEW op, no existing golden hash changed.** Every entry in

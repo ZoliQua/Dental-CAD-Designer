@@ -144,11 +144,11 @@ import { offsetMeshJob, type OffsetMeshPayload, type OffsetMeshResult } from './
 export type { OffsetMeshPayload, OffsetMeshResult };
 
 import {
-  innerSurfaceOffsetJob,
-  type InnerSurfaceOffsetPayload,
-  type InnerSurfaceOffsetResult,
+  innerSurfaceJob,
+  type InnerSurfacePayload,
+  type InnerSurfaceResult,
 } from './innerSurface.ts';
-export type { InnerSurfaceOffsetPayload, InnerSurfaceOffsetResult };
+export type { InnerSurfacePayload, InnerSurfaceResult };
 
 import { decimateMeshJob, type DecimateMeshPayload, type DecimateMeshResult } from './decimate.ts';
 export type { DecimateMeshPayload, DecimateMeshResult };
@@ -348,7 +348,7 @@ export interface JobPayloadMap {
   signedClosestPoint: SignedClosestPointPayload;
   sampleSdfGrid: SampleSdfGridPayload;
   offsetMesh: OffsetMeshPayload;
-  innerSurfaceOffset: InnerSurfaceOffsetPayload;
+  innerSurface: InnerSurfacePayload;
   decimateMesh: DecimateMeshPayload;
   undercutScan: UndercutScanPayload;
   undercutScanBatch: UndercutScanBatchPayload;
@@ -389,7 +389,7 @@ export interface JobResultMap {
   signedClosestPoint: SignedClosestPointResult;
   sampleSdfGrid: SampleSdfGridResult;
   offsetMesh: OffsetMeshResult;
-  innerSurfaceOffset: InnerSurfaceOffsetResult;
+  innerSurface: InnerSurfaceResult;
   decimateMesh: DecimateMeshResult;
   undercutScan: UndercutScanResult;
   undercutScanBatch: UndercutScanBatchResult;
@@ -437,7 +437,7 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   signedClosestPoint: signedClosestPointJob,
   sampleSdfGrid: sampleSdfGridJob,
   offsetMesh: offsetMeshJob,
-  innerSurfaceOffset: innerSurfaceOffsetJob,
+  innerSurface: innerSurfaceJob,
   decimateMesh: decimateMeshJob,
   undercutScan: undercutScanJob,
   undercutScanBatch: undercutScanBatchJob,

@@ -4,3 +4,12 @@
 // gains watertight/manifold/margin-fit/thickness/seating/... gates starting
 // Phase 4 Task 4/7/9.
 export { runQcGates, DuplicateGateNameError, type QcGate, type RunQcGatesOptions } from './runner.ts';
+export {
+  marginFitGate,
+  measureMarginFit,
+  MarginFitInputError,
+  MARGIN_FIT_GATE_THRESHOLD_MM,
+  MARGIN_FIT_GATE_NAME,
+  type MarginFitMeasurement,
+  type MarginFitGateInput,
+} from './marginFit.ts';

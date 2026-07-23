@@ -76,8 +76,19 @@
  * every existing golden hash is byte-identical to 0.8.0 (no `kernel-ops.json`
  * pin added — the op is regression-pinned by its own analytic determinism/
  * hash tests, matching the 0.8.0 precedent). See docs/CHANGELOG-kernel.md's
- * `[0.9.0]` entry. */
-export const KERNEL_VERSION = '0.9.0';
+ * `[0.9.0]` entry.
+ * 0.10.0 (Phase 4 Task 4): NEW op — `offset/innerSurfaceSolid.ts`'s
+ * `buildInnerSurface` (the FULL crown inner surface: the two-zone offset +
+ * SOLID undercut blockout — a per-axis-column running-minimum "draft-close" of
+ * the cement-gap field, self-consistent BY CONSTRUCTION (re-scan finds zero
+ * facing/draft undercut) — + SKIRT-TO-MARGIN, stitching the intaglio's open
+ * boundary exactly onto the confirmed margin polyline so the ≤10 µm margin-fit
+ * acceptance holds by construction). Same "brand-new op, minor bump" precedent
+ * as `innerSurfaceOffsetRoi` (0.9.0): every existing golden hash is
+ * byte-identical to 0.9.0 (no `kernel-ops.json` pin added — the op is
+ * regression-pinned by its own analytic determinism/committed-hash tests). See
+ * docs/CHANGELOG-kernel.md's `[0.10.0]` entry. */
+export const KERNEL_VERSION = '0.10.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -219,6 +230,9 @@ export {
   blendZoneLipschitz,
   INNER_SURFACE_DEFAULT_BLEND_WIDTH_MM,
   BlendWidthTooNarrowError,
+  buildInnerSurface,
+  INNER_SURFACE_ROI_RADIUS_FACTOR,
+  NoBoundaryLoopError,
   type ScalarGrid,
   type MarchingCubesSoup,
   type OffsetMeshOptions,
@@ -228,6 +242,9 @@ export {
   type InnerSurfaceGapParams,
   type InnerSurfaceOffsetParams,
   type InnerSurfaceOffsetResult,
+  type InnerSurfaceSolidParams,
+  type InnerSurfaceSolidResult,
+  type InnerSurfaceSolidHooks,
 } from './offset/index.ts';
 
 export {
