@@ -11,17 +11,25 @@ import type { CaseDocument } from '@dqcad/shared-types';
 import { createEmptyCaseDocument } from './case-document.js';
 import { MeshStorageIntegrityError, readMeshBytes, statMeshBytes, storeMeshBytes } from './mesh-storage.js';
 import {
+  listToothLibraryAssets,
+  readLatestToothLibraryMetadata,
+  seedStarterToothLibrary,
+} from './tooth-library-storage.js';
+import {
   caseIdParamsSchema,
   createCaseBodySchema,
   createCaseResponseSchema,
   healthResponseSchema,
   listCasesResponseSchema,
+  listToothLibraryResponseSchema,
   meshHashParamsSchema,
   patchCaseBodySchema,
   patchCaseResponseSchema,
   postMeshResponseSchema,
   putCaseBodySchema,
   putCaseResponseSchema,
+  toothFdiParamsSchema,
+  toothLibraryAssetResponseSchema,
 } from './schemas.js';
 
 // Vite dev server origin — fixed by PLAN.md's global constraints (port 5173).
@@ -46,6 +54,11 @@ function resolveMeshMaxBytes(): number {
 // apps/server/data/meshes — see mesh-storage.ts's module doc. Git-ignored
 // (see .gitignore's `apps/server/data/` entry); created on first upload.
 const DEFAULT_MESH_DATA_DIR = fileURLToPath(new URL('../data/meshes', import.meta.url));
+
+// apps/server/data/tooth-library — see tooth-library-storage.ts's module
+// doc. Git-ignored, same as DEFAULT_MESH_DATA_DIR; seeded with the
+// @dqcad/tooth-library starter set at every `buildApp` call (idempotent).
+const DEFAULT_TOOTH_LIBRARY_DATA_DIR = fileURLToPath(new URL('../data/tooth-library', import.meta.url));
 
 interface CaseSummary {
   id: string;
@@ -81,10 +94,17 @@ export interface BuildAppOptions {
   meshDataDir?: string;
   /** Injectable for tests — defaults to `MESH_MAX_BYTES` env var or 300 MB. */
   meshMaxBytes?: number;
+  /** Injectable for tests (an isolated temp dir) — defaults to
+   * apps/server/data/tooth-library. See tooth-library-storage.ts. */
+  toothLibraryDataDir?: string;
 }
 
-/** App factory: builds and configures a Fastify instance without listening. */
-export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
+/** App factory: builds and configures a Fastify instance without
+ * listening. ASYNC (Phase 4 Task 2 — was sync through Phase 3): seeds the
+ * `@dqcad/tooth-library` starter set (`seedStarterToothLibrary`,
+ * idempotent, deterministic — see that module's doc) before returning, so
+ * `GET /api/tooth-library` never races an in-flight seed. */
+export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
   // Vitest sets NODE_ENV=test; keep the test run's output pristine.
   //
   // `ajv.customOptions.removeAdditional: false` overrides Fastify's own
@@ -101,6 +121,9 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   const prisma = options.prisma ?? new PrismaClient();
   const meshDataDir = options.meshDataDir ?? DEFAULT_MESH_DATA_DIR;
   const meshMaxBytes = options.meshMaxBytes ?? resolveMeshMaxBytes();
+  const toothLibraryDataDir = options.toothLibraryDataDir ?? DEFAULT_TOOTH_LIBRARY_DATA_DIR;
+
+  await seedStarterToothLibrary(toothLibraryDataDir, meshDataDir);
 
   app.addHook('onClose', async () => {
     await prisma.$disconnect();
@@ -296,6 +319,29 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       }
       reply.type('application/octet-stream');
       return bytes;
+    },
+  );
+
+  // Phase 4 Task 2: tooth-library asset metadata. Mesh bytes are fetched
+  // via the mesh route directly above, using the returned metadata's own
+  // `meshChecksum` — see tooth-library-storage.ts's module doc and
+  // packages/tooth-library/src/README.md's "Backend routes" section for
+  // why there is no separate binary route here.
+  app.get('/api/tooth-library', { schema: { response: listToothLibraryResponseSchema } }, async () => {
+    return listToothLibraryAssets(toothLibraryDataDir);
+  });
+
+  app.get<{ Params: { fdi: string } }>(
+    '/api/tooth-library/:fdi',
+    { schema: { params: toothFdiParamsSchema, response: toothLibraryAssetResponseSchema } },
+    async (request, reply) => {
+      const fdi = Number(request.params.fdi);
+      const metadata = await readLatestToothLibraryMetadata(toothLibraryDataDir, fdi);
+      if (!metadata) {
+        reply.code(404);
+        throw new Error(`no tooth-library asset stored for FDI ${fdi}`);
+      }
+      return metadata;
     },
   );
 

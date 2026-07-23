@@ -27,3 +27,12 @@ export {
   loadMaterialProfile,
   validateMaterialProfileShape,
 } from './materialProfile.ts';
+// Re-exported (Phase 4 Task 2) so sibling leaf packages — starting
+// `@dqcad/tooth-library`, whose asset checksums use the exact same
+// "sync, pure-TS, Node+browser-portable SHA-256 over a canonical JSON
+// serialization" scheme this package invented for material profiles — reuse
+// the SAME implementation rather than forking a second copy. See sha256.ts's
+// and canonicalJson.ts's own module docs for why each is shaped the way it
+// is; nothing about either is material-profile-specific.
+export { sha256Bytes, sha256HexOfString } from './sha256.ts';
+export { canonicalStringify } from './canonicalJson.ts';

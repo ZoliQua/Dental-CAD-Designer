@@ -440,3 +440,95 @@ export const postMeshResponseSchema = {
     },
   },
 } as const;
+
+// ---------------------------------------------------------------------------
+// Tooth library (Phase 4 Task 2): GET /api/tooth-library[/:fdi]. Mesh BYTES
+// are deliberately NOT part of either response — they're already reachable
+// at the existing `GET /api/meshes/:hash` route (mesh-storage.ts, above)
+// using the metadata's own `meshChecksum` as `:hash`. See
+// apps/server/src/tooth-library-storage.ts's module doc and
+// packages/tooth-library/src/README.md's "Backend routes" section.
+// ---------------------------------------------------------------------------
+
+export const toothFdiParamsSchema = {
+  type: 'object',
+  required: ['fdi'],
+  additionalProperties: false,
+  properties: {
+    fdi: { type: 'string', pattern: '^[1-4][1-8]$' },
+  },
+} as const;
+
+export const listToothLibraryResponseSchema = {
+  200: {
+    type: 'array',
+    items: {
+      type: 'object',
+      required: ['fdi', 'version', 'toothType'],
+      additionalProperties: false,
+      properties: {
+        fdi: fdiToothSchema,
+        version: { type: 'string' },
+        toothType: { type: 'string', enum: ['incisor', 'molar'] },
+      },
+    },
+  },
+} as const;
+
+const vec3TupleSchema = {
+  type: 'array',
+  items: { type: 'number' },
+  minItems: 3,
+  maxItems: 3,
+} as const;
+
+const toothCanonicalFrameSchema = {
+  type: 'object',
+  required: ['origin', 'mesialDistal', 'buccoLingual', 'occlusoGingival'],
+  additionalProperties: false,
+  properties: {
+    origin: vec3TupleSchema,
+    mesialDistal: vec3TupleSchema,
+    buccoLingual: vec3TupleSchema,
+    occlusoGingival: vec3TupleSchema,
+  },
+} as const;
+
+const toothMorphTargetSchema = {
+  type: 'object',
+  required: ['name', 'vertexDeltas'],
+  additionalProperties: false,
+  properties: {
+    name: { type: 'string' },
+    vertexDeltas: { type: 'array', items: { type: 'number' } },
+  },
+} as const;
+
+export const toothLibraryAssetResponseSchema = {
+  200: {
+    type: 'object',
+    required: [
+      'fdi',
+      'version',
+      'toothType',
+      'provenance',
+      'landmarks',
+      'canonicalFrame',
+      'morphTargets',
+      'meshChecksum',
+      'metadataChecksum',
+    ],
+    additionalProperties: false,
+    properties: {
+      fdi: fdiToothSchema,
+      version: { type: 'string' },
+      toothType: { type: 'string', enum: ['incisor', 'molar'] },
+      provenance: { type: 'string' },
+      landmarks: { type: 'object', additionalProperties: vec3TupleSchema },
+      canonicalFrame: toothCanonicalFrameSchema,
+      morphTargets: { type: 'array', items: toothMorphTargetSchema },
+      meshChecksum: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+      metadataChecksum: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+    },
+  },
+} as const;

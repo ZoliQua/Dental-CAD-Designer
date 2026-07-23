@@ -8,5 +8,11 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@dqcad/clinical-profiles": "*",
+    "@dqcad/io": "*",
+    "@dqcad/kernel": "*",
+    "@dqcad/shared-types": "*"
   }
 }

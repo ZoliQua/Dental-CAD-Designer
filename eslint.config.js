@@ -11,6 +11,7 @@ const boundaryElements = [
   { type: 'io', pattern: 'packages/io/**' },
   { type: 'cad-pipeline', pattern: 'packages/cad-pipeline/**' },
   { type: 'clinical-profiles', pattern: 'packages/clinical-profiles/**' },
+  { type: 'tooth-library', pattern: 'packages/tooth-library/**' },
   { type: 'shared-types', pattern: 'packages/shared-types/**' },
 ];
 
@@ -65,6 +66,19 @@ export default tseslint.config(
             {
               from: { element: { types: 'clinical-profiles' } },
               allow: { to: { element: { types: 'shared-types' } } },
+            },
+            {
+              // A leaf package like clinical-profiles (PLAN.md's tooth
+              // asset library) — pure TS, no DOM/Three.js. It generates its
+              // starter meshes with `@dqcad/kernel` (IndexedMesh, watertight
+              // analysis), parses/writes them with `@dqcad/io` (STL bytes),
+              // and reuses `@dqcad/clinical-profiles`' SHA-256/canonical-JSON
+              // checksum primitives (see that package's index.ts) rather
+              // than forking a second implementation.
+              from: { element: { types: 'tooth-library' } },
+              allow: {
+                to: { element: { types: { anyOf: ['kernel', 'io', 'clinical-profiles', 'shared-types'] } } },
+              },
             },
             {
               from: { element: { types: 'state' } },
