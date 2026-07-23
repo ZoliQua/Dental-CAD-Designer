@@ -147,8 +147,15 @@ export function compareSemver(a: string, b: string): number {
   };
   const pa = parse(a);
   const pb = parse(b);
-  for (let i = 0; i < 3; i++) {
-    if (pa[i] !== pb[i]) return pa[i] - pb[i];
+  // Literal-index tuple access (each is a known `number`, unlike a
+  // variable-index access under noUncheckedIndexedAccess).
+  const pairs: ReadonlyArray<readonly [number, number]> = [
+    [pa[0], pb[0]],
+    [pa[1], pb[1]],
+    [pa[2], pb[2]],
+  ];
+  for (const [x, y] of pairs) {
+    if (x !== y) return x - y;
   }
   return 0;
 }

@@ -59,6 +59,63 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.9.0] — Phase 4 Task 3: crown inner surface — `offset/innerSurfaceOffset.ts`'s `innerSurfaceOffsetRoi` (two-zone cement-gap offset + C1 blend)
+
+**NEW op, no existing golden hash changed.** Every entry in
+`test-fixtures/golden/kernel-ops.json` (and every other committed golden —
+intake/curvature/offset/margins) is byte-identical to `[0.8.0]` — verified
+by a full `npm run test:golden` run against this bump. This is a genuinely
+new piece of kernel surface, not a behavior change to anything existing.
+
+**`offset/innerSurfaceOffset.ts`'s `innerSurfaceOffsetRoi`** — the crown
+INNER-SURFACE (intaglio / cement-gap) geometry, PLAN.md §4 Phase 4 stage 1's
+opening step. A spatially-VARYING outward offset of the prep with two zones
+and a C1-smooth blend, extracted by the same SDF -> marching cubes machinery
+`offsetMesh`/`offsetMeshRoi` use, restricted to the prep ROI:
+
+- **Formulation.** Instead of a constant-iso offset, it extracts the level
+  set `F(x) = signedDistance(x) - gap(h(x)) = 0`, where `gap(h)` is a C1
+  ramp from `marginalGapMm` (near margin) to `cementGapMm` (above the spacer
+  line) via a smoothstep across `blendWidthMm` centred on `spacerStartMm`. It
+  builds the grid `G = signedDistance - gap(h)` and runs marching cubes at
+  iso = 0 — the blend is built into the ramp, no MC-side special-casing.
+- **Height field `h(x)` — the design decision.** `h` = EUCLIDEAN distance to
+  the margin loop polyline (option C, documented against the geodesic and
+  plane-projection alternatives in the module doc). Chosen because it is 0
+  EXACTLY on the margin for any loop shape (so the marginal band genuinely
+  hugs the margin — closing the plane-proxy's non-planar degradation), it
+  equals along-surface distance EXACTLY on a ruled axial wall (clean analytic
+  golden on the cone die), it is a LOWER bound on true geodesic arc length in
+  general (spacer line never lands lower than nominal — the clinically safe
+  direction), and it needs no off-surface field extension.
+- **`@errorBound`.** Offset chord bound is `pitchMm/2` in the flat
+  (marginal/cement) zones and `(1+Lgap)/(1-Lgap) * pitchMm/2` inside the
+  blend (`Lgap = 1.5*(cementGapMm-marginalGapMm)/blendWidthMm`); the result
+  carries BOTH (`flatZoneErrorBoundMm` and the worst-case `errorBoundMm`),
+  plus the reused Float32/mu-clamp term. The height field's arc-vs-chord
+  under-estimate is a blend-POSITION bound (0 on the analytic cone die),
+  reported separately.
+- **Output.** An OPEN, welded patch (no manifold cleanup — `offsetMeshRoi`'s
+  documented shape); a later Phase 4 stage skirts/stitches it into the closed
+  shell.
+
+MEASURED on the analytic shoulder-prep die (compact variant, clinical pitch
+0.02mm): marginal-zone offset max deviation 3.28µm and cement-zone 0.82µm
+(both against the tight `pitchMm/2 = 10µm` flat-zone bound; targets 20/50µm),
+blend monotonic with max drop 0.37µm across the spacer line, margin boundary
+reaching to within ~29µm of the margin — see
+`packages/kernel/src/offset/innerSurfaceOffset.analytic.test.ts` for the full
+reported numerals and `.superpowers/sdd/p4-task-3-report.md`.
+
+**No `kernel-ops.json` pin added** — same decision as `[0.8.0]`'s
+`offsetMeshRoi`/`margin/band.ts`: the op is regression-pinned by its own
+analytic determinism (double-run byte-identical hash) and zone/blend
+accuracy tests, which run every `npm test`; a `kernel-ops` snapshot would add
+a heavy die-scale SDF/MC run to the golden lane for no coverage the analytic
+test doesn't already give. The worker job (`innerSurfaceOffset`,
+`kernel-workers/src/jobs/innerSurface.ts`) is pinned byte-identical to a
+direct kernel call by `innerSurfaceJob.test.ts`.
+
 ## [0.8.0] — Phase 4 Task 1: cad-pipeline scaffold carry-ins — `offsetMeshRoi` (die-offset ROI-band perf fix) + `margin/band.ts` (margin-band primitive)
 
 **NEW ops, no existing golden hash changed.** Every entry in

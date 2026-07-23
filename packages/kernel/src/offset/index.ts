@@ -26,3 +26,16 @@ export {
   type OffsetMeshRoiOptions,
   type OffsetMeshRoiResult,
 } from './offsetMesh.ts';
+export {
+  innerSurfaceOffsetRoi,
+  computeTwoZoneSdfGridSlice,
+  twoZoneGapField,
+  smoothstep,
+  distanceToClosedPolyline,
+  blendZoneLipschitz,
+  INNER_SURFACE_DEFAULT_BLEND_WIDTH_MM,
+  BlendWidthTooNarrowError,
+  type InnerSurfaceGapParams,
+  type InnerSurfaceOffsetParams,
+  type InnerSurfaceOffsetResult,
+} from './innerSurfaceOffset.ts';

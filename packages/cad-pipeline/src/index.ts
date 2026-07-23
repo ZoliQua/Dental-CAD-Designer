@@ -6,6 +6,7 @@
 // (eslint.config.js's boundaries policy): this package imports only
 // `@dqcad/kernel`, `@dqcad/io`, `@dqcad/shared-types` — never
 // `@dqcad/clinical-profiles`, never `three`, never `@dqcad/kernel-workers`.
-// No pipeline STAGES exist yet (Task 3+) — `stages/` is intentionally empty.
+// Phase 4 Task 3 adds the first stage (`stages/innerSurface.ts`).
 export * from './pipeline/index.ts';
 export * from './gates/index.ts';
+export * from './stages/index.ts';

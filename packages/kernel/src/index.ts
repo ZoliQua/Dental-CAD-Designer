@@ -64,8 +64,20 @@
  * `offsetMeshRoi` (die-offset ROI-band perf fix) and `margin/band.ts` (the
  * margin-band primitive) — see docs/CHANGELOG-kernel.md's `[0.8.0]` entry
  * for the full writeup, including why neither gained a `kernel-ops.json`
- * pin yet. Every existing golden hash is byte-identical to 0.7.1. */
-export const KERNEL_VERSION = '0.8.0';
+ * pin yet. Every existing golden hash is byte-identical to 0.7.1.
+ * 0.9.0 (Phase 4 Task 3): NEW op — `offset/innerSurfaceOffset.ts`'s
+ * `innerSurfaceOffsetRoi` (the crown two-zone cement-gap inner surface: a
+ * spatially-varying outward offset F(x) = signedDistance(x) - gap(h(x)) = 0
+ * with a C1 smoothstep blend between the marginal-gap and cement-gap zones,
+ * height field `h` = Euclidean distance to the margin loop, extracted by
+ * SDF -> marching cubes restricted to the prep ROI — see that module's doc
+ * for the height-field design decision and `@errorBound`). Same "brand-new
+ * op, minor bump" precedent as `offsetMeshRoi`/`margin/band.ts` (0.8.0):
+ * every existing golden hash is byte-identical to 0.8.0 (no `kernel-ops.json`
+ * pin added — the op is regression-pinned by its own analytic determinism/
+ * hash tests, matching the 0.8.0 precedent). See docs/CHANGELOG-kernel.md's
+ * `[0.9.0]` entry. */
+export const KERNEL_VERSION = '0.9.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -199,12 +211,23 @@ export {
   maxAbsCoordOf,
   OFFSET_BAND_MARGIN_PITCHES,
   EmptyOffsetResultError,
+  innerSurfaceOffsetRoi,
+  computeTwoZoneSdfGridSlice,
+  twoZoneGapField,
+  smoothstep,
+  distanceToClosedPolyline,
+  blendZoneLipschitz,
+  INNER_SURFACE_DEFAULT_BLEND_WIDTH_MM,
+  BlendWidthTooNarrowError,
   type ScalarGrid,
   type MarchingCubesSoup,
   type OffsetMeshOptions,
   type OffsetMeshResult,
   type OffsetMeshRoiOptions,
   type OffsetMeshRoiResult,
+  type InnerSurfaceGapParams,
+  type InnerSurfaceOffsetParams,
+  type InnerSurfaceOffsetResult,
 } from './offset/index.ts';
 
 export {
