@@ -10,3 +10,13 @@ export {
   MissingClinicalParamError,
   type InnerSurfaceStageOptions,
 } from './innerSurface.ts';
+
+export {
+  runAnatomyPlacementStage,
+  identifyNeighbors,
+  InsufficientNeighborsError,
+  UnknownLandmarkError,
+  type PipelineToothAsset,
+  type AnatomyPlacementStageOptions,
+  type AnatomyPlacementManualOverride,
+} from './anatomyPlacement.ts';

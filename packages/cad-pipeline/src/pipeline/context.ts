@@ -96,6 +96,18 @@ export interface PipelineContext {
   readonly targetMesh: PipelineMeshHandle;
   /** One entry per abutment tooth (length 1 for crown/inlay/onlay). */
   readonly marginLoops: Partial<Record<FdiTooth, PipelineMarginLoop>>;
+  /** The ADJACENT teeth bordering the restoration site, keyed by FDI —
+   * consumed by the anatomy-placement stage (Task 5) to derive the
+   * mesial-distal axis (neighbour bounding centroids) and the M-D scale
+   * (inter-proximal gap). Mirrors `marginLoops`' `Partial<Record<FdiTooth,…>>`
+   * shape exactly (same round-trip-from-`Restoration` convention): a crown
+   * site carries its mesial + distal neighbour, empty `{}` when none are
+   * assigned yet. Each handle is a segmented neighbour tooth mesh (or a local
+   * arch neighbourhood around it) — the stage only reads its vertex positions,
+   * never its topology. Empty/insufficient neighbours is the placement stage's
+   * OWN gate to enforce (like `antagonist` is for occlusal stages), not this
+   * type's. */
+  readonly neighbors: Partial<Record<FdiTooth, PipelineMeshHandle>>;
   /** The antagonist (opposing-arch) scan, when available — `null` if none
    * is assigned yet (occlusal-contact-dependent stages, e.g. morphing,
    * cannot run without one; that is THEIR gate to enforce, not this type's). */

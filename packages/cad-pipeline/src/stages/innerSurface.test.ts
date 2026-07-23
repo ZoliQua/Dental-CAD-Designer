@@ -140,6 +140,7 @@ function makeContext(overrides?: Partial<PipelineContext>): PipelineContext {
     insertionAxis: [0, 0, 1],
     targetMesh: { contentHash: 'die-hash-abc', mesh: die },
     marginLoops: { [TOOTH]: { closed: true, resampledPoints: marginCircle(480) } },
+    neighbors: {},
     antagonist: null,
     stages: {},
     ...overrides,

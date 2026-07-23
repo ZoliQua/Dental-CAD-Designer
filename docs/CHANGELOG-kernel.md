@@ -59,6 +59,56 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.11.0] — Phase 4 Task 5: anatomy placement — `anatomy/placement.ts` (deterministic transform solve + manual-override API)
+
+**NEW op, no existing golden hash changed.** Every committed golden
+(`test-fixtures/golden/kernel-ops.json`, intake/curvature/offset/margins) is
+byte-identical to `[0.10.0]` — this bump is purely additive. `anatomy/placement.ts`
+adds NO entry to `kernel-ops.json`: it is pure transform math (it reuses the
+already-pinned `register/` primitives — `coarseAlignFromPointTriples`,
+`multiplyMat4`, `composeRigid`, `applyMat4ToPoint` — and the already-pinned
+`margin/band.ts` `computeMarginLoopFrame`), and is regression-pinned by its own
+analytic + determinism (byte-identical transform/placed-mesh hash) tests
+(`packages/kernel/src/anatomy/placement.test.ts`) rather than a golden-file
+snapshot. Verified by a full `npm run test:golden` run against this bump.
+
+### What the new op is
+
+`solveAnatomyPlacement(input)` + `buildPlacementTransform(frame, canonical)` +
+`placeMesh(mesh, transform)` place a library tooth into a case with a single
+deterministic, closed-form transform solve — no iterative-tolerance
+nondeterminism, no randomness/clock:
+
+1. **Target frame from case geometry.** Occluso-gingival axis = the insertion
+   axis (re-oriented toward the antagonist when present so a sign-flipped axis
+   cannot place the tooth upside-down); mesial-distal axis = the mesial→distal
+   neighbour-centroid line orthogonalised against it; bucco-lingual =
+   `og × md` (right-handed, matching the canonical frame's `MD×BL=OG`
+   convention, so buccal orientation is forced once M-D and O-G are correct).
+   Origin = the confirmed margin loop's centroid (the cervical seat).
+2. **Anisotropic scale.** `scaleMesialDistal` fills the proximal gap between
+   the neighbours (centroid-separation fallback for crowded scans);
+   `scaleOcclusoGingival` fills margin→nearest-antagonist-over-the-site
+   (antagonist-absent fallback: reuse the M-D factor → undistorted uniform
+   scale); `scaleBuccoLingual` reuses the M-D factor (no B-L case datum).
+3. **Transform.** `M = R_target · diag(scale) · R_canonicalᵀ` — the rigid
+   canonical→target rotation is recovered by the existing
+   `coarseAlignFromPointTriples` (Kabsch) fed the two frames' axis-tip triples,
+   the anisotropic scale composed about the origin via `multiplyMat4`. Applied
+   to a COPY of the immutable library mesh (positive determinant → winding
+   preserved).
+
+Manual-override helpers (`translatePlacement`/`rotatePlacement`/
+`rescalePlacement`/`solveLandmarkHandleTranslation`) return a new
+`PlacementFrame` for deterministic position/rotation/scale + anatomical-handle
+edits; a landmark handle re-solves to a pure origin translation that lands the
+dragged landmark exactly on target.
+
+`@errorBound` EXACT (Float64, ~1e-13 for the Kabsch frame rotation; every other
+step direct arithmetic). Placement is a deterministic initial-pose heuristic,
+not an approximation of a continuous quantity, so its `RestorationStageResult`
+carries a `null` errorBound.
+
 ## [0.10.0] — Phase 4 Task 4: crown inner surface completed — `offset/innerSurfaceSolid.ts`'s `buildInnerSurface` (solid undercut blockout + skirt-to-margin)
 
 **NEW op, no existing golden hash changed.** Every entry in

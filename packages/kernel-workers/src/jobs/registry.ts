@@ -154,6 +154,14 @@ import { decimateMeshJob, type DecimateMeshPayload, type DecimateMeshResult } fr
 export type { DecimateMeshPayload, DecimateMeshResult };
 
 import {
+  placeAnatomyJob,
+  UnknownLandmarkError as PlaceAnatomyUnknownLandmarkError,
+  type PlaceAnatomyPayload,
+  type PlaceAnatomyResult,
+} from './placeAnatomy.ts';
+export { PlaceAnatomyUnknownLandmarkError, type PlaceAnatomyPayload, type PlaceAnatomyResult };
+
+import {
   undercutScanJob,
   undercutScanBatchJob,
   type UndercutScanPayload,
@@ -349,6 +357,7 @@ export interface JobPayloadMap {
   sampleSdfGrid: SampleSdfGridPayload;
   offsetMesh: OffsetMeshPayload;
   innerSurface: InnerSurfacePayload;
+  placeAnatomy: PlaceAnatomyPayload;
   decimateMesh: DecimateMeshPayload;
   undercutScan: UndercutScanPayload;
   undercutScanBatch: UndercutScanBatchPayload;
@@ -390,6 +399,7 @@ export interface JobResultMap {
   sampleSdfGrid: SampleSdfGridResult;
   offsetMesh: OffsetMeshResult;
   innerSurface: InnerSurfaceResult;
+  placeAnatomy: PlaceAnatomyResult;
   decimateMesh: DecimateMeshResult;
   undercutScan: UndercutScanResult;
   undercutScanBatch: UndercutScanBatchResult;
@@ -438,6 +448,7 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   sampleSdfGrid: sampleSdfGridJob,
   offsetMesh: offsetMeshJob,
   innerSurface: innerSurfaceJob,
+  placeAnatomy: placeAnatomyJob,
   decimateMesh: decimateMeshJob,
   undercutScan: undercutScanJob,
   undercutScanBatch: undercutScanBatchJob,

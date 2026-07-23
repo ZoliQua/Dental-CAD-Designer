@@ -87,8 +87,19 @@
  * as `innerSurfaceOffsetRoi` (0.9.0): every existing golden hash is
  * byte-identical to 0.9.0 (no `kernel-ops.json` pin added — the op is
  * regression-pinned by its own analytic determinism/committed-hash tests). See
- * docs/CHANGELOG-kernel.md's `[0.10.0]` entry. */
-export const KERNEL_VERSION = '0.10.0';
+ * docs/CHANGELOG-kernel.md's `[0.10.0]` entry.
+ * 0.11.0 (Phase 4 Task 5): NEW op — `anatomy/placement.ts`'s
+ * `solveAnatomyPlacement`/`buildPlacementTransform`/`placeMesh` (+ the manual
+ * override helpers): the deterministic, closed-form anatomy-placement transform
+ * solve (build a case target frame from the margin/insertion-axis/neighbours/
+ * antagonist, align the library tooth's canonical frame to it via the existing
+ * `coarseAlignFromPointTriples` Kabsch, scale anisotropically to fill the
+ * inter-neighbour + margin-to-antagonist space). Pure transform math reusing
+ * `register/`; introduces NO new golden-pinned kernel-op output (regression-
+ * pinned by its own analytic/determinism/committed-hash tests — same "brand-new
+ * op, minor bump, existing goldens byte-identical" precedent as 0.9.0/0.10.0).
+ * See docs/CHANGELOG-kernel.md's `[0.11.0]` entry. */
+export const KERNEL_VERSION = '0.11.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -415,6 +426,26 @@ export {
   type Mat4,
   type Mat3,
 } from './register/index.ts';
+
+export {
+  solveAnatomyPlacement,
+  buildPlacementTransform,
+  placeMesh,
+  translatePlacement,
+  rotatePlacement,
+  rescalePlacement,
+  solveLandmarkHandleTranslation,
+  assertFrameValid,
+  DegeneratePlacementError,
+  PLACEMENT_MIN_EXTENT_MM,
+  FRAME_ORTHONORMAL_TOLERANCE,
+  FRAME_MIN_RIGHT_HANDED_DET,
+  type CanonicalFrameAxes,
+  type PlacementFrame,
+  type AnatomyPlacementInput,
+  type AnatomyPlacementMeasurements,
+  type AnatomyPlacementSolution,
+} from './anatomy/index.ts';
 
 export {
   proposeMarginLoop,
