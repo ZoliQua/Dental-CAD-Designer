@@ -72,13 +72,18 @@ existing:
    perf fix (Phase 3 carry-in). Restricts the SDF grid's DOMAIN (bbox) to a
    caller-supplied ROI instead of the input mesh's own full bbox — every
    other stage (BVH, pseudonormals, the watertight gate) still runs over the
-   FULL, unrestricted mesh, so a sampled grid point's value is byte-identical
-   to what `offsetMesh`'s full-bbox grid would have produced at that same
-   point (proven by construction — `computeSdfGridSlice`'s per-point value
-   depends only on `mesh`/`bvh`/`pseudonormals`/the point's own world
-   coordinates, never the grid's overall extent — see `offsetMeshRoi`'s
-   module doc for the full argument and `offsetMeshRoi.test.ts` for the
-   byte-identity + interior-accuracy tests). MEASURED on
+   FULL, unrestricted mesh, so every sampled SDF value is the exact correct
+   value at its own world coordinate, and accuracy is preserved regardless of
+   grid alignment (proven by construction — `computeSdfGridSlice`'s per-point
+   value depends only on `mesh`/`bvh`/`pseudonormals`/the point's own world
+   coordinates, never the grid's overall extent). Note this is an
+   accuracy-per-sampled-point guarantee, not a cell-for-cell identity
+   guarantee: the ROI grid's lattice coincides with the full-bbox grid's
+   lattice only when the ROI bbox's min corner differs from the full bbox's
+   min corner by an exact integer multiple of `pitchMm` on every axis — see
+   `offsetMeshRoi`'s module doc for the full argument and
+   `offsetMeshRoi.test.ts` for the byte-identity (aligned-lattice case) +
+   interior-accuracy tests). MEASURED on
    `standin-prep-die.stl` at the clinical default pitch (0.02mm): the
    existing full-bbox `offsetMesh` golden's own die case took **117.9s**
    (reproducing P2 Task 7's original 117-126s measurement); the SAME offset

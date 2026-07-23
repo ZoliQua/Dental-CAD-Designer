@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Vec3 } from '../bvh/geometry.ts';
 import { buildHalfedge } from '../halfedge/build.ts';
+import { findBoundaryLoops } from '../halfedge/iterate.ts';
 import { assertValidTopology } from '../halfedge/validate.ts';
 import {
   MARGIN_BAND_MIN_POINT_COUNT,
@@ -192,7 +193,10 @@ describe('marginLoopMesh — thin ribbon, analytic + topology', () => {
 
     // Every interior (side-wall) edge is shared by exactly 2 triangles;
     // every rim edge (top-top or bottom-bottom) is a boundary edge shared
-    // by exactly 1 — count boundary halfedges via findBoundaryLoops.
+    // by exactly 1 — count boundary halfedges via findBoundaryLoops. The
+    // ribbon has no top/bottom caps, so the top rim and the bottom rim
+    // each form their own closed boundary loop: exactly 2 total.
+    expect(findBoundaryLoops(hm).length).toBe(2);
   });
 
   it('throws for a degenerate (too-short) loop or non-positive halfThicknessMm', () => {
