@@ -98,8 +98,22 @@
  * `register/`; introduces NO new golden-pinned kernel-op output (regression-
  * pinned by its own analytic/determinism/committed-hash tests — same "brand-new
  * op, minor bump, existing goldens byte-identical" precedent as 0.9.0/0.10.0).
- * See docs/CHANGELOG-kernel.md's `[0.11.0]` entry. */
-export const KERNEL_VERSION = '0.11.0';
+ * See docs/CHANGELOG-kernel.md's `[0.11.0]` entry.
+ * 0.12.0 (Phase 4 Task 6): NEW ops — the `rbf/` module (`solveDense`: a
+ * deterministic dense LU-with-partial-pivoting Float64 linear solver; `fitRbf`/
+ * `evaluateRbf`/`applyRbfDisplacement`: a φ(r)=r biharmonic RBF displacement
+ * interpolant with a degree-1 polynomial term) and `anatomy/morph.ts`'s
+ * `planAnatomyMorph`/`solveAnatomyMorph`/`morphAnatomy`: the adaptation/morphing
+ * stage — deform the placed library tooth to satisfy proximal + antagonist
+ * contacts (targets from the profile) while pinning the cervical seal, via the
+ * RBF driven by contact + anchor control points and solved by the DIRECT
+ * deterministic solver (same constraints+params+version ⇒ byte-identical
+ * morphed mesh). The morph carries a measured contact-residual `@errorBound`.
+ * Same "brand-new op, minor bump, existing goldens byte-identical" precedent as
+ * 0.11.0 (regression-pinned by its own analytic/determinism/committed-hash
+ * tests + the synthetic morph golden; no `kernel-ops.json` pin added). See
+ * docs/CHANGELOG-kernel.md's `[0.12.0]` entry. */
+export const KERNEL_VERSION = '0.12.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -440,12 +454,41 @@ export {
   PLACEMENT_MIN_EXTENT_MM,
   FRAME_ORTHONORMAL_TOLERANCE,
   FRAME_MIN_RIGHT_HANDED_DET,
+  planAnatomyMorph,
+  solveAnatomyMorph,
+  morphAnatomy,
+  DEFAULT_MORPH_OPTIONS,
+  MorphContactMeshError,
+  MorphNoAnchorsError,
   type CanonicalFrameAxes,
   type PlacementFrame,
   type AnatomyPlacementInput,
   type AnatomyPlacementMeasurements,
   type AnatomyPlacementSolution,
+  type MorphContactKind,
+  type MorphContactInput,
+  type MorphOptions,
+  type AnatomyMorphInput,
+  type AnatomyMorphPlan,
+  type MorphStrengths,
+  type MorphContactResult,
+  type AnatomyMorphResult,
 } from './anatomy/index.ts';
+
+export {
+  solveDense,
+  solveDenseSingle,
+  distanceVec3,
+  SingularMatrixError,
+  SOLVE_SINGULAR_PIVOT_EPSILON,
+  fitRbf,
+  evaluateRbf,
+  applyRbfDisplacement,
+  rbfPhi,
+  RBF_POLY_TERMS,
+  type RbfControlPoint,
+  type RbfField,
+} from './rbf/index.ts';
 
 export {
   proposeMarginLoop,

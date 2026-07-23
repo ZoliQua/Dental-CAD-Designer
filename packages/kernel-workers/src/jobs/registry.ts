@@ -162,6 +162,27 @@ import {
 export { PlaceAnatomyUnknownLandmarkError, type PlaceAnatomyPayload, type PlaceAnatomyResult };
 
 import {
+  morphAnatomyJob,
+  resolveMorphJob,
+  MorphPlanNotCachedError,
+  type MorphAnatomyPayload,
+  type ResolveMorphPayload,
+  type MorphAnatomyResult,
+  type MorphAnatomyContactPayload,
+  type MorphContactResultPayload,
+  type ContactHeatmapPayload,
+} from './morphAnatomy.ts';
+export {
+  MorphPlanNotCachedError,
+  type MorphAnatomyPayload,
+  type ResolveMorphPayload,
+  type MorphAnatomyResult,
+  type MorphAnatomyContactPayload,
+  type MorphContactResultPayload,
+  type ContactHeatmapPayload,
+};
+
+import {
   undercutScanJob,
   undercutScanBatchJob,
   type UndercutScanPayload,
@@ -358,6 +379,8 @@ export interface JobPayloadMap {
   offsetMesh: OffsetMeshPayload;
   innerSurface: InnerSurfacePayload;
   placeAnatomy: PlaceAnatomyPayload;
+  morphAnatomy: MorphAnatomyPayload;
+  resolveMorph: ResolveMorphPayload;
   decimateMesh: DecimateMeshPayload;
   undercutScan: UndercutScanPayload;
   undercutScanBatch: UndercutScanBatchPayload;
@@ -400,6 +423,8 @@ export interface JobResultMap {
   offsetMesh: OffsetMeshResult;
   innerSurface: InnerSurfaceResult;
   placeAnatomy: PlaceAnatomyResult;
+  morphAnatomy: MorphAnatomyResult;
+  resolveMorph: MorphAnatomyResult;
   decimateMesh: DecimateMeshResult;
   undercutScan: UndercutScanResult;
   undercutScanBatch: UndercutScanBatchResult;
@@ -449,6 +474,8 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   offsetMesh: offsetMeshJob,
   innerSurface: innerSurfaceJob,
   placeAnatomy: placeAnatomyJob,
+  morphAnatomy: morphAnatomyJob,
+  resolveMorph: resolveMorphJob,
   decimateMesh: decimateMeshJob,
   undercutScan: undercutScanJob,
   undercutScanBatch: undercutScanBatchJob,

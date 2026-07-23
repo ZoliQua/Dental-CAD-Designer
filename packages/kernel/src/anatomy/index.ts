@@ -20,3 +20,20 @@ export {
   type AnatomyPlacementMeasurements,
   type AnatomyPlacementSolution,
 } from './placement.ts';
+
+export {
+  planAnatomyMorph,
+  solveAnatomyMorph,
+  morphAnatomy,
+  DEFAULT_MORPH_OPTIONS,
+  MorphContactMeshError,
+  MorphNoAnchorsError,
+  type MorphContactKind,
+  type MorphContactInput,
+  type MorphOptions,
+  type AnatomyMorphInput,
+  type AnatomyMorphPlan,
+  type MorphStrengths,
+  type MorphContactResult,
+  type AnatomyMorphResult,
+} from './morph.ts';

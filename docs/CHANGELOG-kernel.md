@@ -59,6 +59,48 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.12.0] — Phase 4 Task 6: adaptation/morphing — `rbf/` (deterministic dense solver + RBF interpolant) + `anatomy/morph.ts` (contact-driven RBF morph)
+
+**NEW ops, no existing golden hash changed.** Every committed golden
+(`test-fixtures/golden/kernel-ops.json`, intake/curvature/offset/margins) is
+byte-identical to `[0.11.0]` — this bump is purely additive. Two new kernel
+modules:
+
+- **`rbf/solve.ts`** — `solveDense`, a dense Float64 linear solver via Gaussian
+  elimination with **partial pivoting and a deterministic tie-break** (largest
+  |pivot| in the column, lowest row index on an exact tie — the same
+  `>`-strict discipline as `bvh/closestPoint.ts`). A DIRECT factorization has a
+  fixed arithmetic sequence with no convergence/tolerance loop, so the same
+  input yields byte-identical output — the journal-reproducibility bar Task 6
+  exists to hit (CLAUDE.md invariant 2). No prior linear-algebra solver existed
+  in the kernel.
+- **`rbf/rbf.ts`** — `fitRbf`/`evaluateRbf`/`applyRbfDisplacement`, a vector-
+  valued RBF displacement interpolant: kernel **φ(r) = r** (the 3-D biharmonic
+  polyharmonic spline — parameter-free, so nothing to tune could silently
+  change the result) plus a **degree-1 polynomial term** (affine reproduction +
+  conditional positive-definiteness). The (N+4)×(N+4) symmetric saddle system
+  is solved by `solveDense`, three RHS (x/y/z) against one factorization.
+- **`anatomy/morph.ts`** — `planAnatomyMorph`/`solveAnatomyMorph`/`morphAnatomy`,
+  the adaptation/morphing stage: deform the placed library tooth (Task 5) so it
+  makes correct **proximal** contacts (penetration = `proximalContactPenetration-
+  Mm`) and an **antagonist** contact (`occlusalContactMm`) — targets from the
+  profile, never hardcoded — while pinning the cervical seal band as fixed
+  zero-displacement anchors so Task 4's ≤10 µm marginal seal survives. Contact
+  targets are driven to penetration by a FIXED-count root-find (no tolerance
+  loop) against the other surface's signed-distance field; far-field anchors
+  localize the deformation and make the control set unisolvent. The plan/solve
+  split gives an interactive (< 500 ms) slider re-solve. The morph carries a
+  MEASURED contact-residual `@errorBound` (achieved vs target penetration).
+
+**No `kernel-ops.json` pin added.** As with 0.9.0–0.11.0, the new ops are
+regression-pinned by their own analytic + determinism + committed-hash tests
+(`rbf/solve.test.ts`, `rbf/rbf.test.ts`, `anatomy/morph.test.ts`) plus the
+synthetic morph golden (`test/golden/anatomy-morph.test.ts`, a pinned
+placed-mesh→morphed-mesh sha256 + byte determinism), not by a `kernel-ops.json`
+entry. Every existing golden hash is unchanged — this bump follows the same
+brand-new-op / minor-bump / existing-goldens-byte-identical precedent as
+`[0.11.0]`.
+
 ## [0.11.0] — Phase 4 Task 5: anatomy placement — `anatomy/placement.ts` (deterministic transform solve + manual-override API)
 
 **NEW op, no existing golden hash changed.** Every committed golden

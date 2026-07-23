@@ -20,3 +20,13 @@ export {
   type AnatomyPlacementStageOptions,
   type AnatomyPlacementManualOverride,
 } from './anatomyPlacement.ts';
+
+export {
+  runMorphingStage,
+  buildMorphPlan,
+  MORPH_RBF_KERNEL,
+  MissingMarginLoopError as MorphingMissingMarginLoopError,
+  MissingAntagonistError,
+  MissingClinicalParamError as MorphingMissingClinicalParamError,
+  type MorphingStageOptions,
+} from './morphing.ts';
