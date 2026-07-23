@@ -30,3 +30,10 @@ export {
   MissingClinicalParamError as MorphingMissingClinicalParamError,
   type MorphingStageOptions,
 } from './morphing.ts';
+
+export {
+  runShellStage,
+  MissingMarginLoopError as ShellMissingMarginLoopError,
+  MissingClinicalParamError as ShellMissingClinicalParamError,
+  type ShellStageOptions,
+} from './shell.ts';

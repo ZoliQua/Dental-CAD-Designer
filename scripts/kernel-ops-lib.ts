@@ -69,9 +69,12 @@ import {
   suggestInsertionAxis,
   AXIS_DEFAULT_ROI_RADIUS_MM,
   blockoutPreview,
+  buildInnerSurface,
+  constructShell,
   type IndexedMesh,
   type SurfaceSpline,
   type SurfacePoint,
+  type Vec3,
 } from '@dqcad/kernel';
 import { DEFAULT_UNDERCUT_BLOCKOUT_THRESHOLD_MM } from '@dqcad/clinical-profiles';
 
@@ -277,6 +280,66 @@ function splitNonManifoldVerticesFixture(): IndexedMesh {
 function fillSmallHolesFixture(): IndexedMesh {
   const cube = unitCubeMesh();
   return { positions: cube.positions, indices: cube.indices.subarray(3) };
+}
+
+// ---------------------------------------------------------------------------
+// Shell-construction fixtures (Phase 4 Task 7) — an inline synthetic cone-
+// frustum die + occlusally-capped open-cervical anatomy dome, the SAME
+// analytic scenario packages/kernel/src/shell/shell.test.ts uses, small +
+// coarse-pitch to stay inside this suite's runtime budget. NOT committed
+// files (a compact synthetic shape, like the repair fixtures above).
+// ---------------------------------------------------------------------------
+
+const SHELL_MARGIN_R = 1.2;
+const SHELL_TOP_R = 0.8;
+const SHELL_MARGIN_Z = 0.5;
+const SHELL_TOP_Z = 2.0;
+
+function shellFrustum(marginR: number, topR: number, topZ: number, capBottom: boolean): IndexedMesh {
+  const segments = 96;
+  const positions: number[] = [];
+  const push = (x: number, y: number, z: number): number => {
+    positions.push(x, y, z);
+    return positions.length / 3 - 1;
+  };
+  const bottom: number[] = [];
+  const top: number[] = [];
+  for (let s = 0; s < segments; s++) {
+    const th = (2 * Math.PI * s) / segments;
+    bottom.push(push(marginR * Math.cos(th), marginR * Math.sin(th), SHELL_MARGIN_Z));
+  }
+  for (let s = 0; s < segments; s++) {
+    const th = (2 * Math.PI * s) / segments;
+    top.push(push(topR * Math.cos(th), topR * Math.sin(th), topZ));
+  }
+  const tris: number[] = [];
+  for (let s = 0; s < segments; s++) {
+    const sn = (s + 1) % segments;
+    tris.push(bottom[s]!, bottom[sn]!, top[sn]!);
+    tris.push(bottom[s]!, top[sn]!, top[s]!);
+  }
+  const tc = push(0, 0, topZ);
+  for (let s = 0; s < segments; s++) {
+    const sn = (s + 1) % segments;
+    tris.push(tc, top[s]!, top[sn]!);
+  }
+  if (capBottom) {
+    const bc = push(0, 0, SHELL_MARGIN_Z);
+    for (let s = 0; s < segments; s++) {
+      const sn = (s + 1) % segments;
+      tris.push(bc, bottom[sn]!, bottom[s]!);
+    }
+  }
+  return { positions: new Float64Array(positions), indices: Uint32Array.from(tris) };
+}
+
+function shellMarginLoop(n: number): Vec3[] {
+  const loop: Vec3[] = [];
+  for (let i = 0; i < n; i++) {
+    const th = (2 * Math.PI * i) / n;
+    loop.push([SHELL_MARGIN_R * Math.cos(th), SHELL_MARGIN_R * Math.sin(th), SHELL_MARGIN_Z]);
+  }
+  return loop;
 }
 
 // ---------------------------------------------------------------------------
@@ -936,6 +999,58 @@ export async function computeKernelOpsSnapshot(): Promise<KernelOpsSnapshot> {
     });
   }
 
+  // --- 20. constructShell (Phase 4 Task 7) -------------------------------
+  // Inline synthetic cone-frustum die + occlusally-capped open-cervical
+  // anatomy dome (0.7mm radial offset) — the SAME analytic scenario
+  // packages/kernel/src/shell/shell.test.ts uses, at pitchMm=0.1 (coarse, like
+  // offsetMesh above) to stay fast. constructShell's output goes through the
+  // manifold-3d WASM boundary (cleanupMesh), so THIS entry is what the
+  // manifoldVersion guard protects for the shell op (a manifold-3d build change
+  // shows up here as a manifold-version diff, not a spurious kernel regression).
+  // A watertight self-check guards against pinning a broken shell as golden.
+  {
+    const die = shellFrustum(SHELL_MARGIN_R, SHELL_TOP_R, SHELL_TOP_Z, true);
+    const pitchMm = 0.1;
+    const inner = await buildInnerSurface(die, {
+      pitchMm,
+      marginalGapMm: 0.02,
+      cementGapMm: 0.05,
+      spacerStartMm: 0.8,
+      blendWidthMm: 0.3,
+      marginLoop: shellMarginLoop(240),
+      insertionAxis: [0, 0, 1],
+    });
+    const outer = shellFrustum(SHELL_MARGIN_R + 0.7, SHELL_TOP_R + 0.7, SHELL_TOP_Z + 0.7, false);
+    const shell = await constructShell(outer, inner.mesh, { insertionAxis: [0, 0, 1] });
+    if (!shell.stats.watertight || shell.stats.componentCount !== 1) {
+      throw new Error(
+        `kernel-ops golden: constructShell produced a non-watertight/multi-component shell ` +
+          `(watertight=${shell.stats.watertight}, components=${shell.stats.componentCount}) — investigate before regenerating`,
+      );
+    }
+    ops.push({
+      id: 'constructShell',
+      op: 'constructShell',
+      fixture: 'inline synthetic frustum die -> buildInnerSurface (pitchMm=0.1) + open-cervical anatomy dome (0.7mm offset)',
+      params: { pitchMm, outerRadialOffsetMm: 0.7, insertionAxis: [0, 0, 1] },
+      hash: sha256Of(
+        shell.mesh.positions,
+        shell.mesh.indices,
+        JSON.stringify({
+          watertight: shell.stats.watertight,
+          componentCount: shell.stats.componentCount,
+          seamTriangleCount: shell.seamTriangleCount,
+        }),
+      ),
+      meta: {
+        triangleCount: shell.mesh.indices.length / 3,
+        watertight: shell.stats.watertight,
+        seamTriangleCount: shell.seamTriangleCount,
+        volumeMm3: shell.volumeMm3,
+      },
+    });
+  }
+
   return {
     kernelVersion: KERNEL_VERSION,
     manifoldVersion: getInstalledManifoldVersion(),
@@ -953,6 +1068,7 @@ export async function computeKernelOpsSnapshot(): Promise<KernelOpsSnapshot> {
       'proposeMargin (Phase 3 Task 4, KERNEL_VERSION 0.4.0): NEW pinned entry — arch-case-01 upperjaw, fixed seed on a real anterior shoulder-prep margin ridge vertex, default params, perimeter-in-anatomical-range self-check (15-35mm). Every other op entry is UNCHANGED by this bump.',
       'suggestAxis (Phase 3 Task 9, KERNEL_VERSION 0.6.0): NEW pinned entry — arch-case-01 upperjaw, ROI extracted (radiusMm=2) from tooth 11\'s COMMITTED hand-traced reference margin anchors (Task 7 — a fixed, already-golden-pinned seed, no ambient-point survey needed), default suggestInsertionAxis params, a <2s runtime self-check (this task\'s interactivity target — measured and asserted at generation time, not just reported). Every other op entry is UNCHANGED by this bump.',
       'blockoutPreview (Phase 3 Task 10, KERNEL_VERSION 0.7.0): NEW pinned entry — SAME real fixture/ROI as suggestAxis (arch-case-01 upperjaw, tooth 11 reference margin, radiusMm=2), direction = the WORST-ranked candidate suggestAxis itself evaluated (a real, reproducible, non-fabricated direction guaranteed to carry genuine undercut on this real fixture, since the BEST candidate is by construction near the zero-undercut optimum and would pin a near-empty golden), thresholdMm = DEFAULT_UNDERCUT_BLOCKOUT_THRESHOLD_MM (clinical-profiles, 0). A non-empty-selection self-check guards against a silently-degenerate regeneration. Every other op entry is UNCHANGED by this bump.',
+      'constructShell (Phase 4 Task 7, KERNEL_VERSION 0.13.0): NEW pinned entry — inline synthetic cone-frustum die -> buildInnerSurface (pitchMm=0.1, coarse) + occlusally-capped open-cervical anatomy dome (0.7mm radial offset), joined at the margin-band seam into a watertight shell through the manifold-3d wrapper (cleanupMesh). This entry EXERCISES THE WASM BOUNDARY for the shell op, so the manifoldVersion guard protects it exactly like union/subtract/intersect. A watertight + single-component self-check guards against pinning a broken shell. Every other op entry is UNCHANGED by this bump (verified byte-identical via the regeneration diff).',
     ],
     ops,
   };

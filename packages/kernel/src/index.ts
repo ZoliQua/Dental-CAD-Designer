@@ -112,8 +112,18 @@
  * Same "brand-new op, minor bump, existing goldens byte-identical" precedent as
  * 0.11.0 (regression-pinned by its own analytic/determinism/committed-hash
  * tests + the synthetic morph golden; no `kernel-ops.json` pin added). See
- * docs/CHANGELOG-kernel.md's `[0.12.0]` entry. */
-export const KERNEL_VERSION = '0.12.0';
+ * docs/CHANGELOG-kernel.md's `[0.12.0]` entry.
+ * 0.13.0 (Phase 4 Task 7): NEW ops — `shell/shell.ts`'s `constructShell` (join
+ * outer anatomy + inner intaglio at the margin-band seam into a watertight
+ * crown shell, validated through the manifold-3d wrapper), `measureWallThickness`
+ * (conservative inner↔outer min wall thickness), and `autoThickenOuter`
+ * (bounded outward thickening of thin walls). `constructShell`'s output goes
+ * through manifold-3d's Float32 boundary (cleanupMesh), so its hash is pinned
+ * in the manifoldVersion-guarded `kernel-ops.json` golden (a DELIBERATE golden
+ * change — the shell op is added to the snapshot this version); the two
+ * pure-Float64 ops are regression-pinned by their own analytic/determinism
+ * tests. See docs/CHANGELOG-kernel.md's `[0.13.0]` entry. */
+export const KERNEL_VERSION = '0.13.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -474,6 +484,21 @@ export {
   type MorphContactResult,
   type AnatomyMorphResult,
 } from './anatomy/index.ts';
+
+export {
+  constructShell,
+  measureWallThickness,
+  autoThickenOuter,
+  ShellBoundaryError,
+  ShellNotWatertightError,
+  type ConstructShellParams,
+  type ConstructShellHooks,
+  type ConstructShellResult,
+  type WallThicknessOptions,
+  type WallThicknessResult,
+  type AutoThickenParams,
+  type AutoThickenResult,
+} from './shell/shell.ts';
 
 export {
   solveDense,

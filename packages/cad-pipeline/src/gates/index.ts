@@ -13,3 +13,11 @@ export {
   type MarginFitMeasurement,
   type MarginFitGateInput,
 } from './marginFit.ts';
+export {
+  minWallThicknessGate,
+  measureMinWallThickness,
+  MinWallThicknessInputError,
+  MIN_WALL_THICKNESS_GATE_NAME,
+  type MinWallThicknessGateInput,
+  type MinWallThicknessMeasurement,
+} from './minWallThickness.ts';

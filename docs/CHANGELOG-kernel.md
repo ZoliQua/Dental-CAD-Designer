@@ -59,6 +59,53 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.13.0] — Phase 4 Task 7: shell construction — `shell/shell.ts` (`constructShell` + `measureWallThickness` + `autoThickenOuter`)
+
+**One NEW golden pin added (`constructShell`); every OTHER existing golden hash
+is byte-identical to `[0.12.0]`** (verified via the regeneration diff — only the
+new `constructShell` entry was added to `test-fixtures/golden/kernel-ops.json`,
+op count 20 → 21). One new kernel module, `shell/shell.ts`:
+
+- **`constructShell`** — joins the morphed OUTER anatomy (Task 6) and the
+  intaglio INNER surface (Task 4) into a SINGLE WATERTIGHT crown shell. Both are
+  open surfaces sharing the crown's finish-line edge: the outer is an occlusally-
+  capped dome open at its CERVICAL rim; the inner is an occlusally-capped cup
+  open at the MARGIN rim (== the confirmed margin polyline, the ≤10 µm seal). The
+  two rims are bridged by a **margin-band seam** — a ruled annulus stitched with
+  the same deterministic azimuth-fraction zipper `offset/innerSurfaceSolid.ts`'s
+  skirt uses (strictly monotone, robust to a jagged marching-cubes rim),
+  generalizing `margin/band.ts`'s `marginLoopMesh` (a loop↔its-own-offset ribbon)
+  to bridge the two DISTINCT rims a real crown has. The stitched closed 2-manifold
+  is then passed through the **manifold-3d wrapper** (`boolean/manifold.ts`'s
+  `cleanupMesh`), which validates the oriented-2-manifold invariant + collapses
+  degenerate slivers, and the result is re-validated watertight + single-component
+  (`analyzeMesh`), throwing `ShellNotWatertightError` otherwise — a non-watertight
+  stitch can never masquerade as a shell.
+- **`measureWallThickness`** — minimum wall thickness as the inner↔outer closest-
+  surface distance, sampled at BOTH meshes' vertices (min of both directions). The
+  straight-line nearest distance is a LOWER BOUND on the true through-material
+  thickness, so it OVER-reports thinness (fail-safe: never silently passes a thin
+  wall). `@errorBound`: pointwise distance is exact Float64; the only
+  approximation is discrete sampling (reported as `sampleSpacingMm`, surfaced to
+  the QC report). Occlusal vs axial classification via the insertion axis.
+- **`autoThickenOuter`** — user-invoked, bounded, deterministic outward
+  displacement of OUTER vertices whose local wall is below the profile minimum
+  (directly away from the nearest inner point; total displacement capped at
+  `maxDisplacementMm`), with a small overshoot + fixed convergence passes to clear
+  the discretization gap. Never thins anything; reports clamped (bound-limited)
+  vertices rather than silently over-ballooning.
+
+**Why `constructShell` IS a `kernel-ops.json` pin (unlike 0.9.0–0.12.0's
+additive-only ops):** its output crosses the manifold-3d WASM boundary
+(`cleanupMesh`), so its hash depends on the manifold-3d BUILD — exactly the
+`union`/`subtract`/`intersect` situation. Pinning it in the manifoldVersion-
+guarded `kernel-ops.json` snapshot means a manifold-3d upgrade that changes the
+shell hash surfaces AS a manifold-version diff (caught by
+`test/golden/kernel-ops.test.ts`'s dedicated version-match assertion), not a
+spurious kernel regression. The two pure-Float64 ops (`measureWallThickness`,
+`autoThickenOuter`) are regression-pinned by their own analytic + determinism
+tests (`shell/shell.test.ts`), not a `kernel-ops.json` entry.
+
 ## [0.12.0] — Phase 4 Task 6: adaptation/morphing — `rbf/` (deterministic dense solver + RBF interpolant) + `anatomy/morph.ts` (contact-driven RBF morph)
 
 **NEW ops, no existing golden hash changed.** Every committed golden
