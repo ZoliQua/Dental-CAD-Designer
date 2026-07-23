@@ -131,19 +131,41 @@ async function readAllMetadataFiles(metadataDataDir: string): Promise<ToothAsset
   return assets;
 }
 
+/** Orders two `MAJOR.MINOR.PATCH` version strings numerically per
+ * component (so `1.10.0` > `1.2.0`, which a lexicographic string compare
+ * gets wrong). Any non-numeric or missing component is treated as 0 and
+ * ordered before a valid one, keeping the compare total and deterministic
+ * even on malformed input. Returns <0 / 0 / >0 like a standard comparator. */
+export function compareSemver(a: string, b: string): number {
+  const parse = (v: string): [number, number, number] => {
+    const parts = v.split('.');
+    const n = (i: number): number => {
+      const value = Number.parseInt(parts[i] ?? '', 10);
+      return Number.isNaN(value) ? 0 : value;
+    };
+    return [n(0), n(1), n(2)];
+  };
+  const pa = parse(a);
+  const pb = parse(b);
+  for (let i = 0; i < 3; i++) {
+    if (pa[i] !== pb[i]) return pa[i] - pb[i];
+  }
+  return 0;
+}
+
 /** Lists every currently-stored asset's `{fdi, version, toothType}`,
  * sorted by FDI then version — `GET /api/tooth-library`. */
 export async function listToothLibraryAssets(metadataDataDir: string): Promise<ToothLibraryListEntry[]> {
   const assets = await readAllMetadataFiles(metadataDataDir);
   return assets
     .map((a) => ({ fdi: a.fdi, version: a.version, toothType: a.toothType }))
-    .sort((a, b) => (a.fdi !== b.fdi ? a.fdi - b.fdi : a.version.localeCompare(b.version)));
+    .sort((a, b) => (a.fdi !== b.fdi ? a.fdi - b.fdi : compareSemver(a.version, b.version)));
 }
 
-/** Reads the LATEST (highest-version, lexicographically — this task's
- * starter set never ships more than one version per FDI, so any
- * deterministic tie-break is fine) stored asset for `fdi`, or `null` if
- * none exists — `GET /api/tooth-library/:fdi`. */
+/** Reads the LATEST (highest semver) stored asset for `fdi`, or `null` if
+ * none exists — `GET /api/tooth-library/:fdi`. The starter set never ships
+ * more than one version per FDI today, but the compare is semver-aware so a
+ * future `1.10.0` correctly supersedes `1.2.0`. */
 export async function readLatestToothLibraryMetadata(
   metadataDataDir: string,
   fdi: number,
@@ -151,6 +173,6 @@ export async function readLatestToothLibraryMetadata(
   const assets = await readAllMetadataFiles(metadataDataDir);
   const matching = assets.filter((a) => a.fdi === fdi);
   if (matching.length === 0) return null;
-  matching.sort((a, b) => b.version.localeCompare(a.version));
+  matching.sort((a, b) => compareSemver(b.version, a.version));
   return matching[0]!;
 }
