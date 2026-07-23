@@ -137,12 +137,66 @@ describe('morphAnatomy — analytic contacts', () => {
     }
   });
 
-  it('preserves the marginal seal (cervical deviation REPORTED + bounded)', () => {
+  it('preserves the marginal seal — GENUINE measurement (finish line + between pins), REPORTED + ≤10µm', () => {
     const result = morphAnatomy(baseInput());
-    console.log(`[MORPH synthetic] marginSealMaxDeviation=${(result.marginSealMaxDeviationMm * 1000).toFixed(4)}µm (band pinned)`);
-    // The cervical band is pinned (zero-displacement anchors) so it stays put,
-    // well under the 10 µm marginal-seal budget.
+    console.log(
+      `[MORPH synthetic] marginSeal max=${(result.marginSealMaxDeviationMm * 1000).toFixed(4)}µm ` +
+        `(atFinishLine=${(result.marginSealAtFinishLineMm * 1000).toFixed(4)}µm, betweenPins=${(result.marginSealBetweenPinsMm * 1000).toFixed(4)}µm)`,
+    );
+    // NON-tautological: the finish-line number is the field evaluated at the
+    // margin polyline (NOT control points); the between-pins number is the
+    // motion of non-anchor cervical surface vertices. Both must be real
+    // measurements, not identically zero.
+    expect(result.marginSealAtFinishLineMm).toBeGreaterThan(0); // a genuine, nonzero field residual
+    // Well under the 10 µm marginal-seal budget.
     expect(result.marginSealMaxDeviationMm).toBeLessThan(0.010);
+    expect(result.marginSealMaxDeviationMm).toBe(
+      Math.max(result.marginSealAtFinishLineMm, result.marginSealBetweenPinsMm),
+    );
+  });
+
+  it('errorBound is CONSERVATIVE: max of the contact-vertex residual AND the region over-penetration', () => {
+    const result = morphAnatomy(baseInput());
+    for (const c of result.contacts) {
+      // regionResidual >= contactResidual (region is the worst point, not one vertex).
+      expect(c.regionResidualMm).toBeGreaterThanOrEqual(c.contactResidualMm - 1e-12);
+    }
+    const maxRegion = Math.max(...result.contacts.map((c) => c.regionResidualMm));
+    // errorBound never understates: it is >= every region residual.
+    expect(result.errorBoundMm!).toBeGreaterThanOrEqual(maxRegion - 1e-12);
+    expect(result.errorBoundMm!).toBeGreaterThanOrEqual(result.maxContactResidualMm!);
+  });
+
+  it('no clamp warning on a clean contact (all targets freely reached)', () => {
+    const result = morphAnatomy(baseInput());
+    expect(result.clampedContacts).toEqual([]);
+    for (const c of result.contacts) expect(c.clampBound).toBe(false);
+  });
+});
+
+describe('morphAnatomy — clamp warning (unreachable / ill-formed contact)', () => {
+  // A THIN neighbour wall (0.03 mm) that the contact vertex punches through: the
+  // far face then flips the closest-face sign, the root-find diverges, and the
+  // travel clamp binds — the realistic "bad contact surface" case. It must be
+  // FLAGGED (bounded, not a silent success).
+  const thinWall = () =>
+    baseInput({
+      contacts: [{ kind: 'proximalDistal', mesh: outwardBox([R + 0.1, -2, 2.3], [R + 0.13, 2, 4.7]), targetPenetrationMm: PEN }],
+      options: { ...TEST_OPTIONS, contactMaxExtraTravelMm: 0.05 },
+    });
+
+  it('flags a contact whose root-find hit the travel clamp', () => {
+    const result = morphAnatomy(thinWall());
+    expect(result.clampedContacts).toContain('proximalDistal');
+    expect(result.contacts.find((c) => c.kind === 'proximalDistal')!.clampBound).toBe(true);
+    // The residual is surfaced (bounded, honestly reported — not silently ok).
+    expect(result.errorBoundMm!).toBeGreaterThan(0);
+  });
+
+  it('does not flag a clamped contact when its strength is 0 (nothing is being pushed)', () => {
+    const result = morphAnatomy(thinWall(), { proximalDistal: 0 });
+    expect(result.clampedContacts).toEqual([]);
+    expect(result.contacts.find((c) => c.kind === 'proximalDistal')!.clampBound).toBe(false);
   });
 });
 

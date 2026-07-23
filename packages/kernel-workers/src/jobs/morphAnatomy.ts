@@ -86,6 +86,10 @@ export interface MorphContactResultPayload {
   regionMeanSignedDistanceMm: number;
   regionRmsSignedDistanceMm: number;
   facingVertexCount: number;
+  regionResidualMm: number;
+  /** True if this contact's root-find was CLAMPED (target unachieved) — a QC
+   * warning, not a silent success. */
+  clampBound: boolean;
 }
 
 export interface ContactHeatmapPayload {
@@ -104,7 +108,13 @@ export interface MorphAnatomyResult {
   indices: Uint32Array;
   contacts: MorphContactResultPayload[];
   maxContactResidualMm: number | null;
+  /** Conservative downstream @errorBound (contact + region over-penetration). */
+  errorBoundMm: number | null;
+  /** Kinds of contacts whose target was NOT achieved (clamped) — QC warning. */
+  clampedContacts: MorphContactKind[];
   marginSealMaxDeviationMm: number;
+  marginSealAtFinishLineMm: number;
+  marginSealBetweenPinsMm: number;
   controlPointCount: number;
   heatmaps?: ContactHeatmapPayload[];
 }
@@ -193,9 +203,15 @@ function solveAndPackage(
       regionMeanSignedDistanceMm: c.regionMeanSignedDistanceMm,
       regionRmsSignedDistanceMm: c.regionRmsSignedDistanceMm,
       facingVertexCount: c.facingVertexCount,
+      regionResidualMm: c.regionResidualMm,
+      clampBound: c.clampBound,
     })),
     maxContactResidualMm: result.maxContactResidualMm,
+    errorBoundMm: result.errorBoundMm,
+    clampedContacts: [...result.clampedContacts],
     marginSealMaxDeviationMm: result.marginSealMaxDeviationMm,
+    marginSealAtFinishLineMm: result.marginSealAtFinishLineMm,
+    marginSealBetweenPinsMm: result.marginSealBetweenPinsMm,
     controlPointCount: result.controlPointCount,
   };
   if (computeHeatmaps) {

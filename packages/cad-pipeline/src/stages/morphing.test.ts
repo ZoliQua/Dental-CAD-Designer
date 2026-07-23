@@ -129,19 +129,29 @@ describe('runMorphingStage — orchestration', () => {
     expect(result.params['mesialNeighborFdi']).toBe(21);
     expect(result.params['distalNeighborFdi']).toBe(12);
 
-    // errorBound == the measured max contact residual (sub-micron here).
-    expect(result.errorBoundMm).toBe(result.params['maxContactResidualMm']);
+    // errorBound is the CONSERVATIVE bound (contact + region), >= the
+    // single-vertex max contact residual, sub-micron here on clean boxes.
+    expect(result.errorBoundMm!).toBeGreaterThanOrEqual(result.params['maxContactResidualMm'] as number);
     expect(result.errorBoundMm!).toBeLessThan(1e-4);
 
     // Per-contact residuals journaled; proximal ~0.02 penetration, antagonist ~0.
-    const contacts = result.params['contacts'] as Array<{ kind: string; achievedSignedDistanceMm: number }>;
+    const contacts = result.params['contacts'] as Array<{ kind: string; achievedSignedDistanceMm: number; regionResidualMm: number; clampBound: boolean }>;
     const byKind = Object.fromEntries(contacts.map((c) => [c.kind, c]));
     expect(byKind['proximalMesial']!.achievedSignedDistanceMm).toBeCloseTo(-0.02, 4);
     expect(byKind['proximalDistal']!.achievedSignedDistanceMm).toBeCloseTo(-0.02, 4);
     expect(byKind['antagonist']!.achievedSignedDistanceMm).toBeCloseTo(0, 4);
+    // Region residual + clamp flag journaled per contact; clean boxes -> no clamp.
+    for (const c of contacts) expect(c.clampBound).toBe(false);
+    expect(result.params['contactClampWarning']).toBe(false);
+    expect(result.params['clampedContacts']).toEqual([]);
 
-    // Margin seal preserved.
+    // Margin seal preserved — GENUINE measurement (finish line + between pins),
+    // nonzero and under the 10 µm budget.
     expect(result.params['marginSealMaxDeviationMm'] as number).toBeLessThan(0.010);
+    expect(result.params['marginSealAtFinishLineMm'] as number).toBeGreaterThan(0);
+    expect(result.params['marginSealMaxDeviationMm'] as number).toBe(
+      Math.max(result.params['marginSealAtFinishLineMm'] as number, result.params['marginSealBetweenPinsMm'] as number),
+    );
   });
 
   it('is deterministic: replaying the same inputs reproduces the identical mesh hash', () => {

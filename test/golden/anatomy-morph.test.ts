@@ -131,7 +131,13 @@ describe('anatomy morph — synthetic golden (byte identity / determinism)', () 
     const result = runMorphingStage(syntheticContext(), 11 as FdiTooth, { placedMesh: PLACED, hashMesh, morphOptions: MORPH_OPTIONS });
     const morphedHash = result.meshContentHash!;
     console.log(`[ANATOMY-MORPH GOLDEN] morphed-mesh sha256=${morphedHash}`);
-    console.log(`[ANATOMY-MORPH GOLDEN] maxContactResidual=${((result.params['maxContactResidualMm'] as number) * 1000).toFixed(4)}µm marginSeal=${((result.params['marginSealMaxDeviationMm'] as number) * 1000).toFixed(4)}µm`);
+    console.log(
+      `[ANATOMY-MORPH GOLDEN] errorBound=${((result.errorBoundMm as number) * 1000).toFixed(4)}µm ` +
+        `marginSeal max=${((result.params['marginSealMaxDeviationMm'] as number) * 1000).toFixed(4)}µm ` +
+        `(finishLine=${((result.params['marginSealAtFinishLineMm'] as number) * 1000).toFixed(4)}µm, ` +
+        `betweenPins=${((result.params['marginSealBetweenPinsMm'] as number) * 1000).toFixed(4)}µm) ` +
+        `clampWarning=${result.params['contactClampWarning']}`,
+    );
     expect(morphedHash).toBe(GOLDEN_MORPHED_MESH_SHA256);
   });
 
@@ -273,10 +279,26 @@ describe.skipIf(!RUN_REAL)('anatomy morph — REAL arch-case-01 tooth 11 [RUN_AN
     console.log(`[ANATOMY-MORPH REAL #11] cervicalAnchors=${plan.cervicalAnchorCount} farFieldAnchors=${plan.farFieldAnchorCount}`);
     for (const c of full.contacts) {
       console.log(
-        `[ANATOMY-MORPH REAL #11] ${c.kind}: target -${c.targetPenetrationMm}mm | achieved=${(c.achievedSignedDistanceMm * 1000).toFixed(2)}µm residual=${(c.contactResidualMm * 1000).toFixed(2)}µm regionMin=${(c.regionMinSignedDistanceMm * 1000).toFixed(2)}µm`,
+        `[ANATOMY-MORPH REAL #11] ${c.kind}: target -${c.targetPenetrationMm}mm | achieved=${(c.achievedSignedDistanceMm * 1000).toFixed(2)}µm ` +
+          `contactResidual=${(c.contactResidualMm * 1000).toFixed(2)}µm regionResidual=${(c.regionResidualMm * 1000).toFixed(2)}µm ` +
+          `regionMin=${(c.regionMinSignedDistanceMm * 1000).toFixed(2)}µm clamped=${c.clampBound}`,
       );
     }
-    console.log(`[ANATOMY-MORPH REAL #11] maxContactResidual=${(full.maxContactResidualMm! * 1000).toFixed(2)}µm marginSeal=${(full.marginSealMaxDeviationMm * 1000).toFixed(2)}µm`);
+    console.log(
+      `[ANATOMY-MORPH REAL #11] errorBound=${(full.errorBoundMm! * 1000).toFixed(2)}µm clampedContacts=[${full.clampedContacts.join(',')}] | ` +
+        `marginSeal max=${(full.marginSealMaxDeviationMm * 1000).toFixed(2)}µm (finishLine=${(full.marginSealAtFinishLineMm * 1000).toFixed(2)}µm, betweenPins=${(full.marginSealBetweenPinsMm * 1000).toFixed(2)}µm, measureVerts=${plan.sealMeasureVertexIndices.length})`,
+    );
+    // HONEST real-case finding: the seal metric is now a GENUINE measurement
+    // (non-anchor cervical surface + finish-line field), NOT the pinned-anchor
+    // tautology. On this real case it is NOT sub-10µm — the coarse Task-5
+    // placement leaves the tooth cervical off the finish line AND the CLAMPED
+    // distal contact's large forced deformation leaks into the cervical region
+    // (note clampedContacts above). The metric correctly SURFACES this rather
+    // than hiding it; the ≤10µm seal property is asserted on the clean synthetic
+    // case (where cervical == finish line + contacts converge). Here we only
+    // assert the measurement is real (many non-control cervical vertices exist).
+    expect(plan.sealMeasureVertexIndices.length).toBeGreaterThan(0);
+    expect(Number.isFinite(full.marginSealMaxDeviationMm)).toBe(true);
     void slider;
 
     // Timing envelopes (REPORTED above; asserted generously).

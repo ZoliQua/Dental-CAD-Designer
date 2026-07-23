@@ -89,7 +89,10 @@ describe('morphAnatomyJob', () => {
     expect(byKind['proximalDistal']!.achievedSignedDistanceMm).toBeCloseTo(-0.02, 4);
     expect(byKind['antagonist']!.achievedSignedDistanceMm).toBeCloseTo(0, 4);
     expect(r.maxContactResidualMm!).toBeLessThan(1e-4);
+    expect(r.errorBoundMm!).toBeGreaterThanOrEqual(r.maxContactResidualMm!);
+    expect(r.clampedContacts).toEqual([]);
     expect(r.marginSealMaxDeviationMm).toBeLessThan(0.010);
+    expect(r.marginSealAtFinishLineMm).toBeGreaterThan(0); // genuine, nonzero seal measurement
     expect(progress).toHaveBeenCalledWith(1);
   });
 

@@ -182,7 +182,10 @@ export function runMorphingStage(
       controlPointCount: result.controlPointCount,
       cervicalAnchorCount: plan.cervicalAnchorCount,
       farFieldAnchorCount: plan.farFieldAnchorCount,
-      // Measured evidence (residuals REPORTED — the contact-gate inputs).
+      // Measured evidence (residuals REPORTED — the contact-gate inputs). Each
+      // contact carries the single-vertex residual, the WORST region deviation
+      // (regionResidualMm / regionMinSignedDistanceMm), and whether its
+      // root-find was CLAMPED (target unachieved).
       contacts: result.contacts.map((c) => ({
         kind: c.kind,
         strength: c.strength,
@@ -190,11 +193,26 @@ export function runMorphingStage(
         achievedSignedDistanceMm: c.achievedSignedDistanceMm,
         contactResidualMm: c.contactResidualMm,
         regionMinSignedDistanceMm: c.regionMinSignedDistanceMm,
+        regionResidualMm: c.regionResidualMm,
+        clampBound: c.clampBound,
       })),
       maxContactResidualMm: result.maxContactResidualMm,
+      // The seal is proven by the field displacement AT the finish line + the
+      // NON-anchor cervical surface motion (never only the pinned anchors).
       marginSealMaxDeviationMm: result.marginSealMaxDeviationMm,
+      marginSealAtFinishLineMm: result.marginSealAtFinishLineMm,
+      marginSealBetweenPinsMm: result.marginSealBetweenPinsMm,
+      // QC WARNING: contacts whose target penetration was NOT achieved (the
+      // root-find hit the travel clamp) — a clamped contact must not read as a
+      // silent success downstream.
+      clampedContacts: result.clampedContacts,
+      contactClampWarning: result.clampedContacts.length > 0,
     },
     inputHashes: [options.placedMesh.contentHash, mesialHandle.contentHash, distalHandle.contentHash, antagonist.contentHash],
-    errorBoundMm: result.maxContactResidualMm,
+    // Conservative @errorBound: max of the single-vertex residual AND the worst
+    // region over-penetration — so a region that over-penetrates while the
+    // contact vertices sit on target cannot report a deceptively small bound to
+    // the downstream contact/interpenetration gate.
+    errorBoundMm: result.errorBoundMm,
   };
 }

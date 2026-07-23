@@ -49,18 +49,31 @@
 // O(V·N) field apply. Both halves are pure/deterministic.
 //
 // @errorBound The morph is an APPROXIMATION of the target contacts: moving one
-// control point perturbs the field globally, and the surface-to-surface
-// closest approach shifts as the surface deforms. The achieved-vs-target
-// penetration residual is MEASURED per contact and carried on the result
-// (`maxContactResidualMm`) for the downstream contact gates. Typical residual
-// on the synthetic analytic case is < 1 µm (reported by the tests); on real
-// curved neighbours it is bounded by the fixed-iteration root-find (reported).
+// control point perturbs the field globally, and the surface-to-surface closest
+// approach shifts as the surface deforms. The achieved-vs-target penetration is
+// MEASURED per contact — at the contact vertex (`contactResidualMm`) AND over
+// its whole facing region (`regionResidualMm`). The downstream `errorBoundMm`
+// is `max(maxContactResidual, max regionResidual)`, so a region that
+// over-penetrates while the contact vertices sit on target CANNOT report a
+// deceptively small bound to the contact/interpenetration gate (conservative by
+// construction — see the open-patch sign caveat on `signedDistanceToMesh`: it
+// can over-report, never silently under-report). Typical residual on the
+// synthetic analytic case is < 1 µm; on real curved/unsegmented neighbours it
+// is bounded by the fixed-iteration, CLAMPED root-find (a clamped, unachieved
+// contact is flagged in `clampedContacts`, never a silent success).
+//
+// Marginal seal: preservation is proven by TWO genuine (non-tautological)
+// measurements — the fitted field's displacement AT the confirmed margin
+// polyline (which are NOT control points) and the actual motion of NON-anchor
+// cervical surface vertices (the surface between the pins) — NOT by measuring
+// the pinned anchors (which are 0 by construction). See `marginSealMaxDeviation-
+// Mm` / `marginSealAtFinishLineMm` / `marginSealBetweenPinsMm`.
 import type { Vec3 } from '../bvh/geometry.ts';
 import type { IndexedMesh } from '../mesh/types.ts';
 import type { Bvh } from '../bvh/types.ts';
 import { buildBvh } from '../bvh/build.ts';
 import { closestPoint } from '../bvh/closestPoint.ts';
-import { fitRbf, applyRbfDisplacement, type RbfControlPoint } from '../rbf/rbf.ts';
+import { fitRbf, applyRbfDisplacement, evaluateRbf, type RbfControlPoint, type RbfField } from '../rbf/rbf.ts';
 
 export type MorphContactKind = 'proximalMesial' | 'proximalDistal' | 'antagonist';
 
@@ -119,6 +132,11 @@ export interface MorphOptions {
    * be unreliable — so a bad contact surface produces a bounded residual
    * (reported via `@errorBound`), never a runaway displacement. */
   readonly contactMaxExtraTravelMm: number;
+  /** Width of the cervical MEASUREMENT band (mm) — tooth vertices within this
+   * of the margin loop that are NOT anchors form the "surface between the pins"
+   * whose displacement is the genuine seal check. Wider than the pinning band
+   * so it captures non-anchor cervical surface. */
+  readonly cervicalSealMeasureBandMm: number;
 }
 
 /** Documented ALGORITHM defaults (NOT clinical — the clinical targets are the
@@ -133,6 +151,7 @@ export const DEFAULT_MORPH_OPTIONS: MorphOptions = {
   contactRefinementIterations: 4,
   contactFacingRadiusMm: 1.5,
   contactMaxExtraTravelMm: 0.2,
+  cervicalSealMeasureBandMm: 1.5,
 };
 
 export class MorphContactMeshError extends Error {
@@ -168,6 +187,9 @@ interface ContactPlan {
   readonly mesh: IndexedMesh;
   readonly bvh: Bvh;
   readonly facingVertexIndices: Int32Array;
+  /** True if the root-find hit the `contactMaxExtraTravelMm` clamp (target not
+   * freely reachable) — surfaced as a QC warning. */
+  readonly clampBound: boolean;
 }
 
 /** The geometry-dependent morph plan (from `planAnatomyMorph`) — reused across
@@ -181,6 +203,17 @@ export interface AnatomyMorphPlan {
   readonly cervicalAnchorCount: number;
   readonly farFieldAnchorCount: number;
   readonly sealBandVertexIndices: Int32Array;
+  /** The confirmed margin polyline (flat xyz) — the marginal-seal locus. It is
+   * NOT a control point of the RBF, so evaluating the fitted field at these
+   * points is a genuine (non-tautological) measurement of how far the morph
+   * moves the finish line between the pinned cervical vertices — see
+   * `marginSealMaxDeviationMm`. */
+  readonly marginLoopFlat: Float64Array;
+  /** Cervical-region tooth vertices that are NOT anchors — the "surface between
+   * the pins". Their measured displacement is the second, independent seal
+   * check (see `marginSealMaxDeviationMm`). May be empty if the cervical region
+   * is fully pinned. */
+  readonly sealMeasureVertexIndices: Int32Array;
   readonly options: MorphOptions;
 }
 
@@ -201,26 +234,72 @@ export interface MorphContactResult {
   /** |achievedSignedDistance − (−target)| — the reported residual. */
   readonly contactResidualMm: number;
   /** Min signed distance over the contact's facing region (most-penetrating
-   * point) — a heatmap summary reusing `closestPoint`. */
+   * point) — a heatmap summary reusing `closestPoint`. SEE the sign caveat on
+   * `signedDistanceToMesh`: on an OPEN neighbour patch this is a lower bound and
+   * may over-state penetration. */
   readonly regionMinSignedDistanceMm: number;
   readonly regionMeanSignedDistanceMm: number;
   readonly regionRmsSignedDistanceMm: number;
   readonly facingVertexCount: number;
+  /** |regionMinSignedDistance − (−target)| — the WORST deviation from the target
+   * anywhere in the facing region (≥ `contactResidualMm`, which is the single
+   * contact vertex only). Feeds the conservative `errorBoundMm`. */
+  readonly regionResidualMm: number;
+  /** True if the contact-target root-find was CLAMPED (`contactMaxExtraTravelMm`
+   * bound hit) — the desired penetration could NOT be freely reached, so this
+   * contact's fit is capped/unachieved. A downstream consumer / the UI must
+   * treat a clamped contact as a WARNING, not a silent success. */
+  readonly clampBound: boolean;
 }
 
 export interface AnatomyMorphResult {
   readonly mesh: IndexedMesh;
   readonly contacts: readonly MorphContactResult[];
-  /** Max over active contacts of `contactResidualMm` (@errorBound). `null` if
-   * no active contacts. */
+  /** Max over active contacts of the single-vertex `contactResidualMm`. `null`
+   * if no active contacts. Kept for diagnostics; the DOWNSTREAM error bound is
+   * `errorBoundMm` (which also accounts for region over-penetration). */
   readonly maxContactResidualMm: number | null;
-  /** Max displacement of any cervical-seal-band tooth vertex — the evidence
-   * the marginal seal is preserved (should be ~0 at anchors, tiny between). */
+  /** The @errorBound fed downstream: `max(maxContactResidual, max region
+   * residual)` — so a case where the contact vertices sit on target but the
+   * region over-penetrates elsewhere CANNOT report a deceptively small bound to
+   * the contact/interpenetration gate. Conservative by construction (see the
+   * open-patch sign caveat: it can over-report, never silently under-report).
+   * `null` if no active contacts. */
+  readonly errorBoundMm: number | null;
+  /** The kinds of contacts whose root-find was CLAMPED (unachieved target) —
+   * empty when every contact converged freely. A non-empty list is a QC
+   * warning the stage journals. */
+  readonly clampedContacts: readonly MorphContactKind[];
+  /** Max deviation of the marginal-seal locus under the morph — the MAX of two
+   * genuine, non-tautological measurements: (a) the fitted field's displacement
+   * evaluated AT the confirmed margin polyline points (which are NOT RBF control
+   * points), and (b) the actual displacement of NON-anchor cervical tooth
+   * vertices (the surface between the pins). Proves the ≤10 µm marginal seal is
+   * preserved without measuring only the pinned anchors (which are 0 by
+   * construction). */
   readonly marginSealMaxDeviationMm: number;
+  /** Component (a) above — field displacement at the confirmed finish line. */
+  readonly marginSealAtFinishLineMm: number;
+  /** Component (b) above — displacement of non-anchor cervical surface vertices
+   * (`NaN`-safe: 0 when there are no such vertices). */
+  readonly marginSealBetweenPinsMm: number;
   readonly controlPointCount: number;
 }
 
 // --- signed distance to an outward-wound triangle mesh (mirrors heatmap job) ---
+//
+// SIGN CAVEAT (important for reading the region metrics below): the sign comes
+// from the CLOSEST TRIANGLE's face normal (the P1 distance-heatmap convention),
+// which is reliable on a closed, consistently-outward-wound mesh but UNRELIABLE
+// near the OPEN BOUNDARIES of a cut/rough patch — there the closest feature is a
+// boundary edge whose adjacent face normal need not point "outward" in the
+// inside/outside sense, so a point just outside the patch can read as negative
+// (spurious penetration). Consequence: on an OPEN neighbour patch (e.g. a real
+// arch-ball submesh), `regionMinSignedDistanceMm` is a LOWER BOUND on the true
+// signed distance and may over-state penetration. This is deliberately the SAFE
+// direction for the QC error bound (it can over-report, never silently
+// under-report, contact error — a fail-safe for a downstream contact gate); on
+// a WATERTIGHT neighbour (a full scan) the sign is trustworthy.
 
 function faceNormalUnnormalized(mesh: IndexedMesh, tri: number): Vec3 {
   const i0 = mesh.indices[tri * 3]!;
@@ -285,7 +364,7 @@ function refineContactTarget(
   targetPen: number,
   iterations: number,
   maxExtraTravel: number,
-): Vec3 {
+): { target: Vec3; clampBound: boolean } {
   const cp0 = closestPoint(mesh, bvh, center);
   let nx = cp0.point[0] - center[0];
   let ny = cp0.point[1] - center[1];
@@ -307,14 +386,21 @@ function refineContactTarget(
   const travelHi = Math.max(0, g0) + targetPen + maxExtraTravel;
   const travelLo = Math.min(0, g0) - maxExtraTravel;
   let travel = 0;
+  let clampBound = false;
   for (let it = 0; it < iterations; it++) {
     const t: Vec3 = [center[0] + n0[0] * travel, center[1] + n0[1] * travel, center[2] + n0[2] * travel];
     const s = signedDistanceToMesh(t, mesh, bvh).signedDistance;
     travel += s + targetPen;
-    if (travel > travelHi) travel = travelHi;
-    else if (travel < travelLo) travel = travelLo;
+    if (travel > travelHi) {
+      travel = travelHi;
+      clampBound = true;
+    } else if (travel < travelLo) {
+      travel = travelLo;
+      clampBound = true;
+    }
   }
-  return [center[0] + n0[0] * travel, center[1] + n0[1] * travel, center[2] + n0[2] * travel];
+  const target: Vec3 = [center[0] + n0[0] * travel, center[1] + n0[1] * travel, center[2] + n0[2] * travel];
+  return { target, clampBound };
 }
 
 function minDistanceToLoop(px: number, py: number, pz: number, loop: readonly Vec3[]): number {
@@ -373,7 +459,7 @@ export function planAnatomyMorph(input: AnatomyMorphInput): AnatomyMorphPlan {
       }
     }
     const center: Vec3 = [positions[bestIdx * 3]!, positions[bestIdx * 3 + 1]!, positions[bestIdx * 3 + 2]!];
-    const target = refineContactTarget(
+    const { target, clampBound } = refineContactTarget(
       center,
       contact.mesh,
       bvh,
@@ -402,6 +488,7 @@ export function planAnatomyMorph(input: AnatomyMorphInput): AnatomyMorphPlan {
       mesh: contact.mesh,
       bvh,
       facingVertexIndices: Int32Array.from(facing),
+      clampBound,
     });
   }
 
@@ -462,6 +549,24 @@ export function planAnatomyMorph(input: AnatomyMorphInput): AnatomyMorphPlan {
     anchorCenters[i * 3 + 2] = positions[v * 3 + 2]!;
   }
 
+  // Seal MEASUREMENT set (NON-tautological): cervical-region tooth vertices —
+  // within `cervicalSealMeasureBandMm` of the margin — that are NOT anchors.
+  // These are the "surface between the pins": their measured displacement is a
+  // genuine seal check (unlike the anchors, which are 0 by construction).
+  const anchorSet = new Set(anchorIndices);
+  const sealMeasure: number[] = [];
+  for (let v = 0; v < vCount; v++) {
+    if (anchorSet.has(v) || contactVertexSet.has(v)) continue;
+    if (loopDist[v]! <= options.cervicalSealMeasureBandMm) sealMeasure.push(v);
+  }
+
+  const marginLoopFlat = new Float64Array(input.marginLoop.length * 3);
+  for (let i = 0; i < input.marginLoop.length; i++) {
+    marginLoopFlat[i * 3] = input.marginLoop[i]![0];
+    marginLoopFlat[i * 3 + 1] = input.marginLoop[i]![1];
+    marginLoopFlat[i * 3 + 2] = input.marginLoop[i]![2];
+  }
+
   return {
     positions,
     indices,
@@ -470,6 +575,8 @@ export function planAnatomyMorph(input: AnatomyMorphInput): AnatomyMorphPlan {
     cervicalAnchorCount: cervicalAnchors.length,
     farFieldAnchorCount: farFieldAnchors.length,
     sealBandVertexIndices: Int32Array.from(sealSetVerts),
+    marginLoopFlat,
+    sealMeasureVertexIndices: Int32Array.from(sealMeasure),
     options,
   };
 }
@@ -520,7 +627,9 @@ export function solveAnatomyMorph(plan: AnatomyMorphPlan, strengths?: MorphStren
 
   // Per-contact residual + facing-region heatmap stats (reuses closestPoint).
   const contactResults: MorphContactResult[] = [];
-  let maxResidual: number | null = null;
+  let maxContactResidual: number | null = null;
+  let errorBound: number | null = null;
+  const clampedContacts: MorphContactKind[] = [];
   for (let ci = 0; ci < plan.contacts.length; ci++) {
     const c = plan.contacts[ci]!;
     const vi = c.contactVertexIndex;
@@ -542,7 +651,15 @@ export function solveAnatomyMorph(plan: AnatomyMorphPlan, strengths?: MorphStren
     }
     const regionMean = fCount > 0 ? sum / fCount : achieved;
     const regionRms = fCount > 0 ? Math.sqrt(sumSq / fCount) : Math.abs(achieved);
-    if (maxResidual === null || residual > maxResidual) maxResidual = residual;
+    const regionMinSigned = fCount > 0 ? regionMin : achieved;
+    // Worst deviation from target anywhere in the region (≥ contactResidual).
+    const regionResidual = Math.abs(regionMinSigned - -c.targetPenetrationMm);
+
+    if (maxContactResidual === null || residual > maxContactResidual) maxContactResidual = residual;
+    const contactError = Math.max(residual, regionResidual);
+    if (errorBound === null || contactError > errorBound) errorBound = contactError;
+    // Only a contact actually being pushed (nonzero strength) can be "unachieved".
+    if (c.clampBound && perContactStrength[ci]! > 0) clampedContacts.push(c.kind);
 
     contactResults.push({
       kind: c.kind,
@@ -550,31 +667,55 @@ export function solveAnatomyMorph(plan: AnatomyMorphPlan, strengths?: MorphStren
       targetPenetrationMm: c.targetPenetrationMm,
       achievedSignedDistanceMm: achieved,
       contactResidualMm: residual,
-      regionMinSignedDistanceMm: fCount > 0 ? regionMin : achieved,
+      regionMinSignedDistanceMm: regionMinSigned,
       regionMeanSignedDistanceMm: regionMean,
       regionRmsSignedDistanceMm: regionRms,
       facingVertexCount: fCount,
+      regionResidualMm: regionResidual,
+      clampBound: c.clampBound && perContactStrength[ci]! > 0,
     });
   }
 
-  // Margin-seal deviation: max |morphed − original| over the cervical band.
-  let sealMax = 0;
-  for (let i = 0; i < plan.sealBandVertexIndices.length; i++) {
-    const v = plan.sealBandVertexIndices[i]!;
+  // Margin-seal deviation — TWO genuine (non-tautological) measurements:
+  //  (a) the fitted field's displacement AT the confirmed margin polyline
+  //      points, which are NOT RBF control points (the finish-line locus);
+  const marginPointCount = plan.marginLoopFlat.length / 3;
+  let sealAtFinishLine = 0;
+  for (let i = 0; i < marginPointCount; i++) {
+    const p: Vec3 = [plan.marginLoopFlat[i * 3]!, plan.marginLoopFlat[i * 3 + 1]!, plan.marginLoopFlat[i * 3 + 2]!];
+    const d = evaluateFieldMagnitude(field, p);
+    if (d > sealAtFinishLine) sealAtFinishLine = d;
+  }
+  //  (b) the actual displacement of NON-anchor cervical tooth vertices — the
+  //      surface BETWEEN the pins (0 when the region is fully pinned).
+  let sealBetweenPins = 0;
+  for (let i = 0; i < plan.sealMeasureVertexIndices.length; i++) {
+    const v = plan.sealMeasureVertexIndices[i]!;
     const dx = morphedPositions[v * 3]! - plan.positions[v * 3]!;
     const dy = morphedPositions[v * 3 + 1]! - plan.positions[v * 3 + 1]!;
     const dz = morphedPositions[v * 3 + 2]! - plan.positions[v * 3 + 2]!;
     const d = Math.hypot(dx, dy, dz);
-    if (d > sealMax) sealMax = d;
+    if (d > sealBetweenPins) sealBetweenPins = d;
   }
 
   return {
     mesh,
     contacts: contactResults,
-    maxContactResidualMm: maxResidual,
-    marginSealMaxDeviationMm: sealMax,
+    maxContactResidualMm: maxContactResidual,
+    errorBoundMm: errorBound,
+    clampedContacts,
+    marginSealMaxDeviationMm: Math.max(sealAtFinishLine, sealBetweenPins),
+    marginSealAtFinishLineMm: sealAtFinishLine,
+    marginSealBetweenPinsMm: sealBetweenPins,
     controlPointCount: controls.length,
   };
+}
+
+/** Magnitude of the fitted field's displacement at `p` (helper for the
+ * finish-line seal measurement). */
+function evaluateFieldMagnitude(field: RbfField, p: Vec3): number {
+  const d = evaluateRbf(field, p);
+  return Math.hypot(d[0], d[1], d[2]);
 }
 
 /**
