@@ -60,9 +60,16 @@
 //       worst place to be wrong (the marginal gap must be tight AT the
 //       margin, all the way round).
 //
-//   (C) [CHOSEN] EUCLIDEAN distance from `x` to the margin loop polyline
-//       (the dense `resampledPoints`, per margin/band.ts's CHORD-CAP rule).
-//       `h(x) = min over loop segments of dist(x, segment)`. Properties:
+//   (C) [CHOSEN] EUCLIDEAN distance to the margin loop polyline (the dense
+//       `resampledPoints`, per margin/band.ts's CHORD-CAP rule), evaluated at
+//       the grid point's FOOTPOINT on the prep — `h = min over loop segments
+//       of dist(footpoint(x), segment)`, where `footpoint(x)` is the closest
+//       surface point `signedClosestPoint` already computes for the SDF value
+//       (so evaluating `h` there is free). Evaluating at the footpoint, not
+//       the grid sample `x`, makes `gap` a property of the SURFACE LOCATION
+//       (constant along the normal through it) rather than of the off-surface
+//       grid point — which REMOVES the grid-vs-footpoint displacement term
+//       (see @errorBound) instead of merely bounding it. Properties:
 //
 //       1. h = 0 EXACTLY on the margin loop, for ANY loop shape (planar or
 //          not) — so the marginal band genuinely hugs the margin, closing
@@ -115,12 +122,20 @@
 //     bound divided by the field's minimum gradient `1 - Lgap`). The result
 //     reports this WORST-CASE (blend) bound as `errorBoundMm`; the flat-zone
 //     measurements (marginal, cement) hold to the tighter `pitchMm/2`.
-//   - HEIGHT-FIELD term. `h` (Euclidean chord) under-estimates geodesic arc
-//     length by at most `(kappa_max / 24) * s^3` over the band (arc-vs-chord
-//     for a curve of curvature <= kappa_max); this shifts the spacer LINE's
+//   - HEIGHT-FIELD term. Because `h` is evaluated at the FOOTPOINT (an
+//     on-surface point), there is NO grid-vs-footpoint displacement term: the
+//     naive alternative of evaluating `h` at the off-surface grid point `x`
+//     would perturb `h` by up to `|signedDistance(x)| <= cementGapMm` (~50µm),
+//     which inside the blend inflates the effective gap error by up to
+//     `Lgap * cementGapMm` (~7.5µm at the standard gaps) — that term is
+//     ELIMINATED here, not merely bounded, by using `footpoint(x)`. What
+//     REMAINS is only the intrinsic arc-vs-chord approximation of using
+//     Euclidean distance for along-surface distance: `h` (a chord between two
+//     on-surface points) under-estimates geodesic arc length by at most
+//     `(kappa_max / 24) * s^3` over the band, which shifts the spacer LINE's
 //     position along the wall, not the offset magnitude, and always in the
 //     safe direction (item 3 above). For the analytic cone die it is 0
-//     (item 2). This term is a POSITION error on the blend, not an offset
+//     (item 2). This residual is a POSITION error on the blend, not an offset
 //     error, and is reported separately by the caller where relevant.
 //   - Float32 grid storage + mu-clamp epsilon: identical to `offsetMesh`'s
 //     `eps_f32` term (reused verbatim via `offsetErrorBoundMm`).
@@ -388,9 +403,16 @@ export function computeTwoZoneSdfGridSlice(
       }
       const worldX = origin[0] + ix * pitchMm;
       const point: Vec3 = [worldX, worldY, worldZ];
-      const sd = signedClosestPoint(mesh, bvh, pseudonormals, point).signedDistance;
-      const h = distanceToClosedPolyline(point, marginLoop);
-      slice[iy * nx + ix] = sd - twoZoneGapField(h, gapParams);
+      const closest = signedClosestPoint(mesh, bvh, pseudonormals, point);
+      // Evaluate the height field at the FOOTPOINT (closest.point, ON the
+      // prep) — NOT the grid sample `point` — so `gap` reflects the SURFACE
+      // location's height above the margin, constant along the normal through
+      // it. This REMOVES the grid-vs-footpoint displacement term (up to
+      // |signedDistance| <= cementGapMm) that evaluating at the grid point
+      // would leak into the blend-zone offset error — see this module's
+      // @errorBound (HEIGHT-FIELD term).
+      const h = distanceToClosedPolyline(closest.point, marginLoop);
+      slice[iy * nx + ix] = closest.signedDistance - twoZoneGapField(h, gapParams);
     }
   }
   return slice;

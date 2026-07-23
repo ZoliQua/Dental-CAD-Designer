@@ -105,11 +105,18 @@ function measure(
     if (h > cementBound) cementDevs.push(Math.abs(offset - gap.cementGapMm));
   }
 
-  const zone = (devs: number[]): ZoneStats => ({
-    n: devs.length,
-    meanDevMm: devs.length ? devs.reduce((a, b) => a + b, 0) / devs.length : 0,
-    maxDevMm: devs.length ? Math.max(...devs) : 0,
-  });
+  const zone = (devs: number[]): ZoneStats => {
+    // Explicit reduction, NOT Math.max(...devs): the full-size die's zone
+    // arrays have tens of thousands of entries and a spread overflows V8's
+    // call stack (RangeError) — the gated acceptance run hit exactly that.
+    let sum = 0;
+    let max = 0;
+    for (const d of devs) {
+      sum += d;
+      if (d > max) max = d;
+    }
+    return { n: devs.length, meanDevMm: devs.length ? sum / devs.length : 0, maxDevMm: max };
+  };
   return { marginal: zone(marginalDevs), cement: zone(cementDevs), samples, minH };
 }
 

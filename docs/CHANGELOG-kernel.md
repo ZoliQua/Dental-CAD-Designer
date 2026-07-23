@@ -80,21 +80,30 @@ and a C1-smooth blend, extracted by the same SDF -> marching cubes machinery
   builds the grid `G = signedDistance - gap(h)` and runs marching cubes at
   iso = 0 — the blend is built into the ramp, no MC-side special-casing.
 - **Height field `h(x)` — the design decision.** `h` = EUCLIDEAN distance to
-  the margin loop polyline (option C, documented against the geodesic and
-  plane-projection alternatives in the module doc). Chosen because it is 0
-  EXACTLY on the margin for any loop shape (so the marginal band genuinely
-  hugs the margin — closing the plane-proxy's non-planar degradation), it
-  equals along-surface distance EXACTLY on a ruled axial wall (clean analytic
-  golden on the cone die), it is a LOWER bound on true geodesic arc length in
-  general (spacer line never lands lower than nominal — the clinically safe
-  direction), and it needs no off-surface field extension.
+  the margin loop polyline, evaluated at the grid point's FOOTPOINT on the
+  prep (`signedClosestPoint`'s `.point`, already computed for the SDF value —
+  so it is free), NOT at the off-surface grid point (option C, documented
+  against the geodesic and plane-projection alternatives in the module doc).
+  Chosen because it is 0 EXACTLY on the margin for any loop shape (so the
+  marginal band genuinely hugs the margin — closing the plane-proxy's
+  non-planar degradation), it equals along-surface distance EXACTLY on a ruled
+  axial wall (clean analytic golden on the cone die), it is a LOWER bound on
+  true geodesic arc length in general (spacer line never lands lower than
+  nominal — the clinically safe direction), and it needs no off-surface field
+  extension. Evaluating at the footpoint makes `gap` a property of the surface
+  location (constant along the normal through it), which REMOVES the
+  grid-vs-footpoint displacement term (up to `|signedDistance| <= cementGapMm`,
+  ~7.5µm of blend-zone gap error at the standard gaps) rather than merely
+  bounding it.
 - **`@errorBound`.** Offset chord bound is `pitchMm/2` in the flat
   (marginal/cement) zones and `(1+Lgap)/(1-Lgap) * pitchMm/2` inside the
   blend (`Lgap = 1.5*(cementGapMm-marginalGapMm)/blendWidthMm`); the result
   carries BOTH (`flatZoneErrorBoundMm` and the worst-case `errorBoundMm`),
-  plus the reused Float32/mu-clamp term. The height field's arc-vs-chord
-  under-estimate is a blend-POSITION bound (0 on the analytic cone die),
-  reported separately.
+  plus the reused Float32/mu-clamp term. Because `h` is evaluated at the
+  footpoint, there is NO grid-vs-footpoint gap-displacement term; the only
+  residual height-field effect is the intrinsic Euclidean-vs-geodesic
+  arc-vs-chord under-estimate, a blend-POSITION bound (0 on the analytic cone
+  die), reported separately.
 - **Output.** An OPEN, welded patch (no manifold cleanup — `offsetMeshRoi`'s
   documented shape); a later Phase 4 stage skirts/stitches it into the closed
   shell.
