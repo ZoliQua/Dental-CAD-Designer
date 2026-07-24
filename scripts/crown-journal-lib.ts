@@ -35,6 +35,15 @@
 // QC contact gate (a genuine morph→qc data dependency), and
 // die→inner→shell→sculpt→qc is a genuine linear geometry chain.
 //
+// IMPORTANT — what the standin does NOT prove: the shell is built from the
+// intaglio + a clean synthetic outer DOME, NOT the morph output, so the standin
+// does NOT exercise the morph→shell coupling (feeding an RBF-morphed outer into
+// `constructShell`). That coupling is isolated on clean synthetic input in
+// test/golden/morph-shell-coupling.test.ts, whose DIAGNOSTIC finding is that a
+// clean morphed closed tooth is currently REJECTED by `constructShell` even
+// when the byte-identical un-morphed tooth builds — a morph→shell robustness
+// gap independent of scan quality (see p4-task-12-report.md for the verdict).
+//
 // One deliberate decoupling INSIDE the anatomy sub-scene, documented so it is
 // not mistaken for an oversight: the anatomy-PLACEMENT stage runs genuinely
 // (producing + journaling a deterministic placed mesh, so placement
