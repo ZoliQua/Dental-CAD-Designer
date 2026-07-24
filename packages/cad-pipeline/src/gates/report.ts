@@ -35,7 +35,8 @@
 // `connectorAreaTargetMm2`, the contact target penetrations carried on the
 // residuals) is passed IN by the caller from the resolved profile — never
 // hardcoded here. Gate TOLERANCES that are QC-gate constants (margin-fit 10 µm,
-// seating 0 interference, contact 50 µm) live in their own gate modules and are
+// seating 1e-6 mm³ interference — a derived measurement-noise floor, not zero,
+// contact 50 µm) live in their own gate modules and are
 // overridable via the optional fields below.
 //
 // DOM/Three-free (invariant 6) — callable identically from the client worker

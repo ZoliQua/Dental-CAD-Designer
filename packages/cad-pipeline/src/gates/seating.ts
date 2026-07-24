@@ -131,15 +131,18 @@ export async function measureSeating(crownSolid: IndexedMesh, dieSolid: IndexedM
 export interface SeatingGateInput {
   readonly measurement: SeatingMeasurement;
   /** Allowed die-into-wall interference volume (mm³). Default
-   * `SEATING_DEFAULT_INTERFERENCE_VOLUME_MM3` (0). Overridable per-call. */
+   * `SEATING_DEFAULT_INTERFERENCE_VOLUME_MM3` (1e-6 mm³ — a derived Float32/
+   * seal-sliver measurement-noise floor, NOT zero; see that constant's doc for
+   * the derivation). Overridable per-call. */
   readonly interferenceVolumeToleranceMm3?: number;
 }
 
 /**
  * The seating-simulation QC gate — passes iff the crown seats on the die with
- * die-into-wall interference volume ≤ the tolerance (default 0). Value = the
- * interference volume (mm³); threshold = the tolerance. Pure/deterministic;
- * Node- and worker-callable.
+ * die-into-wall interference volume ≤ the tolerance (default
+ * `SEATING_DEFAULT_INTERFERENCE_VOLUME_MM3` = 1e-6 mm³, the derived
+ * measurement-noise floor — NOT zero). Value = the interference volume (mm³);
+ * threshold = the tolerance. Pure/deterministic; Node- and worker-callable.
  */
 export function seatingGate(input: SeatingGateInput): QcGateResult {
   const tolerance = input.interferenceVolumeToleranceMm3 ?? SEATING_DEFAULT_INTERFERENCE_VOLUME_MM3;
