@@ -162,6 +162,32 @@ describe('runShellStage — orchestration', () => {
     expect(result.errorBoundMm).not.toBeNull();
   }, 120000);
 
+  it('Task 12b: the morph→shell HEAL (healOuterPitchMm) runs, journals its params, and stays deterministic', async () => {
+    const inner = await intaglio();
+    const ctx = makeContext();
+    const outer = handle('morph-11', closedTooth(1.0));
+    const opts = { outerAnatomyMesh: outer, innerSurfaceMesh: handle('inner-11', inner), healOuterPitchMm: 0.1, hashMesh } as const;
+    const healed = await runShellStage(ctx, TOOTH, opts);
+
+    // The heal ran + journaled its params (surfaced @errorBound = pitch/2).
+    expect(healed.params['healOuterApplied']).toBe(true);
+    expect(healed.params['healOuterPitchMm']).toBe(0.1);
+    expect(healed.params['healOuterErrorBoundMm'] as number).toBeGreaterThan(0.05 - 1e-9);
+    expect(healed.params['healOuterErrorBoundMm'] as number).toBeLessThan(0.1);
+    expect(healed.params['healOuterTriangleCountAfter'] as number).toBeGreaterThan(0);
+    // Still a watertight, single-component crown.
+    expect(analyzeMesh(healed.mesh!).watertight).toBe(true);
+    expect(analyzeMesh(healed.mesh!).componentCount).toBe(1);
+    // Deterministic through the heal.
+    const again = await runShellStage(ctx, TOOTH, opts);
+    expect(again.meshContentHash).toBe(healed.meshContentHash);
+
+    // WITHOUT the heal, healOuterApplied is false (no heal params journaled).
+    const noHeal = await runShellStage(ctx, TOOTH, { outerAnatomyMesh: outer, innerSurfaceMesh: handle('inner-11', inner), hashMesh });
+    expect(noHeal.params['healOuterApplied']).toBe(false);
+    expect(noHeal.params['healOuterPitchMm']).toBeUndefined();
+  }, 120000);
+
   it('is deterministic (journal replay -> identical hash, same manifold-3d version)', async () => {
     const inner = await intaglio();
     const ctx = makeContext();

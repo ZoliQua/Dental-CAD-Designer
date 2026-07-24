@@ -1,47 +1,39 @@
 // test/golden/morph-shell-coupling.test.ts
 //
-// Phase 4 Task 12 — the morph→shell coupling DIAGNOSTIC (the bit the standin
-// acceptance deliberately does NOT exercise). The standin builds its shell from
-// the intaglio + a clean synthetic outer DOME (not the morph output), so it
-// proves the FIT/geometry chain + the whole QC gate set + full journal
-// reproducibility — but it does NOT prove that a realistic morph-DERIVED outer
-// anatomy stitches into a buildable manifold crown. That morph→shell coupling
-// is otherwise exercised ONLY on the real arch-case-01 (where it blocks). This
-// diagnostic isolates "bad scan" from "coupling-robustness gap" on CLEAN,
-// well-formed SYNTHETIC input — so the real-case block can be attributed
-// correctly.
+// Phase 4 Task 12 → 12b — the morph→shell coupling test. Task 12's DIAGNOSTIC
+// finding: a CLEAN, well-formed RBF-morphed closed tooth was REJECTED by
+// `constructShell` even though the byte-identical un-morphed tooth built — a
+// morph→shell coupling ROBUSTNESS GAP independent of scan quality. Root cause
+// (found in 12b): NOT (only) self-intersections — the dominant proximate cause
+// was the CLOSED-outer TRIM. The old centroid-discard trim assumed a clean
+// cervical ring at the margin plane; a real morphed outer's cervical surface
+// WIGGLES across that plane (non-anchor cervical vertices move sub-margin), so
+// the trim fragmented into many tiny loops → a non-manifold stitch.
 //
-// ## What it does
+// ## Task 12b — gap CLOSED. Two robustness fixes:
+//
+//  1. `constructShell`'s trim is now a robust plane-CLIP a small offset OCCLUSAL
+//     to the finish line (lands on the clean axial wall → ONE cervical rim).
+//  2. `healOuterAnatomy` (a deterministic SDF re-mesh at the zero level set)
+//     removes the RBF's self-intersections/slivers BY CONSTRUCTION — needed for
+//     degraded/real morphs whose own geometry would break the manifold cleanup.
+//     Heal only the OUTER; the intaglio is stitched to its EXACT margin.
+//
+// ## What it does now
 //
 //  1. CONTROL: an un-morphed clean CLOSED tooth (a barrel crown-blank whose
-//     cervical == the crown margin) + the intaglio → `constructShell`. This
-//     BUILDS a watertight crown — proving the tooth / inner / margin are all
-//     shell-compatible (the closed-outer trim+stitch path from Task 7).
+//     cervical == the crown margin) + the intaglio → `constructShell`. Builds a
+//     watertight crown (the closed-outer trim+stitch path).
 //
-//  2. THE DIAGNOSTIC: the SAME tooth, RBF-MORPHED with GOOD synthetic contacts
-//     (well-formed output — watertight, no clamped contact, sub-100 µm cervical
-//     seal, sub-100 µm contact residual) → `constructShell`.
-//
-// ## Result (measured — see the console output + the report)
-//
-// The clean MORPHED closed tooth is currently REJECTED by `constructShell`
-// (`NonManifoldInputError` / `ShellBoundaryError`), even though the byte-
-// identical un-morphed tooth builds. This reproduces across mesh resolutions,
-// tooth profiles, aligned/misaligned seal margins, and gentle/moderate morphs
-// (5 configurations probed during development). CONCLUSION: there is a
-// morph→shell coupling ROBUSTNESS GAP INDEPENDENT OF SCAN QUALITY — the RBF
-// morph produces geometry (self-intersections / near-degenerate triangles
-// invisible to halfedge watertightness) that the margin-trim + manifold-3d
-// stitch reject. So the real tooth-11 shell block is NOT purely input quality;
-// robustness work on the morph→shell seam is needed regardless of scan quality.
-//
-// If a future robustness improvement makes the morphed tooth BUILD, the
-// `expect` below flips — that is the gap CLOSING, a win to celebrate: update
-// this doc + p4-task-12-report.md accordingly (do NOT just relax the assertion).
+//  2. THE DIAGNOSTIC (flipped — the gap is CLOSED): the SAME tooth, RBF-MORPHED
+//     with GOOD synthetic contacts → `healOuterAnatomy` → `constructShell` now
+//     BUILDS a watertight, single-component crown, with the intaglio margin fit
+//     preserved ≤10 µm (measured + reported, alongside the outer heal
+//     `@errorBound` = pitch/2 that bounds the morph's contact shift).
 import { createHash } from 'node:crypto';
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { FdiTooth, Vec3 } from '@dqcad/shared-types';
-import { analyzeMesh, buildInnerSurface, constructShell, type IndexedMesh } from '@dqcad/kernel';
+import { analyzeMesh, buildBvh, buildInnerSurface, closestPointBatch, constructShell, healOuterAnatomy, type IndexedMesh } from '@dqcad/kernel';
 import { runMorphingStage, type PipelineContext, type PipelineMeshHandle } from '@dqcad/cad-pipeline';
 import { PROFILE } from '../../scripts/crown-journal-lib.ts';
 
@@ -119,8 +111,6 @@ const CROWN_MARGIN = marginCircle(1.2, 0.5, 240);
 // margin trim zone).
 const BARREL_PROFILE: readonly [number, number][] = [[0.5, 1.2], [0.85, 1.55], [1.2, 1.75], [1.6, 1.8], [2.0, 1.72], [2.4, 1.5], [2.7, 1.1], [3.0, 0.6]];
 
-const KNOWN_SHELL_ERRORS = ['NonManifoldInputError', 'ShellBoundaryError', 'ShellNotWatertightError'];
-
 describe('morph → shell coupling diagnostic (isolates scan-quality from coupling-robustness)', () => {
   let inner: IndexedMesh;
   let barrel: IndexedMesh;
@@ -139,7 +129,7 @@ describe('morph → shell coupling diagnostic (isolates scan-quality from coupli
     expect(stats.componentCount).toBe(1);
   }, 300_000);
 
-  it('DIAGNOSTIC: a CLEAN RBF-morphed closed tooth is currently REJECTED by constructShell — morph→shell robustness gap, independent of scan quality', async () => {
+  it('DIAGNOSTIC (Task 12b — gap CLOSED): a CLEAN RBF-morphed closed tooth now BUILDS a watertight crown through the coupled morph→HEAL→shell path', async () => {
     // A well-formed morph: good synthetic contacts, aligned seal margin.
     const ctx: PipelineContext = {
       restorationId: 'morph-shell-diag',
@@ -167,26 +157,35 @@ describe('morph → shell coupling diagnostic (isolates scan-quality from coupli
     expect(sealMaxMm).toBeLessThan(0.2);
     expect(maxResMm).toBeLessThan(0.2);
 
-    let built: { watertight: boolean; tris: number } | null = null;
-    let errorName = '';
-    try {
-      const shell = await constructShell(morphed, inner, { insertionAxis: AXIS, marginLoop: CROWN_MARGIN.resampledPoints });
-      const st = analyzeMesh(shell.mesh);
-      built = { watertight: st.watertight, tris: shell.mesh.indices.length / 3 };
-    } catch (e) {
-      errorName = (e as Error).name;
-    }
+    // Task 12b: the deterministic HEAL (SDF re-mesh — self-intersections gone by
+    // construction) + the robust plane-clip trim make the coupled morph→shell
+    // path BUILD a watertight crown. Heal only the OUTER; the intaglio is
+    // stitched to its EXACT margin, so the marginal seal is untouched.
+    const HEAL_PITCH_MM = 0.05;
+    const healed = await healOuterAnatomy(morphed, { pitchMm: HEAL_PITCH_MM });
+    expect(healed.stats.watertight).toBe(true); // clean 2-manifold by construction
+
+    const shell = await constructShell(healed.mesh, inner, { insertionAxis: AXIS, marginLoop: CROWN_MARGIN.resampledPoints });
+    const st = analyzeMesh(shell.mesh);
+
+    // The healed build's margin fit: every confirmed margin point lies on the
+    // shell surface (the intaglio's exact margin rim survived — only the outer
+    // was healed/trimmed).
+    const bvh = buildBvh(shell.mesh);
+    const marginFlat = new Float64Array(CROWN_MARGIN.resampledPoints.flatMap((p) => [p[0], p[1], p[2]]));
+    let marginFitMm = 0;
+    for (const r of closestPointBatch(shell.mesh, bvh, marginFlat)) if (r.distance > marginFitMm) marginFitMm = r.distance;
 
     console.log(
       `[MORPH→SHELL diagnostic] clean morph: watertight=${morphStats.watertight} clamp=${clamp} sealMax=${µm(sealMaxMm)} maxContactResidual=${µm(maxResMm)} → ` +
-        (built ? `constructShell BUILT watertight=${built.watertight} tris=${built.tris} (ROBUSTNESS GAP CLOSED — update the report + this doc)` : `constructShell FAILED: ${errorName}`),
+        `HEAL (pitch ${HEAL_PITCH_MM} mm, outer errorBound ${µm(healed.errorBoundMm)}) → constructShell BUILT watertight=${st.watertight} components=${st.componentCount} tris=${shell.mesh.indices.length / 3}; ` +
+        `margin-fit ${µm(marginFitMm)} (≤10 µm — intaglio EXACT); the morph's achieved contacts shift by ≤ the outer errorBound (${µm(healed.errorBoundMm)}).`,
     );
 
-    // CURRENT honest state: a clean synthetic morph→shell coupling FAILS — a
-    // real robustness gap independent of scan quality. If `built` is non-null a
-    // future improvement closed the gap; that is a WIN — update the docs, do
-    // NOT silently relax this into always-passing.
-    expect(built, 'clean morph→shell now BUILDS — the coupling robustness gap has CLOSED; update p4-task-12-report.md + this file\'s doc').toBeNull();
-    expect(KNOWN_SHELL_ERRORS).toContain(errorName);
+    // The coupling robustness gap is CLOSED: the clean morph builds a watertight,
+    // single-component crown, and the intaglio margin fit is preserved ≤10 µm.
+    expect(st.watertight).toBe(true);
+    expect(st.componentCount).toBe(1);
+    expect(marginFitMm).toBeLessThanOrEqual(0.010);
   }, 300_000);
 });

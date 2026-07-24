@@ -20,44 +20,45 @@
 //   5. freeform      (locked-fit sculpt gesture — pure Float64 TS)
 //   6. qc            (runCrownQc — the §6 gate set; two gates use manifold-3d)
 //
-// ## Two synthetic sub-scenes (the honest standin limitation)
+// ## The GENUINELY COUPLED standin (Task 12b — the morph→shell coupling proven)
 //
-// The standin necessarily uses TWO synthetic geometries — exactly as the
-// Task-9-ACCEPTED standin (packages/cad-pipeline/src/gates/report.test.ts)
-// already does: (a) the FIT/SHELL path (frustum prep die → intaglio → enclosing
-// dome → watertight shell → sculpt), and (b) the ANATOMY path (a library tooth
-// placed against proximal neighbours + antagonist, then RBF-morphed to
-// contacts). No single synthetic solid is simultaneously a clean frustum-fit
-// prep AND a realistic anatomy-morph target; the REAL arch-case-01 is where the
-// two unify (and where the shell honestly BLOCKS — see the real-case report).
-// Every one of the 6 stages runs GENUINELY and its output is content-addressed,
-// journaled, and replay-proven; the morph's measured contact residuals feed the
-// QC contact gate (a genuine morph→qc data dependency), and
-// die→inner→shell→sculpt→qc is a genuine linear geometry chain.
+// Task 12's standin decoupled the shell from the morph — it stitched the shell
+// from a synthetic DOME, not the morph output, because a morphed closed tooth
+// was rejected by `constructShell` (the coupling robustness gap). Task 12b
+// CLOSED that gap (robust plane-clip trim in `constructShell` + the
+// deterministic `healOuterAnatomy` SDF re-mesh), so the standin now runs the
+// REAL coupled lineage: die → inner → place → morph → HEAL → shell → sculpt →
+// qc. The MORPHED outer anatomy (a wide closed barrel at the crown margin, RBF-
+// morphed to proximal + antagonist contacts) is HEALED (self-intersections gone
+// by construction, intaglio untouched) and fed into `constructShell`, which
+// trims + stitches it to the intaglio's EXACT margin. So "all gates pass on the
+// standin" now genuinely proves the coupled end-to-end crown on clean input —
+// not an assembled-from-favorable-pieces result. Every stage is content-
+// addressed, journaled, and replay-proven (the heal is deterministic, folded
+// into the shell op, so the whole chain still records → replays bit-identical).
 //
-// IMPORTANT — what the standin does NOT prove: the shell is built from the
-// intaglio + a clean synthetic outer DOME, NOT the morph output, so the standin
-// does NOT exercise the morph→shell coupling (feeding an RBF-morphed outer into
-// `constructShell`). That coupling is isolated on clean synthetic input in
-// test/golden/morph-shell-coupling.test.ts, whose DIAGNOSTIC finding is that a
-// clean morphed closed tooth is currently REJECTED by `constructShell` even
-// when the byte-identical un-morphed tooth builds — a morph→shell robustness
-// gap independent of scan quality (see p4-task-12-report.md for the verdict).
+// ONE remaining documented decoupling (unchanged from Task 12, and NOT the
+// morph→shell coupling this task fixed): the anatomy-PLACEMENT stage runs +
+// journals a deterministic placed mesh (placement reproducibility proven), but
+// the MORPH consumes the reference placed barrel (`PLACED_REF`) directly rather
+// than the placement stage's rescaled output — the placement solve
+// anisotropically rescales the library tooth to the synthetic neighbour gap,
+// and a rescaled tooth cannot converge its contact within tolerance on this
+// coarse synthetic scene (a synthetic-geometry artefact, not a real defect). On
+// the REAL arch-case-01, placement→morph ARE coupled end-to-end.
 //
-// One deliberate decoupling INSIDE the anatomy sub-scene, documented so it is
-// not mistaken for an oversight: the anatomy-PLACEMENT stage runs genuinely
-// (producing + journaling a deterministic placed mesh, so placement
-// reproducibility is proven), but the MORPH stage consumes the REFERENCE placed
-// library tooth (`PLACED_REF`, the canonical tessellated cylinder) rather than
-// the placement stage's own output. Reason: the placement solve anisotropically
-// RESCALES the library tooth to the synthetic neighbour gap, and a rescaled
-// tooth cannot converge its antagonist contact within the 50 µm region
-// tolerance on this coarse synthetic scene (the contact gate would fail on a
-// clean input — an artefact of the synthetic geometry, NOT a real defect). The
-// morph therefore runs on the PROVEN-clean placed tooth (identical to the
-// Task-9-accepted standin, report.test.ts) so the contact gate reflects a
-// genuinely converged morph. On the REAL arch-case-01, placement→morph ARE
-// coupled end-to-end (and the honest block appears downstream at the shell).
+// ## The wide-barrel geometry (why it is what it is)
+//
+// The coupled OUTER is a WIDE closed barrel (cervical rim well outside the
+// finish line, extending BELOW the margin as a sub-margin skirt) — like the
+// Task-9 `outerDome`, NOT feathering to the margin. The shell trims it a hair
+// above the finish line and the seam band bridges the trimmed rim down to the
+// exact margin (the marginal collar). This keeps the wall a full ≥ 1 mm
+// everywhere the crown actually exists (no thin cervical feather), and the deep
+// sub-margin skirt keeps the closed tooth's bottom cap > 1 mm from every
+// intaglio point (no spurious sub-margin thin reading in the QC, which measures
+// the closed morphed outer). The straight axial wall gives the morph's contacts
+// a clean point/line contact against the flat neighbour boxes.
 //
 // ## Journal reproducibility (CLAUDE.md invariants 2/3 — the phase-gate crux)
 //
@@ -184,27 +185,47 @@ function outwardBox(min: Vec3, max: Vec3): IndexedMesh {
   return { positions: new Float64Array(v), indices: Uint32Array.from(idx) };
 }
 
-function cylinderTooth(radius: number, height: number, rings: number, segments: number): IndexedMesh {
-  const positions: number[] = [];
-  for (let r = 0; r < rings; r++) {
-    const z = (height * r) / (rings - 1);
-    for (let s = 0; s < segments; s++) {
-      const th = (2 * Math.PI * s) / segments;
-      positions.push(radius * Math.cos(th), radius * Math.sin(th), z);
+/** A CLOSED barrel crown-blank from a (z, radius) profile — cervical ring first
+ * (AT the crown margin), fanned caps top + bottom → a watertight closed solid
+ * with the SAME topology the Task-6 morphed library tooth has. This is the
+ * coupled-path OUTER: its cervical ring sits ON the crown margin (r 1.2 @ z 0.5,
+ * == the die margin) so the morph→heal→shell chain stitches it to the intaglio's
+ * exact margin. Fat enough (walls ≥ profile min above the feather) that every QC
+ * gate passes on the genuinely coupled crown. */
+function barrelTooth(profile: readonly [number, number][], seg: number): IndexedMesh {
+  const P: number[] = [];
+  const push = (x: number, y: number, z: number): number => {
+    P.push(x, y, z);
+    return P.length / 3 - 1;
+  };
+  const rings: number[][] = [];
+  for (const [z, r] of profile) {
+    const ring: number[] = [];
+    for (let s = 0; s < seg; s++) {
+      const th = (2 * Math.PI * s) / seg;
+      ring.push(push(r * Math.cos(th), r * Math.sin(th), z));
     }
+    rings.push(ring);
   }
-  const indices: number[] = [];
-  for (let r = 0; r < rings - 1; r++) {
-    for (let s = 0; s < segments; s++) {
-      const s1 = (s + 1) % segments;
-      const a = r * segments + s;
-      const b = r * segments + s1;
-      const c = (r + 1) * segments + s;
-      const d = (r + 1) * segments + s1;
-      indices.push(a, b, d, a, d, c);
+  const tr: number[] = [];
+  for (let l = 0; l < rings.length - 1; l++)
+    for (let s = 0; s < seg; s++) {
+      const sn = (s + 1) % seg;
+      tr.push(rings[l]![s]!, rings[l]![sn]!, rings[l + 1]![sn]!);
+      tr.push(rings[l]![s]!, rings[l + 1]![sn]!, rings[l + 1]![s]!);
     }
+  const bc = push(0, 0, profile[0]![0]);
+  for (let s = 0; s < seg; s++) {
+    const sn = (s + 1) % seg;
+    tr.push(bc, rings[0]![sn]!, rings[0]![s]!);
   }
-  return { positions: new Float64Array(positions), indices: Uint32Array.from(indices) };
+  const tc = push(0, 0, profile[profile.length - 1]![0]);
+  const top = rings[rings.length - 1]!;
+  for (let s = 0; s < seg; s++) {
+    const sn = (s + 1) % seg;
+    tr.push(tc, top[s]!, top[sn]!);
+  }
+  return { positions: new Float64Array(P), indices: Uint32Array.from(tr) };
 }
 
 export const PROFILE: PipelineMaterialProfile = {
@@ -226,34 +247,76 @@ export const PROFILE: PipelineMaterialProfile = {
 
 // The FIT/SHELL sub-scene primitives.
 const die = (): IndexedMesh => buildFrustum(MARGIN_R, TOP_R, MARGIN_Z, TOP_Z, 96, true, true);
-const outerDome = (): IndexedMesh => buildFrustum(MARGIN_R + 1.0, TOP_R + 1.0, MARGIN_Z, TOP_Z + 1.0, 96, true, false);
+/** The thin-variant OUTER: a synthetic thin OPEN dome (0.3 mm radial wall) —
+ * the deliberate min-wall gate-blocking probe (NOT the coupled path). */
 const thinDome = (): IndexedMesh => buildFrustum(MARGIN_R + 0.3, TOP_R + 0.3, MARGIN_Z, TOP_Z + 0.9, 96, true, false);
 const FIT_MARGIN = marginCircle(MARGIN_R, MARGIN_Z, 240);
 
-// The ANATOMY sub-scene: a library tooth (a tessellated cylinder in canonical
-// space) placed against two proximal-neighbour boxes + an antagonist box, then
-// morphed to contacts — the proven-clean scene from report.test.ts.
-const MORPH_R = 1.2;
-const MORPH_H = 5;
+// The COUPLED ANATOMY sub-scene (Task 12b): a fat barrel crown-blank whose
+// cervical ring sits ON the crown margin (r 1.2 @ z 0.5 — the SAME margin the
+// fit die/inner use), placed against two proximal-neighbour boxes + an
+// antagonist box, then morphed to contacts. Its morph output is the GENUINE
+// OUTER the shell consumes (morph → heal → shell), so the standin now exercises
+// the real coupled lineage die→inner→place→morph→HEAL→shell→sculpt→qc rather
+// than an assembled-from-a-synthetic-dome shell.
 const IDENTITY_CANONICAL: CanonicalFrameAxes = {
   origin: [0, 0, 0],
   mesialDistal: [1, 0, 0],
   buccoLingual: [0, 1, 0],
   occlusoGingival: [0, 0, 1],
 };
-const MORPH_MARGIN = marginCircle(MORPH_R, 0, 48);
+/** Fat barrel profile (z, radius): cervical AT the margin (1.2 @ 0.5) then
+ * bulging to keep the wall ≥ the 0.5 mm profile minimum above the feather, so
+ * the min-wall gate PASSES on the genuinely coupled crown (not a favorable
+ * synthetic dome). Occlusal top at z 2.8 (0.8 mm above the die's z-2.0 roof). */
+// A FLARED CYLINDER (not a smooth bulge): a steep cervical ramp from the margin
+// up to a STRAIGHT axial wall (constant radius) through the proximal-contact
+// zone, then an occlusal taper to the roof. The straight wall gives the morph's
+// mesial/distal contacts a clean point/line contact against the flat neighbour
+// boxes (a doubly-curved bulge over-penetrates a flat box across its whole
+// facing region → the contact gate's conservative region residual fails), while
+// staying a valid closed tooth the shell consumes.
+const BARREL_WALL_R = 2.2;
+const BARREL_PROFILE: readonly [number, number][] = [
+  // A WIDE closed tooth (like the Task-9 outerDome, cervical rim well outside
+  // the finish line) — NOT feathering to the margin: the shell TRIMS this at a
+  // small offset above the margin and the seam band bridges the trimmed rim DOWN
+  // to the intaglio's exact margin, forming the marginal collar. Because the
+  // outer never comes down to the finish line, the wall is a full ≥ 1 mm
+  // everywhere (no thin cervical feather zone), so the min-wall gate passes on
+  // the genuinely coupled crown with only the finish-line point excluded.
+  [-0.8, BARREL_WALL_R], // sub-margin skirt bottom, well BELOW the margin — its
+  //                        bottom cap sits > 1 mm from every intaglio point, so
+  //                        the closed tooth (which QC measures) has no spurious
+  //                        sub-margin thin reading; the shell trims this off.
+  [MARGIN_Z, BARREL_WALL_R],
+  [2.5, BARREL_WALL_R], // straight axial wall (the proximal-contact zone)
+  [2.9, 1.7], //          occlusal taper — roof lifted above the die's z-2.0 top
+  [3.3, 0.8],
+];
+/** Straight-wall radius (the proximal-contact locus) — the neighbours' facing
+ * planes sit just beyond it so the morph's mesial/distal contacts converge. */
+const BARREL_MAX_R = BARREL_WALL_R;
+const BARREL_TOP_Z = 3.3;
+const BARREL_SEG = 120;
+const MORPH_MARGIN = marginCircle(MARGIN_R, MARGIN_Z, 48);
 const MORPH_OPTIONS = { contactInfluenceRadiusMm: 0.8, contactFacingRadiusMm: 1.0, cervicalSealBandMm: 0.6 };
+/** Voxel pitch (mm) of the morph→shell HEAL. errorBound = pitch/2 (25 µm): the
+ * bound on how far the healed OUTER surface — hence the morph's achieved
+ * contacts — shift from the morph. Surfaced in QC + reported. */
+const HEAL_PITCH_MM = 0.05;
 /** The reference placed library tooth the MORPH stage consumes (see the module
- * doc's "one deliberate decoupling" note) — the Task-9-accepted clean placed
- * tooth, so the morph converges its contacts within tolerance. */
-const PLACED_REF = (): IndexedMesh => cylinderTooth(MORPH_R, MORPH_H, 11, 24);
+ * doc's "one deliberate decoupling" note) — the fat barrel, so the morph output
+ * is a shell-compatible closed outer at the crown margin. */
+const PLACED_REF = (): IndexedMesh => barrelTooth(BARREL_PROFILE, BARREL_SEG);
 
 /** The freeform gesture (occlusal add/remove/smooth, away from the margin) —
- * the fit-surface lock keeps the ≤10 µm marginal seal byte-identical. */
+ * the fit-surface lock keeps the ≤10 µm marginal seal byte-identical. Centered
+ * on the barrel crown's occlusal (z ≈ 2.8), well clear of the margin (z 0.5). */
 const GESTURE: SculptStroke[] = [
-  { center: [0, 0, TOP_Z + 1.0], radiusMm: 1.2, strength: 0.2, brush: 'add' },
-  { center: [TOP_R + 1.0, 0, TOP_Z], radiusMm: 1.0, strength: 0.15, brush: 'remove' },
-  { center: [0, 0, TOP_Z + 1.0], radiusMm: 1.5, strength: 1, brush: 'smooth' },
+  { center: [0, 0, 3.3], radiusMm: 1.0, strength: 0.2, brush: 'add' },
+  { center: [1.0, 0, 3.0], radiusMm: 0.8, strength: 0.15, brush: 'remove' },
+  { center: [0, 0, 3.3], radiusMm: 1.3, strength: 1, brush: 'smooth' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -264,30 +327,35 @@ const GESTURE: SculptStroke[] = [
 // underlying die/inner geometry inputs are shared values.
 // ---------------------------------------------------------------------------
 
-/** The anatomy-placement + morph context (both stages share it). */
+/** The anatomy-placement + morph context (both stages share it) — the coupled
+ * scene: neighbours + antagonist positioned around the barrel at the crown
+ * margin (z 0.5) so the morph's contacts converge cleanly (clamp-free). */
 function anatomyContext(): PipelineContext {
   return {
     restorationId: 'crown-accept-anatomy',
     materialProfile: PROFILE,
     insertionAxis: AXIS,
-    targetMesh: handle('anatomy-die', cylinderTooth(MORPH_R, MORPH_H - 1, 6, 16)),
+    targetMesh: handle('die', die()),
     marginLoops: { [TOOTH]: MORPH_MARGIN },
     neighbors: {
-      [12 as FdiTooth]: handle('nb-12', outwardBox([MORPH_R + 0.1, -2, 2.3], [3, 2, 4.7])),
-      [21 as FdiTooth]: handle('nb-21', outwardBox([-3, -2, 2.3], [-(MORPH_R + 0.1), 2, 4.7])),
+      [12 as FdiTooth]: handle('nb-12', outwardBox([BARREL_MAX_R + 0.1, -2, 0.9], [BARREL_MAX_R + 1.3, 2, 2.0])),
+      [21 as FdiTooth]: handle('nb-21', outwardBox([-(BARREL_MAX_R + 1.3), -2, 0.9], [-(BARREL_MAX_R + 0.1), 2, 2.0])),
     },
-    antagonist: handle('anta', outwardBox([-2, -2, MORPH_H + 0.1], [2, 2, MORPH_H + 2])),
+    antagonist: handle('anta', outwardBox([-1.5, -1.5, BARREL_TOP_Z + 0.05], [1.5, 1.5, BARREL_TOP_Z + 2])),
     stages: {},
   };
 }
 
-/** The synthetic library tooth asset placed by the anatomy stage. */
+/** The synthetic library tooth asset placed by the anatomy stage — the fat
+ * barrel (the coupled OUTER blank). Placement journals a deterministic placed
+ * mesh; the MORPH consumes the un-rescaled barrel (`PLACED_REF`) directly (the
+ * documented place→morph decoupling, unchanged). */
 function syntheticAsset(): PipelineToothAsset {
-  const mesh = cylinderTooth(MORPH_R, MORPH_H, 11, 24);
+  const mesh = barrelTooth(BARREL_PROFILE, BARREL_SEG);
   return {
     contentHash: hashMesh(mesh),
     mesh,
-    landmarks: { incisalEdge: [0, 0, MORPH_H], cervical: [0, 0, 0] },
+    landmarks: { incisalEdge: [0, 0, 3.3], cervical: [0, 0, MARGIN_Z] },
     canonicalFrame: IDENTITY_CANONICAL,
   };
 }
@@ -329,6 +397,11 @@ export interface AssembledCrown {
     readonly sculptMarginFitMm: number;
     readonly crownSolidTriCount: number;
     readonly crownWatertight: boolean;
+    /** True if the morph→shell HEAL ran (the coupled standin; false for thin). */
+    readonly healApplied: boolean;
+    /** The heal's outer-surface `@errorBound` (mm) — the bound on how far the
+     * healed outer, hence the morph's achieved contacts, shift. 0 if no heal. */
+    readonly healOuterErrorBoundMm: number;
   };
   /** The contact residuals the morph produced (QC contact-gate input). */
   readonly contacts: readonly ContactResidualInput[];
@@ -374,12 +447,25 @@ export async function assembleCrown(variant: CrownVariant): Promise<AssembledCro
   }));
   const contactClampWarning = morph.params['contactClampWarning'] as boolean;
 
-  // 4. shell (manifold-3d stitch of outer + intaglio at the margin band).
-  const outer = variant === 'thin' ? thinDome() : outerDome();
+  // 4. shell. STANDIN: the GENUINELY COUPLED path — the morphed OUTER anatomy
+  //    (a closed barrel at the crown margin) is fed into the shell, which HEALS
+  //    it (SDF re-mesh, self-intersections removed by construction) and stitches
+  //    it to the intaglio at the margin band. THIN: a synthetic thin open dome —
+  //    a deliberate min-wall gate-blocking probe (the anatomy path still runs +
+  //    journals; only this variant's shell outer differs). Only the standin is
+  //    the coupled proof; the thin variant only proves the gate blocks.
+  const coupled = variant !== 'thin';
+  const shellOuter = coupled ? morph.mesh! : thinDome();
+  // The wall QC measures the anatomy wall on the morphed outer (closed barrel);
+  // the heal shifts it by ≤ HEAL_PITCH/2, surfaced in the shell op. The margin
+  // feather band (≤ marginExclusion of the finish line — legitimately thin by
+  // design) is excluded, exactly as the kernel shell wall-thickness measure does.
+  const marginExclusionMm = coupled ? 0.2 : 0;
   const shell = await runShellStage(fitCtx, TOOTH, {
-    outerAnatomyMesh: handle(hashMesh(outer), outer),
+    outerAnatomyMesh: handle(hashMesh(shellOuter), shellOuter),
     innerSurfaceMesh: handle(inner.meshContentHash!, inner.mesh!),
     hashMesh,
+    ...(coupled ? { healOuterPitchMm: HEAL_PITCH_MM, marginExclusionMm } : {}),
   });
 
   // 5. freeform sculpt (locked fit surface — preserves the ≤10 µm seal).
@@ -394,13 +480,14 @@ export async function assembleCrown(variant: CrownVariant): Promise<AssembledCro
   const qcReport = await runCrownQc({
     crownSolid: sculpt.mesh!,
     innerSurfaceMesh: inner.mesh!,
-    outerSurfaceMesh: outer,
+    outerSurfaceMesh: shellOuter,
     dieSolid: die(),
     marginResampledPoints: FIT_MARGIN.resampledPoints,
     insertionAxis: AXIS,
     minWallThicknessMm: PROFILE.restorationParams.minWallThicknessMm,
     occlusalMinWallThicknessMm: PROFILE.occlusalMinWallThicknessMm,
     connectorAreaTargetMm2: PROFILE.connectorAreaMm2.anteriorMm2,
+    marginExclusionMm,
     contacts,
     contactClampWarning,
     kernelVersion: KERNEL_VERSION,
@@ -432,6 +519,8 @@ export async function assembleCrown(variant: CrownVariant): Promise<AssembledCro
       sculptMarginFitMm: sculpt.params['marginFitMaxMm'] as number,
       crownSolidTriCount: sculpt.mesh!.indices.length / 3,
       crownWatertight: analyzeMesh(sculpt.mesh!).watertight,
+      healApplied: shell.params['healOuterApplied'] === true,
+      healOuterErrorBoundMm: (shell.params['healOuterErrorBoundMm'] as number | undefined) ?? 0,
     },
   };
 }
@@ -492,71 +581,27 @@ export async function recordCrownJournal(): Promise<RecordedCrownJournal> {
 }
 
 /**
- * Replays the recorded crown journal FRESH from scratch — re-runs every stage
- * as an independent computation and re-hashes its output, comparing against the
- * recorded `outputHashes[0]`. Returns every stage whose replay is NOT
- * bit-identical (empty ⇒ full reproducibility). The intaglio value is rebuilt
- * (cached) but the STAGE functions are all re-invoked; determinism is what is
- * under test, so nothing computed here reuses the recorded run's outputs.
+ * Replays the recorded crown journal FRESH from scratch — re-runs the ENTIRE
+ * coupled chain (`assembleCrown('standin')`, cold: the caller resets the caches
+ * first) as an independent computation and re-hashes every stage output,
+ * comparing against the recorded `outputHashes[0]`. Returns every stage whose
+ * replay is NOT bit-identical (empty ⇒ full reproducibility, INCLUDING the
+ * deterministic morph→shell HEAL folded into the shell op). Re-running the whole
+ * assembler (rather than a hand-duplicated chain) guarantees the replay path
+ * cannot silently drift from the record path.
  */
 export async function replayCrownJournal(journal: RecordedCrownJournal): Promise<CrownReplayFailure[]> {
   const expected = Object.fromEntries(journal.operations.map((op) => [op.id, op.outputHashes[0]!]));
   const failures: CrownReplayFailure[] = [];
 
-  // Re-run the whole chain fresh.
-  const fitCtx = fitContext();
-  const inner = await runInnerSurfaceStage(fitCtx, TOOTH, { pitchMm: 0.08, hashMesh });
-  const anatomy = runAnatomyPlacementStage(anatomyContext(), TOOTH, { asset: syntheticAsset(), hashMesh });
-  const placedRef = PLACED_REF();
-  const morph = runMorphingStage(anatomyContext(), TOOTH, {
-    placedMesh: handle(hashMesh(placedRef), placedRef),
-    hashMesh,
-    morphOptions: MORPH_OPTIONS,
-  });
-  const outer = outerDome();
-  const shell = await runShellStage(fitCtx, TOOTH, {
-    outerAnatomyMesh: handle(hashMesh(outer), outer),
-    innerSurfaceMesh: handle(inner.meshContentHash!, inner.mesh!),
-    hashMesh,
-  });
-  const sculpt = runSculptStage(fitCtx, TOOTH, {
-    shellMesh: handle(shell.meshContentHash!, shell.mesh!),
-    innerSurfaceMesh: handle(inner.meshContentHash!, inner.mesh!),
-    strokes: GESTURE,
-    hashMesh,
-  });
-  const contacts: ContactResidualInput[] = (morph.params['contacts'] as ContactResidualInput[]).map((c) => ({
-    kind: c.kind,
-    targetPenetrationMm: c.targetPenetrationMm,
-    achievedSignedDistanceMm: c.achievedSignedDistanceMm,
-    contactResidualMm: c.contactResidualMm,
-    regionResidualMm: c.regionResidualMm,
-    clampBound: c.clampBound,
-  }));
-  const qcReport = await runCrownQc({
-    crownSolid: sculpt.mesh!,
-    innerSurfaceMesh: inner.mesh!,
-    outerSurfaceMesh: outer,
-    dieSolid: die(),
-    marginResampledPoints: FIT_MARGIN.resampledPoints,
-    insertionAxis: AXIS,
-    minWallThicknessMm: PROFILE.restorationParams.minWallThicknessMm,
-    occlusalMinWallThicknessMm: PROFILE.occlusalMinWallThicknessMm,
-    connectorAreaTargetMm2: PROFILE.connectorAreaMm2.anteriorMm2,
-    contacts,
-    contactClampWarning: morph.params['contactClampWarning'] as boolean,
-    kernelVersion: KERNEL_VERSION,
-    profileVersion: PROFILE.version,
-    journalHash: 'crown-accept-standin',
-  });
-
+  const crown = await assembleCrown('standin');
   const actual: Record<string, string> = {
-    'crown-standin-innerSurface': inner.meshContentHash!,
-    'crown-standin-anatomyPlacement': anatomy.meshContentHash!,
-    'crown-standin-morphing': morph.meshContentHash!,
-    'crown-standin-shell': shell.meshContentHash!,
-    'crown-standin-freeform': sculpt.meshContentHash!,
-    'crown-standin-qc': hashQcReport(qcReport),
+    'crown-standin-innerSurface': crown.inner.meshContentHash!,
+    'crown-standin-anatomyPlacement': crown.anatomy.meshContentHash!,
+    'crown-standin-morphing': crown.morph.meshContentHash!,
+    'crown-standin-shell': crown.shell.meshContentHash!,
+    'crown-standin-freeform': crown.sculpt.meshContentHash!,
+    'crown-standin-qc': hashQcReport(crown.qcReport),
   };
   for (const [id, expectedHash] of Object.entries(expected)) {
     const actualHash = actual[id]!;

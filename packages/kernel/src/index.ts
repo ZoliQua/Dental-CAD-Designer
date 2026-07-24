@@ -139,8 +139,24 @@
  * (no manifold-3d boundary); same "brand-new op, minor bump, existing goldens
  * byte-identical" precedent as 0.9.0–0.13.0's pure-Float64 ops (regression-
  * pinned by its own analytic/determinism/committed-hash tests; no
- * `kernel-ops.json` pin added). See docs/CHANGELOG-kernel.md's `[0.14.0]` entry. */
-export const KERNEL_VERSION = '0.14.0';
+ * `kernel-ops.json` pin added). See docs/CHANGELOG-kernel.md's `[0.14.0]` entry.
+ * 0.15.0 (Phase 4 Task 12b): morph→shell coupling robustness. NEW op —
+ * `shell/healOuterAnatomy.ts`'s `healOuterAnatomy` (SDF re-mesh at the zero level
+ * set — self-intersections + degenerate slivers the RBF morph leaves are healed
+ * BY CONSTRUCTION; reuses the offset pipeline, `@errorBound` = pitch/2 on the
+ * OUTER only, intaglio untouched). CHANGED op — `shell/shell.ts`'s
+ * `constructShell`: the CLOSED-outer trim is now a robust plane-CLIP a small
+ * `marginTrimOffsetMm` occlusal to the finish line (the old centroid-discard
+ * fragmented on a real morphed outer whose cervical surface wiggles across the
+ * exact margin plane). The kernel-ops.json `constructShell` golden is
+ * BYTE-IDENTICAL (its fixture passes an already-OPEN dome, which skips the trim
+ * entirely — only the closed-outer path changed), so no `kernel-ops.json` diff;
+ * both are regression-pinned by their own analytic/determinism tests. The
+ * coupled crown-acceptance stage-hash golden (test/golden/crown-acceptance.test.ts's
+ * byte-pinned hashes) DID change — deliberately: the standin now feeds the
+ * MORPHED outer through the heal into the shell (the genuine coupled lineage),
+ * replacing the synthetic dome. See docs/CHANGELOG-kernel.md's `[0.15.0]` entry. */
+export const KERNEL_VERSION = '0.15.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -507,6 +523,7 @@ export {
   measureWallThickness,
   autoThickenOuter,
   DEFAULT_WALL_THICKNESS_SAMPLE_SPACING_MM,
+  DEFAULT_MARGIN_TRIM_OFFSET_MM,
   ShellBoundaryError,
   ShellClosedOuterNeedsMarginError,
   ShellNotWatertightError,
@@ -518,6 +535,12 @@ export {
   type AutoThickenParams,
   type AutoThickenResult,
 } from './shell/shell.ts';
+
+export {
+  healOuterAnatomy,
+  type HealOuterAnatomyOptions,
+  type HealOuterAnatomyResult,
+} from './shell/healOuterAnatomy.ts';
 
 export {
   solveDense,

@@ -59,6 +59,75 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.15.0] — Phase 4 Task 12b: morph→shell coupling robustness — `shell/healOuterAnatomy.ts` (`healOuterAnatomy`) + `shell/shell.ts` `constructShell` robust trim
+
+**No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned
+fixture hash is byte-identical to `[0.14.0]`.** The DELIBERATE golden change is
+the byte-pinned crown-acceptance STAGE hashes in
+`test/golden/crown-acceptance.test.ts` (not a `test-fixtures/` file): the standin
+now feeds the MORPHED outer through the heal into the shell — the genuine coupled
+`die→inner→place→morph→HEAL→shell→sculpt→qc` lineage — so the anatomyPlacement,
+morphing, shell, freeform and qc stage hashes all shifted (only innerSurface, the
+same die/intaglio, is byte-identical). That change is guarded by the test's own
+`EXPECTED_KERNEL_VERSION` (bumped here to `0.15.0`) + the manifold-3d-version
+guard.
+
+**Why this task:** Task 12's diagnostic proved a CLEAN, well-formed RBF-morphed
+closed tooth was REJECTED by `constructShell` even though the byte-identical
+un-morphed tooth built — a morph→shell coupling robustness gap independent of
+scan quality, so NO input (clean or real) built a crown through the genuine
+coupled path. 12b closes it.
+
+- **NEW op — `healOuterAnatomy(outerMesh, { pitchMm })`** — a deterministic HEAL
+  of the morphed OUTER anatomy between morph (T6) and shell (T7). It SDF-re-meshes
+  the closed morphed outer at the zero level set (the exact `offset/offsetMesh.ts`
+  pipeline at `distanceMm = 0`): a marching-cubes iso surface is ALWAYS a clean,
+  oriented, watertight 2-manifold with no self-intersections and no degenerate
+  triangles, so the RBF morph's folds/slivers (invisible to halfedge
+  watertightness) are healed BY CONSTRUCTION. Heals only the OUTER; the intaglio
+  (the ≤10 µm fit surface) is a separate mesh, never passed here, stitched to its
+  EXACT margin as before. `@errorBound = pitchMm/2 + eps_f32` (inherited from
+  `offsetMesh` at distance 0): every point of the healed outer — including the
+  occlusal/proximal CONTACT loci — is within this of the morph's surface, so the
+  morph's achieved contacts shift by at most this bound (surfaced to QC). Pure
+  reuse of the offset pipeline ⇒ deterministic (same mesh + pitch + manifold-3d
+  version ⇒ byte-identical); regression-pinned by `shell/healOuterAnatomy.test.ts`
+  (a self-intersecting folded sphere → clean valid solid; determinism; fidelity),
+  no `kernel-ops.json` pin (same additive-op precedent as 0.9.0–0.14.0).
+  HONEST LIMIT: an EXTREME through-and-out fold can defeat the marching-cubes
+  reconstruction itself (NonManifoldInputError) — the heal rescues clean/mild
+  morphs, not arbitrarily-degraded ones (see the real tooth-11 outcome below).
+
+- **CHANGED op — `constructShell`'s CLOSED-outer trim** (`trimClosedOuterToMargin`):
+  replaced the fragile centroid-DISCARD (which assumed a clean cervical ring at
+  the finish-line plane) with a robust plane-CLIP (Sutherland–Hodgman, splitting
+  crossed triangles with sorted-vertex-index-keyed shared split vertices → a
+  2-manifold cut, never a T-junction) at a plane a small `marginTrimOffsetMm`
+  (new optional param, default `DEFAULT_MARGIN_TRIM_OFFSET_MM = 0.05 mm`) OCCLUSAL
+  to the finish line. This was the DOMINANT proximate cause of the coupling gap:
+  a real morphed outer's cervical surface WIGGLES across the exact margin plane
+  (non-anchor cervical vertices move sub-margin), so a cut AT the finish line
+  fragments into many boundary loops → a non-manifold stitch; a cut a hair above
+  lands on the clean axial wall → exactly one cervical rim → a watertight stitch.
+  Only the OUTER is cut, ABOVE the finish line; the intaglio's ≤10 µm marginal
+  seal is untouched (measured: the confirmed margin points stay on the shell
+  surface to ≤10 µm — 0.000 µm on the standin). `@errorBound`: the outer shape
+  within `marginTrimOffsetMm` of the finish line is replaced by the ruled seam
+  band (a marginal collar ≤ 50 µm tall) — above the finish line, outward of the
+  intaglio, never perturbing the fit surface.
+  **The `kernel-ops.json` `constructShell` golden is BYTE-IDENTICAL**: its fixture
+  passes an already-OPEN dome, which skips the trim entirely — only the
+  closed-outer path changed.
+
+Result: the flipped diagnostic (`test/golden/morph-shell-coupling.test.ts`) — a
+clean morph now BUILDS a watertight, single-component crown through
+morph→heal→shell with margin-fit 0.000 µm — and the genuinely-coupled standin
+acceptance (all gates pass on the morph-derived shell) prove the coupled
+end-to-end crown on clean input. The REAL arch-case-01 tooth-11 STILL blocks
+(coupled morph→heal→shell → NonManifoldInputError), now attributable to SCAN
+QUALITY (a degraded ~1.64 mm-seal / clamped ~2.47 mm-contact morph beyond
+healing), not the coupling — the same tracked-pending pattern as Phase 3.
+
 ## [0.14.0] — Phase 4 Task 8: freeform sculpting brushes — `sculpt/sculpt.ts` (`applySculptStroke` / `applySculptGesture` / `computeShellLock`)
 
 **No golden hash changed — every existing `kernel-ops.json`/`*.golden.json`

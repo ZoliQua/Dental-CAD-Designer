@@ -8,6 +8,20 @@
 // cleaned through the manifold-3d wrapper), and — on explicit request —
 // auto-thickens walls below the material minimum.
 //
+// ## The morph→shell HEAL (Task 12b) — deterministic, journaled, folded here
+//
+// When `options.healOuterPitchMm` is set, this stage first SDF-re-meshes the
+// CLOSED morphed outer (`healOuterAnatomy`) into a guaranteed-clean,
+// self-intersection-free closed 2-manifold — removing the folds/near-degenerate
+// slivers the RBF morph (Task 6) leaves behind, which otherwise make the
+// trim+stitch reject as non-manifold. Only the OUTER is healed; the intaglio's
+// ≤10 µm fit is never touched. The heal is deterministic (SDF re-mesh through
+// the same offset pipeline), so it enters the journal chain as part of THIS
+// stage's single `shell.construct` op — its pitch + `@errorBound` (pitch/2, the
+// bound on how far the outer surface, hence the morph's achieved contacts,
+// shift) are journaled in the op params and surfaced. See
+// packages/kernel/src/shell/healOuterAnatomy.ts.
+//
 // ## Clinical params from the profile via the context — asserted loudly
 //
 // The wall minimums (`restorationParams.minWallThicknessMm` axial,
@@ -33,6 +47,7 @@ import type { FdiTooth } from '@dqcad/shared-types';
 import {
   autoThickenOuter,
   constructShell,
+  healOuterAnatomy,
   marginLoopPolyline,
   measureWallThickness,
   type IndexedMesh,
@@ -74,6 +89,16 @@ export interface ShellStageOptions {
   /** Content-hash function for the produced mesh — injected by the caller
    * (hashing lives one layer up; see stageResult.ts's doc). Deterministic. */
   readonly hashMesh: (mesh: IndexedMesh) => string;
+  /** Voxel pitch (mm) for the deterministic morph→shell HEAL (Task 12b). When
+   * set, the CLOSED morphed outer anatomy is SDF-re-meshed (`healOuterAnatomy`)
+   * to a guaranteed-clean, self-intersection-free closed 2-manifold BEFORE
+   * `constructShell` — removing the RBF morph's folds/slivers that otherwise
+   * make the trim+stitch non-manifold. Only the OUTER is healed; the intaglio's
+   * ≤10 µm fit is untouched. The heal carries an `@errorBound` of `pitch/2`
+   * (the OUTER surface, hence the morph's contacts, shift by at most this) which
+   * is journaled + surfaced. Omit to skip the heal (a pre-clean or hand-built
+   * outer). Finer pitch = tighter bound, denser mesh. */
+  readonly healOuterPitchMm?: number;
   /** Run the bounded outward auto-thicken on walls below the profile minimum
    * BEFORE stitching the shell (default `false` — user-invoked, journaled). */
   readonly autoThicken?: boolean;
@@ -119,6 +144,21 @@ export async function runShellStage(
 
   const innerMesh = options.innerSurfaceMesh.mesh;
   let outerMesh = options.outerAnatomyMesh.mesh;
+
+  // --- morph→shell HEAL (Task 12b): SDF re-mesh the closed morphed outer to a
+  // guaranteed-clean, self-intersection-free 2-manifold before shelling. Only
+  // the OUTER is healed; the intaglio (and its ≤10 µm seal) is never touched.
+  let healReport: { pitchMm: number; errorBoundMm: number; triangleCountBefore: number; triangleCountAfter: number } | null = null;
+  if (options.healOuterPitchMm !== undefined) {
+    const healed = await healOuterAnatomy(outerMesh, { pitchMm: options.healOuterPitchMm });
+    outerMesh = healed.mesh;
+    healReport = {
+      pitchMm: healed.pitchMm,
+      errorBoundMm: healed.errorBoundMm,
+      triangleCountBefore: healed.triangleCountBefore,
+      triangleCountAfter: healed.triangleCountAfter,
+    };
+  }
 
   // --- auto-thicken (user-invoked + journaled) ---
   const autoThicken = options.autoThicken === true;
@@ -183,6 +223,17 @@ export async function runShellStage(
     minOcclusalWallThicknessMm: thickness.minOcclusalThicknessMm,
     minAxialWallThicknessMm: thickness.minAxialThicknessMm,
     thicknessSampleSpacingMm: thickness.sampleSpacingMm,
+    healOuterApplied: healReport !== null,
+    ...(healReport
+      ? {
+          healOuterPitchMm: healReport.pitchMm,
+          // The OUTER surface (and thus the morph's achieved contacts) shift by
+          // at most this under the heal re-mesh — surfaced to QC.
+          healOuterErrorBoundMm: healReport.errorBoundMm,
+          healOuterTriangleCountBefore: healReport.triangleCountBefore,
+          healOuterTriangleCountAfter: healReport.triangleCountAfter,
+        }
+      : {}),
     autoThickenApplied: autoThicken,
     ...(autoThickenReport
       ? {

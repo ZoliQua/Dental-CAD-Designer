@@ -36,14 +36,21 @@
 // The outer anatomy from Task 6 (`anatomy/morph.ts`) is a CLOSED watertight
 // solid — it inherits the placed library tooth's topology — so it has no open
 // cervical rim. `constructShell` detects a closed outer (zero boundary loops)
-// and TRIMS it to an open-cervical dome first (`trimClosedOuterToMargin`):
-// discard every triangle on the apical side of the plane through the margin
-// centroid ⟂ the insertion axis, keep the occlusal contour. Only the OUTER is
-// cut; the inner intaglio is stitched to its EXACT margin rim, so the ≤10 µm
-// marginal seal is preserved untouched (the shell's finish-line edge IS the
-// inner's margin rim). This is what lets the real pipeline run closed morphed
-// tooth → watertight crown shell (Task 12). A caller may still pass a hand-
-// built OPEN dome (one rim already) — the trim is skipped.
+// and TRIMS it to an open-cervical dome first (`trimClosedOuterToMargin`): a
+// ROBUST PLANE CLIP (Sutherland–Hodgman, splitting crossed triangles with
+// manifold-consistent shared split vertices) keeping the occlusal half-space of
+// the plane a small offset (`marginTrimOffsetMm`) OCCLUSAL to the finish line ⟂
+// the insertion axis. The offset is what makes the trim robust on a REAL
+// morphed outer whose cervical surface wiggles across the exact margin plane
+// (Task 12b: a cut AT the finish line fragments into many loops; a cut a hair
+// above lands on the clean axial wall → one rim). Only the OUTER is cut; the
+// inner intaglio is stitched to its EXACT margin rim, so the ≤10 µm marginal
+// seal is preserved untouched (the shell's finish-line edge IS the inner's
+// margin rim, and the seam band forms the small marginal collar). This — with
+// the Task-12b `healOuterAnatomy` heal that removes the RBF's self-intersections
+// upstream — is what lets the real pipeline run closed morphed tooth →
+// watertight crown shell. A caller may still pass a hand-built OPEN dome (one
+// rim already) — the trim is skipped.
 //
 // The stitched surface is a closed 2-manifold; it is then passed through the
 // manifold-3d wrapper (`boolean/manifold.ts`'s `cleanupMesh`) — which
@@ -166,6 +173,19 @@ export interface ConstructShellParams {
    * Ignored when the outer already presents a single open cervical rim (a
    * hand-built dome). */
   readonly marginLoop?: readonly Vec3[];
+  /** Height (mm) of the marginal trim band: the CLOSED outer is plane-clipped
+   * at a plane `marginTrimOffsetMm` OCCLUSAL to the finish line (default
+   * {@link DEFAULT_MARGIN_TRIM_OFFSET_MM}). A small positive offset is what
+   * makes the trim ROBUST on a real morphed outer: the cervical surface of an
+   * RBF-morphed (or SDF-re-meshed) tooth wiggles ACROSS the exact margin plane
+   * (some non-anchor cervical vertices move sub-margin), so a cut AT the finish
+   * line fragments into many tiny loops; a cut a hair above it lands on the
+   * clean, monotone axial wall and yields ONE cervical rim. The seam band then
+   * bridges that rim DOWN to the intaglio's EXACT margin rim, so the finish-line
+   * seal is untouched (only the outer is cut, above the margin). See
+   * `trimClosedOuterToMargin`'s `@errorBound`. Ignored for an already-open
+   * outer. */
+  readonly marginTrimOffsetMm?: number;
 }
 
 export interface ConstructShellHooks {
@@ -238,23 +258,59 @@ export class ShellClosedOuterNeedsMarginError extends Error {
   }
 }
 
+/** Default marginal trim band height (mm) — see `ConstructShellParams.
+ * marginTrimOffsetMm`. 0.05 mm (50 µm) is small enough to be a negligible
+ * marginal collar yet reliably clears the cervical wiggle band of a morphed /
+ * SDF-re-meshed outer (empirically robust across the morph + heal + control
+ * closed-outer cases). Algorithmic (a trim resolution), not clinical — kept in
+ * the kernel like {@link DEFAULT_WALL_THICKNESS_SAMPLE_SPACING_MM}. */
+export const DEFAULT_MARGIN_TRIM_OFFSET_MM = 0.05;
+
 /**
  * Trims a CLOSED outer anatomy solid (the morphed library tooth — closed
  * because it inherits the placed library tooth's watertight topology, see
- * anatomy/morph.ts) to an OPEN-CERVICAL dome: keeps every triangle whose
- * centroid is on the OCCLUSAL side of the plane through the margin centroid
- * perpendicular to the insertion axis, discards the sub-margin/apical
- * portion, and compacts to the surviving vertices. The kept surface is the
- * crown's outer contour with a single open cervical rim near the margin;
- * `constructShell` then stitches that rim to the inner intaglio's exact
+ * anatomy/morph.ts) to an OPEN-CERVICAL dome by a ROBUST PLANE CLIP: keeps the
+ * OCCLUSAL half-space of the plane through `marginCentroid + offsetMm · axis`
+ * ⟂ the insertion axis, SPLITTING every triangle the plane crosses (new edge-
+ * intersection vertices are keyed by the sorted endpoint-index pair, so the two
+ * triangles sharing a cut edge get the BIT-IDENTICAL split vertex — the cut is
+ * 2-manifold, never a T-junction) and compacting to the surviving vertices. The
+ * kept surface is the crown's outer contour with a single clean open cervical
+ * rim; `constructShell` then stitches that rim to the inner intaglio's exact
  * margin rim, so the intaglio (and its ≤10 µm marginal seal) is preserved
- * UNTOUCHED — only the outer is cut. Deterministic.
+ * UNTOUCHED — only the outer is cut, ABOVE the finish line. Deterministic.
  *
- * A plane through the margin CENTROID (not a per-point staircase) keeps the
- * cut a single clean loop even for a non-planar margin; the seam annulus then
- * spans the (varying) gap down to the exact margin rim.
+ * ## Why the OFFSET (not a cut at the finish line)
+ *
+ * An RBF-morphed (or SDF-re-meshed) closed tooth does NOT present a clean ring
+ * at the finish-line plane: the morph pins the cervical seal but non-anchor
+ * cervical vertices between the pins move, some sub-margin, so the surface
+ * WIGGLES across the exact margin plane — a cut there fragments into many tiny
+ * boundary loops (measured: 18 loops on the diagnostic morph), which the stitch
+ * cannot seal (the earlier centroid-discard trim hit the SAME wall — a barely-
+ * moved cap flips from discarded to kept). Cutting a hair (`offsetMm`) occlusal
+ * to the finish line lands on the clean, monotone axial wall → exactly ONE
+ * cervical rim → a watertight stitch. The seam band spans the small (`offsetMm`-
+ * tall) gap DOWN to the EXACT margin rim, forming the marginal collar.
+ *
+ * A plane through the margin CENTROID (not a per-point staircase) keeps the cut
+ * a single clean loop even for a non-planar margin.
+ *
+ * @errorBound The outer anatomy WITHIN `offsetMm` of the finish line is not
+ * reproduced from the morphed surface; it is replaced by the ruled seam band
+ * (a straight ribbon from the trimmed rim to the exact margin rim). So the
+ * outer shape is approximated over a marginal band of height ≤ `offsetMm`
+ * (default 50 µm). This is ABOVE the finish line and OUTWARD of the intaglio —
+ * it never perturbs the fit surface or the ≤10 µm seal (measured: the confirmed
+ * margin points stay on the shell surface to ≤10 µm). Surfaced by the shell
+ * stage as the marginal-band trim height.
  */
-function trimClosedOuterToMargin(outer: IndexedMesh, marginLoop: readonly Vec3[], axisUnit: Vec3): IndexedMesh {
+function trimClosedOuterToMargin(
+  outer: IndexedMesh,
+  marginLoop: readonly Vec3[],
+  axisUnit: Vec3,
+  offsetMm: number,
+): IndexedMesh {
   let cx = 0;
   let cy = 0;
   let cz = 0;
@@ -267,28 +323,72 @@ function trimClosedOuterToMargin(outer: IndexedMesh, marginLoop: readonly Vec3[]
   cx /= n;
   cy /= n;
   cz /= n;
-  const side = (x: number, y: number, z: number): number => (x - cx) * axisUnit[0] + (y - cy) * axisUnit[1] + (z - cz) * axisUnit[2];
+  // Plane point = margin centroid pushed OCCLUSALLY by offsetMm along the axis.
+  const px = cx + axisUnit[0] * offsetMm;
+  const py = cy + axisUnit[1] * offsetMm;
+  const pz = cz + axisUnit[2] * offsetMm;
 
   const pos = outer.positions;
   const idx = outer.indices;
+  const vCount = pos.length / 3;
   const triCount = idx.length / 3;
-  const remap = new Int32Array(pos.length / 3).fill(-1);
+
+  // Signed distance of every vertex to the trim plane (occlusal side ≥ 0).
+  const sd = new Float64Array(vCount);
+  for (let v = 0; v < vCount; v++) {
+    sd[v] = (pos[v * 3]! - px) * axisUnit[0] + (pos[v * 3 + 1]! - py) * axisUnit[1] + (pos[v * 3 + 2]! - pz) * axisUnit[2];
+  }
+
   const keptPositions: number[] = [];
+  const keepRemap = new Int32Array(vCount).fill(-1);
+  const keepVertex = (v: number): number => {
+    if (keepRemap[v] === -1) {
+      keepRemap[v] = keptPositions.length / 3;
+      keptPositions.push(pos[v * 3]!, pos[v * 3 + 1]!, pos[v * 3 + 2]!);
+    }
+    return keepRemap[v]!;
+  };
+  // Edge-intersection vertices, keyed by the SORTED endpoint pair so both
+  // triangles sharing a cut edge resolve to the identical new vertex (manifold).
+  const edgeVertex = new Map<number, number>();
+  const splitVertex = (a: number, b: number): number => {
+    const lo = a < b ? a : b;
+    const hi = a < b ? b : a;
+    const key = lo * vCount + hi;
+    const existing = edgeVertex.get(key);
+    if (existing !== undefined) return existing;
+    const da = sd[lo]!;
+    const db = sd[hi]!;
+    const s = da / (da - db); // da, db straddle 0 ⇒ s ∈ (0, 1)
+    const nv = keptPositions.length / 3;
+    keptPositions.push(
+      pos[lo * 3]! + (pos[hi * 3]! - pos[lo * 3]!) * s,
+      pos[lo * 3 + 1]! + (pos[hi * 3 + 1]! - pos[lo * 3 + 1]!) * s,
+      pos[lo * 3 + 2]! + (pos[hi * 3 + 2]! - pos[lo * 3 + 2]!) * s,
+    );
+    edgeVertex.set(key, nv);
+    return nv;
+  };
+
   const keptIndices: number[] = [];
   for (let t = 0; t < triCount; t++) {
-    const a = idx[t * 3]!;
-    const b = idx[t * 3 + 1]!;
-    const c = idx[t * 3 + 2]!;
-    const cxT = (pos[a * 3]! + pos[b * 3]! + pos[c * 3]!) / 3;
-    const cyT = (pos[a * 3 + 1]! + pos[b * 3 + 1]! + pos[c * 3 + 1]!) / 3;
-    const czT = (pos[a * 3 + 2]! + pos[b * 3 + 2]! + pos[c * 3 + 2]!) / 3;
-    if (side(cxT, cyT, czT) <= 0) continue; // apical / sub-margin — discard
-    for (const v of [a, b, c] as const) {
-      if (remap[v] === -1) {
-        remap[v] = keptPositions.length / 3;
-        keptPositions.push(pos[v * 3]!, pos[v * 3 + 1]!, pos[v * 3 + 2]!);
-      }
-      keptIndices.push(remap[v]!);
+    const tri = [idx[t * 3]!, idx[t * 3 + 1]!, idx[t * 3 + 2]!];
+    // Sutherland–Hodgman clip of the triangle against the plane (keep ≥ 0),
+    // preserving the original winding order.
+    const poly: number[] = [];
+    for (let e = 0; e < 3; e++) {
+      const a = tri[e]!;
+      const b = tri[(e + 1) % 3]!;
+      const da = sd[a]!;
+      const db = sd[b]!;
+      if (da >= 0) poly.push(keepVertex(a));
+      if (da >= 0 !== db >= 0) poly.push(splitVertex(a, b));
+    }
+    if (poly.length < 3) continue;
+    // Fan-triangulate the kept (convex, since a triangle ∩ half-space is convex)
+    // polygon.
+    for (let k = 1; k + 1 < poly.length; k++) {
+      keptIndices.push(poly[0]!, poly[k]!, poly[k + 1]!);
     }
   }
   return { positions: new Float64Array(keptPositions), indices: Uint32Array.from(keptIndices) };
@@ -454,7 +554,8 @@ export async function constructShell(
     if (!params.marginLoop || params.marginLoop.length < 3) {
       throw new ShellClosedOuterNeedsMarginError();
     }
-    outerForStitch = trimClosedOuterToMargin(outerMesh, params.marginLoop, axisUnit);
+    const trimOffsetMm = params.marginTrimOffsetMm ?? DEFAULT_MARGIN_TRIM_OFFSET_MM;
+    outerForStitch = trimClosedOuterToMargin(outerMesh, params.marginLoop, axisUnit, trimOffsetMm);
   }
 
   const outerRim = pickRim(outerForStitch, 'outer');
