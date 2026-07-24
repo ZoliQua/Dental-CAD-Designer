@@ -156,6 +156,9 @@ export type { DecimateMeshPayload, DecimateMeshResult };
 import { constructShellJob, type ConstructShellPayload, type ConstructShellResultPayload } from './shell.ts';
 export type { ConstructShellPayload, ConstructShellResultPayload };
 
+import { applySculptStrokeJob, type ApplySculptStrokePayload, type ApplySculptStrokeResult } from './sculpt.ts';
+export type { ApplySculptStrokePayload, ApplySculptStrokeResult };
+
 import {
   placeAnatomyJob,
   UnknownLandmarkError as PlaceAnatomyUnknownLandmarkError,
@@ -386,6 +389,7 @@ export interface JobPayloadMap {
   resolveMorph: ResolveMorphPayload;
   decimateMesh: DecimateMeshPayload;
   constructShell: ConstructShellPayload;
+  applySculptStroke: ApplySculptStrokePayload;
   undercutScan: UndercutScanPayload;
   undercutScanBatch: UndercutScanBatchPayload;
   computeCurvature: ComputeCurvaturePayload;
@@ -431,6 +435,7 @@ export interface JobResultMap {
   resolveMorph: MorphAnatomyResult;
   decimateMesh: DecimateMeshResult;
   constructShell: ConstructShellResultPayload;
+  applySculptStroke: ApplySculptStrokeResult;
   undercutScan: UndercutScanResult;
   undercutScanBatch: UndercutScanBatchResult;
   computeCurvature: ComputeCurvatureResult;
@@ -483,6 +488,7 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   resolveMorph: resolveMorphJob,
   decimateMesh: decimateMeshJob,
   constructShell: constructShellJob,
+  applySculptStroke: applySculptStrokeJob,
   undercutScan: undercutScanJob,
   undercutScanBatch: undercutScanBatchJob,
   computeCurvature: computeCurvatureJob,

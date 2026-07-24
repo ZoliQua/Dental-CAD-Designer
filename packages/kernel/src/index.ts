@@ -125,8 +125,22 @@
  * in the manifoldVersion-guarded `kernel-ops.json` golden (a DELIBERATE golden
  * change — the shell op is added to the snapshot this version); the two
  * pure-Float64 ops are regression-pinned by their own analytic/determinism
- * tests. See docs/CHANGELOG-kernel.md's `[0.13.0]` entry. */
-export const KERNEL_VERSION = '0.13.0';
+ * tests. See docs/CHANGELOG-kernel.md's `[0.13.0]` entry.
+ * 0.14.0 (Phase 4 Task 8): NEW ops — the `sculpt/` module
+ * (`applySculptStroke`/`applySculptGesture`: deterministic add/remove/smooth
+ * freeform brushes — exact-Float64 radial-falloff `(1−t²)²` vertex displacement
+ * along the pre-stroke area-weighted vertex normal (add/remove) or toward the
+ * one-ring centroid (smooth), applied to the OUTER surface only; a fold guard
+ * clamps by deterministic bisection any displacement that would flip/degenerate
+ * an affected triangle, so a stroke never tears the watertight shell; and
+ * `computeShellLock`: geometric+topological identification of the LOCKED fit
+ * surface — inner intaglio (distance-to-inner) + seam outer cervical rim
+ * (one-ring growth) — so the ≤10 µm margin fit survives sculpting). Pure Float64
+ * (no manifold-3d boundary); same "brand-new op, minor bump, existing goldens
+ * byte-identical" precedent as 0.9.0–0.13.0's pure-Float64 ops (regression-
+ * pinned by its own analytic/determinism/committed-hash tests; no
+ * `kernel-ops.json` pin added). See docs/CHANGELOG-kernel.md's `[0.14.0]` entry. */
+export const KERNEL_VERSION = '0.14.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -607,3 +621,22 @@ export {
   type BlockoutPreviewOptions,
   type BlockoutPreviewResult,
 } from './blockout/index.ts';
+
+export {
+  applySculptStroke,
+  applySculptGesture,
+  computeShellLock,
+  SculptStrokeParamError,
+  SculptNotWatertightError,
+  SCULPT_LOCK_INNER_EPSILON_MM,
+  SCULPT_LOCK_SEAM_RING_GROWTH,
+  SCULPT_MIN_AREA_FRACTION,
+  SCULPT_CLAMP_BISECTION_ITERS,
+  type SculptBrushType,
+  type SculptStroke,
+  type SculptStrokeOptions,
+  type SculptStrokeResult,
+  type SculptGestureResult,
+  type ShellLockOptions,
+  type ShellLockResult,
+} from './sculpt/index.ts';

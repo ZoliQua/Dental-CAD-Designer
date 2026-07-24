@@ -59,6 +59,70 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.14.0] — Phase 4 Task 8: freeform sculpting brushes — `sculpt/sculpt.ts` (`applySculptStroke` / `applySculptGesture` / `computeShellLock`)
+
+**No golden hash changed — every existing `kernel-ops.json`/`*.golden.json`
+hash is byte-identical to `[0.13.0]`.** One new kernel module, `sculpt/sculpt.ts`,
+adding deterministic add/remove/smooth sculpting brushes for the crown shell
+(Task 7), with the FIT SURFACE (inner intaglio + margin + margin-band seam)
+LOCKED by default so Task 4's ≤10 µm marginal fit survives sculpting. The ops are
+pure Float64 (no manifold-3d boundary), so — like 0.9.0–0.12.0's additive ops —
+they add NO `kernel-ops.json` pin; they are regression-pinned by their own
+determinism / committed-hash / analytic tests (`sculpt/sculpt.test.ts`). The
+minor bump follows the standing "brand-new op ⇒ minor bump + changelog"
+discipline even though no pinned hash moved.
+
+- **`applySculptStroke`** — applies ONE stroke `{center, radiusMm, strength,
+  brush}` to a mesh, displacing only NON-locked (outer) vertices. The RADIAL
+  FALLOFF is the C1-smooth bump `falloff(t) = (1 − t²)²` for `t = d/radius ∈
+  [0,1]` (value 1/slope 0 at the centre, value 0/slope 0 at the rim — no crease).
+  With `n_v` the pre-stroke area-weighted UNIT vertex normal (snapshotted ONCE,
+  so all displacements in a stroke are computed from the same state and are
+  order-independent): **add** displaces `+n_v·strength·falloff`, **remove**
+  `−n_v·strength·falloff`, **smooth** moves each vertex toward its one-ring
+  centroid by `L_v·clamp01(strength)·falloff` (`L_v` = umbrella/Laplacian from
+  the pre-stroke snapshot — REDUCES local curvature, Taubin λ-step). `strength`
+  is the peak displacement (mm) at the centre for add/remove, a peak blend
+  fraction [0,1] for smooth.
+- **Fold guard / safe-displacement bound** — a brush only displaces existing
+  vertices (no re-triangulation), so the shell's TOPOLOGICAL watertightness
+  (manifold-edge / boundary-edge / component structure) is preserved BY
+  CONSTRUCTION and re-validated with `analyzeMesh`. The tractable geometric
+  failure — a triangle incident to a moved vertex folding to a sliver / flipping
+  — is guarded: over the affected triangles, the largest global scale `s ∈ (0,1]`
+  at which every affected triangle keeps ≥ `minAreaFraction` (default 0.1) of its
+  original area projected on its original normal is found by deterministic
+  bisection; the stroke is applied at that `s` (`s = 1` unclamped, `s < 1`
+  reported as clamped). This guards LOCAL folds exactly; it does NOT prove the
+  absence of a GLOBAL self-intersection between two distant moving patches (out
+  of reach of a bounded local-normal displacement on a smooth shell — surfaced
+  honestly, not claimed away). Displacement along the vertex normal on a convex
+  surface only inflates (safe); the guard binds on tangential (smooth) and
+  through-surface (strong remove) motion.
+- **`computeShellLock`** — identifies the LOCKED fit surface on the ACTUAL shell
+  (robust to the manifold-3d cleanup that reorders the shell's vertices, so the
+  `constructShell` triangle-range breakdown is unusable post-cleanup): base lock
+  = every shell vertex within `lockInnerEpsilonMm` (default 20 µm — far below the
+  0.5 mm min wall, far above the < ~1 µm Float32 cleanup round-trip) of the inner
+  intaglio surface (the whole intaglio incl. its exact margin rim); plus an
+  optional margin-polyline band; then `seamRingGrowth` (default 2) topological
+  one-ring growth steps — the outer cervical rim is stitched DIRECTLY to the
+  inner margin rim by the seam, so growth reaches it, guaranteeing every seam
+  triangle has all-locked corners and the seam ribbon never moves. Result: the
+  ≤10 µm margin fit is preserved because the inner/margin/seam vertices are
+  byte-identical before/after any stroke (proven in the tests: margin fit stays
+  0.00 µm after a stroke centred on the margin).
+- **`applySculptGesture`** — the coalesced, journaled, replayable unit: applies
+  an ordered stroke sequence, each to the previous result, with the SAME lock
+  frozen throughout (vertex topology is constant so the mask stays valid), and
+  re-validates watertight ONCE at the end. Same `(mesh, strokes, locked,
+  options)` ⇒ byte-identical mesh, so replaying the journaled strokes reproduces
+  the sculpt bit-for-bit (CLAUDE.md invariant 2). Overlapping strokes apply in
+  journaled order (order-dependent, deterministically). Measured < 3 ms/stroke on
+  a ~3.3 k-vertex shell (< 50 ms interactive budget). Consumed by
+  `cad-pipeline`'s freeform stage (`stages/sculpt.ts`, journaled as
+  `freeform.sculpt`) and the `applySculptStroke` worker job.
+
 ## [0.13.0] — Phase 4 Task 7: shell construction — `shell/shell.ts` (`constructShell` + `measureWallThickness` + `autoThickenOuter`)
 
 **One NEW golden pin added (`constructShell`); every OTHER existing golden hash

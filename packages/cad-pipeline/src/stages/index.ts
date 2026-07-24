@@ -37,3 +37,10 @@ export {
   MissingClinicalParamError as ShellMissingClinicalParamError,
   type ShellStageOptions,
 } from './shell.ts';
+
+export {
+  runSculptStage,
+  MissingMarginLoopError as SculptMissingMarginLoopError,
+  EmptySculptGestureError,
+  type SculptStageOptions,
+} from './sculpt.ts';
