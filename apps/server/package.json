@@ -12,6 +12,7 @@
     "test": "vitest run --config ../../vitest.config.ts --project server"
   },
   "dependencies": {
+    "@dqcad/cad-pipeline": "*",
     "@dqcad/kernel": "*",
     "@dqcad/shared-types": "*",
     "@dqcad/tooth-library": "*",

@@ -6,14 +6,29 @@ import { PrismaClient } from '@prisma/client';
 import type { Case } from '@prisma/client';
 import Fastify from 'fastify';
 import type { FastifyInstance } from 'fastify';
-import { KERNEL_VERSION } from '@dqcad/kernel';
-import type { CaseDocument } from '@dqcad/shared-types';
+import { KERNEL_VERSION, type IndexedMesh, type Vec3 } from '@dqcad/kernel';
+import type { CaseDocument, QcGateResult, QcReport } from '@dqcad/shared-types';
+import {
+  runCrownQc,
+  type ConnectorCrossSection,
+  type ContactResidualInput,
+  type RunCrownQcInput,
+} from '@dqcad/cad-pipeline';
+import {
+  loadToothAssetFromBytes,
+  ToothAssetMetadataChecksumError,
+  ToothAssetMetadataValidationError,
+  ToothMeshChecksumError,
+  ToothMeshNotWatertightError,
+} from '@dqcad/tooth-library';
 import { createEmptyCaseDocument } from './case-document.js';
 import { MeshStorageIntegrityError, readMeshBytes, statMeshBytes, storeMeshBytes } from './mesh-storage.js';
 import {
   listToothLibraryAssets,
   readLatestToothLibraryMetadata,
   seedStarterToothLibrary,
+  seedToothLibraryAsset,
+  ToothLibraryStorageIntegrityError,
 } from './tooth-library-storage.js';
 import {
   caseIdParamsSchema,
@@ -30,6 +45,10 @@ import {
   putCaseResponseSchema,
   toothFdiParamsSchema,
   toothLibraryAssetResponseSchema,
+  uploadToothLibraryBodySchema,
+  uploadToothLibraryResponseSchema,
+  validateQcBodySchema,
+  validateQcResponseSchema,
 } from './schemas.js';
 
 // Vite dev server origin — fixed by PLAN.md's global constraints (port 5173).
@@ -84,6 +103,98 @@ function toCaseSummary(row: Case): CaseSummary {
     updatedAt: row.updatedAt.toISOString(),
     schemaVersion: row.schemaVersion,
   };
+}
+
+// --- Task 11: validate-qc request body typing + context reconstruction ---
+
+interface MeshDataInput {
+  positions: number[];
+  indices: number[];
+}
+
+interface ValidateQcBody {
+  crownSolid: MeshDataInput;
+  innerSurfaceMesh: MeshDataInput;
+  outerSurfaceMesh: MeshDataInput;
+  dieSolid: MeshDataInput;
+  marginResampledPoints: number[][];
+  insertionAxis: number[];
+  minWallThicknessMm: number;
+  occlusalMinWallThicknessMm: number;
+  connectorAreaTargetMm2: number;
+  contacts: ContactResidualInput[];
+  contactClampWarning: boolean;
+  marginExclusionMm?: number;
+  marginFitThresholdMm?: number;
+  seatingInterferenceVolumeToleranceMm3?: number;
+  contactToleranceMm?: number;
+  connectors?: ConnectorCrossSection[];
+  kernelVersion: string;
+  profileVersion: string;
+  journalHash: string;
+  acknowledgedGates?: string[];
+  /** OPTIONAL cross-check — see the route + schemas.ts. Never trusted. */
+  clientReport?: QcReport;
+}
+
+interface UploadToothLibraryBody {
+  metadata: unknown;
+  meshBase64: string;
+}
+
+interface QcReportDifference {
+  path: string;
+  server: unknown;
+  client: unknown;
+}
+
+/** Rebuilds a kernel `IndexedMesh` (Float64 positions, Uint32 indices — the
+ * Float64 invariant holds; no Float32 anywhere) from the JSON number arrays.
+ * JSON round-trips a Float64 exactly, so this is bit-identical to the mesh the
+ * client hashed/measured. */
+function toIndexedMesh(data: MeshDataInput): IndexedMesh {
+  return { positions: new Float64Array(data.positions), indices: Uint32Array.from(data.indices) };
+}
+
+function toVec3(a: readonly number[]): Vec3 {
+  const [x, y, z] = a;
+  if (x === undefined || y === undefined || z === undefined) {
+    // Unreachable — the JSON schema pins these arrays to exactly 3 numbers.
+    throw new Error('expected a 3-component vector');
+  }
+  return [x, y, z];
+}
+
+/** Independent (never client-trusting) diff of the server-computed report
+ * against an optional client-supplied one — every scalar that differs becomes
+ * one `{ path, server, client }` diagnostic entry. Exact equality (`!==`), so a
+ * single-ULP float divergence surfaces rather than being smoothed over. */
+function diffQcReports(server: QcReport, client: QcReport): QcReportDifference[] {
+  const diffs: QcReportDifference[] = [];
+  const scalar = (path: string, s: unknown, c: unknown): void => {
+    if (s !== c) diffs.push({ path, server: s, client: c });
+  };
+  scalar('passed', server.passed, client.passed);
+  scalar('kernelVersion', server.kernelVersion, client.kernelVersion);
+  scalar('profileVersion', server.profileVersion, client.profileVersion);
+  scalar('journalHash', server.journalHash, client.journalHash);
+  scalar('gates.length', server.gates.length, client.gates.length);
+  const n = Math.min(server.gates.length, client.gates.length);
+  const fields: readonly (keyof QcGateResult)[] = [
+    'gate',
+    'passed',
+    'acknowledged',
+    'value',
+    'threshold',
+    'unit',
+    'message',
+  ];
+  for (let i = 0; i < n; i++) {
+    const s = server.gates[i]!;
+    const c = client.gates[i]!;
+    for (const f of fields) scalar(`gates[${i}].${f}`, s[f], c[f]);
+  }
+  return diffs;
 }
 
 export interface BuildAppOptions {
@@ -342,6 +453,113 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
         throw new Error(`no tooth-library asset stored for FDI ${fdi}`);
       }
       return metadata;
+    },
+  );
+
+  // Phase 4 Task 11: admin upload of a tooth-library asset — content-addressed
+  // (mesh bytes → the P1 store), versioned + write-once (T2's
+  // `seedToothLibraryAsset`), and schema/checksum/watertight validated
+  // server-side by REUSING `@dqcad/tooth-library`'s `loadToothAssetFromBytes`
+  // (the exact validation the loader does — invariant 4/5's "corrupt → loud
+  // typed error"). A tampered checksum / non-watertight mesh / malformed
+  // metadata is a loud 4xx; a conflicting (same fdi+version, different bytes)
+  // asset is a 409 integrity error — an asset version is immutable.
+  app.post<{ Body: UploadToothLibraryBody }>(
+    '/api/tooth-library',
+    { schema: { body: uploadToothLibraryBodySchema, response: uploadToothLibraryResponseSchema } },
+    async (request, reply) => {
+      // base64 → bytes. `Buffer.from(_, 'base64')` never throws (it drops
+      // invalid chars), so a garbled payload simply fails the checksum gate
+      // below — still a loud rejection, never a silent accept.
+      const meshBytes = new Uint8Array(Buffer.from(request.body.meshBase64, 'base64'));
+
+      let metadata;
+      try {
+        // Independent validation: recomputes the mesh checksum from the bytes,
+        // re-parses + welds the mesh and asserts watertight, and re-verifies
+        // the metadata checksum — never trusts the claimed checksums.
+        ({ metadata } = loadToothAssetFromBytes(request.body.metadata, meshBytes));
+      } catch (error) {
+        if (
+          error instanceof ToothMeshChecksumError ||
+          error instanceof ToothMeshNotWatertightError ||
+          error instanceof ToothAssetMetadataValidationError ||
+          error instanceof ToothAssetMetadataChecksumError
+        ) {
+          reply.code(400);
+          throw error;
+        }
+        throw error;
+      }
+
+      try {
+        await seedToothLibraryAsset(toothLibraryDataDir, meshDataDir, metadata, meshBytes);
+      } catch (error) {
+        if (error instanceof ToothLibraryStorageIntegrityError) {
+          reply.code(409);
+          throw error;
+        }
+        throw error;
+      }
+
+      reply.code(201);
+      return metadata;
+    },
+  );
+
+  // Phase 4 Task 11: THE dual-validation route (CLAUDE.md invariant 6). Re-runs
+  // `runCrownQc` INDEPENDENTLY in the Node server from the crown mesh set + the
+  // exact QC context the client used, and returns the server-side `QcReport` —
+  // bit-identical to the client's (deterministic, DOM/Three-free gates). The
+  // server NEVER trusts a client-sent report: `clientReport`, if present, is a
+  // cross-check only — a disagreement is a 409 hard error with a per-field
+  // diagnostic bundle (the "client/server QC mismatch = hard error" convention).
+  app.post<{ Params: { id: string }; Body: ValidateQcBody }>(
+    '/api/restorations/:id/validate-qc',
+    { schema: { params: caseIdParamsSchema, body: validateQcBodySchema, response: validateQcResponseSchema } },
+    async (request, reply) => {
+      const b = request.body;
+      const input: RunCrownQcInput = {
+        crownSolid: toIndexedMesh(b.crownSolid),
+        innerSurfaceMesh: toIndexedMesh(b.innerSurfaceMesh),
+        outerSurfaceMesh: toIndexedMesh(b.outerSurfaceMesh),
+        dieSolid: toIndexedMesh(b.dieSolid),
+        marginResampledPoints: b.marginResampledPoints.map(toVec3),
+        insertionAxis: toVec3(b.insertionAxis),
+        minWallThicknessMm: b.minWallThicknessMm,
+        occlusalMinWallThicknessMm: b.occlusalMinWallThicknessMm,
+        connectorAreaTargetMm2: b.connectorAreaTargetMm2,
+        contacts: b.contacts,
+        contactClampWarning: b.contactClampWarning,
+        marginExclusionMm: b.marginExclusionMm,
+        marginFitThresholdMm: b.marginFitThresholdMm,
+        seatingInterferenceVolumeToleranceMm3: b.seatingInterferenceVolumeToleranceMm3,
+        contactToleranceMm: b.contactToleranceMm,
+        connectors: b.connectors,
+        kernelVersion: b.kernelVersion,
+        profileVersion: b.profileVersion,
+        journalHash: b.journalHash,
+        acknowledgedGates: b.acknowledgedGates,
+      };
+
+      // Independent recompute — the source of truth (invariant 6).
+      const report = await runCrownQc(input);
+
+      if (b.clientReport) {
+        const differences = diffQcReports(report, b.clientReport);
+        if (differences.length > 0) {
+          reply.code(409);
+          return {
+            error: 'qc-client-server-mismatch' as const,
+            message:
+              `client/server QcReport disagreement on ${differences.length} field(s) — ` +
+              'the server re-validation is authoritative; the export is blocked (invariant 6).',
+            differences,
+          };
+        }
+      }
+
+      return report;
     },
   );
 
