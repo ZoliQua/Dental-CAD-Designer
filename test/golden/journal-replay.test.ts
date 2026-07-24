@@ -89,4 +89,18 @@ describe('journal replay — scripted case journals reproduce every output hash'
     // pins down the SHAPE (op name, seed/proposalDefaults params) the
     // brief asks for, not a second redundant hash check.
   });
+
+  // Phase 4 Task 12: the crown MORPHING stage enters this always-on harness
+  // (the full 6-stage crown chain — inner/anatomy/morph/shell/freeform/qc — is
+  // recorded, replayed + byte-pinned in test/golden/crown-acceptance.test.ts).
+  it('crown-morph fixture: a synthetic morph journals a replayable "morphing.morph" crown stage op', () => {
+    const crownJournal = journals.find((j) => j.fixtureLabel === 'crown-morph-synthetic')!;
+    expect(crownJournal).toBeDefined();
+    expect(crownJournal.operations.map((op) => op.name)).toEqual(['morphing.morph']);
+    const op = crownJournal.operations[0]!;
+    expect(op.params).toMatchObject({ tooth: 11, rbfKernel: 'biharmonic-r' });
+    expect(op.outputHashes).toHaveLength(1);
+    expect(op.outputHashes[0]).toMatch(/^[0-9a-f]{64}$/);
+    // Its replay proof is covered by the generic it.each over recordAllFixtures().
+  });
 });
