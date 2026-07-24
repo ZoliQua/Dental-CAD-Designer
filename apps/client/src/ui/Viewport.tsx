@@ -4,6 +4,7 @@
 import { useEffect, useRef } from 'react';
 import { alignmentEngine } from '../engine/alignment';
 import { axisEngine } from '../engine/axis';
+import { crownDesignEngine } from '../engine/crownDesign';
 import { caseStore } from '../engine/caseStore';
 import { curvatureEngine } from '../engine/curvature';
 import { heatmapEngine } from '../engine/heatmap';
@@ -20,6 +21,7 @@ import { useAlignmentStore } from '../state/alignmentStore';
 import { useAppStore } from '../state/appStore';
 import { useAxisStore } from '../state/axisStore';
 import { useCaseStore } from '../state/caseStore';
+import { useCrownStore } from '../state/crownStore';
 import { useCurvatureStore } from '../state/curvatureStore';
 import { useHeatmapStore } from '../state/heatmapStore';
 import { useLodStore } from '../state/lodStore';
@@ -47,7 +49,13 @@ import { ViewerToolbar } from './ViewerToolbar';
  * panel is open — the live undercut heatmap only exists to be watched
  * during a manual axis adjustment). */
 function buildRenderNodes(): RenderNode[] {
-  const nodes = caseStore.getRenderNodes();
+  const scanNodes = caseStore.getRenderNodes();
+  // Phase 4 Task 10: the crown-design controller contributes its own
+  // Float32-recentred design render nodes (the in-progress crown + optional
+  // inner-surface ghost, already carrying any active contact/thickness
+  // heatmap colours) — appended to the scan nodes, never polluting the scene
+  // tree/case document. Empty unless a crown-design session is active.
+  const nodes = [...scanNodes, ...crownDesignEngine.getDesignRenderNodes()];
   const heatmapOverlay = heatmapEngine.getActiveOverlay();
   const curvatureOverlay = curvatureEngine.getActiveOverlay();
   const axisHeatmapOverlay = axisEngine.getHeatmapOverlay();
@@ -191,6 +199,7 @@ export function Viewport() {
   const axisDirection = useAxisStore((state) => state.direction);
   const axisHeatmapVisible = useAxisStore((state) => state.heatmapVisible);
   const axisHeatmapGeneration = useAxisStore((state) => state.heatmapGeneration);
+  const crownDesignGeneration = useCrownStore((state) => state.designGeneration);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -246,6 +255,7 @@ export function Viewport() {
     lodBuildStatus,
     axisHeatmapVisible,
     axisHeatmapGeneration,
+    crownDesignGeneration,
   ]);
 
   useEffect(() => {

@@ -19,6 +19,21 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   plugins: [react()],
+  // Phase 4 Task 10: let the browser lane serve manifold-3d's WASM so the
+  // crown-design critical-path test can run the manifold-dependent shell + QC
+  // jobs in a real Web Worker (the first browser-lane test to do so). Emscripten
+  // resolves `new URL('manifold.wasm', import.meta.url)` relative to the served
+  // glue module, so manifold-3d must be excluded from dep pre-bundling (which
+  // would rewrite that URL) and the workspace `.wasm` must be fs-servable.
+  // `optimizeDeps.include` pre-bundles the deps Vite would otherwise discover
+  // AFTER excluding manifold-3d (avoiding a mid-run re-optimize + reload that
+  // the docs warn can flake tests).
+  optimizeDeps: {
+    exclude: ['manifold-3d'],
+    include: ['react-dom/client', 'three/examples/jsm/controls/OrbitControls.js'],
+  },
+  assetsInclude: ['**/*.wasm'],
+  server: { fs: { allow: ['../..'] } },
   test: {
     name: 'client-dom',
     include: ['src/**/*.dom.test.tsx'],
