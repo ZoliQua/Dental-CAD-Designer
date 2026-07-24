@@ -500,6 +500,8 @@
     "qcGatePass": "bestanden",
     "qcGateFail": "nicht bestanden",
     "qcAcknowledge": "Bestätigen",
-    "qcAcknowledged": "bestätigt"
+    "qcAcknowledged": "bestätigt",
+    "axisPlaceholderWarning": "Einschubachse nicht bestätigt — Design gegen die Standardrichtung [0,0,1]. Bestätigen Sie die Achse im Einschubachsen-Werkzeug für korrekte Unterschnitt-Behandlung.",
+    "qcStale": "QC ist veraltet — das Design wurde nach diesem Bericht geändert. QC erneut ausführen."
   }
 }

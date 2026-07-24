@@ -8,7 +8,9 @@ import type { MarginLine, QcReport, Restoration, RestorationParams, Vec3 } from 
 import {
   CROWN_STAGES,
   canRunStage,
+  downstreamInvalidations,
   firstMarginLoop,
+  isQcStale,
   isStageComplete,
   nextRunnableStage,
   stageGate,
@@ -181,5 +183,38 @@ describe('workflowGates + nextRunnableStage', () => {
 
   it('is null when fully blocked (no margin)', () => {
     expect(nextRunnableStage(restoration({ marginLines: {} }))).toBeNull();
+  });
+});
+
+describe('downstreamInvalidations (invalidation cascade)', () => {
+  it('an upstream commit invalidates every later stage hash + qc', () => {
+    expect(downstreamInvalidations('innerSurface')).toEqual({ stageFields: ['anatomyPlacement', 'morphState', 'finalMesh'], clearQc: true });
+    expect(downstreamInvalidations('anatomy')).toEqual({ stageFields: ['morphState', 'finalMesh'], clearQc: true });
+    expect(downstreamInvalidations('morph')).toEqual({ stageFields: ['finalMesh'], clearQc: true });
+  });
+
+  it('shell + freeform (re)write finalMesh themselves → only qc is invalidated', () => {
+    expect(downstreamInvalidations('shell')).toEqual({ stageFields: [], clearQc: true });
+    expect(downstreamInvalidations('freeform')).toEqual({ stageFields: [], clearQc: true });
+  });
+
+  it('qc invalidates nothing downstream', () => {
+    expect(downstreamInvalidations('qc')).toEqual({ stageFields: [], clearQc: false });
+  });
+});
+
+describe('isQcStale', () => {
+  it('is false when there is no report', () => {
+    expect(isQcStale(restoration())).toBe(false);
+  });
+
+  it('is false when qc.journalHash matches the current finalMesh', () => {
+    const r = restoration({ stages: { finalMesh: 'h9' }, qc: { ...EMPTY_QC, journalHash: 'h9' } });
+    expect(isQcStale(r)).toBe(false);
+  });
+
+  it('is true when the design changed under the report (hash mismatch / absent finalMesh)', () => {
+    expect(isQcStale(restoration({ stages: { finalMesh: 'hNEW' }, qc: { ...EMPTY_QC, journalHash: 'hOLD' } }))).toBe(true);
+    expect(isQcStale(restoration({ stages: {}, qc: { ...EMPTY_QC, journalHash: 'hOLD' } }))).toBe(true);
   });
 });

@@ -500,6 +500,8 @@
     "qcGatePass": "megfelelt",
     "qcGateFail": "nem felelt meg",
     "qcAcknowledge": "Tudomásul veszem",
-    "qcAcknowledged": "tudomásul véve"
+    "qcAcknowledged": "tudomásul véve",
+    "axisPlaceholderWarning": "A behelyezési tengely nincs megerősítve — a tervezés az alapértelmezett [0,0,1] irányhoz készül. Erősítse meg a tengelyt a behelyezési-tengely eszközben a helyes alámenet-kezeléshez.",
+    "qcStale": "A QC elavult — a terv módosult a jelentés óta. Futtassa újra a QC-t."
   }
 }

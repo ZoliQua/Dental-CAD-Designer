@@ -126,13 +126,18 @@ export function isStageComplete(stage: CrownStage, restoration: Restoration): bo
  * enforcement. Reasons are reported for the FIRST unmet prerequisite, in the
  * order the pipeline itself would need them.
  *
- * Note on the insertion axis: it is NOT gated here. A `Restoration` ALWAYS
- * carries a structurally valid `insertionAxis` (the fresh-restoration
- * placeholder `[0, 0, 1]` is a documented default, not a detectable "missing"
- * sentinel — see engine/restorations.ts's `PLACEHOLDER_INSERTION_AXIS` doc),
- * so there is no honest "axis missing" state to block on; the inner-surface
- * job consumes whatever axis is set. Only the two structurally detectable
- * external prerequisites (a target scan + a real margin loop) gate stage 1. */
+ * Note on the insertion axis: it is deliberately NOT a HARD gate here, even
+ * though a placeholder-vs-confirmed axis IS detectable (engine/restorations.ts
+ * exports `insertionAxisIsPlaceholder`, the same check its delete-confirm
+ * dialog uses). The reason is clinical judgement, not undetectability: the
+ * fresh-restoration placeholder `[0, 0, 1]` is a structurally valid direction
+ * the whole pipeline CAN run against, and hard-blocking would stop a
+ * legitimate straight-insertion case. Instead, running crown design on an
+ * unconfirmed (placeholder) axis is surfaced as a non-blocking WARNING in the
+ * UI (ui/CrownDesignPanel.tsx, via `insertionAxisIsPlaceholder`) so the
+ * clinician always sees it — insertion axis/undercuts are core clinical params
+ * (CLAUDE.md). Only the two structurally required external prerequisites (a
+ * target scan + a real margin loop) hard-gate stage 1. */
 export function stageGate(stage: CrownStage, restoration: Restoration): StageGate {
   const complete = isStageComplete(stage, restoration);
   const reason = firstUnmetPrerequisite(stage, restoration);
@@ -170,6 +175,51 @@ export function canRunStage(stage: CrownStage, restoration: Restoration): boolea
  * UI renders (one sub-panel per gate, each enabled/blocked per `allowed`). */
 export function workflowGates(restoration: Restoration): StageGate[] {
   return CROWN_STAGES.map((stage) => stageGate(stage, restoration));
+}
+
+/**
+ * The downstream outputs that committing `stage` INVALIDATES — because it
+ * changed geometry that later stages and QC were computed against. Committing
+ * an upstream stage must clear every later stage's content hash AND the
+ * `QcReport`, so a stale "PASSED" report can never keep displaying for
+ * geometry that no longer exists (the data-integrity rule the controller
+ * enforces in `commitStage`; pure + unit-testable here).
+ *
+ * - inner surface → anatomy + morph + finalMesh hashes, and qc
+ * - anatomy       → morph + finalMesh hashes, and qc
+ * - morph         → finalMesh hash, and qc
+ * - shell         → qc (it (re)writes finalMesh itself)
+ * - freeform      → qc (it re-writes finalMesh itself)
+ * - qc            → nothing downstream
+ */
+export function downstreamInvalidations(stage: CrownStage): {
+  stageFields: Array<keyof Restoration['stages']>;
+  clearQc: boolean;
+} {
+  switch (stage) {
+    case 'innerSurface':
+      return { stageFields: ['anatomyPlacement', 'morphState', 'finalMesh'], clearQc: true };
+    case 'anatomy':
+      return { stageFields: ['morphState', 'finalMesh'], clearQc: true };
+    case 'morph':
+      return { stageFields: ['finalMesh'], clearQc: true };
+    case 'shell':
+    case 'freeform':
+      return { stageFields: [], clearQc: true };
+    case 'qc':
+      return { stageFields: [], clearQc: false };
+  }
+}
+
+/** Whether a stored `QcReport` still corresponds to the CURRENT shell geometry:
+ * `runQc` stamps `qc.journalHash` with the `finalMesh` content hash it ran
+ * against, so a mismatch (or a now-absent `finalMesh`) means the report is
+ * STALE — the geometry changed under it. The UI renders this as an explicit
+ * "re-run QC" state rather than a bare pass/fail (defense-in-depth alongside
+ * the invalidation cascade, which normally nulls `qc` outright on any edit). */
+export function isQcStale(restoration: Restoration): boolean {
+  if (restoration.qc === null) return false;
+  return restoration.qc.journalHash !== restoration.stages.finalMesh;
 }
 
 /** The first stage that is runnable AND not yet complete — the "do this next"

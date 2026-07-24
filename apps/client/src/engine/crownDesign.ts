@@ -47,6 +47,7 @@ import { caseStore } from './caseStore';
 import {
   type CrownStage,
   canRunStage,
+  downstreamInvalidations,
   firstMarginLoop,
   nextRunnableStage,
   workflowGates,
@@ -294,8 +295,14 @@ class CrownDesignEngine {
   }
 
   /** Commits a completed stage: writes its output hash into `Restoration.
-   * stages[field]` and journals ONE coalesced Operation. */
+   * stages[field]`, journals ONE coalesced Operation, and applies the
+   * INVALIDATION CASCADE (engine/crownWorkflow.ts's `downstreamInvalidations`)
+   * — clearing every downstream stage hash + the `QcReport` that this edit
+   * invalidated, so a stale "PASSED" report (or an orphaned finalMesh hash)
+   * can never survive a re-run of an earlier stage. Also drops the now-invalid
+   * in-memory session geometry + store summaries. */
   private commitStage(
+    stage: CrownStage,
     field: keyof Restoration['stages'],
     contentHash: string,
     opName: string,
@@ -303,9 +310,15 @@ class CrownDesignEngine {
     inputHashes: readonly string[],
   ): void {
     const restoration = this.restoration();
+    const invalidation = downstreamInvalidations(stage);
+    const stages: Restoration['stages'] = { ...restoration.stages, [field]: contentHash };
+    for (const invalidField of invalidation.stageFields) {
+      delete stages[invalidField];
+    }
     const next: Restoration = {
       ...restoration,
-      stages: { ...restoration.stages, [field]: contentHash },
+      stages,
+      qc: invalidation.clearQc ? null : restoration.qc,
     };
     const operation: Operation = {
       id: crypto.randomUUID(),
@@ -317,6 +330,43 @@ class CrownDesignEngine {
       timestamp: nowIso(),
     };
     caseStore.updateRestoration(next, operation);
+    this.invalidateDownstream(invalidation);
+  }
+
+  /** Drops the in-memory session geometry + store summaries that a commit's
+   * `downstreamInvalidations` just cleared from the document — so
+   * `getDesignRenderNodes`, the gate snapshot, and the panel never render a
+   * shell/morph/QC result that no longer corresponds to the current design. */
+  private invalidateDownstream(invalidation: ReturnType<typeof downstreamInvalidations>): void {
+    const session = this.session;
+    const storePatch: Parameters<ReturnType<typeof useCrownStore.getState>['apply']>[0] = {};
+    for (const field of invalidation.stageFields) {
+      if (field === 'anatomyPlacement') {
+        if (session) session.placed = null;
+        storePatch.anatomy = null;
+      } else if (field === 'morphState') {
+        if (session) {
+          session.morphOuter = null;
+          session.morphPlanId = null;
+          session.morphContacts = [];
+          session.morphHeatmap = null;
+        }
+        storePatch.morph = null;
+      } else if (field === 'finalMesh') {
+        if (session) {
+          session.shell = null;
+          session.shellThicknessHeatmap = null;
+        }
+        storePatch.shell = null;
+        storePatch.sculpt = null;
+      }
+    }
+    if (invalidation.clearQc) {
+      storePatch.qc = null;
+    }
+    if (Object.keys(storePatch).length > 0) {
+      this.publish(storePatch);
+    }
   }
 
   // ---- stage 1: inner surface ------------------------------------------
@@ -360,6 +410,7 @@ class CrownDesignEngine {
       const contentHash = await this.hashMesh(result.positions, result.indices);
       session.inner = { positions: result.positions, indices: result.indices, contentHash };
       this.commitStage(
+        'innerSurface',
         'innerSurface',
         contentHash,
         'crown-inner-surface',
@@ -486,6 +537,7 @@ class CrownDesignEngine {
       session.morphPlanId = null;
       session.shell = null;
       this.commitStage(
+        'anatomy',
         'anatomyPlacement',
         contentHash,
         'crown-anatomy',
@@ -620,6 +672,7 @@ class CrownDesignEngine {
     session.morphHeatmap = result.heatmaps && result.heatmaps.length > 0 ? result.heatmaps[0]!.distances : null;
     if (journal) {
       this.commitStage(
+        'morph',
         'morphState',
         contentHash,
         'crown-morph',
@@ -742,6 +795,7 @@ class CrownDesignEngine {
       session.shell = { positions: result.positions, indices: result.indices, contentHash };
       session.shellThicknessHeatmap = result.thicknessHeatmap;
       this.commitStage(
+        'shell',
         'finalMesh',
         contentHash,
         'crown-shell',
@@ -805,6 +859,7 @@ class CrownDesignEngine {
       const contentHash = await this.hashMesh(result.positions, result.indices);
       session.shell = { positions: result.positions, indices: result.indices, contentHash };
       this.commitStage(
+        'freeform',
         'finalMesh',
         contentHash,
         'crown-sculpt',

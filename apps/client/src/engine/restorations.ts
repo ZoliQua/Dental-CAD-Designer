@@ -210,6 +210,16 @@ export function deleteRestoration(id: string): void {
  * delete-confirm dialog without duplicating this rule. */
 export function restorationHasIrreplaceableWork(restoration: Restoration): boolean {
   const hasMarginLines = Object.keys(restoration.marginLines).length > 0;
-  const hasNonPlaceholderAxis = restoration.insertionAxis.some((component, i) => component !== PLACEHOLDER_INSERTION_AXIS[i]);
-  return hasMarginLines || hasNonPlaceholderAxis;
+  return hasMarginLines || !insertionAxisIsPlaceholder(restoration);
+}
+
+/** Whether `restoration.insertionAxis` is still the fresh-restoration
+ * placeholder (`PLACEHOLDER_INSERTION_AXIS`) — i.e. the Phase-3 insertion-axis
+ * workflow (`axis-set`) has NOT confirmed a real axis. The inverse of
+ * `restorationHasIrreplaceableWork`'s axis check, exported so
+ * `ui/CrownDesignPanel.tsx` can warn (non-blocking) that a crown is being
+ * designed against the arbitrary default insertion direction — insertion
+ * axis/undercuts are core clinical params (CLAUDE.md). */
+export function insertionAxisIsPlaceholder(restoration: Restoration): boolean {
+  return restoration.insertionAxis.every((component, i) => component === PLACEHOLDER_INSERTION_AXIS[i]);
 }

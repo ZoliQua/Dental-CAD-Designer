@@ -500,6 +500,8 @@
     "qcGatePass": "correcto",
     "qcGateFail": "fallo",
     "qcAcknowledge": "Reconocer",
-    "qcAcknowledged": "reconocido"
+    "qcAcknowledged": "reconocido",
+    "axisPlaceholderWarning": "Eje de inserción no confirmado — diseñando contra la dirección predeterminada [0,0,1]. Confirme el eje en la herramienta de eje de inserción para un manejo correcto de retenciones.",
+    "qcStale": "El QC está obsoleto — el diseño cambió tras este informe. Vuelva a ejecutar el QC."
   }
 }

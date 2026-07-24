@@ -13,6 +13,7 @@ import { caseStore } from './caseStore';
 import { createRestoration } from './restorations';
 import { crownDesignEngine, CrownNoSessionError, CrownStageOrderError, type RunnablePool } from './crownDesign';
 import { builtinLibraryTooth, boxMesh, marginCircleVecs } from './crownGeometry';
+import { canRunStage } from './crownWorkflow';
 import { useCrownStore } from '../state/crownStore';
 
 const STATS: MeshStats = {
@@ -348,6 +349,58 @@ describe('crownDesign controller — session guards + UI-only actions', () => {
     crownDesignEngine.clear();
     expect(useCrownStore.getState().active).toBe(false);
     expect(crownDesignEngine.getDesignRenderNodes()).toEqual([]);
+  });
+});
+
+describe('crownDesign controller — invalidation cascade (stale QC can never display)', () => {
+  async function runToQc(): Promise<void> {
+    crownDesignEngine.start(restorationId);
+    await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
+    await crownDesignEngine.placeAnatomy(anatomyInput());
+    await crownDesignEngine.runMorph();
+    await crownDesignEngine.constructShell();
+    await crownDesignEngine.runQc();
+  }
+
+  it('CRITICAL: a sculpt stroke after a PASSED QC clears qc (report can never go stale-but-shown)', async () => {
+    await runToQc();
+    // Acknowledge the one failing gate so the report reads PASSED.
+    await crownDesignEngine.acknowledgeGate('minWallThickness');
+    expect(currentRestoration().qc?.passed).toBe(true);
+    const finalMeshBefore = currentRestoration().stages.finalMesh;
+
+    await crownDesignEngine.applySculptStroke({ center: [0, 0, 3], radiusMm: 0.5, strength: 0.1, brush: 'add' });
+
+    const r = currentRestoration();
+    // The sculpt re-wrote finalMesh AND invalidated the (now stale) QcReport.
+    expect(r.stages.finalMesh).not.toBe(finalMeshBefore);
+    expect(r.qc).toBeNull();
+    expect(useCrownStore.getState().qc).toBeNull();
+  });
+
+  it('a morph re-commit invalidates the shell (finalMesh) AND qc', async () => {
+    await runToQc();
+    expect(currentRestoration().stages.finalMesh).toBeTypeOf('string');
+    expect(currentRestoration().qc).not.toBeNull();
+
+    await crownDesignEngine.commitMorphStrengths({ proximalMesial: 1, proximalDistal: 1, antagonist: 0.5 });
+
+    const r = currentRestoration();
+    expect(r.stages.finalMesh).toBeUndefined(); // shell hash cleared
+    expect(r.qc).toBeNull();
+    // Shell + QC are order-blocked again until the shell is reconstructed.
+    expect(canRunStage('qc', r)).toBe(false);
+  });
+
+  it('re-running the inner surface invalidates anatomy, morph, shell AND qc', async () => {
+    await runToQc();
+    await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
+    const r = currentRestoration();
+    expect(r.stages.anatomyPlacement).toBeUndefined();
+    expect(r.stages.morphState).toBeUndefined();
+    expect(r.stages.finalMesh).toBeUndefined();
+    expect(r.qc).toBeNull();
+    expect(r.stages.innerSurface).toBeTypeOf('string'); // its own output stands
   });
 });
 

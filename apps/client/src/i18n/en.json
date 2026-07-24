@@ -500,6 +500,8 @@
     "qcGatePass": "pass",
     "qcGateFail": "fail",
     "qcAcknowledge": "Acknowledge",
-    "qcAcknowledged": "acknowledged"
+    "qcAcknowledged": "acknowledged",
+    "axisPlaceholderWarning": "Insertion axis not confirmed — designing against the default direction [0,0,1]. Confirm the axis in the insertion-axis tool for correct undercut handling.",
+    "qcStale": "QC is stale — the design changed after this report. Re-run QC."
   }
 }

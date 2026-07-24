@@ -141,6 +141,15 @@ describe('CrownDesignPanel — browser-lane critical path (real WorkerPool, synt
     expect(historyNames()).toContain('crown-qc');
     // The QcReport renders per-gate rows.
     expect(screen.getByTestId('crown-qc-gate-watertight')).toBeTruthy();
+
+    // CRITICAL fix: a downstream edit (freeform sculpt) after QC invalidates
+    // the report — the panel must NOT keep showing the old pass/fail banner.
+    await user.click(screen.getByTestId('crown-freeform-apply'));
+    await waitFor(() => expect(screen.getByTestId('crown-qc-notrun')).toBeTruthy(), { timeout: 40_000 });
+    expect(screen.queryByTestId('crown-qc-passed')).toBeNull();
+    expect(screen.queryByTestId('crown-qc-failed')).toBeNull();
+    expect(screen.queryByTestId('crown-qc-stale')).toBeNull();
+    expect(restoration(id).qc).toBeNull();
   }, 180_000);
 
   it('contact-strength slider re-runs the morph (resolveMorph) and updates the store', async () => {

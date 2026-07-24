@@ -11,7 +11,10 @@
 // real distorted tooth-11 morph — T9) and never hides it.
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { Restoration } from '@dqcad/shared-types';
 import { crownDesignEngine } from '../engine/crownDesign';
+import { isQcStale } from '../engine/crownWorkflow';
+import { insertionAxisIsPlaceholder } from '../engine/restorations';
 import { useCaseStore } from '../state/caseStore';
 import {
   useCrownStore,
@@ -136,6 +139,12 @@ function CrownWorkflow({ restorationId }: { restorationId: string }) {
         </button>
       </div>
 
+      {restoration && insertionAxisIsPlaceholder(restoration) && (
+        <div className="crown-panel__warning-banner" role="status" data-testid="crown-axis-warning">
+          {t('crown.axisPlaceholderWarning')}
+        </div>
+      )}
+
       {error && (
         <div className="crown-panel__error-banner" role="alert" data-testid="crown-error">
           <span>{t('crown.errorBanner', { stage: errorStage ? t(STAGE_TITLE_KEY[errorStage]) : '', message: error })}</span>
@@ -164,20 +173,26 @@ function StageShell({
   title,
   busy,
   children,
+  showDone,
 }: {
   stage: CrownStageName;
   title: string;
   busy: boolean;
   children: ReactNode;
+  /** Overrides the ✓ "done" indicator (default: the gate's `complete` flag).
+   * QC passes `qc?.passed === true && !stale` so a FAILED or STALE report
+   * never shows a "done" checkmark (Important 3). */
+  showDone?: boolean;
 }) {
   const { t } = useTranslation();
   const gate = useGate(stage);
   const blocked = gate !== null && !gate.allowed;
+  const done = showDone ?? gate?.complete ?? false;
   return (
-    <div className={`crown-stage crown-stage--${stage}`} data-testid={`crown-stage-${stage}`} data-complete={gate?.complete ? 'true' : 'false'}>
+    <div className={`crown-stage crown-stage--${stage}`} data-testid={`crown-stage-${stage}`} data-complete={done ? 'true' : 'false'}>
       <h3 className="crown-stage__title">
         {title}
-        {gate?.complete && <span className="crown-stage__done" data-testid={`crown-${stage}-done`}> ✓</span>}
+        {done && <span className="crown-stage__done" data-testid={`crown-${stage}-done`}> ✓</span>}
         {busy && <span className="crown-stage__busy" data-testid={`crown-${stage}-busy`}> {t('crown.statusRunning')}</span>}
       </h3>
       {blocked && gate?.reason ? (
@@ -432,18 +447,27 @@ function FreeformStage({ busy }: { busy: boolean }) {
   );
 }
 
-function QcStage({ busy, restoration }: { busy: boolean; restoration: import('@dqcad/shared-types').Restoration | null }) {
+function QcStage({ busy, restoration }: { busy: boolean; restoration: Restoration | null }) {
   const { t } = useTranslation();
   const gate = useGate('qc');
   const qc = restoration?.qc ?? null;
+  // Defense-in-depth (the invalidation cascade normally nulls qc on any edit):
+  // if a report somehow survives a geometry change, its journalHash won't match
+  // the current finalMesh — render an explicit "stale" state, never a bare
+  // green banner for geometry that was never re-checked.
+  const stale = restoration !== null && isQcStale(restoration);
   return (
-    <StageShell stage="qc" title={t('crown.qcTitle')} busy={busy}>
+    <StageShell stage="qc" title={t('crown.qcTitle')} busy={busy} showDone={qc?.passed === true && !stale}>
       <button type="button" disabled={busy || !gate?.allowed} onClick={() => run(() => crownDesignEngine.runQc())} data-testid="crown-qc-run">
         {qc ? t('crown.qcRerun') : t('crown.qcRun')}
       </button>
       {qc === null ? (
         <p className="crown-stage__note" data-testid="crown-qc-notrun">
           {t('crown.qcNotRun')}
+        </p>
+      ) : stale ? (
+        <p className="crown-qc__stale" data-testid="crown-qc-stale">
+          {t('crown.qcStale')}
         </p>
       ) : (
         <>
