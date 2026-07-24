@@ -12,6 +12,7 @@
   "dependencies": {
     "@dqcad/kernel": "*",
     "@dqcad/io": "*",
+    "@dqcad/cad-pipeline": "*",
     "comlink": "^4.4.2"
   }
 }

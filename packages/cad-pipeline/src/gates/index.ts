@@ -21,3 +21,39 @@ export {
   type MinWallThicknessGateInput,
   type MinWallThicknessMeasurement,
 } from './minWallThickness.ts';
+export {
+  watertightGate,
+  manifoldGate,
+  WATERTIGHT_GATE_NAME,
+  MANIFOLD_GATE_NAME,
+  type TopologyGateInput,
+} from './watertight.ts';
+export {
+  measureSelfIntersection,
+  selfIntersectionGate,
+  SELF_INTERSECTION_GATE_NAME,
+  type SelfIntersectionMeasurement,
+  type SelfIntersectionGateInput,
+} from './selfIntersection.ts';
+export {
+  measureSeating,
+  seatingGate,
+  SEATING_GATE_NAME,
+  SEATING_DEFAULT_INTERFERENCE_VOLUME_MM3,
+  type SeatingMeasurement,
+  type SeatingGateInput,
+} from './seating.ts';
+export {
+  connectorCrossSectionGate,
+  CONNECTOR_CROSS_SECTION_GATE_NAME,
+  type ConnectorCrossSection,
+  type ConnectorCrossSectionGateInput,
+} from './connectorCrossSection.ts';
+export {
+  contactGate,
+  CONTACT_GATE_NAME,
+  CONTACT_GATE_DEFAULT_TOLERANCE_MM,
+  type ContactResidualInput,
+  type ContactGateInput,
+} from './contact.ts';
+export { runCrownQc, type RunCrownQcInput } from './report.ts';

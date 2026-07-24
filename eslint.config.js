@@ -85,8 +85,15 @@ export default tseslint.config(
               allow: { to: { element: { types: 'shared-types' } } },
             },
             {
+              // kernel-workers also depends on cad-pipeline as of Phase 4 Task 9:
+              // the `runQc` worker job orchestrates cad-pipeline's QC gate suite
+              // (`runCrownQc`) off the UI thread — runner.ts's own module doc names
+              // the client worker as an intended caller of the gates ("callable
+              // identically from a browser Worker ... and from the Node server").
+              // Acyclic: cad-pipeline imports only kernel/io/shared-types, never
+              // kernel-workers — so this adds a dependency edge, not a cycle.
               from: { element: { types: 'kernel-workers' } },
-              allow: { to: { element: { types: { anyOf: ['kernel', 'io', 'shared-types'] } } } },
+              allow: { to: { element: { types: { anyOf: ['kernel', 'io', 'cad-pipeline', 'shared-types'] } } } },
             },
             {
               from: { element: { types: 'cad-pipeline' } },
