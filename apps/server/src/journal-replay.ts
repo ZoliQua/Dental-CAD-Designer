@@ -28,6 +28,26 @@ import type { FdiTooth } from '@dqcad/shared-types';
  * buffers, so the hash is a pure, deterministic function of the mesh's exact
  * coordinates and topology — the same value the client's mesh store addresses
  * the mesh by, hence the same value that lands on `Restoration.stages.*`.
+ *
+ * ## INVARIANT: byte-identical to the client's `hashMeshContent`
+ *
+ * The whole server-side reproducibility claim (a replayed crown stage
+ * reproducing the client's stored `stages.*` hash) rests on this producing the
+ * SAME digest the client lands via `@dqcad/kernel-workers`'s
+ * `hashMeshContent(positions, indices)`. They agree today because SHA-256 is a
+ * streaming Merkle–Damgård hash — `update(a); update(b)` ≡ `update(a‖b)` — so
+ * this function's two `update` calls equal `hashMeshContent`'s single combined
+ * buffer over the SAME byte layout (positions Float64 LE, then indices Uint32
+ * LE) and the SAME algorithm/lowercase-hex encoding.
+ *
+ * The async (browser SubtleCrypto / Node) vs. sync (`runShellStage`'s `(mesh)
+ * => string` callback) split makes sharing the exact function impractical, so
+ * the equivalence is GUARDED, not assumed: `mesh-hash-equivalence.test.ts`
+ * asserts `hashMesh(mesh) === await hashMeshContent(mesh.positions,
+ * mesh.indices)` for representative meshes incl. a real crown stage mesh, and
+ * fails loudly if EITHER side's byte layout, digest, or encoding ever drifts.
+ * Do NOT change the byte order/algorithm here (or in `hashMeshContent`) without
+ * that test staying green.
  */
 export function hashMesh(mesh: IndexedMesh): string {
   const h = createHash('sha256');
