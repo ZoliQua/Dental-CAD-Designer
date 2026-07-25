@@ -49,6 +49,7 @@ import {
   type PlacementFrame,
 } from '@dqcad/kernel';
 import type { PipelineContext, PipelineMeshHandle } from '../pipeline/context.ts';
+import { assertCrownContext } from '../pipeline/context.ts';
 import type { RestorationStageResult } from '../pipeline/stageResult.ts';
 
 /** A library tooth asset, as the plain data this stage consumes — structurally
@@ -176,6 +177,7 @@ export function runAnatomyPlacementStage(
   tooth: FdiTooth,
   options: AnatomyPlacementStageOptions,
 ): RestorationStageResult {
+  assertCrownContext(context); // crown-only stage — Phase 5 Task 1 guard rail
   const marginInput = context.marginLoops[tooth];
   if (!marginInput) {
     throw new MissingMarginLoopError(tooth);

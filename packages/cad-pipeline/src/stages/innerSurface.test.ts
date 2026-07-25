@@ -128,6 +128,10 @@ const PROFILE: PipelineMaterialProfile = {
   undercutBlockoutThresholdMm: 0,
   occlusalMinWallThicknessMm: 0.5,
   maxChordDeviationMm: 0.005,
+  inlayMinThicknessMm: 0.5,
+  onlayMinThicknessMm: 0.5,
+  cuspCoverageMinThicknessMm: 0.7,
+  marginExclusionMm: 0.2,
 };
 
 const TOOTH: FdiTooth = 11 as FdiTooth;
@@ -136,6 +140,7 @@ function makeContext(overrides?: Partial<PipelineContext>): PipelineContext {
   const die = buildFrustumDie();
   return {
     restorationId: 'r-test',
+    restorationType: 'crown',
     materialProfile: PROFILE,
     insertionAxis: [0, 0, 1],
     targetMesh: { contentHash: 'die-hash-abc', mesh: die },

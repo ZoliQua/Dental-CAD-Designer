@@ -25,7 +25,7 @@
 // rather than cross a forbidden layer boundary" precedent `shared-types`'
 // `MarginAnchor` already establishes for `@dqcad/kernel`'s `SurfacePoint`
 // (see shared-types/src/index.ts's `MarginAnchor` doc).
-import type { FdiTooth, RestorationParams, Vec3 } from '@dqcad/shared-types';
+import type { FdiTooth, RestorationParams, RestorationType, Vec3 } from '@dqcad/shared-types';
 import type { IndexedMesh } from '@dqcad/kernel';
 
 /** Structurally mirrors `@dqcad/clinical-profiles`'
@@ -50,6 +50,19 @@ export interface PipelineMaterialProfile {
    * doc — `restorationParams.minWallThicknessMm` is the AXIAL minimum. */
   readonly occlusalMinWallThicknessMm: number;
   readonly maxChordDeviationMm: number;
+  /** See `@dqcad/clinical-profiles`' `materialProfile.ts#MaterialProfile.inlayMinThicknessMm`
+   * — the inlay isthmus/floor thickness minimum (Phase 5 Task 6 gate). */
+  readonly inlayMinThicknessMm: number;
+  /** See `MaterialProfile.onlayMinThicknessMm` — the onlay isthmus/floor
+   * thickness minimum (Phase 5 Task 7 gate). */
+  readonly onlayMinThicknessMm: number;
+  /** See `MaterialProfile.cuspCoverageMinThicknessMm` — the onlay covered-cusp
+   * thickness minimum (Phase 5 Task 7 gate). */
+  readonly cuspCoverageMinThicknessMm: number;
+  /** See `MaterialProfile.marginExclusionMm` — the min-wall gate's marginal
+   * feather-band exclusion width (Phase 4 carry-in; Phase 5 Task 8 wires it
+   * into the live `runQc` path). */
+  readonly marginExclusionMm: number;
 }
 
 /** A mesh handle a pipeline stage operates on — content-addressed (mirrors
@@ -86,6 +99,18 @@ export interface PipelineMarginLoop {
  */
 export interface PipelineContext {
   readonly restorationId: string;
+  /**
+   * Which restoration this design session is for — the discriminant every
+   * restoration-type-aware stage narrows on (Phase 5 Task 1 scaffold). A
+   * crown-only stage never runs on a cavity case and vice versa: see
+   * `CrownPipelineContext` / `CavityPipelineContext` (the compile-time
+   * narrowings future stage inputs are typed against) and `assertCrownContext`
+   * / `assertCavityContext` (the runtime guard rail existing crown stages call
+   * at entry, for the dynamic-context callers — e.g. journal replay from a
+   * persisted `Restoration.type` — where the type is not statically known).
+   * `'bridge'` is accepted by the union (shared-types) but no bridge stage
+   * exists yet (Phase 6). */
+  readonly restorationType: RestorationType;
   readonly materialProfile: PipelineMaterialProfile;
   /** Unit vector, insertion-axis direction (Phase 3's confirmed axis —
    * `shared-types`' `Restoration.insertionAxis`). */
@@ -122,4 +147,98 @@ export interface PipelineContext {
     readonly morphState?: string;
     readonly finalMesh?: string;
   };
+}
+
+// ---------------------------------------------------------------------------
+// Restoration-type guard rails (Phase 5 Task 1 scaffold)
+//
+// The pipeline gains inlay/onlay cavity stages in Phase 5 Tasks 3+; those
+// stages and the existing crown stages must NOT be interchangeable — running a
+// crown-only stage on a cavity case (or vice versa) would silently produce
+// wrong geometry. Two complementary mechanisms enforce this:
+//
+//   1. COMPILE-TIME (preferred): a stage function types its context parameter
+//      as the narrowed `CrownPipelineContext` / `CavityPipelineContext` (or
+//      `InlayPipelineContext` / `OnlayPipelineContext`). Passing a context of
+//      the wrong restoration type is then a type error at the call site — the
+//      `restorationType` discriminant is a string-literal type that does not
+//      unify across the two families. Future cavity stages (Task 3+) take a
+//      `CavityPipelineContext`; a `CrownPipelineContext` cannot be passed to
+//      them and vice versa. See `context.guardrails.test.ts` for the
+//      `@ts-expect-error` proof.
+//
+//   2. RUNTIME (for dynamically-typed callers): where the context's
+//      restoration type is NOT known statically — most importantly the server
+//      journal-replay path, which reconstructs a `PipelineContext` from a
+//      persisted `Restoration.type` (`RestorationType`, only known at runtime)
+//      — a stage calls `assertCrownContext(ctx)` / `assertCavityContext(ctx)`
+//      at entry. The assert both throws a typed `RestorationTypeMismatchError`
+//      (never a silent wrong-geometry result) AND narrows the type for the
+//      rest of the function body. The existing crown stages call
+//      `assertCrownContext` at entry so a mis-typed cavity context fails loudly
+//      rather than running the crown algorithm on a cavity.
+//
+// No inlay/onlay STAGE lives here yet (YAGNI — Task 3+ builds them); this file
+// ships only the discriminant, the narrowings, and the guards.
+// ---------------------------------------------------------------------------
+
+/** A `PipelineContext` statically known to be a crown case. Crown-only stages
+ * type their context parameter as this (compile-time guard rail). */
+export type CrownPipelineContext = PipelineContext & { readonly restorationType: 'crown' };
+
+/** A `PipelineContext` statically known to be an inlay case. */
+export type InlayPipelineContext = PipelineContext & { readonly restorationType: 'inlay' };
+
+/** A `PipelineContext` statically known to be an onlay case. */
+export type OnlayPipelineContext = PipelineContext & { readonly restorationType: 'onlay' };
+
+/** A `PipelineContext` statically known to be a cavity restoration (inlay OR
+ * onlay) — the shared narrowing the Phase 5 cavity stages (offset, blockout,
+ * occlusal patch, box adaptation) type their context parameter against, since
+ * those stages are identical for inlay and onlay except at the thickness-gate
+ * step (which re-reads `restorationType`). */
+export type CavityPipelineContext = PipelineContext & { readonly restorationType: 'inlay' | 'onlay' };
+
+/** Thrown by the restoration-type guards when a stage is handed a context of
+ * the wrong restoration type — a loud, typed failure (never a silent
+ * wrong-geometry result), per CLAUDE.md invariant 4's "corrupt → loud typed
+ * error" spirit applied to the pipeline dispatch. */
+export class RestorationTypeMismatchError extends Error {
+  // NOTE: explicit fields + body assignment, NOT constructor parameter
+  // properties — this file is in the Node worker's strip-only-TS import
+  // closure (kernel-workers → cad-pipeline), and parameter properties are not
+  // supported by Node's strip-only loader (they would crash every worker job).
+  readonly expected: RestorationType | readonly RestorationType[];
+  readonly actual: RestorationType;
+  constructor(expected: RestorationType | readonly RestorationType[], actual: RestorationType) {
+    const exp = Array.isArray(expected) ? expected.join("' | '") : expected;
+    super(
+      `RestorationTypeMismatchError: stage requires restorationType '${exp}', ` +
+        `but the context is a '${actual}' restoration — a crown-only stage cannot run ` +
+        `on a cavity case (or vice versa).`,
+    );
+    this.name = 'RestorationTypeMismatchError';
+    this.expected = expected;
+    this.actual = actual;
+  }
+}
+
+/** Runtime guard rail: asserts `ctx` is a crown case (narrows to
+ * `CrownPipelineContext`), else throws `RestorationTypeMismatchError`. Crown
+ * stages call this at entry for the dynamically-typed callers (journal
+ * replay). */
+export function assertCrownContext(ctx: PipelineContext): asserts ctx is CrownPipelineContext {
+  if (ctx.restorationType !== 'crown') {
+    throw new RestorationTypeMismatchError('crown', ctx.restorationType);
+  }
+}
+
+/** Runtime guard rail: asserts `ctx` is a cavity case — inlay OR onlay
+ * (narrows to `CavityPipelineContext`), else throws
+ * `RestorationTypeMismatchError`. Phase 5 cavity stages (Task 3+) call this at
+ * entry. */
+export function assertCavityContext(ctx: PipelineContext): asserts ctx is CavityPipelineContext {
+  if (ctx.restorationType !== 'inlay' && ctx.restorationType !== 'onlay') {
+    throw new RestorationTypeMismatchError(['inlay', 'onlay'], ctx.restorationType);
+  }
 }

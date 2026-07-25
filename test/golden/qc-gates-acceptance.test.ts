@@ -55,6 +55,7 @@ const PROFILE: PipelineMaterialProfile = {
   restorationParams: { cementGapMm: 0.05, marginalGapMm: 0.02, spacerStartMm: 0.8, minWallThicknessMm: 0.5, proximalContactPenetrationMm: 0.02, occlusalContactMm: 0 },
   connectorAreaMm2: { posteriorMm2: 9, anteriorMm2: 7 },
   undercutBlockoutThresholdMm: 0, occlusalMinWallThicknessMm: 0.5, maxChordDeviationMm: 0.005,
+  inlayMinThicknessMm: 0.5, onlayMinThicknessMm: 0.5, cuspCoverageMinThicknessMm: 0.7, marginExclusionMm: 0.2,
 };
 
 interface Reference {
@@ -183,7 +184,7 @@ describe.skipIf(!RUN)('QC gate suite — REAL arch-case-01 tooth 11 [RUN_QC_REAL
     const starter = loadToothAssetInProcess(TOOTH);
     const asset: PipelineToothAsset = { contentHash: starter.metadata.meshChecksum, mesh: starter.mesh, landmarks: starter.landmarks, canonicalFrame: starter.canonicalFrame };
     const baseCtx: PipelineContext = {
-      restorationId: 'arch-case-01-11', materialProfile: PROFILE, insertionAxis,
+      restorationId: 'arch-case-01-11', restorationType: 'crown', materialProfile: PROFILE, insertionAxis,
       targetMesh: handle('upper', upper),
       marginLoops: { [TOOTH]: { closed: ref11.closed, resampledPoints: ref11.resampledPoints } },
       neighbors: { [12 as FdiTooth]: handle('nb12', nb12), [21 as FdiTooth]: handle('nb21', nb21) },

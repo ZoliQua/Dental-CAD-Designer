@@ -51,6 +51,7 @@ import {
   type IndexedMesh,
 } from '@dqcad/kernel';
 import type { PipelineContext } from '../pipeline/context.ts';
+import { assertCrownContext } from '../pipeline/context.ts';
 import type { RestorationStageResult } from '../pipeline/stageResult.ts';
 
 /** Thrown when the margin loop for the requested tooth is absent from the
@@ -159,6 +160,7 @@ export async function runInnerSurfaceStage(
   tooth: FdiTooth,
   options: InnerSurfaceStageOptions,
 ): Promise<RestorationStageResult> {
+  assertCrownContext(context); // crown-only stage — Phase 5 Task 1 guard rail
   const marginLoopInput = context.marginLoops[tooth];
   if (!marginLoopInput) {
     throw new MissingMarginLoopError(tooth);

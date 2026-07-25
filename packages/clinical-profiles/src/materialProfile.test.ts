@@ -100,6 +100,62 @@ describe('validateMaterialProfileShape', () => {
     raw2['maxChordDeviationMm'] = 0.0001; // 0.1 µm, below the 1 µm floor
     expect(() => validateMaterialProfileShape(raw2)).toThrow(MaterialProfileValidationError);
   });
+
+  // Phase 5 Task 1: inlay/onlay thickness minimums + marginExclusionMm.
+  it('accepts the shipped standard-zirconia profile\'s Phase 5 inlay/onlay fields', () => {
+    const profile = validateMaterialProfileShape(validRawProfile());
+    expect(profile.inlayMinThicknessMm).toBe(0.5);
+    expect(profile.onlayMinThicknessMm).toBe(0.5);
+    expect(profile.cuspCoverageMinThicknessMm).toBe(0.7);
+    expect(profile.marginExclusionMm).toBe(0.2);
+  });
+
+  it.each([
+    'inlayMinThicknessMm',
+    'onlayMinThicknessMm',
+    'cuspCoverageMinThicknessMm',
+    'marginExclusionMm',
+  ])('rejects a missing %s', (field) => {
+    const raw = validRawProfile();
+    delete raw[field];
+    expect(() => validateMaterialProfileShape(raw)).toThrow(new RegExp(field));
+  });
+
+  it.each([
+    ['inlayMinThicknessMm', 0.1], // below the 0.3 mm floor
+    ['onlayMinThicknessMm', 6], // above the 5 mm ceiling
+    ['cuspCoverageMinThicknessMm', 0.1], // below 0.3 mm
+    ['marginExclusionMm', 1.5], // above the 1.0 mm feather-band ceiling
+    ['marginExclusionMm', -0.1], // below 0
+  ])('rejects %s = %s (outside its documented range)', (field, badValue) => {
+    const raw = validRawProfile();
+    raw[field] = badValue;
+    expect(() => validateMaterialProfileShape(raw)).toThrow(MaterialProfileValidationError);
+  });
+
+  it('accepts marginExclusionMm = 0 (no exclusion is a valid choice)', () => {
+    const raw = validRawProfile();
+    raw['marginExclusionMm'] = 0;
+    // Checksum is recomputed by callers; shape validation alone must accept it.
+    expect(() => validateMaterialProfileShape(raw)).not.toThrow();
+  });
+});
+
+describe('EMAX_LITHIUM_DISILICATE_PROFILE — Phase 5 inlay/onlay IFU values', () => {
+  it('carries the e.max IFU inlay/onlay thickness minimums', async () => {
+    const { EMAX_LITHIUM_DISILICATE_PROFILE } = await import('./profiles.ts');
+    expect(EMAX_LITHIUM_DISILICATE_PROFILE.inlayMinThicknessMm).toBe(1.0);
+    expect(EMAX_LITHIUM_DISILICATE_PROFILE.onlayMinThicknessMm).toBe(1.0);
+    expect(EMAX_LITHIUM_DISILICATE_PROFILE.cuspCoverageMinThicknessMm).toBe(1.5);
+    expect(EMAX_LITHIUM_DISILICATE_PROFILE.marginExclusionMm).toBe(0.2);
+  });
+
+  it('has a stricter cusp-coverage minimum than zirconia (1.5 vs 0.7 mm)', async () => {
+    const { EMAX_LITHIUM_DISILICATE_PROFILE, STANDARD_ZIRCONIA_PROFILE } = await import('./profiles.ts');
+    expect(EMAX_LITHIUM_DISILICATE_PROFILE.cuspCoverageMinThicknessMm).toBeGreaterThan(
+      STANDARD_ZIRCONIA_PROFILE.cuspCoverageMinThicknessMm,
+    );
+  });
 });
 
 describe('EMAX_LITHIUM_DISILICATE_PROFILE — the second real material profile (Phase 4 Task 1)', () => {

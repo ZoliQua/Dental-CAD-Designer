@@ -1,6 +1,6 @@
 {
   "id": "standard-zirconia",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "label": "Standard Zirconia (monolithic)",
   "restorationParams": {
     "cementGapMm": 0.05,
@@ -17,5 +17,9 @@
   "undercutBlockoutThresholdMm": 0,
   "occlusalMinWallThicknessMm": 0.5,
   "maxChordDeviationMm": 0.005,
-  "checksum": "427b574749ccc2243083899cc3608772951bb9d474a235301c0fc1270288def8"
+  "inlayMinThicknessMm": 0.5,
+  "onlayMinThicknessMm": 0.5,
+  "cuspCoverageMinThicknessMm": 0.7,
+  "marginExclusionMm": 0.2,
+  "checksum": "902fb8c04c4b19affdb31b1f913e6890b744d206dde34594cfb94a1ba842cb47"
 }

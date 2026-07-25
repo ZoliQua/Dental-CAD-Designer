@@ -6,5 +6,14 @@ export type {
   PipelineConnectorAreaTargets,
   PipelineMeshHandle,
   PipelineMarginLoop,
+  CrownPipelineContext,
+  InlayPipelineContext,
+  OnlayPipelineContext,
+  CavityPipelineContext,
+} from './context.ts';
+export {
+  RestorationTypeMismatchError,
+  assertCrownContext,
+  assertCavityContext,
 } from './context.ts';
 export type { RestorationStageResult, PipelineStageName } from './stageResult.ts';

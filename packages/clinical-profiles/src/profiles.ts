@@ -24,7 +24,12 @@ import { loadMaterialProfile, type MaterialProfile } from './materialProfile.ts'
  * `occlusalMinWallThicknessMm` (== `restorationParams.minWallThicknessMm`
  * for zirconia's monolithic single-value case — PLAN.md §3's "Monolithic;
  * framework 0.5") and `maxChordDeviationMm` (5 µm, PLAN.md §3's "Export max
- * chord deviation" row); checksum bumped accordingly.
+ * chord deviation" row); checksum bumped accordingly. Version 1.2.0 (Phase 5
+ * Task 1): gained the inlay/onlay thickness minimums
+ * (`inlayMinThicknessMm`/`onlayMinThicknessMm` = 0.5, `cuspCoverageMinThicknessMm`
+ * = 0.7 — monolithic-zirconia norms) and `marginExclusionMm` (0.2, the Phase 4
+ * feather-band carry-in); see each field's `materialProfile.ts` TSDoc for the
+ * source note; checksum bumped accordingly.
  */
 export const STANDARD_ZIRCONIA_PROFILE: MaterialProfile = loadMaterialProfile(standardZirconiaJson);
 
@@ -42,7 +47,12 @@ export const STANDARD_ZIRCONIA_PROFILE: MaterialProfile = loadMaterialProfile(st
  * e.max-specific values for those rows; reusing the zirconia defaults is an
  * honest, documented placeholder (not a silent guess — see
  * `profiles/emax-lithium-disilicate.json`), revisit if a real per-material
- * value becomes available.
+ * value becomes available. Version 1.1.0 (Phase 5 Task 1): gained the
+ * inlay/onlay thickness minimums (`inlayMinThicknessMm`/`onlayMinThicknessMm`
+ * = 1.0, `cuspCoverageMinThicknessMm` = 1.5 — Ivoclar IPS e.max IFU values,
+ * the first genuinely e.max-specific numbers this profile carries beyond the
+ * occlusal/axial split) and `marginExclusionMm` (0.2, the Phase 4 feather-band
+ * carry-in); checksum bumped accordingly.
  */
 export const EMAX_LITHIUM_DISILICATE_PROFILE: MaterialProfile = loadMaterialProfile(
   emaxLithiumDisilicateJson,

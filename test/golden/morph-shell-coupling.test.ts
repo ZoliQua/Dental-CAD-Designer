@@ -133,6 +133,7 @@ describe('morph → shell coupling diagnostic (isolates scan-quality from coupli
     // A well-formed morph: good synthetic contacts, aligned seal margin.
     const ctx: PipelineContext = {
       restorationId: 'morph-shell-diag',
+      restorationType: 'crown',
       materialProfile: PROFILE,
       insertionAxis: AXIS,
       targetMesh: handle('die', frustumDie()),

@@ -378,7 +378,7 @@ describe.skipIf(!RUN_REAL)('crown acceptance — REAL arch-case-01 tooth 11 [RUN
     const starter = loadToothAssetInProcess(TOOTH);
     const asset: PipelineToothAsset = { contentHash: starter.metadata.meshChecksum, mesh: starter.mesh, landmarks: starter.landmarks, canonicalFrame: starter.canonicalFrame };
     const baseCtx: PipelineContext = {
-      restorationId: 'crown-real-11', materialProfile: PROFILE, insertionAxis,
+      restorationId: 'crown-real-11', restorationType: 'crown', materialProfile: PROFILE, insertionAxis,
       targetMesh: handle('upper', upper),
       marginLoops: { [TOOTH]: { closed: ref11.closed, resampledPoints: ref11.resampledPoints } },
       neighbors: { [12 as FdiTooth]: handle('nb12', nb12), [21 as FdiTooth]: handle('nb21', nb21) },

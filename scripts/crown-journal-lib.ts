@@ -243,6 +243,10 @@ export const PROFILE: PipelineMaterialProfile = {
   undercutBlockoutThresholdMm: 0,
   occlusalMinWallThicknessMm: 0.5,
   maxChordDeviationMm: 0.005,
+  inlayMinThicknessMm: 0.5,
+  onlayMinThicknessMm: 0.5,
+  cuspCoverageMinThicknessMm: 0.7,
+  marginExclusionMm: 0.2,
 };
 
 // The FIT/SHELL sub-scene primitives.
@@ -333,6 +337,7 @@ const GESTURE: SculptStroke[] = [
 function anatomyContext(): PipelineContext {
   return {
     restorationId: 'crown-accept-anatomy',
+    restorationType: 'crown',
     materialProfile: PROFILE,
     insertionAxis: AXIS,
     targetMesh: handle('die', die()),
@@ -364,6 +369,7 @@ function syntheticAsset(): PipelineToothAsset {
 function fitContext(): PipelineContext {
   return {
     restorationId: 'crown-accept-fit',
+    restorationType: 'crown',
     materialProfile: PROFILE,
     insertionAxis: AXIS,
     targetMesh: handle('die', die()),

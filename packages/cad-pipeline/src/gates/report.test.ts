@@ -70,6 +70,7 @@ const PROFILE: PipelineMaterialProfile = {
   restorationParams: { cementGapMm: 0.05, marginalGapMm: 0.02, spacerStartMm: 0.8, minWallThicknessMm: 0.5, proximalContactPenetrationMm: 0.02, occlusalContactMm: 0 },
   connectorAreaMm2: { posteriorMm2: 9, anteriorMm2: 7 },
   undercutBlockoutThresholdMm: 0, occlusalMinWallThicknessMm: 0.5, maxChordDeviationMm: 0.005,
+  inlayMinThicknessMm: 0.5, onlayMinThicknessMm: 0.5, cuspCoverageMinThicknessMm: 0.7, marginExclusionMm: 0.2,
 };
 
 // The standin prep die: a closed watertight cone-frustum (bottom rim = margin).
@@ -91,7 +92,7 @@ async function intaglio(): Promise<IndexedMesh> {
 
 function shellContext(): PipelineContext {
   return {
-    restorationId: 'qc-accept', materialProfile: PROFILE, insertionAxis: AXIS,
+    restorationId: 'qc-accept', restorationType: 'crown', materialProfile: PROFILE, insertionAxis: AXIS,
     targetMesh: handle('die', die()), marginLoops: { [TOOTH]: MARGIN },
     neighbors: {}, antagonist: null, stages: {},
   };
@@ -102,7 +103,7 @@ function shellContext(): PipelineContext {
 function realContactResiduals(): { contacts: ContactResidualInput[]; contactClampWarning: boolean } {
   const R = 1.2, H = 5;
   const ctx: PipelineContext = {
-    restorationId: 'qc-morph', materialProfile: PROFILE, insertionAxis: [0, 0, 1],
+    restorationId: 'qc-morph', restorationType: 'crown', materialProfile: PROFILE, insertionAxis: [0, 0, 1],
     targetMesh: handle('die', cylinderTooth(R, H - 1, 6, 16)),
     marginLoops: { [TOOTH]: marginCircle(R, 0, 48) },
     neighbors: {

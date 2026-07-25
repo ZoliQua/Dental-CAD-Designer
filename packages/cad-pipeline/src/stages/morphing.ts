@@ -46,6 +46,7 @@ import {
   type MorphStrengths,
 } from '@dqcad/kernel';
 import type { PipelineContext, PipelineMeshHandle } from '../pipeline/context.ts';
+import { assertCrownContext } from '../pipeline/context.ts';
 import type { RestorationStageResult } from '../pipeline/stageResult.ts';
 import { identifyNeighbors, InsufficientNeighborsError } from './anatomyPlacement.ts';
 
@@ -150,6 +151,7 @@ export function runMorphingStage(
   tooth: FdiTooth,
   options: MorphingStageOptions,
 ): RestorationStageResult {
+  assertCrownContext(context); // crown-only stage — Phase 5 Task 1 guard rail
   const plan = buildMorphPlan(context, tooth, options.placedMesh.mesh, options.morphOptions);
   const result = solveAnatomyMorph(plan, options.strengths);
 

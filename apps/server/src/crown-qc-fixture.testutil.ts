@@ -134,6 +134,10 @@ export const PROFILE: PipelineMaterialProfile = {
   undercutBlockoutThresholdMm: 0,
   occlusalMinWallThicknessMm: 0.5,
   maxChordDeviationMm: 0.005,
+  inlayMinThicknessMm: 0.5,
+  onlayMinThicknessMm: 0.5,
+  cuspCoverageMinThicknessMm: 0.7,
+  marginExclusionMm: 0.2,
 };
 
 const die = (): IndexedMesh => buildFrustum(MARGIN_R, TOP_R, MARGIN_Z, TOP_Z, 96, true, true);
@@ -163,6 +167,7 @@ async function intaglio(): Promise<IndexedMesh> {
 function shellContext(): PipelineContext {
   return {
     restorationId: 'qc-accept',
+    restorationType: 'crown',
     materialProfile: PROFILE,
     insertionAxis: AXIS,
     targetMesh: handle('die', die()),
@@ -179,6 +184,7 @@ function realContactResiduals(): { contacts: ContactResidualInput[]; contactClam
     H = 5;
   const ctx: PipelineContext = {
     restorationId: 'qc-morph',
+    restorationType: 'crown',
     materialProfile: PROFILE,
     insertionAxis: [0, 0, 1],
     targetMesh: handle('die', cylinderTooth(R, H - 1, 6, 16)),
