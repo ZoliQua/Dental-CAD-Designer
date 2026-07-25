@@ -155,8 +155,22 @@
  * coupled crown-acceptance stage-hash golden (test/golden/crown-acceptance.test.ts's
  * byte-pinned hashes) DID change — deliberately: the standin now feeds the
  * MORPHED outer through the heal into the shell (the genuine coupled lineage),
- * replacing the synthetic dome. See docs/CHANGELOG-kernel.md's `[0.15.0]` entry. */
-export const KERNEL_VERSION = '0.15.0';
+ * replacing the synthetic dome. See docs/CHANGELOG-kernel.md's `[0.15.0]` entry.
+ * 0.16.0 (Phase 5 Task 2): NEW op — the `cavity/` module
+ * (`classifyCavityRegions`: classify the cavity surface enclosed by the
+ * cavity outline into floor / axial-wall / proximal-box-wall regions
+ * relative to the insertion axis — outline-edge-ring barrier flood fill for
+ * the exact enclosed region, facing-threshold floor/wall split,
+ * floor-step + proximal-direction box identification, all in the
+ * `AxisRegion` currency; and `scanCavityUndercut`: the P3
+ * `undercutScanIndices` primitive scoped to the cavity region — a cavity's
+ * insertion-axis suitability). Pure Float64, no manifold-3d boundary; same
+ * "brand-new op, minor bump, existing goldens byte-identical" precedent as
+ * 0.9.0-0.15.0's pure-Float64 ops (regression-pinned by its own analytic
+ * closed-form/determinism/committed-hash tests in cavity/regions.test.ts;
+ * no `kernel-ops.json` pin added). See docs/CHANGELOG-kernel.md's
+ * `[0.16.0]` entry. */
+export const KERNEL_VERSION = '0.16.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -635,6 +649,24 @@ export {
   type SuggestInsertionAxisResult,
   type SuggestInsertionAxisForRegionsResult,
 } from './axis/index.ts';
+
+export {
+  classifyCavityRegions,
+  scanCavityUndercut,
+  proximalDirectionUnit,
+  CAVITY_FLOOR_MAX_ANGLE_DEG,
+  CAVITY_FLOOR_STEP_MIN_MM,
+  CAVITY_ZONE_BOUNDARY_EPSILON_MM,
+  CAVITY_SIDE_MIN_MEAN_PROJECTION,
+  CavityOutlineNotOnMeshError,
+  CavityOutlineNotEdgeConnectedError,
+  CavityPartitionError,
+  AmbiguousCavitySideError,
+  type ClassifyCavityRegionsOptions,
+  type CavityBoxRegion,
+  type CavityRegionsResult,
+  type CavityUndercutScanResult,
+} from './cavity/index.ts';
 
 export {
   blockoutPreview,

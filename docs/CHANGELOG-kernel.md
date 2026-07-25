@@ -59,6 +59,58 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.16.0] — Phase 5 Task 2: cavity region analysis — the `cavity/` module (`classifyCavityRegions`, `scanCavityUndercut`)
+
+**No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned
+fixture hash is byte-identical to `[0.15.0]`.** Brand-new ops only; no existing
+op's algorithm or output changed. In `test/golden/crown-acceptance.test.ts`
+(byte-pinned stage hashes, not a `test-fixtures/` file), all FIVE geometry
+stage pins are verified byte-identical to 0.15.0; only the `crown-standin-qc`
+pin changed, MECHANICALLY and metadata-only — the `QcReport` embeds
+`kernelVersion` (cad-pipeline/gates/report.ts), so `hashQcReport` tracks every
+version bump even with every measured value and geometry hash unchanged. The
+unchanged geometry pins are the proof that qc diff is the version string
+alone, not numerical drift.
+
+Adds `packages/kernel/src/cavity/regions.ts`:
+
+- **`classifyCavityRegions(mesh, cavityOutline, insertionAxisUnit, options?)`**
+  — classifies the cavity surface ENCLOSED by the cavity outline (the margin
+  currency: a dense, closed, on-mesh ring, run through the reused
+  `marginLoopPolyline` for dedup/closure) into **floor / axial walls /
+  proximal-box walls** relative to the insertion axis. Method (that module's
+  doc has the full derivation): outline points snapped to mesh vertices
+  (bit-exact key lookup, nearest-vertex fallback within `MESH_WELD_EPSILON_MM`);
+  the resulting closed EDGE ring separates the closed 2-manifold into exactly
+  two components (barrier flood fill); the CAVITY is the side whose
+  area-weighted outward-normal sum (reused `regionAreaWeightedNormalSum`)
+  opens along the axis. Floor = `normal·axis ≥ cos(floorMaxAngleDeg)`
+  (default 45° — a documented ALGORITHM parameter, echoed in the result for
+  journaling); proximal boxes = floor components stepping down ≥
+  `floorStepMinMm` (default 0.5 mm) from the reference (highest) floor level
+  with a well-defined axis-perpendicular proximal direction; box walls = the
+  wall half-space at/beyond each box's pulpal step along that direction.
+  Every region is returned in the `AxisRegion` currency (triangle-index
+  subsets, sorted — Phase 5 Task 5 consumes the box regions directly).
+- **`scanCavityUndercut(mesh, bvh, cavityRegion, axisUnit, options?)`** — the
+  P3 `undercutScanIndices` primitive scoped to the cavity region (a cavity's
+  undercut = its wall subset facing-away/occluded along the axis), plus the
+  sorted mesh-triangle-id list of undercut triangles.
+
+Pure Float64, deterministic, no manifold-3d boundary. Same "brand-new op,
+minor bump, existing goldens byte-identical" precedent as 0.9.0–0.15.0's
+pure-Float64 ops: **no `kernel-ops.json` pin added** — the op is
+regression-pinned by its own closed-form analytic tests (per-region triangle
+counts + zero misclassified triangles against the MOD-cavity fixture's
+constructed answer, across property-varied parameters) and a committed
+sha256 result-hash test in `cavity/regions.test.ts`. The undercut scan is
+pinned BOTH ways (falsifiable zero: exactly 0 undercut triangles on the
+drafted fixture AND exactly the 20m drafted-wall triangles detected on the
+negative-taper variant). No worker job: measured sub-millisecond on the
+fixture (see `.superpowers/sdd/p5-task-2-report.md`) — far under the >~10 ms
+worker threshold; re-measure when a pipeline stage runs it on a large real
+scan.
+
 ## [0.15.0] — Phase 4 Task 12b: morph→shell coupling robustness — `shell/healOuterAnatomy.ts` (`healOuterAnatomy`) + `shell/shell.ts` `constructShell` robust trim
 
 **No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned
