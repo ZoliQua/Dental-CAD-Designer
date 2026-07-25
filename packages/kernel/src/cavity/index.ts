@@ -29,3 +29,25 @@ export {
   type CavityInnerSurfaceResult,
   type CavityInnerSurfaceHooks,
 } from './innerSurface.ts';
+
+// Phase 5 Task 4: the occlusal anatomy patch + G1 boundary blend (outer
+// surface) — `cavity/occlusalPatch.ts` — plus the blend-independent G1
+// dihedral MEASURABLE — `cavity/seamDihedral.ts`.
+export {
+  buildOcclusalPatch,
+  SEAM_SURROUNDING_MAX_ANGLE_DEG,
+  DEFAULT_PATCH_CROSS_SEGMENTS,
+  OcclusalSeamPartitionError,
+  SeamChainLengthMismatchError,
+  SurroundingTriangleError,
+  type OcclusalPatchOptions,
+  type OcclusalPatchResult,
+} from './occlusalPatch.ts';
+export {
+  measureSeamDihedral,
+  SeamEdgeNotOnMeshError,
+  type SeamEdge,
+  type SeamDihedralSample,
+  type SeamDihedralMeasurement,
+  type MeasureSeamDihedralOptions,
+} from './seamDihedral.ts';

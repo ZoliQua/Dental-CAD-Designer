@@ -56,4 +56,10 @@ export {
   type ContactResidualInput,
   type ContactGateInput,
 } from './contact.ts';
+export {
+  seamDihedralGate,
+  SEAM_DIHEDRAL_GATE_NAME,
+  SEAM_DIHEDRAL_GATE_THRESHOLD_DEG,
+  type SeamDihedralGateInput,
+} from './seamDihedral.ts';
 export { runCrownQc, type RunCrownQcInput } from './report.ts';

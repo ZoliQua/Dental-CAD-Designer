@@ -59,6 +59,75 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.18.0] — Phase 5 Task 4: occlusal patch + G1 boundary blend — `cavity/occlusalPatch.ts` (`buildOcclusalPatch`) + `cavity/seamDihedral.ts` (`measureSeamDihedral`)
+
+**No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned
+fixture hash is byte-identical to `[0.17.0]`.** Brand-new ops only; no existing
+op's algorithm or output changed. In `test/golden/crown-acceptance.test.ts`
+(byte-pinned stage hashes, not a `test-fixtures/` file), all FIVE geometry
+stage pins are verified byte-identical to 0.17.0; only the `crown-standin-qc`
+pin changed, MECHANICALLY and metadata-only — the `QcReport` embeds
+`kernelVersion` (cad-pipeline/gates/report.ts), so `hashQcReport` tracks every
+version bump even with every measured value and geometry hash unchanged (the
+same mechanical churn documented at 0.16.0/0.17.0; the unchanged geometry pins
+are the proof the qc diff is the version string alone, not numerical drift).
+
+Adds `packages/kernel/src/cavity/occlusalPatch.ts` + `cavity/seamDihedral.ts`:
+
+- **`buildOcclusalPatch(mesh, cavityOutline, insertionAxis, options?)`** — the
+  inlay/onlay OUTER surface: an occlusal anatomy patch over the cavity opening
+  whose boundary loop is EXACTLY the dedup'd cavity outline (the same bit-exact
+  ring the Task-3 fit surface skirts to, so Task 6 can stitch them into the
+  shell), G1-blended into the surrounding intact tooth along the OCCLUSAL SEAM
+  segments. **The seam/free partition** is resolved geometrically and matches
+  the fixture's closed-form labels: for each outline edge the SURROUNDING
+  (non-cavity, from `classifyCavityRegions`) tooth triangle's outward normal is
+  projected on the axis — `≥ cos(SEAM_SURROUNDING_MAX_ANGLE_DEG=60°)` ⇒ an
+  occlusal SEAM (the cusp inclines, ~0.9 on the fixture); otherwise a proximal
+  FREE break-through edge (the cut faces, ~0). **The blend** is a per-station
+  cubic-Hermite buccolingual cross-sweep: the two occlusal margin runs give
+  paired buccal/lingual station points, and each cross-section is a cubic
+  Hermite along the axis whose endpoint positions are the exact outline points
+  and whose endpoint TANGENTS equal the surrounding tooth surface tangent
+  (recovered from the surrounding facet normal) — so the patch is G1 with the
+  tooth AT the seam analytically. The interior dips into a mesiodistally-running
+  central groove (a MODEST PROCEDURAL placeholder, like the tooth library, NOT
+  patient anatomy — provenance documented honestly). The proximal FREE
+  boundaries are the proximal face zipped (monotone arc-length) from the
+  occlusal marginal ridge down to the exact outline U — no G1 constraint (there
+  is nothing to be continuous with), never in the G1 measurement.
+- **`measureSeamDihedral(patchMesh, toothMesh, seamEdges, options?)`** — the
+  blend-INDEPENDENT G1 measurable: for each seam edge, the angle between the
+  patch boundary triangle's outward normal and the surrounding tooth triangle's
+  outward normal across that edge; returns max + mean + per-segment breakdown.
+  Validated on CLOSED-FORM inputs (a flat patch meeting a plane → 0° exactly;
+  two flat strips at a known wedge β → β exactly; a flat disk cap meeting a
+  UV-sphere zone → the colatitude, converging as the mesh refines) BEFORE it
+  judges any blend, and FALSIFIABLE (a large angle reads large; the fixture flat
+  lid reads ~24.8°). Consumed by cad-pipeline's `seamDihedralGate` (< 5° phase
+  acceptance; seam ONLY — free segments never dilute the value; an empty seam
+  set FAILS, never a silent pass).
+
+`@errorBound`: SEAM G1 is EXACT in the continuous limit (the Hermite endpoint
+tangent equals the sampled surrounding tooth tangent); the only residual in the
+MEASURED seam dihedral is discretization O(‖ζ″‖·Δt) with Δt = 1/`crossSegments`
+(computed a-priori as `seamDihedralBoundDeg` and measured — ~0.46° on the
+default fixture at `crossSegments = 48`, driven → 0 by refinement). A curvature
+term enters only for a doubly-curved surrounding surface (0 on the fixture's
+ruled cusp inclines). The proximal free boundary adds no seam-fit error and its
+rim vertices ARE the outline points (bit-exact).
+
+Pure Float64, deterministic, no manifold-3d boundary. Same "brand-new op, minor
+bump, existing goldens byte-identical" precedent as 0.9.0–0.17.0's pure-Float64
+ops: **no `kernel-ops.json` pin added** — regression-pinned by their own analytic
+closed-form / determinism / committed-sha256 tests in
+`cavity/occlusalPatch.test.ts` (partition matches the closed-form labels, patch
+boundary == outline bit-exact, MEASURED seam dihedral < 5° on the MOD fixture +
+onlay variant, the FALSIFIABLE flat-lid failure, committed result-hash) +
+`cavity/seamDihedral.test.ts` (the closed-form measurement validation). A worker
+job (`kernel-workers/jobs/cavityOcclusalPatch.ts`, coarse progress + cancel)
+mirrors the cavity inner-surface job.
+
 ## [0.17.0] — Phase 5 Task 3: inlay/onlay inner (fit) surface — `cavity/innerSurface.ts` (`buildCavityInnerSurface`)
 
 **No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned

@@ -19,6 +19,13 @@ export {
 } from './cavityInnerSurface.ts';
 
 export {
+  runCavityOcclusalPatchStage,
+  MissingCavityOutlineError as CavityOcclusalPatchMissingCavityOutlineError,
+  type CavityOcclusalPatchStageOptions,
+  type CavityOcclusalPatchStageResult,
+} from './cavityOcclusalPatch.ts';
+
+export {
   runAnatomyPlacementStage,
   identifyNeighbors,
   InsufficientNeighborsError,

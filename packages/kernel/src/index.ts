@@ -186,8 +186,26 @@
  * as 0.9.0-0.16.0's pure-Float64 ops (regression-pinned by its own analytic
  * closed-form / determinism / committed-sha256 tests in
  * cavity/innerSurface.analytic.test.ts; no `kernel-ops.json` pin added). See
- * docs/CHANGELOG-kernel.md's `[0.17.0]` entry. */
-export const KERNEL_VERSION = '0.17.0';
+ * docs/CHANGELOG-kernel.md's `[0.17.0]` entry.
+ * 0.18.0 (Phase 5 Task 4): NEW ops — `cavity/occlusalPatch.ts`'s
+ * `buildOcclusalPatch`: the inlay/onlay OUTER surface — an occlusal anatomy
+ * patch over the cavity opening, boundary bit-exact on the cavity outline
+ * (shared with the Task-3 fit surface for the Task-6 shell stitch),
+ * G1-blended into the surrounding tooth along the OCCLUSAL SEAM segments via
+ * a per-station cubic-Hermite buccolingual cross-sweep whose endpoint
+ * tangents match the surrounding tooth normal (analytic G1); the proximal
+ * BREAK-THROUGH segments are FREE boundaries (the proximal face zipped to the
+ * outline U), never in the G1 measurement. And `cavity/seamDihedral.ts`'s
+ * `measureSeamDihedral`: the blend-INDEPENDENT G1 measurable (max seam
+ * dihedral, the < 5° phase acceptance), validated on closed-form cases
+ * (flat→0 exact, wedge β→β exact, sphere→colatitude). Pure Float64, no
+ * manifold-3d boundary; same "brand-new op, minor bump, existing goldens
+ * byte-identical" precedent as 0.9.0-0.17.0's pure-Float64 ops
+ * (regression-pinned by their own analytic closed-form / determinism /
+ * committed-sha256 tests in cavity/occlusalPatch.test.ts +
+ * cavity/seamDihedral.test.ts; no `kernel-ops.json` pin added). See
+ * docs/CHANGELOG-kernel.md's `[0.18.0]` entry. */
+export const KERNEL_VERSION = '0.18.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -687,6 +705,20 @@ export {
   type CavityInnerSurfaceParams,
   type CavityInnerSurfaceResult,
   type CavityInnerSurfaceHooks,
+  buildOcclusalPatch,
+  SEAM_SURROUNDING_MAX_ANGLE_DEG,
+  DEFAULT_PATCH_CROSS_SEGMENTS,
+  OcclusalSeamPartitionError,
+  SeamChainLengthMismatchError,
+  SurroundingTriangleError,
+  type OcclusalPatchOptions,
+  type OcclusalPatchResult,
+  measureSeamDihedral,
+  SeamEdgeNotOnMeshError,
+  type SeamEdge,
+  type SeamDihedralSample,
+  type SeamDihedralMeasurement,
+  type MeasureSeamDihedralOptions,
 } from './cavity/index.ts';
 
 export {
