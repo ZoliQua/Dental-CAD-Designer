@@ -106,17 +106,21 @@ describe('modCavityMesh — the exact cavity outline', () => {
     }
   });
 
-  it('every outline vertex lies EXACTLY on its analytic locus', () => {
+  it('every outline vertex lies EXACTLY on its analytic locus (bitwise ===, no tolerance)', () => {
+    // The construction places these coordinates directly from the parameters
+    // (|−a| === a holds bitwise for every double), so strict equality is the
+    // honest assertion: a future refactor that introduced even 1-ULP rounding
+    // on the outline would fail here.
     for (const [x, y, z] of f.cavityOutline) {
-      const onOcclusalMargin = z === f.tableZ && Math.abs(Math.abs(y) - f.isthmusHalfWidthMm) < 1e-12;
-      const onProximalFace = Math.abs(Math.abs(x) - f.lengthMm / 2) < 1e-12;
+      const onOcclusalMargin = z === f.tableZ && Math.abs(y) === f.isthmusHalfWidthMm;
+      const onProximalFace = Math.abs(x) === f.lengthMm / 2;
       // occlusal-margin runs are exactly z=tableZ, |y|=opening half-width;
       // the proximal-box "U" drops are exactly on the proximal face |x|=L/2.
       expect(onOcclusalMargin || onProximalFace).toBe(true);
       if (onProximalFace) {
         // never above the opening, never below the gingival floor
-        expect(z).toBeLessThanOrEqual(f.tableZ + 1e-12);
-        expect(z).toBeGreaterThanOrEqual(f.gingivalFloorZ - 1e-12);
+        expect(z).toBeLessThanOrEqual(f.tableZ);
+        expect(z).toBeGreaterThanOrEqual(f.gingivalFloorZ);
       }
     }
   });
