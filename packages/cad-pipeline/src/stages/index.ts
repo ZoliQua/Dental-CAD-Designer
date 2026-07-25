@@ -68,6 +68,13 @@ export {
 } from './cavityShell.ts';
 
 export {
+  runCavityCuspCoverageStage,
+  MissingCavityOutlineError as CuspCoverageMissingOutlineError,
+  type CavityCuspCoverageStageOptions,
+  type CavityCuspCoverageStageResult,
+} from './cavityCuspCoverage.ts';
+
+export {
   runSculptStage,
   MissingMarginLoopError as SculptMissingMarginLoopError,
   EmptySculptGestureError,

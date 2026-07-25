@@ -64,6 +64,7 @@ import { runQcGates, type QcGate } from './runner.ts';
 import { watertightGate, manifoldGate } from './watertight.ts';
 import { measureSelfIntersection, selfIntersectionGate, type SelfIntersectionMeasurement } from './selfIntersection.ts';
 import { minWallThicknessGate } from './minWallThickness.ts';
+import { cuspCoverageThicknessGate, type CoverageDivider } from './cuspCoverageThickness.ts';
 import { marginFitGate } from './marginFit.ts';
 import { seamDihedralGate } from './seamDihedral.ts';
 import { measureSeating, seatingGate, type SeatingMeasurement } from './seating.ts';
@@ -143,6 +144,16 @@ export interface RunInlayQcInput {
   readonly restorationType: RestorationType;
   /** Profile-resolved cavity thickness minimums (the selection input). */
   readonly thicknessMinimums: CavityThicknessMinimums;
+
+  /** ONLAY covered-cusp coverage (T7). When present AND `restorationType ===
+   * 'onlay'`, the region-scoped `cuspCoverageThickness` gate runs: the covered
+   * cusp (the half-space on the `coverageDivider`'s positive side) must meet
+   * `cuspCoverageMinThicknessMm` (from the profile). Omitted for an inlay (no
+   * covered cusp) — the gate is then not in the set. */
+  readonly coverage?: {
+    readonly coverageDivider: CoverageDivider;
+    readonly cuspCoverageMinThicknessMm: number;
+  };
   /** Cavity min-wall MARGINAL-TRANSITION band width (mm). An inlay closes along
    * its ENTIRE cavity outline (not a single cervical margin), so the fit-surface
    * ↔ occlusal-patch CONVERGENCE WEDGE — the restoration feathering to the
@@ -243,8 +254,28 @@ export async function runInlayQc(input: RunInlayQcInput, onProgress?: (fraction:
     (c) => contactGate({ contacts: c.input.contacts, contactClampWarning: c.input.contactClampWarning, toleranceMm: c.input.contactToleranceMm }),
   ];
 
-  const total = baseGates.length;
-  const gates: readonly QcGate<InlayQcContext>[] = baseGates.map((gate, i) => (c: InlayQcContext) => {
+  // T7: the ONLAY covered-cusp region-scoped gate runs directly AFTER the body
+  // min-wall gate, only for an onlay carrying coverage info.
+  const coverage = input.restorationType === 'onlay' ? input.coverage : undefined;
+  const gateSet: readonly QcGate<InlayQcContext>[] = coverage
+    ? [
+        ...baseGates.slice(0, 4), // watertight, manifold, selfIntersection, minWallThickness
+        (c) =>
+          cuspCoverageThicknessGate({
+            fitSurfaceMesh: c.input.fitSurfaceMesh,
+            patchMesh: c.input.patchMesh,
+            insertionAxis: c.input.insertionAxis,
+            marginResampledPoints: c.input.cavityOutlineResampledPoints,
+            marginExclusionMm: c.input.marginExclusionMm,
+            coverageDivider: coverage.coverageDivider,
+            cuspCoverageMinThicknessMm: coverage.cuspCoverageMinThicknessMm,
+          }),
+        ...baseGates.slice(4), // marginFit, seamDihedral, seating, contact
+      ]
+    : baseGates;
+
+  const total = gateSet.length;
+  const gates: readonly QcGate<InlayQcContext>[] = gateSet.map((gate, i) => (c: InlayQcContext) => {
     const result = gate(c);
     onProgress?.(0.6 + (0.4 * (i + 1)) / total);
     return result;

@@ -222,8 +222,22 @@
  * byte-identical" precedent as 0.9.0-0.18.0 (regression-pinned by its own
  * closed-form / determinism / committed-sha256 tests in
  * cavity/proximalContact.test.ts; no `kernel-ops.json` pin added). See
- * docs/CHANGELOG-kernel.md's `[0.19.0]` entry. */
-export const KERNEL_VERSION = '0.20.0';
+ * docs/CHANGELOG-kernel.md's `[0.19.0]` entry.
+ * 0.21.0 (Phase 5 Task 7): NEW op — `cavity/cuspCoverage.ts`'s
+ * `identifyCuspRegions` (geometric cusp detection: local along-axis height
+ * maxima on the occlusal surface, each grown into a cusp region) and
+ * `extendOutlineOverCusp` (the ONLAY outline extension: the extended cavosurface
+ * ring is the single BOUNDARY LOOP of `cavityRegion ∪ coveredCuspRegion` — the
+ * coverage selection unions the covered cusp's occlusal surface into the
+ * restoration; the shared cavity/cusp edges vanish, splicing the cavity outline
+ * and the cusp crest into one ring). The extended outline feeds the WHOLE T3–T6
+ * cavity pipeline UNCHANGED (an onlay = an inlay on the extended outline). Pure
+ * Float64, no manifold-3d boundary; same "brand-new op, minor bump, existing
+ * goldens byte-identical" precedent as 0.9.0-0.20.0's pure-Float64 ops
+ * (regression-pinned by its own analytic closed-form / determinism /
+ * committed-sha256 tests in cavity/cuspCoverage.test.ts; no `kernel-ops.json`
+ * pin added). See docs/CHANGELOG-kernel.md's `[0.21.0]` entry. */
+export const KERNEL_VERSION = '0.21.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -756,6 +770,16 @@ export {
   InlayShellNotWatertightError,
   type ConstructInlayShellHooks,
   type ConstructInlayShellResult,
+  identifyCuspRegions,
+  extendOutlineOverCusp,
+  CUSP_OCCLUSAL_MAX_ANGLE_DEG,
+  CUSP_MIN_PROMINENCE_MM,
+  NoCuspFoundError,
+  CoverageBoundaryError,
+  type CuspRegion,
+  type CuspRegionsResult,
+  type IdentifyCuspRegionsOptions,
+  type ExtendOutlineOverCuspResult,
 } from './cavity/index.ts';
 
 export {

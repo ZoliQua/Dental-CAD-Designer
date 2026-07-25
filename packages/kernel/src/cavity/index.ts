@@ -82,3 +82,18 @@ export {
   type ConstructInlayShellHooks,
   type ConstructInlayShellResult,
 } from './inlayShell.ts';
+
+// Phase 5 Task 7: onlay cusp coverage — cusp identification + outline extension
+// over the covered cusp — `cavity/cuspCoverage.ts`.
+export {
+  identifyCuspRegions,
+  extendOutlineOverCusp,
+  CUSP_OCCLUSAL_MAX_ANGLE_DEG,
+  CUSP_MIN_PROMINENCE_MM,
+  NoCuspFoundError,
+  CoverageBoundaryError,
+  type CuspRegion,
+  type CuspRegionsResult,
+  type IdentifyCuspRegionsOptions,
+  type ExtendOutlineOverCuspResult,
+} from './cuspCoverage.ts';

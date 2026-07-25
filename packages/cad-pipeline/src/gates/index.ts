@@ -22,6 +22,14 @@ export {
   type MinWallThicknessMeasurement,
 } from './minWallThickness.ts';
 export {
+  cuspCoverageThicknessGate,
+  measureCuspCoverageThickness,
+  CUSP_COVERAGE_THICKNESS_GATE_NAME,
+  type CuspCoverageThicknessGateInput,
+  type CuspCoverageThicknessMeasurement,
+  type CoverageDivider,
+} from './cuspCoverageThickness.ts';
+export {
   watertightGate,
   manifoldGate,
   WATERTIGHT_GATE_NAME,

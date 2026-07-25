@@ -59,6 +59,57 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.21.0] — Phase 5 Task 7: onlay cusp coverage — `cavity/cuspCoverage.ts` (`identifyCuspRegions`, `extendOutlineOverCusp`)
+
+**No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned
+fixture hash is byte-identical to `[0.20.0]`.** A brand-new op only; no existing
+op's algorithm or output changed. In `test/golden/crown-acceptance.test.ts`
+(byte-pinned stage hashes, not a `test-fixtures/` file), all FIVE geometry stage
+pins are verified byte-identical to 0.20.0; only the `crown-standin-qc` pin
+changed, MECHANICALLY and metadata-only — the `QcReport` embeds `kernelVersion`
+(cad-pipeline/gates/report.ts), so `hashQcReport` tracks every version bump even
+with every measured value and geometry hash unchanged (the same mechanical churn
+documented at 0.16.0-0.20.0; the unchanged geometry pins are the proof the qc
+diff is the version string alone, not numerical drift).
+
+Adds `packages/kernel/src/cavity/cuspCoverage.ts` (an ONLAY = an inlay on an
+extended outline; the extended outline feeds the WHOLE T3–T6 cavity pipeline
+UNCHANGED):
+
+- **`identifyCuspRegions(mesh, insertionAxis, options?)`** — geometric cusp
+  detection: local along-axis height (`pos·â`) maxima on the OCCLUSAL
+  (axis-facing) surface, each grown into a cusp region by a descending flood,
+  filtered by a documented prominence. Returns cusps sorted by tip height
+  descending. On the MOD onlay fixture: exactly two — the intact LINGUAL cusp
+  and the reduced BUCCAL crest (the coverage-margin ridge) — closed-form
+  checkable. New error `NoCuspFoundError`.
+- **`extendOutlineOverCusp(mesh, baseOutline, insertionAxis, coveredCuspTriangleIndices)`**
+  — the outline extension: the extended cavosurface ring is the single BOUNDARY
+  LOOP of `cavityRegion ∪ coveredCuspRegion` (the coverage SELECTION unions the
+  covered cusp's occlusal surface into the restoration; the shared cavity/cusp
+  edges become interior and vanish, splicing the cavity outline and the cusp
+  crest into one ring). Deterministic (committed sha256 in cuspCoverage.test.ts);
+  reproduces the fixture `onlayOutline` EXACTLY. New error `CoverageBoundaryError`.
+
+Pure Float64, no manifold-3d boundary; same "brand-new op, minor bump, existing
+goldens byte-identical" precedent as 0.9.0-0.20.0's pure-Float64 ops
+(regression-pinned by its own analytic closed-form / determinism / committed-
+sha256 tests in cavity/cuspCoverage.test.ts; no `kernel-ops.json` pin added).
+
+New downstream plumbing (no numerical change to any existing op): the
+`cuspCoverageThickness` cad-pipeline gate (the ONLAY covered-cusp REGION-SCOPED
+`cuspCoverageMinThicknessMm` min-wall check — samples classified covered-cusp vs
+body by a coverage-divider half-space, the wedge band excluded, the sampling
+margin subtracted; wired into `runInlayQc` for onlays carrying coverage). The
+end-to-end onlay acceptance (`test/golden/onlay-acceptance.test.ts`) is
+genuinely coupled (the extend-over-cusp output IS the pipeline outline);
+REVIEWER NOTE: it ACKNOWLEDGES the seating gate — the covered-cusp reduction
+bevel meets the cavity wall at a SHARP CONCAVE CORNER on the deliberately
+un-filleted analytic fixture, and the two-zone offset intaglio rounds that
+corner just below the wall → a ~0.05 mm³ die-into-wall interference (a fixture
+sharp-corner + T3 concave-corner-offset artifact, journaled + reported, never
+weakened; a filleted prep / a T3 concave-corner refinement removes it).
+
 ## [0.20.0] — Phase 5 Task 6: inlay/onlay shell — `cavity/inlayShell.ts` (`constructInlayShell`)
 
 **No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned

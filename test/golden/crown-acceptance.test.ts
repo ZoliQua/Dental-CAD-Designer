@@ -105,7 +105,7 @@ const µm = (mm: number): string => `${(mm * 1000).toFixed(3)} µm`;
 // proof this qc diff is the version string alone, not numerical drift (the same
 // mechanical churn documented at 0.16.0-0.19.0). See docs/CHANGELOG-kernel.md's
 // [0.20.0] entry.
-const EXPECTED_KERNEL_VERSION = '0.20.0';
+const EXPECTED_KERNEL_VERSION = '0.21.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 function installedManifoldVersion(): string {
   const pkg = JSON.parse(readFileSync(join(repoRoot, 'node_modules', 'manifold-3d', 'package.json'), 'utf8')) as {
@@ -131,7 +131,7 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   'crown-standin-freeform': 'f48f898de08bb7d1e4bc6a89758ec4d83339bd50040bd7f92010d1e98647d833',
   // Changed at 0.20.0: version-string-only (QcReport embeds kernelVersion —
   // see the EXPECTED_KERNEL_VERSION comment above; geometry pins unchanged).
-  'crown-standin-qc': '96e5da78ec4ad85e0b7c7bee98d5d5b82d99a21a26d9dc90b6038c8f112231f3',
+  'crown-standin-qc': 'd56a4318fdc9b3492ce5b28cadabfbab35b91e1bd048c349f4ee3c01bd9fd165',
 };
 
 const GATE_ORDER = ['watertight', 'manifold', 'selfIntersection', 'minWallThickness', 'marginFit', 'seating', 'connectorCrossSection', 'contact'];
