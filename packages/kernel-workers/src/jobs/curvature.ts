@@ -6,7 +6,10 @@
 //
 // ## Per-worker result cache (Phase 3 Task 1 housekeeping: "jobs/offset.ts +
 // jobs/curvature.ts stop rebuilding per call ... unify on contentHash-keyed
-// per-worker caches", following jobs/bvh.ts's `bvhCache` pattern)
+// per-worker caches", following jobs/bvh.ts's `bvhCache` pattern; Phase 4
+// Task 1 carry-in: consolidated with jobs/margin.ts's own independent
+// curvature cache into `jobs/meshCache.ts`'s single shared pair — see that
+// file's module doc)
 //
 // Like jobs/geodesic.ts, this job takes a `contentHash` (NOT the raw mesh
 // buffers) and requires `buildBvh` to have already been called for that
@@ -17,22 +20,28 @@
 // mixed-Voronoi-area recompute, which is the expensive part (O(vertices +
 // edges), not free at real-scan scale). Curvature is a pure function of the
 // mesh ALONE (no parameters, unlike jobs/offset.ts's distanceMm/pitchMm) —
-// contentHash alone is therefore a complete, valid cache key.
+// contentHash alone is therefore a complete, valid cache key. This job now
+// ALSO caches its halfedge overlay (via the same shared
+// `requireCachedHalfedge`) — a happy side effect of consolidation: a LATER
+// margin/axis/blockout/geodesic call for the SAME mesh reuses the halfedge
+// overlay this job built, and vice versa, regardless of call order.
 //
-// `curvatureCache` below stores the CANONICAL (never-transferred) result;
-// every return path clones it first — see `cloneResult`'s doc for why
-// (Comlink's zero-copy transfer would otherwise detach the cache's own
-// buffers on the very first response, before any "second call" could ever
-// benefit). apps/client/src/engine/workers.ts's `ensureBvhBuilt` +
-// `affinityKey: contentHash` (mirroring measurePointToSurface/raycastMesh's
-// call-site convention) is what makes "build once, query many times against
-// the SAME worker's cache" actually hold for engine/curvature.ts's caller.
+// `curvatureCache` (in jobs/meshCache.ts) stores the CANONICAL
+// (never-transferred) result; every return path clones it first — see
+// `cloneResult`'s doc for why (Comlink's zero-copy transfer would otherwise
+// detach the cache's own buffers on the very first response, before any
+// "second call" could ever benefit). apps/client/src/engine/workers.ts's
+// `ensureBvhBuilt` + `affinityKey: contentHash` (mirroring
+// measurePointToSurface/raycastMesh's call-site convention) is what makes
+// "build once, query many times against the SAME worker's cache" actually
+// hold for engine/curvature.ts's caller.
 //
 // `.ts` extension: reachable from the Node worker entry's import closure —
 // see CLAUDE.md's "Import extension convention".
-import { computeCurvature, type IndexedMesh } from '@dqcad/kernel';
+import type { IndexedMesh } from '@dqcad/kernel';
 import { JobCancelledError, type JobContext } from './context.ts';
-import { onBvhRelease, requireCachedBvh } from './bvh.ts';
+import { requireCachedBvh } from './bvh.ts';
+import { requireCachedCurvature, requireCachedHalfedge } from './meshCache.ts';
 
 export interface ComputeCurvaturePayload {
   contentHash: string;
@@ -54,19 +63,6 @@ export interface ComputeCurvatureResult {
   /** Mixed Voronoi area per vertex, mm^2. */
   mixedArea: Float64Array;
 }
-
-/** Per-worker cache — see this file's module doc. Keyed by contentHash
- * alone (see that doc for why no other key component is needed). */
-const curvatureCache = new Map<string, ComputeCurvatureResult>();
-
-// Evict this cache's entry whenever the SAME contentHash's BVH is released
-// (jobs/bvh.ts's `releaseBvh`) — mirrors jobs/geodesic.ts's `halfedgeCache`
-// eviction: a released mesh's curvature job would fail on
-// `requireCachedBvh` anyway (for a cache MISS), and a still-cached HIT for
-// it is pure leaked memory otherwise.
-onBvhRelease((contentHash) => {
-  curvatureCache.delete(contentHash);
-});
 
 /** Deep-clones a `ComputeCurvatureResult`'s typed arrays. REQUIRED before
  * ever returning a value that came out of `curvatureCache`: jobs/registry.ts's
@@ -104,17 +100,9 @@ export const computeCurvatureJob = async (
   if (await ctx.cancelled()) throw new JobCancelledError();
   ctx.progress(0);
 
-  const cached = curvatureCache.get(payload.contentHash);
-  if (cached) {
-    // Cache hit: the whole point of this task's brief — skip the O(vertices
-    // + edges) recompute entirely, pay only a cheap buffer clone.
-    ctx.progress(1);
-    return cloneResult(cached);
-  }
-
   const { mesh }: { mesh: IndexedMesh } = requireCachedBvh(payload.contentHash);
-  const result = computeCurvature(mesh);
-  curvatureCache.set(payload.contentHash, result);
+  const hm = requireCachedHalfedge(payload.contentHash, mesh);
+  const result = requireCachedCurvature(payload.contentHash, mesh, hm);
   ctx.progress(1);
   return cloneResult(result);
 };

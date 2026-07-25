@@ -16,10 +16,10 @@
 //
 // `buildBvh` must already be cached for `payload.contentHash` on THIS
 // worker (jobs/bvh.ts's `requireCachedBvh`) — this job builds neither the
-// BVH nor the halfedge overlay itself if a cached copy already exists (same
-// per-worker halfedge cache convention as jobs/axis.ts/jobs/margin.ts —
-// duplicated per this repo's established per-domain-module convention, see
-// that file's own doc for why).
+// BVH nor the halfedge overlay itself if a cached copy already exists. The
+// halfedge overlay comes from `jobs/meshCache.ts`'s CONSOLIDATED
+// per-worker cache (Phase 4 Task 1 carry-in — this file previously kept its
+// own independent `halfedgeCache` copy; see meshCache.ts's module doc).
 //
 // ## Progress & cancellation
 //
@@ -46,39 +46,21 @@
 // `.ts` extension: reachable from the Node worker entry's import closure —
 // see CLAUDE.md's "Import extension convention".
 import {
-  buildHalfedge,
   extractMarginRegion,
   unionRegions,
   blockoutPreview,
   AXIS_DEFAULT_ROI_RADIUS_MM,
   EmptyRegionError,
-  type HalfedgeMesh,
-  type IndexedMesh,
   type SurfacePoint,
   type UndercutSamplingPolicy,
 } from '@dqcad/kernel';
-import { onBvhRelease, requireCachedBvh } from './bvh.ts';
+import { requireCachedBvh } from './bvh.ts';
+import { requireCachedHalfedge } from './meshCache.ts';
 import { JobCancelledError, type JobContext } from './context.ts';
 import type { Vec3Payload } from './shared.ts';
 import type { MarginSurfacePointPayload } from './margin.ts';
 
 export { EmptyRegionError, AXIS_DEFAULT_ROI_RADIUS_MM };
-
-// Duplicated per-worker halfedge cache — mirrors jobs/axis.ts's own
-// `halfedgeCache` (that file's doc explains why this is duplicated per
-// domain module rather than shared).
-const halfedgeCache = new Map<string, HalfedgeMesh>();
-onBvhRelease((contentHash) => {
-  halfedgeCache.delete(contentHash);
-});
-
-function requireCachedHalfedge(contentHash: string, mesh: IndexedMesh): HalfedgeMesh {
-  const cached = halfedgeCache.get(contentHash);
-  if (cached) return cached;
-  const hm = buildHalfedge(mesh);
-  halfedgeCache.set(contentHash, hm);
-  return hm;
-}
 
 function toSurfacePoint(sp: MarginSurfacePointPayload): SurfacePoint {
   return { triangleIndex: sp.triangleIndex, barycentric: sp.barycentric as SurfacePoint['barycentric'] };

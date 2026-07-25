@@ -12,13 +12,16 @@
     "test": "vitest run --config ../../vitest.config.ts --project server"
   },
   "dependencies": {
+    "@dqcad/cad-pipeline": "*",
     "@dqcad/kernel": "*",
     "@dqcad/shared-types": "*",
+    "@dqcad/tooth-library": "*",
     "@fastify/cors": "^11.3.0",
     "@prisma/client": "^6.19.3",
     "fastify": "^5.10.0"
   },
   "devDependencies": {
+    "@dqcad/kernel-workers": "*",
     "@types/node": "^22.10.0",
     "prisma": "^6.19.3",
     "tsx": "^4.23.0"

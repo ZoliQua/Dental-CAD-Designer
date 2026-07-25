@@ -1,5 +1,5 @@
 {
-  "kernelVersion": "0.7.1",
+  "kernelVersion": "0.13.0",
   "manifoldVersion": "3.5.1",
   "notes": [
     "Runtime budget: every param here is chosen to keep this suite fast (target: whole suite well under the ~2 min CI budget) — see scripts/kernel-ops-lib.ts's module doc for each choice.",
@@ -14,7 +14,8 @@
     "icpRegister (Phase 3 Task 3, KERNEL_VERSION 0.3.0): NEW pinned entry — arch-case-01 bite0 (src) vs upperjaw (dst), identity initial transform (verified via bbox overlap: same acquisition session, already a valid coarse init), outlierRejectionFraction 0.85 (measured necessary for this partial-overlap real pair — see the op's own inline comment above). Every other op entry is UNCHANGED by this bump.",
     "proposeMargin (Phase 3 Task 4, KERNEL_VERSION 0.4.0): NEW pinned entry — arch-case-01 upperjaw, fixed seed on a real anterior shoulder-prep margin ridge vertex, default params, perimeter-in-anatomical-range self-check (15-35mm). Every other op entry is UNCHANGED by this bump.",
     "suggestAxis (Phase 3 Task 9, KERNEL_VERSION 0.6.0): NEW pinned entry — arch-case-01 upperjaw, ROI extracted (radiusMm=2) from tooth 11's COMMITTED hand-traced reference margin anchors (Task 7 — a fixed, already-golden-pinned seed, no ambient-point survey needed), default suggestInsertionAxis params, a <2s runtime self-check (this task's interactivity target — measured and asserted at generation time, not just reported). Every other op entry is UNCHANGED by this bump.",
-    "blockoutPreview (Phase 3 Task 10, KERNEL_VERSION 0.7.0): NEW pinned entry — SAME real fixture/ROI as suggestAxis (arch-case-01 upperjaw, tooth 11 reference margin, radiusMm=2), direction = the WORST-ranked candidate suggestAxis itself evaluated (a real, reproducible, non-fabricated direction guaranteed to carry genuine undercut on this real fixture, since the BEST candidate is by construction near the zero-undercut optimum and would pin a near-empty golden), thresholdMm = DEFAULT_UNDERCUT_BLOCKOUT_THRESHOLD_MM (clinical-profiles, 0). A non-empty-selection self-check guards against a silently-degenerate regeneration. Every other op entry is UNCHANGED by this bump."
+    "blockoutPreview (Phase 3 Task 10, KERNEL_VERSION 0.7.0): NEW pinned entry — SAME real fixture/ROI as suggestAxis (arch-case-01 upperjaw, tooth 11 reference margin, radiusMm=2), direction = the WORST-ranked candidate suggestAxis itself evaluated (a real, reproducible, non-fabricated direction guaranteed to carry genuine undercut on this real fixture, since the BEST candidate is by construction near the zero-undercut optimum and would pin a near-empty golden), thresholdMm = DEFAULT_UNDERCUT_BLOCKOUT_THRESHOLD_MM (clinical-profiles, 0). A non-empty-selection self-check guards against a silently-degenerate regeneration. Every other op entry is UNCHANGED by this bump.",
+    "constructShell (Phase 4 Task 7, KERNEL_VERSION 0.13.0): NEW pinned entry — inline synthetic cone-frustum die -> buildInnerSurface (pitchMm=0.1, coarse) + occlusally-capped open-cervical anatomy dome (0.7mm radial offset), joined at the margin-band seam into a watertight shell through the manifold-3d wrapper (cleanupMesh). This entry EXERCISES THE WASM BOUNDARY for the shell op, so the manifoldVersion guard protects it exactly like union/subtract/intersect. A watertight + single-component self-check guards against pinning a broken shell. Every other op entry is UNCHANGED by this bump (verified byte-identical via the regeneration diff)."
   ],
   "ops": [
     {
@@ -351,6 +352,27 @@
         "vertexCount": 7016,
         "maxDisplacementMm": 20.64840462317899,
         "approxVolumeMm3": 302.9276462059539
+      }
+    },
+    {
+      "id": "constructShell",
+      "op": "constructShell",
+      "fixture": "inline synthetic frustum die -> buildInnerSurface (pitchMm=0.1) + open-cervical anatomy dome (0.7mm offset)",
+      "params": {
+        "pitchMm": 0.1,
+        "outerRadialOffsetMm": 0.7,
+        "insertionAxis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "hash": "9c15ee55481401bb2f5ab00a1012bb00eab017053998247d2b17929361674173",
+      "meta": {
+        "triangleCount": 3550,
+        "watertight": true,
+        "seamTriangleCount": 336,
+        "volumeMm3": 14.88900220727863
       }
     }
   ]

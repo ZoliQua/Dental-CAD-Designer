@@ -59,6 +59,468 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.15.0] — Phase 4 Task 12b: morph→shell coupling robustness — `shell/healOuterAnatomy.ts` (`healOuterAnatomy`) + `shell/shell.ts` `constructShell` robust trim
+
+**No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned
+fixture hash is byte-identical to `[0.14.0]`.** The DELIBERATE golden change is
+the byte-pinned crown-acceptance STAGE hashes in
+`test/golden/crown-acceptance.test.ts` (not a `test-fixtures/` file): the standin
+now feeds the MORPHED outer through the heal into the shell — the genuine coupled
+`die→inner→place→morph→HEAL→shell→sculpt→qc` lineage — so the anatomyPlacement,
+morphing, shell, freeform and qc stage hashes all shifted (only innerSurface, the
+same die/intaglio, is byte-identical). That change is guarded by the test's own
+`EXPECTED_KERNEL_VERSION` (bumped here to `0.15.0`) + the manifold-3d-version
+guard.
+
+**Why this task:** Task 12's diagnostic proved a CLEAN, well-formed RBF-morphed
+closed tooth was REJECTED by `constructShell` even though the byte-identical
+un-morphed tooth built — a morph→shell coupling robustness gap independent of
+scan quality, so NO input (clean or real) built a crown through the genuine
+coupled path. 12b closes it.
+
+- **NEW op — `healOuterAnatomy(outerMesh, { pitchMm })`** — a deterministic HEAL
+  of the morphed OUTER anatomy between morph (T6) and shell (T7). It SDF-re-meshes
+  the closed morphed outer at the zero level set (the exact `offset/offsetMesh.ts`
+  pipeline at `distanceMm = 0`): a marching-cubes iso surface is ALWAYS a clean,
+  oriented, watertight 2-manifold with no self-intersections and no degenerate
+  triangles, so the RBF morph's folds/slivers (invisible to halfedge
+  watertightness) are healed BY CONSTRUCTION. Heals only the OUTER; the intaglio
+  (the ≤10 µm fit surface) is a separate mesh, never passed here, stitched to its
+  EXACT margin as before. `@errorBound = pitchMm/2 + eps_f32` (inherited from
+  `offsetMesh` at distance 0): every point of the healed outer — including the
+  occlusal/proximal CONTACT loci — is within this of the morph's surface, so the
+  morph's achieved contacts shift by at most this bound (surfaced to QC). Pure
+  reuse of the offset pipeline ⇒ deterministic (same mesh + pitch + manifold-3d
+  version ⇒ byte-identical); regression-pinned by `shell/healOuterAnatomy.test.ts`
+  (a self-intersecting folded sphere → clean valid solid; determinism; fidelity),
+  no `kernel-ops.json` pin (same additive-op precedent as 0.9.0–0.14.0).
+  HONEST LIMIT: an EXTREME through-and-out fold can defeat the marching-cubes
+  reconstruction itself (NonManifoldInputError) — the heal rescues clean/mild
+  morphs, not arbitrarily-degraded ones (see the real tooth-11 outcome below).
+
+- **CHANGED op — `constructShell`'s CLOSED-outer trim** (`trimClosedOuterToMargin`):
+  replaced the fragile centroid-DISCARD (which assumed a clean cervical ring at
+  the finish-line plane) with a robust plane-CLIP (Sutherland–Hodgman, splitting
+  crossed triangles with sorted-vertex-index-keyed shared split vertices → a
+  2-manifold cut, never a T-junction) at a plane a small `marginTrimOffsetMm`
+  (new optional param, default `DEFAULT_MARGIN_TRIM_OFFSET_MM = 0.05 mm`) OCCLUSAL
+  to the finish line. This was the DOMINANT proximate cause of the coupling gap:
+  a real morphed outer's cervical surface WIGGLES across the exact margin plane
+  (non-anchor cervical vertices move sub-margin), so a cut AT the finish line
+  fragments into many boundary loops → a non-manifold stitch; a cut a hair above
+  lands on the clean axial wall → exactly one cervical rim → a watertight stitch.
+  Only the OUTER is cut, ABOVE the finish line; the intaglio's ≤10 µm marginal
+  seal is untouched (measured: the confirmed margin points stay on the shell
+  surface to ≤10 µm — 0.000 µm on the standin). `@errorBound`: the outer shape
+  within `marginTrimOffsetMm` of the finish line is replaced by the ruled seam
+  band (a marginal collar ≤ 50 µm tall) — above the finish line, outward of the
+  intaglio, never perturbing the fit surface.
+  **The `kernel-ops.json` `constructShell` golden is BYTE-IDENTICAL**: its fixture
+  passes an already-OPEN dome, which skips the trim entirely — only the
+  closed-outer path changed.
+
+Result: the flipped diagnostic (`test/golden/morph-shell-coupling.test.ts`) — a
+clean morph now BUILDS a watertight, single-component crown through
+morph→heal→shell with margin-fit 0.000 µm — and the genuinely-coupled standin
+acceptance (all gates pass on the morph-derived shell) prove the coupled
+end-to-end crown on clean input. The REAL arch-case-01 tooth-11 STILL blocks
+(coupled morph→heal→shell → NonManifoldInputError), now attributable to SCAN
+QUALITY (a degraded ~1.64 mm-seal / clamped ~2.47 mm-contact morph beyond
+healing), not the coupling — the same tracked-pending pattern as Phase 3.
+
+## [0.14.0] — Phase 4 Task 8: freeform sculpting brushes — `sculpt/sculpt.ts` (`applySculptStroke` / `applySculptGesture` / `computeShellLock`)
+
+**No golden hash changed — every existing `kernel-ops.json`/`*.golden.json`
+hash is byte-identical to `[0.13.0]`.** One new kernel module, `sculpt/sculpt.ts`,
+adding deterministic add/remove/smooth sculpting brushes for the crown shell
+(Task 7), with the FIT SURFACE (inner intaglio + margin + margin-band seam)
+LOCKED by default so Task 4's ≤10 µm marginal fit survives sculpting. The ops are
+pure Float64 (no manifold-3d boundary), so — like 0.9.0–0.12.0's additive ops —
+they add NO `kernel-ops.json` pin; they are regression-pinned by their own
+determinism / committed-hash / analytic tests (`sculpt/sculpt.test.ts`). The
+minor bump follows the standing "brand-new op ⇒ minor bump + changelog"
+discipline even though no pinned hash moved.
+
+- **`applySculptStroke`** — applies ONE stroke `{center, radiusMm, strength,
+  brush}` to a mesh, displacing only NON-locked (outer) vertices. The RADIAL
+  FALLOFF is the C1-smooth bump `falloff(t) = (1 − t²)²` for `t = d/radius ∈
+  [0,1]` (value 1/slope 0 at the centre, value 0/slope 0 at the rim — no crease).
+  With `n_v` the pre-stroke area-weighted UNIT vertex normal (snapshotted ONCE,
+  so all displacements in a stroke are computed from the same state and are
+  order-independent): **add** displaces `+n_v·strength·falloff`, **remove**
+  `−n_v·strength·falloff`, **smooth** moves each vertex toward its one-ring
+  centroid by `L_v·clamp01(strength)·falloff` (`L_v` = umbrella/Laplacian from
+  the pre-stroke snapshot — REDUCES local curvature, Taubin λ-step). `strength`
+  is the peak displacement (mm) at the centre for add/remove, a peak blend
+  fraction [0,1] for smooth.
+- **Fold guard / safe-displacement bound** — a brush only displaces existing
+  vertices (no re-triangulation), so the shell's TOPOLOGICAL watertightness
+  (manifold-edge / boundary-edge / component structure) is preserved BY
+  CONSTRUCTION and re-validated with `analyzeMesh`. The tractable geometric
+  failure — a triangle incident to a moved vertex folding to a sliver / flipping
+  — is guarded: over the affected triangles, the largest global scale `s ∈ (0,1]`
+  at which every affected triangle keeps ≥ `minAreaFraction` (default 0.1) of its
+  original area projected on its original normal is found by deterministic
+  bisection; the stroke is applied at that `s` (`s = 1` unclamped, `s < 1`
+  reported as clamped). This guards LOCAL folds exactly; it does NOT prove the
+  absence of a GLOBAL self-intersection between two distant moving patches (out
+  of reach of a bounded local-normal displacement on a smooth shell — surfaced
+  honestly, not claimed away). Displacement along the vertex normal on a convex
+  surface only inflates (safe); the guard binds on tangential (smooth) and
+  through-surface (strong remove) motion.
+- **`computeShellLock`** — identifies the LOCKED fit surface on the ACTUAL shell
+  (robust to the manifold-3d cleanup that reorders the shell's vertices, so the
+  `constructShell` triangle-range breakdown is unusable post-cleanup): base lock
+  = every shell vertex within `lockInnerEpsilonMm` (default 20 µm — far below the
+  0.5 mm min wall, far above the < ~1 µm Float32 cleanup round-trip) of the inner
+  intaglio surface (the whole intaglio incl. its exact margin rim); plus an
+  optional margin-polyline band; then `seamRingGrowth` (default 2) topological
+  one-ring growth steps — the outer cervical rim is stitched DIRECTLY to the
+  inner margin rim by the seam, so growth reaches it, guaranteeing every seam
+  triangle has all-locked corners and the seam ribbon never moves. Result: the
+  ≤10 µm margin fit is preserved because the inner/margin/seam vertices are
+  byte-identical before/after any stroke (proven in the tests: margin fit stays
+  0.00 µm after a stroke centred on the margin).
+- **`applySculptGesture`** — the coalesced, journaled, replayable unit: applies
+  an ordered stroke sequence, each to the previous result, with the SAME lock
+  frozen throughout (vertex topology is constant so the mask stays valid), and
+  re-validates watertight ONCE at the end. Same `(mesh, strokes, locked,
+  options)` ⇒ byte-identical mesh, so replaying the journaled strokes reproduces
+  the sculpt bit-for-bit (CLAUDE.md invariant 2). Overlapping strokes apply in
+  journaled order (order-dependent, deterministically). Measured < 3 ms/stroke on
+  a ~3.3 k-vertex shell (< 50 ms interactive budget). Consumed by
+  `cad-pipeline`'s freeform stage (`stages/sculpt.ts`, journaled as
+  `freeform.sculpt`) and the `applySculptStroke` worker job.
+
+## [0.13.0] — Phase 4 Task 7: shell construction — `shell/shell.ts` (`constructShell` + `measureWallThickness` + `autoThickenOuter`)
+
+**One NEW golden pin added (`constructShell`); every OTHER existing golden hash
+is byte-identical to `[0.12.0]`** (verified via the regeneration diff — only the
+new `constructShell` entry was added to `test-fixtures/golden/kernel-ops.json`,
+op count 20 → 21). One new kernel module, `shell/shell.ts`:
+
+- **`constructShell`** — joins the morphed OUTER anatomy (Task 6) and the
+  intaglio INNER surface (Task 4) into a SINGLE WATERTIGHT crown shell. The
+  Task-6 morphed tooth is a CLOSED watertight solid (it inherits the placed
+  library tooth's topology), so `constructShell` first TRIMS it to an open-
+  cervical dome at the margin (`trimClosedOuterToMargin`: discard triangles on
+  the apical side of the margin-centroid plane ⟂ the insertion axis) — this is
+  the pipeline connection (closed morphed tooth → watertight shell, unblocking
+  Task 12). Only the OUTER is cut; the inner intaglio is stitched to its EXACT
+  margin rim, so the ≤10 µm marginal seal is preserved untouched (measured: the
+  confirmed margin lies 0.00 µm from the resulting shell). A pre-opened dome
+  (one cervical rim already) skips the trim. Both surfaces then share the
+  crown's finish-line edge: the outer dome open at its CERVICAL rim, the inner
+  cup open at the MARGIN rim (== the confirmed margin polyline). The
+  two rims are bridged by a **margin-band seam** — a ruled annulus stitched with
+  the same deterministic azimuth-fraction zipper `offset/innerSurfaceSolid.ts`'s
+  skirt uses (strictly monotone, robust to a jagged marching-cubes rim),
+  generalizing `margin/band.ts`'s `marginLoopMesh` (a loop↔its-own-offset ribbon)
+  to bridge the two DISTINCT rims a real crown has. The stitched closed 2-manifold
+  is then passed through the **manifold-3d wrapper** (`boolean/manifold.ts`'s
+  `cleanupMesh`), which validates the oriented-2-manifold invariant + collapses
+  degenerate slivers, and the result is re-validated watertight + single-component
+  (`analyzeMesh`), throwing `ShellNotWatertightError` otherwise — a non-watertight
+  stitch can never masquerade as a shell.
+- **`measureWallThickness`** — minimum wall thickness as the inner↔outer closest-
+  surface distance. Every triangle of BOTH surfaces is GRID-SAMPLED at ≤
+  `maxSampleSpacingMm` (default 0.1 mm — not just at vertices), so a thin spot
+  BETWEEN vertices cannot be missed; the min is over both directions. Two error
+  sources handled separately: the straight-line distance is a lower bound on the
+  through-material thickness (that dimension over-reports thinness), and the
+  discrete-sampling gap (the DANGEROUS direction) is bounded by the sample
+  spacing and reported as `sampleSpacingMm`, which `minWallThicknessGate`
+  SUBTRACTS from the measured minimum before comparing to the threshold — so a
+  wall that could be thinner than the threshold within sampling error FAILS.
+  Occlusal vs axial classification via the insertion axis.
+- **`autoThickenOuter`** — user-invoked, bounded, deterministic outward
+  displacement of OUTER vertices whose local wall is below the profile minimum
+  (directly away from the nearest inner point; total displacement capped at
+  `maxDisplacementMm`), with a small overshoot + fixed convergence passes to clear
+  the discretization gap. Never thins anything; reports clamped (bound-limited)
+  vertices rather than silently over-ballooning.
+
+**Why `constructShell` IS a `kernel-ops.json` pin (unlike 0.9.0–0.12.0's
+additive-only ops):** its output crosses the manifold-3d WASM boundary
+(`cleanupMesh`), so its hash depends on the manifold-3d BUILD — exactly the
+`union`/`subtract`/`intersect` situation. Pinning it in the manifoldVersion-
+guarded `kernel-ops.json` snapshot means a manifold-3d upgrade that changes the
+shell hash surfaces AS a manifold-version diff (caught by
+`test/golden/kernel-ops.test.ts`'s dedicated version-match assertion), not a
+spurious kernel regression. The two pure-Float64 ops (`measureWallThickness`,
+`autoThickenOuter`) are regression-pinned by their own analytic + determinism
+tests (`shell/shell.test.ts`), not a `kernel-ops.json` entry.
+
+## [0.12.0] — Phase 4 Task 6: adaptation/morphing — `rbf/` (deterministic dense solver + RBF interpolant) + `anatomy/morph.ts` (contact-driven RBF morph)
+
+**NEW ops, no existing golden hash changed.** Every committed golden
+(`test-fixtures/golden/kernel-ops.json`, intake/curvature/offset/margins) is
+byte-identical to `[0.11.0]` — this bump is purely additive. Two new kernel
+modules:
+
+- **`rbf/solve.ts`** — `solveDense`, a dense Float64 linear solver via Gaussian
+  elimination with **partial pivoting and a deterministic tie-break** (largest
+  |pivot| in the column, lowest row index on an exact tie — the same
+  `>`-strict discipline as `bvh/closestPoint.ts`). A DIRECT factorization has a
+  fixed arithmetic sequence with no convergence/tolerance loop, so the same
+  input yields byte-identical output — the journal-reproducibility bar Task 6
+  exists to hit (CLAUDE.md invariant 2). No prior linear-algebra solver existed
+  in the kernel.
+- **`rbf/rbf.ts`** — `fitRbf`/`evaluateRbf`/`applyRbfDisplacement`, a vector-
+  valued RBF displacement interpolant: kernel **φ(r) = r** (the 3-D biharmonic
+  polyharmonic spline — parameter-free, so nothing to tune could silently
+  change the result) plus a **degree-1 polynomial term** (affine reproduction +
+  conditional positive-definiteness). The (N+4)×(N+4) symmetric saddle system
+  is solved by `solveDense`, three RHS (x/y/z) against one factorization.
+- **`anatomy/morph.ts`** — `planAnatomyMorph`/`solveAnatomyMorph`/`morphAnatomy`,
+  the adaptation/morphing stage: deform the placed library tooth (Task 5) so it
+  makes correct **proximal** contacts (penetration = `proximalContactPenetration-
+  Mm`) and an **antagonist** contact (`occlusalContactMm`) — targets from the
+  profile, never hardcoded — while pinning the cervical seal band as fixed
+  zero-displacement anchors so Task 4's ≤10 µm marginal seal survives. Contact
+  targets are driven to penetration by a FIXED-count root-find (no tolerance
+  loop) against the other surface's signed-distance field; far-field anchors
+  localize the deformation and make the control set unisolvent. The plan/solve
+  split gives an interactive (< 500 ms) slider re-solve. The morph carries a
+  MEASURED contact-residual `@errorBound` (achieved vs target penetration).
+
+**No `kernel-ops.json` pin added.** As with 0.9.0–0.11.0, the new ops are
+regression-pinned by their own analytic + determinism + committed-hash tests
+(`rbf/solve.test.ts`, `rbf/rbf.test.ts`, `anatomy/morph.test.ts`) plus the
+synthetic morph golden (`test/golden/anatomy-morph.test.ts`, a pinned
+placed-mesh→morphed-mesh sha256 + byte determinism), not by a `kernel-ops.json`
+entry. Every existing golden hash is unchanged — this bump follows the same
+brand-new-op / minor-bump / existing-goldens-byte-identical precedent as
+`[0.11.0]`.
+
+## [0.11.0] — Phase 4 Task 5: anatomy placement — `anatomy/placement.ts` (deterministic transform solve + manual-override API)
+
+**NEW op, no existing golden hash changed.** Every committed golden
+(`test-fixtures/golden/kernel-ops.json`, intake/curvature/offset/margins) is
+byte-identical to `[0.10.0]` — this bump is purely additive. `anatomy/placement.ts`
+adds NO entry to `kernel-ops.json`: it is pure transform math (it reuses the
+already-pinned `register/` primitives — `coarseAlignFromPointTriples`,
+`multiplyMat4`, `composeRigid`, `applyMat4ToPoint` — and the already-pinned
+`margin/band.ts` `computeMarginLoopFrame`), and is regression-pinned by its own
+analytic + determinism (byte-identical transform/placed-mesh hash) tests
+(`packages/kernel/src/anatomy/placement.test.ts`) rather than a golden-file
+snapshot. Verified by a full `npm run test:golden` run against this bump.
+
+### What the new op is
+
+`solveAnatomyPlacement(input)` + `buildPlacementTransform(frame, canonical)` +
+`placeMesh(mesh, transform)` place a library tooth into a case with a single
+deterministic, closed-form transform solve — no iterative-tolerance
+nondeterminism, no randomness/clock:
+
+1. **Target frame from case geometry.** Occluso-gingival axis = the insertion
+   axis (re-oriented toward the antagonist when present so a sign-flipped axis
+   cannot place the tooth upside-down); mesial-distal axis = the mesial→distal
+   neighbour-centroid line orthogonalised against it; bucco-lingual =
+   `og × md` (right-handed, matching the canonical frame's `MD×BL=OG`
+   convention, so buccal orientation is forced once M-D and O-G are correct).
+   Origin = the confirmed margin loop's centroid (the cervical seat).
+2. **Anisotropic scale.** `scaleMesialDistal` fills the proximal gap between
+   the neighbours (centroid-separation fallback for crowded scans);
+   `scaleOcclusoGingival` fills margin→nearest-antagonist-over-the-site
+   (antagonist-absent fallback: reuse the M-D factor → undistorted uniform
+   scale); `scaleBuccoLingual` reuses the M-D factor (no B-L case datum).
+3. **Transform.** `M = R_target · diag(scale) · R_canonicalᵀ` — the rigid
+   canonical→target rotation is recovered by the existing
+   `coarseAlignFromPointTriples` (Kabsch) fed the two frames' axis-tip triples,
+   the anisotropic scale composed about the origin via `multiplyMat4`. Applied
+   to a COPY of the immutable library mesh (positive determinant → winding
+   preserved).
+
+Manual-override helpers (`translatePlacement`/`rotatePlacement`/
+`rescalePlacement`/`solveLandmarkHandleTranslation`) return a new
+`PlacementFrame` for deterministic position/rotation/scale + anatomical-handle
+edits; a landmark handle re-solves to a pure origin translation that lands the
+dragged landmark exactly on target.
+
+`@errorBound` EXACT (Float64, ~1e-13 for the Kabsch frame rotation; every other
+step direct arithmetic). Placement is a deterministic initial-pose heuristic,
+not an approximation of a continuous quantity, so its `RestorationStageResult`
+carries a `null` errorBound.
+
+## [0.10.0] — Phase 4 Task 4: crown inner surface completed — `offset/innerSurfaceSolid.ts`'s `buildInnerSurface` (solid undercut blockout + skirt-to-margin)
+
+**NEW op, no existing golden hash changed.** Every entry in
+`test-fixtures/golden/kernel-ops.json` (and every other committed golden —
+intake/curvature/offset/margins) is byte-identical to `[0.9.0]` — this bump is
+purely additive: it adds one new op file (`offset/innerSurfaceSolid.ts`) and
+does not touch any pinned kernel-op's inputs or code path. Verified by a full
+`npm run test:golden` run against this bump.
+
+### What the new op is
+
+`buildInnerSurface(mesh, params)` completes the crown intaglio Task 3
+(`innerSurfaceOffsetRoi`) started. It produces the FINISHED fit surface — an
+open patch whose single boundary loop is exactly the confirmed margin — with
+two new construction stages on top of Task 3's two-zone offset:
+
+1. **Solid undercut blockout (draft-close).** In a frame rotated so the
+   insertion axis is `+Z`, the cement-gap field `F(x) = signedDistance(x) −
+   gap(h(x))` is DENSELY sampled (not banded — a draft-fill wall leaves the
+   thin offset band, so the running-minimum needs a correctly-signed field
+   everywhere in the ROI; accuracy over speed) and draft-closed by a per-column
+   running minimum `G[z] = min(F[z], G[z+1])`. The resulting `{G = 0}` surface
+   is downward-closed along the axis, hence undercut-free BY CONSTRUCTION: a
+   short proof (`G(x−s·d) ≤ G(x)`) shows the cavity is closed under stepping
+   toward the margin, so its upper boundary is single-valued along every axis
+   column (no overhang, no self-occlusion, `normal·axis ≥ 0` everywhere). The
+   self-consistency test re-scans the WHOLE finished intaglio (patch + skirt +
+   occlusion) with `undercutScan`: on any CLINICALLY VALID (in-taper) insertion
+   axis — the die's `+Z` and an ~11.5° in-taper tilt — the ENTIRE mesh has ZERO
+   undercut (measured), and the die genuinely has undercut before blockout (a
+   control asserts that). This closes the P3 composite-interaction gap: the
+   morphological field operation handles occlusion the display-only
+   `blockoutPreview` could not. On an axis EXCEEDING the die taper (~15° — an
+   UNSEATABLE axis, on which the confirmed margin itself cannot draw) the
+   offset/blockout PATCH is STILL undercut-free (0 patch facing, 0 patch
+   occlusion — measured); the only residual there is the marginal-seal SKIRT
+   near the margin (NOT occlusal-cap self-occlusion — measured 0).
+
+2. **Skirt-to-margin (the ≤10 µm marginal seal).** The blocked patch's open
+   boundary loop is stitched onto the dense margin `resampledPoints` (CHORD-CAP,
+   never anchor chords) by a deterministic index-fraction zipper; the skirt's
+   bottom rim vertices ARE the margin points, so the finished boundary loop ==
+   the margin polyline (measured margin fit ~0, `<<` the 10 µm gate). Winding is
+   made consistent + outward by `orientNormalsConsistently` + a reference-triangle
+   flip.
+
+`@errorBound`: the offset magnitude keeps Task 3's chord bound; the blockout
+adds a `pitchMm/2` position error on draft-fill walls; the skirt adds NO margin
+error (boundary vertices are the margin points). Margin-fit and self-consistency
+residuals are MEASURED (not bounded a priori) — see
+`offset/innerSurfaceSolid.analytic.test.ts` and `cad-pipeline`'s
+`gates/marginFit.ts`.
+
+### Why no `kernel-ops.json` pin
+
+Same precedent as `[0.8.0]`/`[0.9.0]`: the op is regression-pinned by its own
+analytic determinism (byte-identical double-run hash) + acceptance tests, which
+also assert margin fit ≤ 10 µm and zero facing/draft residual. Adding it to the
+shared `kernel-ops.json` snapshot is deferred (its runtime is dominated by the
+dense SDF field; the compact-die always-on run is already its regression pin).
+
+## [0.9.0] — Phase 4 Task 3: crown inner surface — `offset/innerSurfaceOffset.ts`'s `innerSurfaceOffsetRoi` (two-zone cement-gap offset + C1 blend)
+
+**NEW op, no existing golden hash changed.** Every entry in
+`test-fixtures/golden/kernel-ops.json` (and every other committed golden —
+intake/curvature/offset/margins) is byte-identical to `[0.8.0]` — verified
+by a full `npm run test:golden` run against this bump. This is a genuinely
+new piece of kernel surface, not a behavior change to anything existing.
+
+**`offset/innerSurfaceOffset.ts`'s `innerSurfaceOffsetRoi`** — the crown
+INNER-SURFACE (intaglio / cement-gap) geometry, PLAN.md §4 Phase 4 stage 1's
+opening step. A spatially-VARYING outward offset of the prep with two zones
+and a C1-smooth blend, extracted by the same SDF -> marching cubes machinery
+`offsetMesh`/`offsetMeshRoi` use, restricted to the prep ROI:
+
+- **Formulation.** Instead of a constant-iso offset, it extracts the level
+  set `F(x) = signedDistance(x) - gap(h(x)) = 0`, where `gap(h)` is a C1
+  ramp from `marginalGapMm` (near margin) to `cementGapMm` (above the spacer
+  line) via a smoothstep across `blendWidthMm` centred on `spacerStartMm`. It
+  builds the grid `G = signedDistance - gap(h)` and runs marching cubes at
+  iso = 0 — the blend is built into the ramp, no MC-side special-casing.
+- **Height field `h(x)` — the design decision.** `h` = EUCLIDEAN distance to
+  the margin loop polyline, evaluated at the grid point's FOOTPOINT on the
+  prep (`signedClosestPoint`'s `.point`, already computed for the SDF value —
+  so it is free), NOT at the off-surface grid point (option C, documented
+  against the geodesic and plane-projection alternatives in the module doc).
+  Chosen because it is 0 EXACTLY on the margin for any loop shape (so the
+  marginal band genuinely hugs the margin — closing the plane-proxy's
+  non-planar degradation), it equals along-surface distance EXACTLY on a ruled
+  axial wall (clean analytic golden on the cone die), it is a LOWER bound on
+  true geodesic arc length in general (spacer line never lands lower than
+  nominal — the clinically safe direction), and it needs no off-surface field
+  extension. Evaluating at the footpoint makes `gap` a property of the surface
+  location (constant along the normal through it), which REMOVES the
+  grid-vs-footpoint displacement term (up to `|signedDistance| <= cementGapMm`,
+  ~7.5µm of blend-zone gap error at the standard gaps) rather than merely
+  bounding it.
+- **`@errorBound`.** Offset chord bound is `pitchMm/2` in the flat
+  (marginal/cement) zones and `(1+Lgap)/(1-Lgap) * pitchMm/2` inside the
+  blend (`Lgap = 1.5*(cementGapMm-marginalGapMm)/blendWidthMm`); the result
+  carries BOTH (`flatZoneErrorBoundMm` and the worst-case `errorBoundMm`),
+  plus the reused Float32/mu-clamp term. Because `h` is evaluated at the
+  footpoint, there is NO grid-vs-footpoint gap-displacement term; the only
+  residual height-field effect is the intrinsic Euclidean-vs-geodesic
+  arc-vs-chord under-estimate, a blend-POSITION bound (0 on the analytic cone
+  die), reported separately.
+- **Output.** An OPEN, welded patch (no manifold cleanup — `offsetMeshRoi`'s
+  documented shape); a later Phase 4 stage skirts/stitches it into the closed
+  shell.
+
+MEASURED on the analytic shoulder-prep die (compact variant, clinical pitch
+0.02mm): marginal-zone offset max deviation 3.28µm and cement-zone 0.82µm
+(both against the tight `pitchMm/2 = 10µm` flat-zone bound; targets 20/50µm),
+blend monotonic with max drop 0.37µm across the spacer line, margin boundary
+reaching to within ~29µm of the margin — see
+`packages/kernel/src/offset/innerSurfaceOffset.analytic.test.ts` for the full
+reported numerals and `.superpowers/sdd/p4-task-3-report.md`.
+
+**No `kernel-ops.json` pin added** — same decision as `[0.8.0]`'s
+`offsetMeshRoi`/`margin/band.ts`: the op is regression-pinned by its own
+analytic determinism (double-run byte-identical hash) and zone/blend
+accuracy tests, which run every `npm test`; a `kernel-ops` snapshot would add
+a heavy die-scale SDF/MC run to the golden lane for no coverage the analytic
+test doesn't already give. The worker job (`innerSurfaceOffset`,
+`kernel-workers/src/jobs/innerSurface.ts`) is pinned byte-identical to a
+direct kernel call by `innerSurfaceJob.test.ts`.
+
+## [0.8.0] — Phase 4 Task 1: cad-pipeline scaffold carry-ins — `offsetMeshRoi` (die-offset ROI-band perf fix) + `margin/band.ts` (margin-band primitive)
+
+**NEW ops, no existing golden hash changed.** Every entry in
+`test-fixtures/golden/kernel-ops.json` (and every other committed golden —
+intake/curvature/offset/margins) is byte-identical to `[0.7.1]` — verified
+by a full `npm run test:golden` run before this bump. This bump is for two
+genuinely NEW pieces of kernel surface, not a behavior change to anything
+existing:
+
+1. **`offset/offsetMesh.ts`'s `offsetMeshRoi`** — the die-offset ROI-band
+   perf fix (Phase 3 carry-in). Restricts the SDF grid's DOMAIN (bbox) to a
+   caller-supplied ROI instead of the input mesh's own full bbox — every
+   other stage (BVH, pseudonormals, the watertight gate) still runs over the
+   FULL, unrestricted mesh, so every sampled SDF value is the exact correct
+   value at its own world coordinate, and accuracy is preserved regardless of
+   grid alignment (proven by construction — `computeSdfGridSlice`'s per-point
+   value depends only on `mesh`/`bvh`/`pseudonormals`/the point's own world
+   coordinates, never the grid's overall extent). Note this is an
+   accuracy-per-sampled-point guarantee, not a cell-for-cell identity
+   guarantee: the ROI grid's lattice coincides with the full-bbox grid's
+   lattice only when the ROI bbox's min corner differs from the full bbox's
+   min corner by an exact integer multiple of `pitchMm` on every axis — see
+   `offsetMeshRoi`'s module doc for the full argument and
+   `offsetMeshRoi.test.ts` for the byte-identity (aligned-lattice case) +
+   interior-accuracy tests). MEASURED on
+   `standin-prep-die.stl` at the clinical default pitch (0.02mm): the
+   existing full-bbox `offsetMesh` golden's own die case took **117.9s**
+   (reproducing P2 Task 7's original 117-126s measurement); the SAME offset
+   restricted to a shoulder-collar ROI (`z in [-0.1, 0.7]`, full XY) took
+   **6.1s** — a 19.3x speedup, comfortably under this task's <10s target
+   (`test/golden/offset.test.ts`'s `RUN_OFFSET_ROI_PERF=1`-gated test).
+   Result is deliberately an OPEN (uncleaned) patch, not a solid — documented
+   in the function's own doc.
+2. **`margin/band.ts`** — the margin-band primitive: `marginLoopPolyline`
+   (dense on-surface loop, CHORD-CAP guarded — never derives geometry from
+   anchor chords), `computeMarginLoopFrame` (Newell's-method plane
+   normal/centroid/orthonormal tangent basis), `marginLoopMesh` (the loop as
+   a thin open ribbon for future boolean stitching). Analytic-tested on a
+   circular margin (`band.test.ts`) — exact centroid/normal/radius, and a
+   halfedge-topology validity check on the ribbon mesh.
+
+**Golden pinning deferred, honestly**: neither op has a `kernel-ops.json`
+entry yet (unlike prior "NEW op" bumps — icpRegister/proposeMargin/
+suggestAxis/blockoutPreview each gained one). Both are Phase 4 Task 1
+SCAFFOLD primitives with no pipeline stage consuming them yet — pinning a
+golden now would fix an interface shape (ROI bbox choice, ribbon
+`halfThicknessMm` default) before Task 3/4 actually wires them into a real
+stage with real fixtures. Each is instead covered by dedicated
+analytic/property/determinism unit tests in this same commit; a golden pin
+is the natural next step once a real stage consumes them.
+
 ## [0.7.1] — Final-review fix batch 2 (Important 13): drop non-reproducible `elapsedMs` from the `suggestAxis` golden meta
 
 No kernel algorithm or output changed — every op's `hash` in

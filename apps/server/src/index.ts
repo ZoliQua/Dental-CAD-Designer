@@ -4,7 +4,7 @@ import { buildApp } from './app.js';
 // See apps/client/vite.config.ts for the matching proxy configuration.
 const PORT = 4100;
 
-const app = buildApp();
+const app = await buildApp();
 
 try {
   await app.listen({ port: PORT, host: 'localhost' });

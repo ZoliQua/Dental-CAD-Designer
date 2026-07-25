@@ -215,7 +215,7 @@ const qcGateResultSchema = {
   },
 } as const;
 
-const qcReportSchema = {
+export const qcReportSchema = {
   type: 'object',
   required: ['gates', 'passed', 'kernelVersion', 'profileVersion', 'journalHash'],
   additionalProperties: false,
@@ -437,6 +437,260 @@ export const postMeshResponseSchema = {
     properties: {
       hash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
       byteLength: { type: 'integer', minimum: 0 },
+    },
+  },
+} as const;
+
+// ---------------------------------------------------------------------------
+// Tooth library (Phase 4 Task 2): GET /api/tooth-library[/:fdi]. Mesh BYTES
+// are deliberately NOT part of either response — they're already reachable
+// at the existing `GET /api/meshes/:hash` route (mesh-storage.ts, above)
+// using the metadata's own `meshChecksum` as `:hash`. See
+// apps/server/src/tooth-library-storage.ts's module doc and
+// packages/tooth-library/src/README.md's "Backend routes" section.
+// ---------------------------------------------------------------------------
+
+export const toothFdiParamsSchema = {
+  type: 'object',
+  required: ['fdi'],
+  additionalProperties: false,
+  properties: {
+    fdi: { type: 'string', pattern: '^[1-4][1-8]$' },
+  },
+} as const;
+
+export const listToothLibraryResponseSchema = {
+  200: {
+    type: 'array',
+    items: {
+      type: 'object',
+      required: ['fdi', 'version', 'toothType'],
+      additionalProperties: false,
+      properties: {
+        fdi: fdiToothSchema,
+        version: { type: 'string' },
+        toothType: { type: 'string', enum: ['incisor', 'molar'] },
+      },
+    },
+  },
+} as const;
+
+const vec3TupleSchema = {
+  type: 'array',
+  items: { type: 'number' },
+  minItems: 3,
+  maxItems: 3,
+} as const;
+
+const toothCanonicalFrameSchema = {
+  type: 'object',
+  required: ['origin', 'mesialDistal', 'buccoLingual', 'occlusoGingival'],
+  additionalProperties: false,
+  properties: {
+    origin: vec3TupleSchema,
+    mesialDistal: vec3TupleSchema,
+    buccoLingual: vec3TupleSchema,
+    occlusoGingival: vec3TupleSchema,
+  },
+} as const;
+
+const toothMorphTargetSchema = {
+  type: 'object',
+  required: ['name', 'vertexDeltas'],
+  additionalProperties: false,
+  properties: {
+    name: { type: 'string' },
+    vertexDeltas: { type: 'array', items: { type: 'number' } },
+  },
+} as const;
+
+/** The full validated `ToothAssetMetadata` shape (mirrors
+ * `@dqcad/tooth-library`'s `schema.ts`). Extracted so the SAME shape validates
+ * BOTH the `GET /api/tooth-library/:fdi` response AND the `POST
+ * /api/tooth-library` admin-upload body/response (Task 11) — the upload's
+ * deeper checksum/watertight validation is done by the tooth-library loader,
+ * not AJV, so this schema is only the structural gate. */
+export const toothAssetMetadataSchema = {
+  type: 'object',
+  required: [
+    'fdi',
+    'version',
+    'toothType',
+    'provenance',
+    'landmarks',
+    'canonicalFrame',
+    'morphTargets',
+    'meshChecksum',
+    'metadataChecksum',
+  ],
+  additionalProperties: false,
+  properties: {
+    fdi: fdiToothSchema,
+    version: { type: 'string' },
+    toothType: { type: 'string', enum: ['incisor', 'molar'] },
+    provenance: { type: 'string' },
+    landmarks: { type: 'object', additionalProperties: vec3TupleSchema },
+    canonicalFrame: toothCanonicalFrameSchema,
+    morphTargets: { type: 'array', items: toothMorphTargetSchema },
+    meshChecksum: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+    metadataChecksum: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+  },
+} as const;
+
+export const toothLibraryAssetResponseSchema = {
+  200: toothAssetMetadataSchema,
+} as const;
+
+// ---------------------------------------------------------------------------
+// POST /api/tooth-library — admin upload of a library asset (Phase 4 Task 11).
+// Content-addressed + versioned + schema/checksum/watertight validated
+// server-side (the same validation `@dqcad/tooth-library`'s loader does; the
+// mesh bytes go through the P1 content-addressed mesh store, write-once). The
+// mesh bytes ride in the JSON body as base64 (these assets are small — a
+// single atomic admin action uploads the whole asset), decoded and handed to
+// `loadToothAssetFromBytes` for the real (checksum + watertight) validation.
+// ---------------------------------------------------------------------------
+
+export const uploadToothLibraryBodySchema = {
+  type: 'object',
+  required: ['metadata', 'meshBase64'],
+  additionalProperties: false,
+  properties: {
+    metadata: toothAssetMetadataSchema,
+    meshBase64: { type: 'string', minLength: 1 },
+  },
+} as const;
+
+export const uploadToothLibraryResponseSchema = {
+  201: toothAssetMetadataSchema,
+} as const;
+
+// ---------------------------------------------------------------------------
+// POST /api/restorations/:id/validate-qc — the dual-validation route (Phase 4
+// Task 11, the headline). Takes the crown mesh set + the exact QC context the
+// client passed to `runCrownQc`, re-runs `runCrownQc` INDEPENDENTLY in the
+// Node server (cad-pipeline is DOM/Three-free), and returns the server-side
+// `QcReport`. The client and server reports must be bit-identical (invariant
+// 6). An OPTIONAL `clientReport` is a cross-check ONLY — never a source of
+// truth: the server always recomputes; if `clientReport` is present and
+// disagrees, the response is a 409 hard error with a per-field diagnostic.
+//
+// Meshes ride as plain `{ positions, indices }` number arrays — JSON round-
+// trips a Float64 exactly (ECMAScript shortest-round-trip Number<->String), so
+// the server reconstructs bit-identical Float64Array/Uint32Array inputs and a
+// deterministic `runCrownQc` yields a bit-identical report.
+// ---------------------------------------------------------------------------
+
+const meshDataInputSchema = {
+  type: 'object',
+  required: ['positions', 'indices'],
+  additionalProperties: false,
+  properties: {
+    positions: { type: 'array', items: { type: 'number' } },
+    indices: { type: 'array', items: { type: 'integer', minimum: 0 } },
+  },
+} as const;
+
+const contactResidualInputSchema = {
+  type: 'object',
+  required: [
+    'kind',
+    'targetPenetrationMm',
+    'achievedSignedDistanceMm',
+    'contactResidualMm',
+    'regionResidualMm',
+    'clampBound',
+  ],
+  additionalProperties: false,
+  properties: {
+    kind: { type: 'string' },
+    targetPenetrationMm: { type: 'number' },
+    achievedSignedDistanceMm: { type: 'number' },
+    contactResidualMm: { type: 'number' },
+    regionResidualMm: { type: 'number' },
+    clampBound: { type: 'boolean' },
+  },
+} as const;
+
+const connectorCrossSectionInputSchema = {
+  type: 'object',
+  required: ['label', 'minAreaMm2'],
+  additionalProperties: false,
+  properties: {
+    label: { type: 'string' },
+    minAreaMm2: { type: 'number' },
+  },
+} as const;
+
+export const validateQcBodySchema = {
+  type: 'object',
+  required: [
+    'crownSolid',
+    'innerSurfaceMesh',
+    'outerSurfaceMesh',
+    'dieSolid',
+    'marginResampledPoints',
+    'insertionAxis',
+    'minWallThicknessMm',
+    'occlusalMinWallThicknessMm',
+    'connectorAreaTargetMm2',
+    'contacts',
+    'contactClampWarning',
+    'kernelVersion',
+    'profileVersion',
+    'journalHash',
+  ],
+  additionalProperties: false,
+  properties: {
+    crownSolid: meshDataInputSchema,
+    innerSurfaceMesh: meshDataInputSchema,
+    outerSurfaceMesh: meshDataInputSchema,
+    dieSolid: meshDataInputSchema,
+    marginResampledPoints: { type: 'array', items: vec3Schema },
+    insertionAxis: vec3Schema,
+    minWallThicknessMm: { type: 'number' },
+    occlusalMinWallThicknessMm: { type: 'number' },
+    connectorAreaTargetMm2: { type: 'number' },
+    contacts: { type: 'array', items: contactResidualInputSchema },
+    contactClampWarning: { type: 'boolean' },
+    marginExclusionMm: { type: 'number' },
+    marginFitThresholdMm: { type: 'number' },
+    seatingInterferenceVolumeToleranceMm3: { type: 'number' },
+    contactToleranceMm: { type: 'number' },
+    connectors: { type: 'array', items: connectorCrossSectionInputSchema },
+    kernelVersion: { type: 'string' },
+    profileVersion: { type: 'string' },
+    journalHash: { type: 'string' },
+    acknowledgedGates: { type: 'array', items: { type: 'string' } },
+    /** OPTIONAL cross-check only — the server NEVER trusts this; it recomputes
+     * independently and 409s on any disagreement (invariant 6). */
+    clientReport: qcReportSchema,
+  },
+} as const;
+
+export const validateQcResponseSchema = {
+  200: qcReportSchema,
+  409: {
+    type: 'object',
+    required: ['error', 'message', 'differences'],
+    additionalProperties: false,
+    properties: {
+      error: { type: 'string', const: 'qc-client-server-mismatch' },
+      message: { type: 'string' },
+      differences: {
+        type: 'array',
+        items: {
+          type: 'object',
+          required: ['path', 'server', 'client'],
+          additionalProperties: false,
+          properties: {
+            path: { type: 'string' },
+            // Either side of a differing scalar (number|string|boolean|null).
+            server: {},
+            client: {},
+          },
+        },
+      },
     },
   },
 } as const;

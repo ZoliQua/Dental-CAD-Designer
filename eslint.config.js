@@ -11,6 +11,7 @@ const boundaryElements = [
   { type: 'io', pattern: 'packages/io/**' },
   { type: 'cad-pipeline', pattern: 'packages/cad-pipeline/**' },
   { type: 'clinical-profiles', pattern: 'packages/clinical-profiles/**' },
+  { type: 'tooth-library', pattern: 'packages/tooth-library/**' },
   { type: 'shared-types', pattern: 'packages/shared-types/**' },
 ];
 
@@ -67,12 +68,32 @@ export default tseslint.config(
               allow: { to: { element: { types: 'shared-types' } } },
             },
             {
+              // A leaf package like clinical-profiles (PLAN.md's tooth
+              // asset library) — pure TS, no DOM/Three.js. It generates its
+              // starter meshes with `@dqcad/kernel` (IndexedMesh, watertight
+              // analysis), parses/writes them with `@dqcad/io` (STL bytes),
+              // and reuses `@dqcad/clinical-profiles`' SHA-256/canonical-JSON
+              // checksum primitives (see that package's index.ts) rather
+              // than forking a second implementation.
+              from: { element: { types: 'tooth-library' } },
+              allow: {
+                to: { element: { types: { anyOf: ['kernel', 'io', 'clinical-profiles', 'shared-types'] } } },
+              },
+            },
+            {
               from: { element: { types: 'state' } },
               allow: { to: { element: { types: 'shared-types' } } },
             },
             {
+              // kernel-workers also depends on cad-pipeline as of Phase 4 Task 9:
+              // the `runQc` worker job orchestrates cad-pipeline's QC gate suite
+              // (`runCrownQc`) off the UI thread — runner.ts's own module doc names
+              // the client worker as an intended caller of the gates ("callable
+              // identically from a browser Worker ... and from the Node server").
+              // Acyclic: cad-pipeline imports only kernel/io/shared-types, never
+              // kernel-workers — so this adds a dependency edge, not a cycle.
               from: { element: { types: 'kernel-workers' } },
-              allow: { to: { element: { types: { anyOf: ['kernel', 'io', 'shared-types'] } } } },
+              allow: { to: { element: { types: { anyOf: ['kernel', 'io', 'cad-pipeline', 'shared-types'] } } } },
             },
             {
               from: { element: { types: 'cad-pipeline' } },

@@ -279,3 +279,215 @@ export async function offsetMesh(
     pitchMm,
   };
 }
+
+// ---------------------------------------------------------------------------
+// offsetMeshRoi — Phase 4 Task 1 carry-in: die-offset ROI-band perf fix
+// ---------------------------------------------------------------------------
+//
+// ## The problem, MEASURED (this task's report has the full sweep)
+//
+// `offsetMesh` above always derives its SDF grid's bbox from the INPUT
+// MESH's own bbox (`inputStats.bbox`, from `analyzeMesh(mesh)`) — correct
+// for a mesh that IS the region of interest, but expensive for a die-sized
+// input whose relevant geometry (the region near a prep's margin, which is
+// all Phase 4's inner-surface stage ever offsets) is a small fraction of
+// the die's full extent (e.g. `standin-prep-die.stl`'s 8x8x10mm bbox
+// includes a flat base and 9mm of coarsely-tessellated lateral wall the
+// crown pipeline never touches). Measured on that exact fixture at the
+// clinical default pitch 0.02mm (P2 Task 7's original report, reproduced by
+// this task): `markCandidateCells` — the band-restriction pass `offsetMesh`
+// already uses to avoid dense whole-grid sampling (`sdf/grid.ts`'s "Perf"
+// doc) — marks **~56% of the entire 87M-cell grid** as candidates, not the
+// few-percent a `bandMm`-thin shell around the surface would suggest. Root
+// cause (measured via `markCandidateCells` cell counts across several
+// sub-regions, this task's report): the die's lateral wall is a SINGLE
+// un-subdivided cone band (only two rings of vertices, z=1mm and z=10mm —
+// no intermediate rings), so each of its 128 triangles' own axis-aligned
+// bounding box spans nearly the ENTIRE 9mm height (and, since the wall
+// tapers from radius 4mm to 2.5mm, a meaningful RADIAL span too) —
+// `markCandidateCells`'s conservative "mark the whole triangle bbox,
+// expanded by bandMm" rule (see that function's own doc: this can only
+// over-include, never miss a genuine in-band cell) turns a handful of large,
+// coarse triangles into a candidate region covering more than half the
+// domain, each candidate cell costing a real `signedClosestPoint` BVH query
+// (~2.5-15µs measured, sdf/grid.ts's "Perf" doc) — 117-126s total (P2 Task
+// 7's report; reproduced by this task, see offsetMeshRoi.perf.test.ts).
+//
+// ## The fix: restrict the GRID DOMAIN itself to a caller-supplied ROI bbox
+// — never restrict which triangles participate in distance queries
+//
+// This is the SAME judgment call `axis/roi.ts`'s `extractMarginRegion`
+// makes (that module's own doc: "under-including a sliver of legitimately-
+// nearby surface only makes the objective slightly less complete... that is
+// exactly the safe direction of error"), applied at the SDF-grid-bbox level
+// rather than axis/roi.ts's triangle-index-subset level (an offset needs a
+// spatial VOLUME to sample, not a triangle subset): `offsetMeshRoi` derives
+// `offsetGridSpec` from a caller-supplied `roiBboxMm` instead of the input
+// mesh's own bbox — bounding `cellCount` (and therefore the worst case of
+// `markCandidateCells`'s own over-marking, however bad, since a clamped
+// candidate mark can never exceed the DOMAIN it's clamped into,
+// `markCandidateCells`'s `clampIndex` calls) directly, regardless of the
+// root cause above. Every OTHER stage (BVH, pseudonormals, the watertight
+// gate) still runs over the FULL, UNRESTRICTED input mesh — a point near
+// the ROI boundary may have its true closest surface point on a triangle
+// OUTSIDE the ROI, and `signedClosestPoint` must still find it exactly; only
+// the SET OF GRID POINTS SAMPLED shrinks, never the set of triangles a
+// sampled point is measured against. This is why `offsetMeshRoi`'s output is
+// byte-identical, cell-for-cell, to what `offsetMesh`'s full-bbox grid would
+// have produced at any grid point BOTH pipelines actually sample (proven by
+// construction: `computeSdfGridSlice`'s per-point value depends only on
+// `mesh`/`bvh`/`pseudonormals`/the point's own world coordinates, never on
+// the grid's overall extent) — see offsetMeshRoi.test.ts's byte-identity
+// assertion (ROI = full bbox reduces to `offsetMesh` exactly) and its
+// interior-accuracy assertion (a genuinely SMALLER ROI still meets the same
+// documented `@errorBound` everywhere strictly inside the crop boundary).
+//
+// ## Output shape: an OPEN (uncleaned) patch, not a solid — documented,
+// not a bug
+//
+// Unlike `offsetMesh`, this function does NOT call `cleanupMesh` (the
+// manifold-3d watertight/manifold validator): cropping the grid domain to a
+// sub-region of a closed solid's true offset surface generically produces an
+// OPEN patch (a boundary loop wherever the true surface exits the sampled
+// domain — marching cubes simply stops at the domain edge; it never
+// fabricates a closing cap there, since MC only emits geometry for grid
+// EDGES that exist within `dims`). This is the correct, expected shape for
+// this primitive's intended Phase 4 consumer (the inner-surface stage,
+// Task 3): a cropped inner-surface PATCH that a later stage stitches to the
+// margin band and skirt, not a standalone solid. `cleanupMesh`'s watertight
+// requirement would reject this shape outright, so it is deliberately never
+// called here — only `weldVertices` (topology cleanup, no watertight
+// requirement) runs, and `stats.watertight` is expected to be `false` for a
+// genuinely-cropped ROI (asserted, not hidden, by the tests).
+//
+// ## Scope note (honest — this task's YAGNI guardrail)
+//
+// This is the KERNEL-LEVEL primitive only. `kernel-workers/src/jobs/
+// offset.ts`'s worker job (which the crown pipeline's `innerSurfaceOffset`
+// job, Phase 4 Task 3, will actually call from a worker with progress/
+// cancellation) is NOT extended with an ROI variant in this task — no
+// pipeline stage exists yet to derive a real ROI bbox from a margin loop
+// (that derivation is Task 3's job, once `packages/cad-pipeline`'s
+// inner-surface stage exists to own the "prep region" concept). Wiring this
+// kernel primitive into a worker job is deliberately left for that task.
+//
+// @errorBound Identical to `offsetMesh`'s own `@errorBound` (same
+// `offsetErrorBoundMm` formula, evaluated against the ROI-padded domain's
+// own `maxAbsCoordOf`) for every point the ROI grid actually samples — the
+// domain restriction changes WHICH points are sampled, never the per-point
+// accuracy of a sampled value (see this doc's "byte-identical" argument
+// above). The bound does NOT apply at/beyond the crop boundary itself
+// (there is, by construction, no computed value beyond the sampled domain —
+// the output mesh simply has a boundary edge there, not an inaccurate one).
+export interface OffsetMeshRoiOptions extends OffsetMeshOptions {
+  /** Tight world-space mm bbox to restrict SDF sampling to — REQUIRED (no
+   * default; a caller with no ROI opinion should call `offsetMesh` instead).
+   * Padded internally by the SAME `offsetGridSpec` band-margin rule
+   * `offsetMesh` uses (`|distanceMm| + OFFSET_BAND_MARGIN_PITCHES *
+   * pitchMm`) — the caller does not need to pre-pad this box, only ensure it
+   * is large enough that the true offset surface within the region of
+   * interest doesn't ITSELF extend past the padded domain in a way the
+   * caller cares about (see this module's doc: the surface simply crops
+   * cleanly at the domain edge, it does not corrupt anything inside). */
+  roiBboxMm: { readonly min: Vec3; readonly max: Vec3 };
+}
+
+export interface OffsetMeshRoiResult {
+  /** Welded surface soup restricted to the padded ROI — see this module's
+   * doc: generally an OPEN patch (manifold-3d's watertight cleanup is
+   * deliberately NOT applied), never expect `stats.watertight` to be `true`
+   * unless `roiBboxMm` happens to enclose the entire true offset surface. */
+  mesh: IndexedMesh;
+  /** `analyzeMesh` over the welded (uncledaned) mesh above. */
+  stats: MeshStats;
+  errorBoundMm: number;
+  distanceMm: number;
+  pitchMm: number;
+  /** Echo of the requested ROI (pre-padding). */
+  roiBboxMm: { readonly min: Vec3; readonly max: Vec3 };
+}
+
+/**
+ * ROI-restricted offset — see this module's doc above for the perf
+ * motivation, the correctness argument (byte-identical to `offsetMesh` at
+ * every grid point both pipelines sample), and why the result is an open
+ * (uncledaned) patch. `mesh` is still the FULL, unrestricted input — every
+ * stage but the SDF grid's own bbox runs exactly as `offsetMesh` does.
+ *
+ * @throws {TypeError} for invalid `distanceMm`/`pitchMm`, or a degenerate
+ * `roiBboxMm` (`max` not `>=` `min` on every axis — checked by
+ * `sdfGridDims`).
+ * @throws {PitchTooSmallError} if `pitchMm < MIN_PITCH_MM`.
+ * @throws {NonWatertightMeshError} if `mesh` is not closed (the SAME
+ * watertight requirement `offsetMesh` has — signed distance always needs a
+ * closed input, regardless of how small the sampled ROI is).
+ * @throws {SdfGridTooLargeError} if the ROI's padded grid exceeds the memory
+ * guard.
+ * @throws {EmptyOffsetResultError} if no iso-crossing cell exists anywhere
+ * inside the padded ROI (e.g. the ROI genuinely doesn't reach the true
+ * offset surface — a legitimate, honest outcome for a badly-chosen ROI, not
+ * a bug in this function).
+ */
+export async function offsetMeshRoi(
+  mesh: IndexedMesh,
+  distanceMm: number,
+  options: OffsetMeshRoiOptions,
+): Promise<OffsetMeshRoiResult> {
+  const { pitchMm, roiBboxMm } = options;
+  if (!Number.isFinite(distanceMm)) {
+    throw new TypeError(`offsetMeshRoi: distanceMm must be finite, got ${distanceMm}`);
+  }
+  if (!(Number.isFinite(pitchMm) && pitchMm > 0)) {
+    throw new TypeError(`offsetMeshRoi: pitchMm must be finite and > 0, got ${pitchMm}`);
+  }
+  if (pitchMm < MIN_PITCH_MM) {
+    throw new PitchTooSmallError(pitchMm);
+  }
+
+  // Stage 0: BVH/pseudonormals over the FULL, unrestricted mesh — see this
+  // module's doc for why (a point near the ROI boundary may be closest to a
+  // triangle outside it).
+  const bvh = buildBvh(mesh);
+  const pseudonormals = computePseudonormals(mesh);
+
+  // Stage 1: banded SDF grid, domain from roiBboxMm (NOT the mesh's own
+  // bbox) — this is the entire fix.
+  const spec = offsetGridSpec(roiBboxMm, distanceMm, pitchMm);
+  const { dims, origin, cellCount } = sdfGridDims({ bboxMm: spec.bboxMm, pitchMm, padding: spec.padding });
+  const [, ny, nz] = dims;
+  const grid = new Float32Array(cellCount);
+  const mask = markCandidateCells(mesh, dims, origin, pitchMm, spec.bandMm);
+  const nx = dims[0];
+  for (let z = 0; z < nz; z++) {
+    grid.set(computeSdfGridSlice(mesh, bvh, pseudonormals, dims, origin, pitchMm, z, mask), z * ny * nx);
+    if (z % SDF_SLICES_PER_YIELD === SDF_SLICES_PER_YIELD - 1) await yieldToEventLoop();
+  }
+  const sdf: ScalarGrid = { grid, dims, origin, pitchMm };
+
+  // Stage 2: marching cubes at iso = distanceMm — crops cleanly at the
+  // domain edge (see this module's doc: never fabricates a closing cap).
+  const soup = marchingCubes(sdf, distanceMm);
+  if (soup.triangleCount === 0) {
+    throw new EmptyOffsetResultError(distanceMm);
+  }
+
+  // Stage 3: weld ONLY — no `cleanupMesh` (see this module's doc: the
+  // result is generally an open patch, not a solid).
+  const welded = weldVertices({ positions: soup.positions, normals: null, triangleCount: soup.triangleCount });
+
+  // Stage 4: stats over the welded mesh (watertight === false expected for
+  // a genuinely-cropped ROI).
+  const stats = analyzeMesh(welded);
+
+  return {
+    mesh: welded,
+    stats,
+    errorBoundMm: offsetErrorBoundMm(pitchMm, maxAbsCoordOf(
+      { min: roiBboxMm.min, max: roiBboxMm.max },
+      spec.padding,
+    )),
+    distanceMm,
+    pitchMm,
+    roiBboxMm,
+  };
+}

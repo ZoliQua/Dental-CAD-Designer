@@ -14,21 +14,23 @@ const packageJson = JSON.parse(
   readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
 ) as { version: string };
 
-// Isolated per test-run temp dir — never the real apps/server/data/meshes
-// (which is git-ignored and shared with `npm run dev`); see mesh-storage.ts's
-// module doc.
+// Isolated per test-run temp dirs — never the real apps/server/data/meshes
+// or apps/server/data/tooth-library (both git-ignored, shared with `npm run
+// dev`); see mesh-storage.ts's and tooth-library-storage.ts's module docs.
 const meshDataDir = mkdtempSync(join(tmpdir(), 'dqcad-mesh-storage-'));
+const toothLibraryDataDir = mkdtempSync(join(tmpdir(), 'dqcad-tooth-library-storage-'));
 
 describe('server app', () => {
   let app: FastifyInstance;
 
-  beforeAll(() => {
-    app = buildApp({ meshDataDir });
+  beforeAll(async () => {
+    app = await buildApp({ meshDataDir, toothLibraryDataDir });
   });
 
   afterAll(async () => {
     await app.close();
     rmSync(meshDataDir, { recursive: true, force: true });
+    rmSync(toothLibraryDataDir, { recursive: true, force: true });
   });
 
   it('GET /api/health returns ok with version and kernelVersion', async () => {
@@ -665,7 +667,12 @@ describe('server app', () => {
 
     it('rejects an oversized upload with 413', async () => {
       const tinyLimitDataDir = mkdtempSync(join(tmpdir(), 'dqcad-mesh-storage-tiny-'));
-      const tinyApp = buildApp({ meshDataDir: tinyLimitDataDir, meshMaxBytes: 16 });
+      const tinyToothLibraryDataDir = mkdtempSync(join(tmpdir(), 'dqcad-tooth-library-storage-tiny-'));
+      const tinyApp = await buildApp({
+        meshDataDir: tinyLimitDataDir,
+        meshMaxBytes: 16,
+        toothLibraryDataDir: tinyToothLibraryDataDir,
+      });
       try {
         const response = await tinyApp.inject({
           method: 'POST',
@@ -677,6 +684,7 @@ describe('server app', () => {
       } finally {
         await tinyApp.close();
         rmSync(tinyLimitDataDir, { recursive: true, force: true });
+        rmSync(tinyToothLibraryDataDir, { recursive: true, force: true });
       }
     });
 
@@ -688,6 +696,84 @@ describe('server app', () => {
         payload: 'not mesh bytes',
       });
       expect(response.statusCode).toBe(415);
+    });
+  });
+
+  describe('GET /api/tooth-library[/:fdi] (Phase 4 Task 2)', () => {
+    it('lists the 5 seeded starter assets (4 incisors + 1 molar)', async () => {
+      const response = await app.inject({ method: 'GET', url: '/api/tooth-library' });
+      expect(response.statusCode).toBe(200);
+      const list = response.json() as Array<{ fdi: number; version: string; toothType: string }>;
+      expect(list).toHaveLength(5);
+      expect(list.map((a) => a.fdi).sort((a, b) => a - b)).toEqual([11, 12, 16, 21, 22]);
+      expect(list.find((a) => a.fdi === 16)?.toothType).toBe('molar');
+      expect(list.find((a) => a.fdi === 11)?.toothType).toBe('incisor');
+      for (const entry of list) {
+        expect(entry.version).toBe('1.0.0');
+      }
+    });
+
+    it('GET /api/tooth-library/:fdi returns the full checksum-verified metadata for an incisor', async () => {
+      const response = await app.inject({ method: 'GET', url: '/api/tooth-library/11' });
+      expect(response.statusCode).toBe(200);
+      const metadata = response.json() as {
+        fdi: number;
+        toothType: string;
+        landmarks: Record<string, [number, number, number]>;
+        canonicalFrame: { origin: number[] };
+        meshChecksum: string;
+        metadataChecksum: string;
+      };
+      expect(metadata.fdi).toBe(11);
+      expect(metadata.toothType).toBe('incisor');
+      expect(metadata.landmarks.incisalEdge).toBeDefined();
+      expect(metadata.meshChecksum).toMatch(/^[0-9a-f]{64}$/);
+      expect(metadata.metadataChecksum).toMatch(/^[0-9a-f]{64}$/);
+    });
+
+    it("GET /api/tooth-library/:fdi's meshChecksum is fetchable via the existing GET /api/meshes/:hash route", async () => {
+      const metadataResponse = await app.inject({ method: 'GET', url: '/api/tooth-library/16' });
+      const metadata = metadataResponse.json() as { meshChecksum: string };
+
+      const meshResponse = await app.inject({ method: 'GET', url: `/api/meshes/${metadata.meshChecksum}` });
+      expect(meshResponse.statusCode).toBe(200);
+      expect(meshResponse.rawPayload.byteLength).toBeGreaterThan(84);
+
+      // And that mesh really does hash to the checksum the metadata claims.
+      const actualHash = createHash('sha256').update(meshResponse.rawPayload).digest('hex');
+      expect(actualHash).toBe(metadata.meshChecksum);
+    });
+
+    it('404s for an FDI with no stored asset (valid FDI shape, just none seeded)', async () => {
+      const response = await app.inject({ method: 'GET', url: '/api/tooth-library/48' });
+      expect(response.statusCode).toBe(404);
+    });
+
+    it('rejects a malformed :fdi route param with 400', async () => {
+      const response = await app.inject({ method: 'GET', url: '/api/tooth-library/not-a-tooth' });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('rejects an out-of-range FDI shape (e.g. quadrant 9) with 400', async () => {
+      const response = await app.inject({ method: 'GET', url: '/api/tooth-library/91' });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('re-seeding on a second buildApp call against the SAME data dir is idempotent (no error, same content)', async () => {
+      const sharedDataDir = mkdtempSync(join(tmpdir(), 'dqcad-tooth-library-storage-shared-'));
+      const sharedMeshDir = mkdtempSync(join(tmpdir(), 'dqcad-mesh-storage-shared-'));
+      const appA = await buildApp({ meshDataDir: sharedMeshDir, toothLibraryDataDir: sharedDataDir });
+      const appB = await buildApp({ meshDataDir: sharedMeshDir, toothLibraryDataDir: sharedDataDir });
+      try {
+        const responseA = await appA.inject({ method: 'GET', url: '/api/tooth-library/11' });
+        const responseB = await appB.inject({ method: 'GET', url: '/api/tooth-library/11' });
+        expect(responseA.json()).toEqual(responseB.json());
+      } finally {
+        await appA.close();
+        await appB.close();
+        rmSync(sharedDataDir, { recursive: true, force: true });
+        rmSync(sharedMeshDir, { recursive: true, force: true });
+      }
     });
   });
 });

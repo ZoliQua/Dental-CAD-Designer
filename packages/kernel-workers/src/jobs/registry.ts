@@ -143,8 +143,53 @@ export type { ComputeCurvaturePayload, ComputeCurvatureResult };
 import { offsetMeshJob, type OffsetMeshPayload, type OffsetMeshResult } from './offset.ts';
 export type { OffsetMeshPayload, OffsetMeshResult };
 
+import {
+  innerSurfaceJob,
+  type InnerSurfacePayload,
+  type InnerSurfaceResult,
+} from './innerSurface.ts';
+export type { InnerSurfacePayload, InnerSurfaceResult };
+
 import { decimateMeshJob, type DecimateMeshPayload, type DecimateMeshResult } from './decimate.ts';
 export type { DecimateMeshPayload, DecimateMeshResult };
+
+import { constructShellJob, type ConstructShellPayload, type ConstructShellResultPayload } from './shell.ts';
+export type { ConstructShellPayload, ConstructShellResultPayload };
+
+import { applySculptStrokeJob, type ApplySculptStrokePayload, type ApplySculptStrokeResult } from './sculpt.ts';
+export type { ApplySculptStrokePayload, ApplySculptStrokeResult };
+
+import { runQcJob, type RunQcPayload, type RunQcResult } from './runQc.ts';
+export type { RunQcPayload, RunQcResult };
+
+import {
+  placeAnatomyJob,
+  UnknownLandmarkError as PlaceAnatomyUnknownLandmarkError,
+  type PlaceAnatomyPayload,
+  type PlaceAnatomyResult,
+} from './placeAnatomy.ts';
+export { PlaceAnatomyUnknownLandmarkError, type PlaceAnatomyPayload, type PlaceAnatomyResult };
+
+import {
+  morphAnatomyJob,
+  resolveMorphJob,
+  MorphPlanNotCachedError,
+  type MorphAnatomyPayload,
+  type ResolveMorphPayload,
+  type MorphAnatomyResult,
+  type MorphAnatomyContactPayload,
+  type MorphContactResultPayload,
+  type ContactHeatmapPayload,
+} from './morphAnatomy.ts';
+export {
+  MorphPlanNotCachedError,
+  type MorphAnatomyPayload,
+  type ResolveMorphPayload,
+  type MorphAnatomyResult,
+  type MorphAnatomyContactPayload,
+  type MorphContactResultPayload,
+  type ContactHeatmapPayload,
+};
 
 import {
   undercutScanJob,
@@ -341,7 +386,14 @@ export interface JobPayloadMap {
   signedClosestPoint: SignedClosestPointPayload;
   sampleSdfGrid: SampleSdfGridPayload;
   offsetMesh: OffsetMeshPayload;
+  innerSurface: InnerSurfacePayload;
+  placeAnatomy: PlaceAnatomyPayload;
+  morphAnatomy: MorphAnatomyPayload;
+  resolveMorph: ResolveMorphPayload;
   decimateMesh: DecimateMeshPayload;
+  constructShell: ConstructShellPayload;
+  applySculptStroke: ApplySculptStrokePayload;
+  runQc: RunQcPayload;
   undercutScan: UndercutScanPayload;
   undercutScanBatch: UndercutScanBatchPayload;
   computeCurvature: ComputeCurvaturePayload;
@@ -381,7 +433,14 @@ export interface JobResultMap {
   signedClosestPoint: SignedClosestPointResult;
   sampleSdfGrid: SampleSdfGridResult;
   offsetMesh: OffsetMeshResult;
+  innerSurface: InnerSurfaceResult;
+  placeAnatomy: PlaceAnatomyResult;
+  morphAnatomy: MorphAnatomyResult;
+  resolveMorph: MorphAnatomyResult;
   decimateMesh: DecimateMeshResult;
+  constructShell: ConstructShellResultPayload;
+  applySculptStroke: ApplySculptStrokeResult;
+  runQc: RunQcResult;
   undercutScan: UndercutScanResult;
   undercutScanBatch: UndercutScanBatchResult;
   computeCurvature: ComputeCurvatureResult;
@@ -428,7 +487,14 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   signedClosestPoint: signedClosestPointJob,
   sampleSdfGrid: sampleSdfGridJob,
   offsetMesh: offsetMeshJob,
+  innerSurface: innerSurfaceJob,
+  placeAnatomy: placeAnatomyJob,
+  morphAnatomy: morphAnatomyJob,
+  resolveMorph: resolveMorphJob,
   decimateMesh: decimateMeshJob,
+  constructShell: constructShellJob,
+  applySculptStroke: applySculptStrokeJob,
+  runQc: runQcJob,
   undercutScan: undercutScanJob,
   undercutScanBatch: undercutScanBatchJob,
   computeCurvature: computeCurvatureJob,

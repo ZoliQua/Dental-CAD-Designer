@@ -73,6 +73,32 @@ export interface MaterialProfile {
    * scan (packages/kernel/src/axis/) once a per-restoration blockout step
    * exists — not wired to anything yet this task (YAGNI: "no axis work").*/
   undercutBlockoutThresholdMm: number;
+  /**
+   * Phase 4 Task 1: the OCCLUSAL minimum wall thickness (mm) — a SEPARATE
+   * value from `restorationParams.minWallThicknessMm`, which this profile
+   * treats as the AXIAL minimum (PLAN.md §3's table gives ONE number per
+   * material for zirconia — "Monolithic; framework 0.5" — because zirconia's
+   * axial and occlusal minimums coincide; e.max/lithium disilicate does NOT:
+   * "1.0 mm occlusal / 0.8 mm axial", per PLAN.md §3's "Min wall thickness —
+   * lithium disilicate (e.max)" row). Required (not derived/defaulted from
+   * `minWallThicknessMm`) so every profile states its own occlusal minimum
+   * explicitly — the future `minWallThicknessGate` (Phase 4 Task 7) reads
+   * this field for occlusal-region triangles and `restorationParams.
+   * minWallThicknessMm` for axial-region ones, per-material, with no silent
+   * fallback either way.
+   */
+  occlusalMinWallThicknessMm: number;
+  /**
+   * PLAN.md §3: "Export max chord deviation | 5 µm | 1–20 µm | If
+   * retessellation is applied." — the maximum allowed deviation (mm) between
+   * a retessellated export mesh and the design surface it approximates.
+   * Material-independent in PLAN's table (an export/retessellation
+   * tolerance, not a clinical-material property) but carried on the profile
+   * anyway per this task's brief, so the value is versioned/checksummed
+   * alongside every other clinical parameter rather than hardcoded at a
+   * future export call site (CLAUDE.md invariant 7).
+   */
+  maxChordDeviationMm: number;
   /** SHA-256 hex of `canonicalStringify` over every OTHER field of this
    * object — see this module's top doc. */
   checksum: string;
@@ -232,6 +258,27 @@ export function validateMaterialProfileShape(raw: unknown): MaterialProfile {
     'profile.undercutBlockoutThresholdMm',
   );
 
+  // PLAN.md §3: "Min wall thickness — lithium disilicate (e.max): 1.0 mm
+  // occlusal / 0.8 mm axial." No stated lower bound for the occlusal value;
+  // floored at 0.3mm (PLAN's OWN lowest stated minimum across every
+  // material row, "Min wall thickness — metal: 0.3 mm") rather than an
+  // uncited clinical judgment, ceilinged at 5mm matching
+  // restorationParams.minWallThicknessMm's own sanity ceiling.
+  const occlusalMinWallThicknessMm = requireRange(
+    requireFiniteNumber(root['occlusalMinWallThicknessMm'], 'profile.occlusalMinWallThicknessMm'),
+    'profile.occlusalMinWallThicknessMm',
+    0.3,
+    5,
+  );
+
+  // PLAN.md §3: "Export max chord deviation: 5 µm default, 1–20 µm range."
+  const maxChordDeviationMm = requireRange(
+    requireFiniteNumber(root['maxChordDeviationMm'], 'profile.maxChordDeviationMm'),
+    'profile.maxChordDeviationMm',
+    0.001,
+    0.02,
+  );
+
   const allowedKeys = new Set([
     'id',
     'version',
@@ -239,6 +286,8 @@ export function validateMaterialProfileShape(raw: unknown): MaterialProfile {
     'restorationParams',
     'connectorAreaMm2',
     'undercutBlockoutThresholdMm',
+    'occlusalMinWallThicknessMm',
+    'maxChordDeviationMm',
     'checksum',
   ]);
   for (const key of Object.keys(root)) {
@@ -254,6 +303,8 @@ export function validateMaterialProfileShape(raw: unknown): MaterialProfile {
     restorationParams,
     connectorAreaMm2,
     undercutBlockoutThresholdMm,
+    occlusalMinWallThicknessMm,
+    maxChordDeviationMm,
     checksum,
   };
 }

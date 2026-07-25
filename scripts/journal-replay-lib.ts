@@ -63,7 +63,8 @@ import {
   type SurfacePoint,
   type Vec3,
 } from '@dqcad/kernel';
-import type { MarginReferenceExport, Operation } from '@dqcad/shared-types';
+import { runMorphingStage, type PipelineContext, type PipelineMaterialProfile, type PipelineMeshHandle } from '@dqcad/cad-pipeline';
+import type { FdiTooth, MarginReferenceExport, Operation } from '@dqcad/shared-types';
 
 export const repoRoot = fileURLToPath(new URL('../', import.meta.url));
 
@@ -610,16 +611,135 @@ export function recordMarginProposeJournal(): RecordedJournal {
   return { fixtureLabel, operations: [operation], replaySteps, finalMesh: mesh };
 }
 
+// ---------------------------------------------------------------------------
+// Phase 4 Task 12: crown-stage journal-replay extension
+//
+// The brief asks the crown design stages to "enter the existing replay
+// harness ... so CI guards crown-stage reproducibility going forward". The
+// FULL 6-stage crown chain (inner → anatomy → morph → shell → freeform → qc,
+// several stages async / WASM) is recorded + replayed + byte-pinned in
+// test/golden/crown-acceptance.test.ts (via scripts/crown-journal-lib.ts).
+// Here we enter ONE representative crown stage into THIS always-on SYNC
+// harness: the ADAPTATION/MORPHING stage (`runMorphingStage`) — a genuinely
+// non-trivial deterministic crown op (a biharmonic RBF direct solve), pure
+// Float64 TS (no WASM), fast on the small synthetic scene, so it fits the
+// "fast fixture subset" this harness runs on every commit. Its
+// content-addressed output (the morphed mesh hash) is recorded and replayed
+// FRESH exactly like the repair/margin ops above — proving the crown morph is
+// journal-reproducible in the fast lane too.
+// ---------------------------------------------------------------------------
+
+const CROWN_MORPH_PROFILE: PipelineMaterialProfile = {
+  id: 'standard-zirconia',
+  version: '1.1.0',
+  restorationParams: { cementGapMm: 0.05, marginalGapMm: 0.02, spacerStartMm: 0.8, minWallThicknessMm: 0.5, proximalContactPenetrationMm: 0.02, occlusalContactMm: 0 },
+  connectorAreaMm2: { posteriorMm2: 9, anteriorMm2: 7 },
+  undercutBlockoutThresholdMm: 0,
+  occlusalMinWallThicknessMm: 0.5,
+  maxChordDeviationMm: 0.005,
+};
+
+function crownMorphHash(mesh: IndexedMesh): string {
+  return hashMeshContent(mesh.positions, mesh.indices);
+}
+
+function crownMorphOutwardBox(min: Vec3, max: Vec3): IndexedMesh {
+  const [x0, y0, z0] = min;
+  const [x1, y1, z1] = max;
+  const v = [x0, y0, z0, x1, y0, z0, x1, y1, z0, x0, y1, z0, x0, y0, z1, x1, y0, z1, x1, y1, z1, x0, y1, z1];
+  const idx = [0, 3, 2, 0, 2, 1, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 3, 7, 6, 3, 6, 2, 0, 4, 7, 0, 7, 3, 1, 2, 6, 1, 6, 5];
+  return { positions: new Float64Array(v), indices: Uint32Array.from(idx) };
+}
+
+function crownMorphCylinder(radius: number, height: number, rings: number, segments: number): IndexedMesh {
+  const positions: number[] = [];
+  for (let r = 0; r < rings; r++) {
+    const z = (height * r) / (rings - 1);
+    for (let s = 0; s < segments; s++) {
+      const th = (2 * Math.PI * s) / segments;
+      positions.push(radius * Math.cos(th), radius * Math.sin(th), z);
+    }
+  }
+  const indices: number[] = [];
+  for (let r = 0; r < rings - 1; r++) {
+    for (let s = 0; s < segments; s++) {
+      const s1 = (s + 1) % segments;
+      const a = r * segments + s, b = r * segments + s1, c = (r + 1) * segments + s, d = (r + 1) * segments + s1;
+      indices.push(a, b, d, a, d, c);
+    }
+  }
+  return { positions: new Float64Array(positions), indices: Uint32Array.from(indices) };
+}
+
+function crownMorphMarginCircle(radius: number, z: number, n: number): Vec3[] {
+  const loop: Vec3[] = [];
+  for (let i = 0; i < n; i++) {
+    const th = (2 * Math.PI * i) / n;
+    loop.push([radius * Math.cos(th), radius * Math.sin(th), z]);
+  }
+  return loop;
+}
+
+/** Records + replay-proves ONE crown MORPHING stage op (see this section's
+ * doc). The synthetic scene + reference placed tooth are byte-identical to
+ * test/golden/anatomy-morph.test.ts's synthetic golden, so its output hash is
+ * the same content-addressed morphed-mesh hash CI already guards there — here
+ * proven reproducible through the RECORD→REPLAY journal mechanism. */
+export function recordCrownMorphJournal(): RecordedJournal {
+  const fixtureLabel = 'crown-morph-synthetic';
+  const tooth = 11 as FdiTooth;
+  const R = 1.2, H = 5;
+  const handle = (contentHash: string, mesh: IndexedMesh): PipelineMeshHandle => ({ contentHash, mesh });
+  const context: PipelineContext = {
+    restorationId: 'journal-crown-morph',
+    materialProfile: CROWN_MORPH_PROFILE,
+    insertionAxis: [0, 0, 1],
+    targetMesh: handle('die', crownMorphCylinder(R, H - 1, 6, 16)),
+    marginLoops: { [tooth]: { closed: true, resampledPoints: crownMorphMarginCircle(R, 0, 48) } },
+    neighbors: {
+      [12 as FdiTooth]: handle('nb-12', crownMorphOutwardBox([R + 0.1, -2, 2.3], [3, 2, 4.7])),
+      [21 as FdiTooth]: handle('nb-21', crownMorphOutwardBox([-3, -2, 2.3], [-(R + 0.1), 2, 4.7])),
+    },
+    antagonist: handle('anta', crownMorphOutwardBox([-2, -2, H + 0.1], [2, 2, H + 2])),
+    stages: { anatomyPlacement: 'placed-11' },
+  };
+  const morphOptions = { contactInfluenceRadiusMm: 0.8, contactFacingRadiusMm: 1.0, cervicalSealBandMm: 0.6 };
+  const placed = handle('placed-11', crownMorphCylinder(R, H, 11, 24));
+  const inputHash = crownMorphHash(placed.mesh);
+
+  const result = runMorphingStage(context, tooth, { placedMesh: placed, hashMesh: crownMorphHash, morphOptions });
+  const outputHash = result.meshContentHash!;
+
+  const operation: Operation = {
+    id: `${fixtureLabel}-morphing`,
+    name: 'morphing.morph',
+    params: { fixture: fixtureLabel, tooth, rbfKernel: result.params['rbfKernel'], contactClampWarning: result.params['contactClampWarning'] },
+    inputHashes: [inputHash],
+    outputHashes: [outputHash],
+    kernelVersion: KERNEL_VERSION,
+    timestamp: new Date(0).toISOString(),
+  };
+  const replaySteps: ReplayStep[] = [
+    {
+      operationIndex: 0,
+      recompute: () => runMorphingStage(context, tooth, { placedMesh: placed, hashMesh: crownMorphHash, morphOptions }).meshContentHash!,
+    },
+  ];
+  return { fixtureLabel, operations: [operation], replaySteps, finalMesh: result.mesh! };
+}
+
 /** The fixture set this harness runs — see this file's module doc: the
  * first two are small/fast enough that this IS the "fast fixture subset"
  * the task brief asks CI to run (no perf-scale fixtures are included); the
  * margin fixture reuses `loadMarginUpperjawSetup`'s memoized curvature/BVH
  * build (see that function's doc) to stay affordable despite the real
- * ~250k-triangle mesh. */
+ * ~250k-triangle mesh; the crown-morph fixture (Phase 4 Task 12) enters the
+ * crown MORPHING stage into this always-on harness. */
 export function recordAllFixtures(): readonly RecordedJournal[] {
   return [
     recordJournal('test-fixtures/synthetic/sphere-r5.stl', 'sphere-r5', true),
     recordJournal('test-fixtures/real-scans/arch-case-01/arch-case-01-upperjaw.stl', 'arch-case-01-upperjaw', false),
     recordMarginProposeJournal(),
+    recordCrownMorphJournal(),
   ];
 }

@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./hash": "./src/hash.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
@@ -12,6 +13,7 @@
   "dependencies": {
     "@dqcad/kernel": "*",
     "@dqcad/io": "*",
+    "@dqcad/cad-pipeline": "*",
     "comlink": "^4.4.2"
   }
 }

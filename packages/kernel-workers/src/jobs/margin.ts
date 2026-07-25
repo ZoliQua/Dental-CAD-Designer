@@ -4,9 +4,8 @@
 // marginRidge.ts for the method, `@errorBound`, and determinism notes) as a
 // single worker job.
 //
-// ## Per-worker caches (mirrors jobs/geodesic.ts's `halfedgeCache` /
-// jobs/curvature.ts's `curvatureCache` — see those files' module docs for
-// the full "why a per-worker cache, why contentHash" writeup)
+// ## Per-worker caches (mirrors jobs/bvh.ts's `bvhCache` — see that file's
+// module doc for the full "why a per-worker cache, why contentHash" writeup)
 //
 // `buildBvh` must have been called for `payload.contentHash` on THIS worker
 // first (jobs/bvh.ts's `requireCachedBvh`) — this job builds neither the
@@ -14,61 +13,30 @@
 // exists; each is a real, non-trivial per-call cost (curvature especially —
 // O(vertices + edges)) that a repeated `proposeMargin` call against the SAME
 // mesh (e.g. re-proposing after the user nudges the seed) would otherwise
-// pay again for no reason. `halfedgeCache`/`curvatureCache` below are
-// DUPLICATED from geodesic.ts's/curvature.ts's own module-private caches
-// (not imported/shared) — same established convention those two files
-// already follow independently for the same overlay/result, mirroring this
-// repo's "duplicated rather than shared... N lines of fixture data, not
-// shared logic" precedent for small, domain-local per-worker state (this is
-// admittedly a REPEATED shape now across 3 files, not just fixture data —
-// see this task's report for the housekeeping note this leaves for a future
-// consolidation pass, out of THIS task's scope).
+// pay again for no reason. Both caches come from `jobs/meshCache.ts`'s
+// CONSOLIDATED per-worker cache (Phase 4 Task 1 carry-in) — this file
+// previously kept its OWN independent `halfedgeCache`/`curvatureCache`
+// copies (a shape repeated across up to 4 files — see meshCache.ts's module
+// doc for the full housekeeping writeup and why consolidating them now is
+// safe/output-preserving).
 //
 // `.ts` extension: reachable from the Node worker entry's import closure —
 // see CLAUDE.md's "Import extension convention".
 import {
-  buildHalfedge,
-  computeCurvature,
   proposeMarginLoop,
   validateMarginLine,
   MARGIN_SEARCH_RADIUS_MM,
   NoRidgeFoundError,
   NoClosureError,
-  type CurvatureResult,
-  type HalfedgeMesh,
-  type IndexedMesh,
   type SurfacePoint,
   type MarginLineLike,
 } from '@dqcad/kernel';
 import { JobCancelledError, type JobContext } from './context.ts';
-import { onBvhRelease, requireCachedBvh } from './bvh.ts';
+import { requireCachedBvh } from './bvh.ts';
+import { requireCachedHalfedge, requireCachedCurvature } from './meshCache.ts';
 import type { Vec3Payload } from './shared.ts';
 
 export { NoRidgeFoundError, NoClosureError };
-
-const halfedgeCache = new Map<string, HalfedgeMesh>();
-const curvatureCache = new Map<string, CurvatureResult>();
-
-onBvhRelease((contentHash) => {
-  halfedgeCache.delete(contentHash);
-  curvatureCache.delete(contentHash);
-});
-
-function requireCachedHalfedge(contentHash: string, mesh: IndexedMesh): HalfedgeMesh {
-  const cached = halfedgeCache.get(contentHash);
-  if (cached) return cached;
-  const hm = buildHalfedge(mesh);
-  halfedgeCache.set(contentHash, hm);
-  return hm;
-}
-
-function requireCachedCurvature(contentHash: string, mesh: IndexedMesh, hm: HalfedgeMesh): CurvatureResult {
-  const cached = curvatureCache.get(contentHash);
-  if (cached) return cached;
-  const result = computeCurvature(mesh, hm);
-  curvatureCache.set(contentHash, result);
-  return result;
-}
 
 /** Worker-safe `SurfacePoint` shape — mirrors jobs/geodesic.ts's own
  * `SurfacePointPayload` (a separate, structurally-identical type per this

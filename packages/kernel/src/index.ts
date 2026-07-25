@@ -59,8 +59,104 @@
  * kernel-algorithm output (no hash depended on it), only a diagnostic
  * embedded in the committed golden file, which made every regeneration
  * byte-non-reproducible for no numerical reason. No kernel algorithm or
- * output hash changes — see docs/CHANGELOG-kernel.md's `[0.7.1]` entry. */
-export const KERNEL_VERSION = '0.7.1';
+ * output hash changes — see docs/CHANGELOG-kernel.md's `[0.7.1]` entry.
+ * 0.8.0 (Phase 4 Task 1): two NEW ops, `offset/offsetMesh.ts`'s
+ * `offsetMeshRoi` (die-offset ROI-band perf fix) and `margin/band.ts` (the
+ * margin-band primitive) — see docs/CHANGELOG-kernel.md's `[0.8.0]` entry
+ * for the full writeup, including why neither gained a `kernel-ops.json`
+ * pin yet. Every existing golden hash is byte-identical to 0.7.1.
+ * 0.9.0 (Phase 4 Task 3): NEW op — `offset/innerSurfaceOffset.ts`'s
+ * `innerSurfaceOffsetRoi` (the crown two-zone cement-gap inner surface: a
+ * spatially-varying outward offset F(x) = signedDistance(x) - gap(h(x)) = 0
+ * with a C1 smoothstep blend between the marginal-gap and cement-gap zones,
+ * height field `h` = Euclidean distance to the margin loop, extracted by
+ * SDF -> marching cubes restricted to the prep ROI — see that module's doc
+ * for the height-field design decision and `@errorBound`). Same "brand-new
+ * op, minor bump" precedent as `offsetMeshRoi`/`margin/band.ts` (0.8.0):
+ * every existing golden hash is byte-identical to 0.8.0 (no `kernel-ops.json`
+ * pin added — the op is regression-pinned by its own analytic determinism/
+ * hash tests, matching the 0.8.0 precedent). See docs/CHANGELOG-kernel.md's
+ * `[0.9.0]` entry.
+ * 0.10.0 (Phase 4 Task 4): NEW op — `offset/innerSurfaceSolid.ts`'s
+ * `buildInnerSurface` (the FULL crown inner surface: the two-zone offset +
+ * SOLID undercut blockout — a per-axis-column running-minimum "draft-close" of
+ * the cement-gap field, self-consistent BY CONSTRUCTION (re-scan finds zero
+ * facing/draft undercut) — + SKIRT-TO-MARGIN, stitching the intaglio's open
+ * boundary exactly onto the confirmed margin polyline so the ≤10 µm margin-fit
+ * acceptance holds by construction). Same "brand-new op, minor bump" precedent
+ * as `innerSurfaceOffsetRoi` (0.9.0): every existing golden hash is
+ * byte-identical to 0.9.0 (no `kernel-ops.json` pin added — the op is
+ * regression-pinned by its own analytic determinism/committed-hash tests). See
+ * docs/CHANGELOG-kernel.md's `[0.10.0]` entry.
+ * 0.11.0 (Phase 4 Task 5): NEW op — `anatomy/placement.ts`'s
+ * `solveAnatomyPlacement`/`buildPlacementTransform`/`placeMesh` (+ the manual
+ * override helpers): the deterministic, closed-form anatomy-placement transform
+ * solve (build a case target frame from the margin/insertion-axis/neighbours/
+ * antagonist, align the library tooth's canonical frame to it via the existing
+ * `coarseAlignFromPointTriples` Kabsch, scale anisotropically to fill the
+ * inter-neighbour + margin-to-antagonist space). Pure transform math reusing
+ * `register/`; introduces NO new golden-pinned kernel-op output (regression-
+ * pinned by its own analytic/determinism/committed-hash tests — same "brand-new
+ * op, minor bump, existing goldens byte-identical" precedent as 0.9.0/0.10.0).
+ * See docs/CHANGELOG-kernel.md's `[0.11.0]` entry.
+ * 0.12.0 (Phase 4 Task 6): NEW ops — the `rbf/` module (`solveDense`: a
+ * deterministic dense LU-with-partial-pivoting Float64 linear solver; `fitRbf`/
+ * `evaluateRbf`/`applyRbfDisplacement`: a φ(r)=r biharmonic RBF displacement
+ * interpolant with a degree-1 polynomial term) and `anatomy/morph.ts`'s
+ * `planAnatomyMorph`/`solveAnatomyMorph`/`morphAnatomy`: the adaptation/morphing
+ * stage — deform the placed library tooth to satisfy proximal + antagonist
+ * contacts (targets from the profile) while pinning the cervical seal, via the
+ * RBF driven by contact + anchor control points and solved by the DIRECT
+ * deterministic solver (same constraints+params+version ⇒ byte-identical
+ * morphed mesh). The morph carries a measured contact-residual `@errorBound`.
+ * Same "brand-new op, minor bump, existing goldens byte-identical" precedent as
+ * 0.11.0 (regression-pinned by its own analytic/determinism/committed-hash
+ * tests + the synthetic morph golden; no `kernel-ops.json` pin added). See
+ * docs/CHANGELOG-kernel.md's `[0.12.0]` entry.
+ * 0.13.0 (Phase 4 Task 7): NEW ops — `shell/shell.ts`'s `constructShell` (join
+ * outer anatomy + inner intaglio at the margin-band seam into a watertight
+ * crown shell, validated through the manifold-3d wrapper; a CLOSED morphed
+ * tooth is trimmed to the margin first, so the pipeline connects closed tooth →
+ * watertight shell with the intaglio seal preserved), `measureWallThickness`
+ * (grid-DENSE inner↔outer min wall thickness with a reported sampling gap the
+ * gate folds into pass/fail), and `autoThickenOuter` (bounded outward
+ * thickening of thin walls). `constructShell`'s output goes
+ * through manifold-3d's Float32 boundary (cleanupMesh), so its hash is pinned
+ * in the manifoldVersion-guarded `kernel-ops.json` golden (a DELIBERATE golden
+ * change — the shell op is added to the snapshot this version); the two
+ * pure-Float64 ops are regression-pinned by their own analytic/determinism
+ * tests. See docs/CHANGELOG-kernel.md's `[0.13.0]` entry.
+ * 0.14.0 (Phase 4 Task 8): NEW ops — the `sculpt/` module
+ * (`applySculptStroke`/`applySculptGesture`: deterministic add/remove/smooth
+ * freeform brushes — exact-Float64 radial-falloff `(1−t²)²` vertex displacement
+ * along the pre-stroke area-weighted vertex normal (add/remove) or toward the
+ * one-ring centroid (smooth), applied to the OUTER surface only; a fold guard
+ * clamps by deterministic bisection any displacement that would flip/degenerate
+ * an affected triangle, so a stroke never tears the watertight shell; and
+ * `computeShellLock`: geometric+topological identification of the LOCKED fit
+ * surface — inner intaglio (distance-to-inner) + seam outer cervical rim
+ * (one-ring growth) — so the ≤10 µm margin fit survives sculpting). Pure Float64
+ * (no manifold-3d boundary); same "brand-new op, minor bump, existing goldens
+ * byte-identical" precedent as 0.9.0–0.13.0's pure-Float64 ops (regression-
+ * pinned by its own analytic/determinism/committed-hash tests; no
+ * `kernel-ops.json` pin added). See docs/CHANGELOG-kernel.md's `[0.14.0]` entry.
+ * 0.15.0 (Phase 4 Task 12b): morph→shell coupling robustness. NEW op —
+ * `shell/healOuterAnatomy.ts`'s `healOuterAnatomy` (SDF re-mesh at the zero level
+ * set — self-intersections + degenerate slivers the RBF morph leaves are healed
+ * BY CONSTRUCTION; reuses the offset pipeline, `@errorBound` = pitch/2 on the
+ * OUTER only, intaglio untouched). CHANGED op — `shell/shell.ts`'s
+ * `constructShell`: the CLOSED-outer trim is now a robust plane-CLIP a small
+ * `marginTrimOffsetMm` occlusal to the finish line (the old centroid-discard
+ * fragmented on a real morphed outer whose cervical surface wiggles across the
+ * exact margin plane). The kernel-ops.json `constructShell` golden is
+ * BYTE-IDENTICAL (its fixture passes an already-OPEN dome, which skips the trim
+ * entirely — only the closed-outer path changed), so no `kernel-ops.json` diff;
+ * both are regression-pinned by their own analytic/determinism tests. The
+ * coupled crown-acceptance stage-hash golden (test/golden/crown-acceptance.test.ts's
+ * byte-pinned hashes) DID change — deliberately: the standin now feeds the
+ * MORPHED outer through the heal into the shell (the genuine coupled lineage),
+ * replacing the synthetic dome. See docs/CHANGELOG-kernel.md's `[0.15.0]` entry. */
+export const KERNEL_VERSION = '0.15.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -188,15 +284,35 @@ export {
   MIN_PITCH_MM,
   PitchTooSmallError,
   offsetMesh,
+  offsetMeshRoi,
   offsetGridSpec,
   offsetErrorBoundMm,
   maxAbsCoordOf,
   OFFSET_BAND_MARGIN_PITCHES,
   EmptyOffsetResultError,
+  innerSurfaceOffsetRoi,
+  computeTwoZoneSdfGridSlice,
+  twoZoneGapField,
+  smoothstep,
+  distanceToClosedPolyline,
+  blendZoneLipschitz,
+  INNER_SURFACE_DEFAULT_BLEND_WIDTH_MM,
+  BlendWidthTooNarrowError,
+  buildInnerSurface,
+  INNER_SURFACE_ROI_RADIUS_FACTOR,
+  NoBoundaryLoopError,
   type ScalarGrid,
   type MarchingCubesSoup,
   type OffsetMeshOptions,
   type OffsetMeshResult,
+  type OffsetMeshRoiOptions,
+  type OffsetMeshRoiResult,
+  type InnerSurfaceGapParams,
+  type InnerSurfaceOffsetParams,
+  type InnerSurfaceOffsetResult,
+  type InnerSurfaceSolidParams,
+  type InnerSurfaceSolidResult,
+  type InnerSurfaceSolidHooks,
 } from './offset/index.ts';
 
 export {
@@ -369,6 +485,79 @@ export {
 } from './register/index.ts';
 
 export {
+  solveAnatomyPlacement,
+  buildPlacementTransform,
+  placeMesh,
+  translatePlacement,
+  rotatePlacement,
+  rescalePlacement,
+  solveLandmarkHandleTranslation,
+  assertFrameValid,
+  DegeneratePlacementError,
+  PLACEMENT_MIN_EXTENT_MM,
+  FRAME_ORTHONORMAL_TOLERANCE,
+  FRAME_MIN_RIGHT_HANDED_DET,
+  planAnatomyMorph,
+  solveAnatomyMorph,
+  morphAnatomy,
+  DEFAULT_MORPH_OPTIONS,
+  MorphContactMeshError,
+  MorphNoAnchorsError,
+  type CanonicalFrameAxes,
+  type PlacementFrame,
+  type AnatomyPlacementInput,
+  type AnatomyPlacementMeasurements,
+  type AnatomyPlacementSolution,
+  type MorphContactKind,
+  type MorphContactInput,
+  type MorphOptions,
+  type AnatomyMorphInput,
+  type AnatomyMorphPlan,
+  type MorphStrengths,
+  type MorphContactResult,
+  type AnatomyMorphResult,
+} from './anatomy/index.ts';
+
+export {
+  constructShell,
+  measureWallThickness,
+  autoThickenOuter,
+  DEFAULT_WALL_THICKNESS_SAMPLE_SPACING_MM,
+  DEFAULT_MARGIN_TRIM_OFFSET_MM,
+  ShellBoundaryError,
+  ShellClosedOuterNeedsMarginError,
+  ShellNotWatertightError,
+  type ConstructShellParams,
+  type ConstructShellHooks,
+  type ConstructShellResult,
+  type WallThicknessOptions,
+  type WallThicknessResult,
+  type AutoThickenParams,
+  type AutoThickenResult,
+} from './shell/shell.ts';
+
+export {
+  healOuterAnatomy,
+  type HealOuterAnatomyOptions,
+  type HealOuterAnatomyResult,
+} from './shell/healOuterAnatomy.ts';
+
+export {
+  solveDense,
+  solveDenseSingle,
+  distanceVec3,
+  SingularMatrixError,
+  SOLVE_SINGULAR_PIVOT_EPSILON,
+  fitRbf,
+  evaluateRbf,
+  applyRbfDisplacement,
+  rbfPhi,
+  RBF_POLY_TERMS,
+  type RbfControlPoint,
+  type RbfField,
+} from './rbf/index.ts';
+
+export {
   proposeMarginLoop,
   boundedVertexRegion,
   walkRidge,
@@ -405,6 +594,18 @@ export {
   type MarginOffSurfacePoint,
   type MarginSmoothnessWarning,
   type ValidateMarginLineOptions,
+  marginLoopPolyline,
+  computeMarginLoopFrame,
+  marginLoopMesh,
+  MARGIN_BAND_MIN_POINT_COUNT,
+  MARGIN_BAND_DEFAULT_HALF_THICKNESS_MM,
+  MarginBandChordCapError,
+  DegenerateMarginBandError,
+  DegenerateMarginLoopNormalError,
+  type MarginBandInput,
+  type MarginLoopFrame,
+  type MarginLoopMeshOptions,
+  type MarginLoopMeshResult,
 } from './margin/index.ts';
 
 export {
@@ -443,3 +644,22 @@ export {
   type BlockoutPreviewOptions,
   type BlockoutPreviewResult,
 } from './blockout/index.ts';
+
+export {
+  applySculptStroke,
+  applySculptGesture,
+  computeShellLock,
+  SculptStrokeParamError,
+  SculptNotWatertightError,
+  SCULPT_LOCK_INNER_EPSILON_MM,
+  SCULPT_LOCK_SEAM_RING_GROWTH,
+  SCULPT_MIN_AREA_FRACTION,
+  SCULPT_CLAMP_BISECTION_ITERS,
+  type SculptBrushType,
+  type SculptStroke,
+  type SculptStrokeOptions,
+  type SculptStrokeResult,
+  type SculptGestureResult,
+  type ShellLockOptions,
+  type ShellLockResult,
+} from './sculpt/index.ts';

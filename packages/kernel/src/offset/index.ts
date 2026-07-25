@@ -15,6 +15,7 @@ export {
 export { CORNER_OFFSETS, EDGE_CORNERS, EDGE_TABLE, TRI_TABLE } from './mcTables.ts';
 export {
   offsetMesh,
+  offsetMeshRoi,
   offsetGridSpec,
   offsetErrorBoundMm,
   maxAbsCoordOf,
@@ -22,4 +23,27 @@ export {
   EmptyOffsetResultError,
   type OffsetMeshOptions,
   type OffsetMeshResult,
+  type OffsetMeshRoiOptions,
+  type OffsetMeshRoiResult,
 } from './offsetMesh.ts';
+export {
+  innerSurfaceOffsetRoi,
+  computeTwoZoneSdfGridSlice,
+  twoZoneGapField,
+  smoothstep,
+  distanceToClosedPolyline,
+  blendZoneLipschitz,
+  INNER_SURFACE_DEFAULT_BLEND_WIDTH_MM,
+  BlendWidthTooNarrowError,
+  type InnerSurfaceGapParams,
+  type InnerSurfaceOffsetParams,
+  type InnerSurfaceOffsetResult,
+} from './innerSurfaceOffset.ts';
+export {
+  buildInnerSurface,
+  INNER_SURFACE_ROI_RADIUS_FACTOR,
+  NoBoundaryLoopError,
+  type InnerSurfaceSolidParams,
+  type InnerSurfaceSolidResult,
+  type InnerSurfaceSolidHooks,
+} from './innerSurfaceSolid.ts';

@@ -3,5 +3,16 @@
   "compilerOptions": {
     "rootDir": "src"
   },
-  "include": ["src"]
+  "include": ["src"],
+  // The mesh-hash equivalence GUARD test bridges two runtimes: it imports the
+  // CLIENT's `@dqcad/kernel-workers/hash` (a browser/Node-dual source module
+  // that references the DOM `BufferSource` type in its SubtleCrypto branch)
+  // alongside the server's own `hashMesh`. This Node tsconfig deliberately has
+  // NO "DOM" lib (the server must stay DOM-free), so `tsc` can't compile that
+  // browser-typed source. Vitest runs the file regardless (esbuild strips types,
+  // and `BufferSource` is a type-only reference — never touched at runtime), so
+  // the cross-package RUNTIME assertion still guards the hash equivalence. This
+  // is the ONLY file excluded, and only from static typechecking — not from the
+  // test run. See apps/server/src/journal-replay.ts's `hashMesh` doc.
+  "exclude": ["src/mesh-hash-equivalence.test.ts"]
 }
