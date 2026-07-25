@@ -204,8 +204,26 @@
  * (regression-pinned by their own analytic closed-form / determinism /
  * committed-sha256 tests in cavity/occlusalPatch.test.ts +
  * cavity/seamDihedral.test.ts; no `kernel-ops.json` pin added). See
- * docs/CHANGELOG-kernel.md's `[0.18.0]` entry. */
-export const KERNEL_VERSION = '0.18.0';
+ * docs/CHANGELOG-kernel.md's `[0.18.0]` entry.
+ *
+ * 0.19.0 (Phase 5 Task 5): NEW op — `cavity/proximalContact.ts`'s
+ * `adaptProximalContacts`: the Class II proximal box contact adaptation —
+ * the occlusal patch's proximal faces adapt to the neighbouring teeth at the
+ * profile's target penetration via a per-box 1-D bump displacement of the
+ * proximal rim (deterministic fixed-iteration clamped Newton root-find
+ * against the neighbour's signed distance; outline ring + seam anchor band
+ * pinned BYTE-EXACTLY by construction — the pinned set is never written).
+ * Achieved contact is MEASURED (closest-point vs the neighbour mesh), never
+ * a prescription re-read; a clamped unreachable target reports an
+ * honestly-large residual + warning. `buildOcclusalPatch` additionally
+ * EXPOSES `proximalFaces` (a pure additive result field — the patch mesh
+ * bytes and its committed sha256 pin are unchanged). Pure Float64, no
+ * manifold-3d boundary; same "brand-new op, minor bump, existing goldens
+ * byte-identical" precedent as 0.9.0-0.18.0 (regression-pinned by its own
+ * closed-form / determinism / committed-sha256 tests in
+ * cavity/proximalContact.test.ts; no `kernel-ops.json` pin added). See
+ * docs/CHANGELOG-kernel.md's `[0.19.0]` entry. */
+export const KERNEL_VERSION = '0.19.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -719,6 +737,19 @@ export {
   type SeamDihedralSample,
   type SeamDihedralMeasurement,
   type MeasureSeamDihedralOptions,
+  type ProximalFaceBoundary,
+  adaptProximalContacts,
+  DEFAULT_PROXIMAL_MAX_TRAVEL_MM,
+  DEFAULT_SEAM_ANCHOR_BAND_MM,
+  PROXIMAL_CONTACT_REFINEMENT_ITERATIONS,
+  ProximalColumnNotOnPatchError,
+  ProximalColumnOverlapError,
+  ProximalNeighborMeshError,
+  ProximalBandTooWideError,
+  type ProximalAdaptationInput,
+  type ProximalContactOptions,
+  type ProximalBoxContactResult,
+  type ProximalContactResult,
 } from './cavity/index.ts';
 
 export {

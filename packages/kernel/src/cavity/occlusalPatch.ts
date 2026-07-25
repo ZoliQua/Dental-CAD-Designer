@@ -193,6 +193,20 @@ export interface OcclusalPatchOptions {
   readonly seamSurroundingMaxAngleDeg?: number;
 }
 
+/** One proximal (break-through) face of the patch — the Task-5 adaptation
+ * currency. `columnPoints` is the proximal cross-section column (the face's
+ * occlusal top rim, B→L order, `crossSegments + 1` points): its ENDPOINTS are
+ * outline vertices (pinned) and its INTERIOR is the only non-outline vertex
+ * set of the face — the rim Task 5's `adaptProximalContacts` displaces.
+ * `freeRunPoints` is the outline U (every point an outline vertex — pinned),
+ * sharing the column's endpoints (the zip contract). NO mesial/distal claim is
+ * made here (the two faces are reported in patch-internal order); pairing a
+ * face with an actual FDI neighbour is the consuming stage's job (geometric). */
+export interface ProximalFaceBoundary {
+  readonly columnPoints: readonly Vec3[];
+  readonly freeRunPoints: readonly Vec3[];
+}
+
 export interface OcclusalPatchResult {
   /** The finished occlusal patch (world frame): an OPEN surface whose single
    * boundary loop == the cavity-outline ring, oriented outward (facing +axis). */
@@ -207,6 +221,9 @@ export interface OcclusalPatchResult {
   /** Tooth triangle indices to EXCLUDE when the gate disambiguates the
    * surrounding triangle across a seam edge (the cavity surface). */
   readonly cavityTriangleIndices: Uint32Array;
+  /** The two proximal break-through faces (Task-5 adaptation currency) — see
+   * `ProximalFaceBoundary`. */
+  readonly proximalFaces: readonly [ProximalFaceBoundary, ProximalFaceBoundary];
   /** A-priori bound (deg) on the patch's contribution to the measured seam
    * dihedral — the discretization residual (see @errorBound). */
   readonly seamDihedralBoundDeg: number;
@@ -586,12 +603,22 @@ export function buildOcclusalPatch(
     }
   }
 
+  // The two proximal faces (Task-5 currency): column = the proximal
+  // cross-section (grid column 0 / M, B→L order), free run = the outline U
+  // oriented to share the column's endpoints. Copies (never internal arrays):
+  // the result is an immutable value.
+  const proximalFaces: [ProximalFaceBoundary, ProximalFaceBoundary] = [
+    { columnPoints: colPoints[0]!.map((p) => [p[0], p[1], p[2]] as Vec3), freeRunPoints: mesialFree.map((p) => [p[0], p[1], p[2]] as Vec3) },
+    { columnPoints: colPoints[M]!.map((p) => [p[0], p[1], p[2]] as Vec3), freeRunPoints: distalFree.map((p) => [p[0], p[1], p[2]] as Vec3) },
+  ];
+
   return {
     mesh: finalMesh,
     stats,
     seamEdges,
     freeEdges,
     cavityTriangleIndices: part.cavityTriangleIndices,
+    proximalFaces,
     seamDihedralBoundDeg,
     crossSegments,
     seamSurroundingMaxAngleDeg: seamAngleDeg,

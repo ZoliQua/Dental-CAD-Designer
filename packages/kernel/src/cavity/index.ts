@@ -51,3 +51,22 @@ export {
   type SeamDihedralMeasurement,
   type MeasureSeamDihedralOptions,
 } from './seamDihedral.ts';
+export { type ProximalFaceBoundary } from './occlusalPatch.ts';
+
+// Phase 5 Task 5: Class II proximal box contact adaptation —
+// `cavity/proximalContact.ts` (the per-box bump adaptation of the patch's
+// proximal faces toward the neighbours; outline + seam pinned byte-exactly).
+export {
+  adaptProximalContacts,
+  DEFAULT_PROXIMAL_MAX_TRAVEL_MM,
+  DEFAULT_SEAM_ANCHOR_BAND_MM,
+  PROXIMAL_CONTACT_REFINEMENT_ITERATIONS,
+  ProximalColumnNotOnPatchError,
+  ProximalColumnOverlapError,
+  ProximalNeighborMeshError,
+  ProximalBandTooWideError,
+  type ProximalAdaptationInput,
+  type ProximalContactOptions,
+  type ProximalBoxContactResult,
+  type ProximalContactResult,
+} from './proximalContact.ts';

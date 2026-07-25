@@ -59,6 +59,60 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.19.0] — Phase 5 Task 5: Class II proximal box contact adaptation — `cavity/proximalContact.ts` (`adaptProximalContacts`)
+
+**No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned
+fixture hash is byte-identical to `[0.18.0]`.** A brand-new op only; no
+existing op's algorithm or output changed (`buildOcclusalPatch` gains the
+ADDITIVE `proximalFaces` result field — pure extra output from already-computed
+internals; its patch-mesh bytes and committed sha256 pin in
+cavity/occlusalPatch.test.ts are unchanged, which that test proves). In
+`test/golden/crown-acceptance.test.ts` (byte-pinned stage hashes, not a
+`test-fixtures/` file), all FIVE geometry stage pins are verified
+byte-identical to 0.18.0; only the `crown-standin-qc` pin changed,
+MECHANICALLY and metadata-only — the `QcReport` embeds `kernelVersion`
+(cad-pipeline/gates/report.ts), so `hashQcReport` tracks every version bump
+even with every measured value and geometry hash unchanged (the same
+mechanical churn documented at 0.16.0-0.18.0; the unchanged geometry pins are
+the proof the qc diff is the version string alone, not numerical drift).
+
+Adds `packages/kernel/src/cavity/proximalContact.ts`:
+
+- **`adaptProximalContacts(patchMesh, adaptations, options?)`** — the inlay's
+  proximal faces (the Task-4 patch's break-through faces) adapt to the
+  neighbouring teeth at the profile's target penetration
+  (`proximalContactPenetrationMm`, passed in by the stage), one adaptation per
+  box (mesial + distal). Mechanism: a dedicated per-box 1-D BUMP displacement
+  of the proximal face's occlusal top rim (the patch's proximal cross-section
+  column interior) — chosen over a region-scoped RBF because (1) the hard
+  invariant is a BYTE-IDENTICAL outline ring and the bump pins by
+  construction (the pinned set is never written) where an RBF pins only to
+  solver precision; (2) the deformation space is one curve per box; (3) a
+  `seamAnchorBandMm` zero-displacement band at both rim ends pins the entire
+  seam-boundary-triangle support, so the re-measured seam dihedral is exactly
+  the pre-adaptation value (proven, not assumed — the tests re-measure).
+  The driven rim vertex's travel is a FIXED-iteration (4) Newton root-find on
+  the neighbour's signed distance along a fixed approach direction, clamped
+  to ±`maxTravelMm` (1.5 default, documented): an unreachable target clamps
+  and reports `clampBound` + an honestly-large MEASURED residual. Achieved
+  contact is GENUINE (closest-point of the adapted face vs the neighbour
+  mesh, never a prescription re-read); `@errorBound` = max over boxes of
+  max(contact residual, face-wide residual), conservative. One documented
+  deviation from P4's `refineContactTarget`: the approach direction is
+  negated for a pre-penetrating start so the Newton update converges in both
+  regimes (P4 assumed an outside start).
+- Closed-form residual on the synthetic planar-neighbour case: 0 nm (mesial +
+  distal, gaps 0.05-0.4 mm swept) — fp-exact Newton on a planar face; the
+  documented general bound is the measured residual itself, carried per box.
+
+New downstream plumbing (no numerical change to any existing op): the
+`cavityProximalContact` worker job (kernel-workers; seam-before → adapt →
+seam-after, coarse progress + cancellation, byte-identical to direct kernel
+calls) and the `runCavityProximalContactStage` cad-pipeline stage (ONE
+journaled op `cavityProximalContact.adapt`; FDI neighbours pair to patch faces
+geometrically; per-box residuals + seam before/after + clamp warning
+journaled; `errorBoundMm` carried).
+
 ## [0.18.0] — Phase 5 Task 4: occlusal patch + G1 boundary blend — `cavity/occlusalPatch.ts` (`buildOcclusalPatch`) + `cavity/seamDihedral.ts` (`measureSeamDihedral`)
 
 **No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned

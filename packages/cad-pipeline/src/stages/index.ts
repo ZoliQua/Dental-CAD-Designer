@@ -26,6 +26,15 @@ export {
 } from './cavityOcclusalPatch.ts';
 
 export {
+  runCavityProximalContactStage,
+  AmbiguousProximalPairingError,
+  CavityProximalContactMissingClinicalParamError,
+  type CavityProximalContactStageOptions,
+  type CavityProximalContactStageResult,
+  type CavityProximalContactBoxParams,
+} from './cavityProximalContact.ts';
+
+export {
   runAnatomyPlacementStage,
   identifyNeighbors,
   InsufficientNeighborsError,

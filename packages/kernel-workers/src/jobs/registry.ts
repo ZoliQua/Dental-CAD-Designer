@@ -161,6 +161,13 @@ import {
   type CavityOcclusalPatchResult,
 } from './cavityOcclusalPatch.ts';
 export type { CavityOcclusalPatchPayload, CavityOcclusalPatchResult };
+import {
+  cavityProximalContactJob,
+  type CavityProximalContactPayload,
+  type CavityProximalContactResult,
+  type CavityProximalContactFacePayload,
+} from './cavityProximalContact.ts';
+export type { CavityProximalContactPayload, CavityProximalContactResult, CavityProximalContactFacePayload };
 
 import { decimateMeshJob, type DecimateMeshPayload, type DecimateMeshResult } from './decimate.ts';
 export type { DecimateMeshPayload, DecimateMeshResult };
@@ -401,6 +408,7 @@ export interface JobPayloadMap {
   innerSurface: InnerSurfacePayload;
   cavityInnerSurface: CavityInnerSurfacePayload;
   cavityOcclusalPatch: CavityOcclusalPatchPayload;
+  cavityProximalContact: CavityProximalContactPayload;
   placeAnatomy: PlaceAnatomyPayload;
   morphAnatomy: MorphAnatomyPayload;
   resolveMorph: ResolveMorphPayload;
@@ -450,6 +458,7 @@ export interface JobResultMap {
   innerSurface: InnerSurfaceResult;
   cavityInnerSurface: CavityInnerSurfaceResult;
   cavityOcclusalPatch: CavityOcclusalPatchResult;
+  cavityProximalContact: CavityProximalContactResult;
   placeAnatomy: PlaceAnatomyResult;
   morphAnatomy: MorphAnatomyResult;
   resolveMorph: MorphAnatomyResult;
@@ -506,6 +515,7 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   innerSurface: innerSurfaceJob,
   cavityInnerSurface: cavityInnerSurfaceJob,
   cavityOcclusalPatch: cavityOcclusalPatchJob,
+  cavityProximalContact: cavityProximalContactJob,
   placeAnatomy: placeAnatomyJob,
   morphAnatomy: morphAnatomyJob,
   resolveMorph: resolveMorphJob,

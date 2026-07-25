@@ -40,6 +40,7 @@ import {
   marginLoopPolyline,
   DEFAULT_PATCH_CROSS_SEGMENTS,
   type IndexedMesh,
+  type ProximalFaceBoundary,
   type SeamEdge,
 } from '@dqcad/kernel';
 import type { PipelineContext } from '../pipeline/context.ts';
@@ -79,6 +80,9 @@ export interface CavityOcclusalPatchStageResult extends RestorationStageResult {
   readonly cavityTriangleIndices: Uint32Array;
   /** Measured max seam dihedral (deg) — the G1 acceptance value. */
   readonly seamDihedralMaxDeg: number;
+  /** The two proximal break-through faces — the Task-5 box-contact-adaptation
+   * currency (see kernel `ProximalFaceBoundary`). */
+  readonly proximalFaces: readonly [ProximalFaceBoundary, ProximalFaceBoundary];
 }
 
 /**
@@ -141,5 +145,6 @@ export function runCavityOcclusalPatchStage(
     freeEdges: patch.freeEdges,
     cavityTriangleIndices: patch.cavityTriangleIndices,
     seamDihedralMaxDeg: m.maxDeg,
+    proximalFaces: patch.proximalFaces,
   };
 }

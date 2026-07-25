@@ -29,6 +29,7 @@ import {
   buildOcclusalPatch,
   measureSeamDihedral,
   type MeshStats,
+  type ProximalFaceBoundary,
   type SeamEdge,
   type Vec3,
 } from '@dqcad/kernel';
@@ -53,6 +54,9 @@ export interface CavityOcclusalPatchResult {
   stats: MeshStats;
   seamEdges: SeamEdge[];
   freeEdges: SeamEdge[];
+  /** The two proximal break-through faces — the Task-5 contact-adaptation
+   * currency (kernel `ProximalFaceBoundary`). */
+  proximalFaces: ProximalFaceBoundary[];
   cavityTriangleIndices: Uint32Array;
   seamDihedralMaxDeg: number;
   seamDihedralMeanDeg: number;
@@ -80,6 +84,13 @@ function cloneSeamEdges(edges: readonly SeamEdge[]): SeamEdge[] {
   return edges.map((e) => ({ a: [e.a[0], e.a[1], e.a[2]] as Vec3, b: [e.b[0], e.b[1], e.b[2]] as Vec3, segment: e.segment }));
 }
 
+function cloneProximalFaces(faces: readonly ProximalFaceBoundary[]): ProximalFaceBoundary[] {
+  return faces.map((f) => ({
+    columnPoints: f.columnPoints.map((p) => [p[0], p[1], p[2]] as Vec3),
+    freeRunPoints: f.freeRunPoints.map((p) => [p[0], p[1], p[2]] as Vec3),
+  }));
+}
+
 function cloneCachedResult(r: CavityOcclusalPatchResult): CavityOcclusalPatchResult {
   return {
     positions: r.positions.slice(),
@@ -87,6 +98,7 @@ function cloneCachedResult(r: CavityOcclusalPatchResult): CavityOcclusalPatchRes
     stats: r.stats,
     seamEdges: cloneSeamEdges(r.seamEdges),
     freeEdges: cloneSeamEdges(r.freeEdges),
+    proximalFaces: cloneProximalFaces(r.proximalFaces),
     cavityTriangleIndices: r.cavityTriangleIndices.slice(),
     seamDihedralMaxDeg: r.seamDihedralMaxDeg,
     seamDihedralMeanDeg: r.seamDihedralMeanDeg,
@@ -152,6 +164,7 @@ export const cavityOcclusalPatchJob = async (payload: CavityOcclusalPatchPayload
     stats: patch.stats,
     seamEdges: cloneSeamEdges(patch.seamEdges),
     freeEdges: cloneSeamEdges(patch.freeEdges),
+    proximalFaces: cloneProximalFaces(patch.proximalFaces),
     cavityTriangleIndices: patch.cavityTriangleIndices,
     seamDihedralMaxDeg: m.maxDeg,
     seamDihedralMeanDeg: m.meanDeg,
