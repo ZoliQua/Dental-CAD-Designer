@@ -62,6 +62,12 @@ export {
 } from './shell.ts';
 
 export {
+  runCavityShellStage,
+  type CavityShellStageOptions,
+  type CavityShellStageResult,
+} from './cavityShell.ts';
+
+export {
   runSculptStage,
   MissingMarginLoopError as SculptMissingMarginLoopError,
   EmptySculptGestureError,

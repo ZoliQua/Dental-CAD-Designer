@@ -17,8 +17,18 @@ import { orientNormalsConsistently, type IndexedMesh } from '@dqcad/kernel';
 /** Trough half-length in X — the proximal break-through planes sit at ±this. */
 export const TROUGH_HALF_LENGTH_MM = 4;
 
-export function troughFixture(): { mesh: IndexedMesh; outline: Vec3[] } {
-  const L = TROUGH_HALF_LENGTH_MM, W = 3, H = 3, c = 1, F = 1.5; // half-length, half-width, top, channel half-width, floor
+/** Optional knobs — the default (no args) is the original fixture, unchanged
+ * (every existing caller passes nothing). `floorMm` raises the channel floor to
+ * make a DELIBERATELY-SHALLOW cavity (Phase 5 Task 6: the thin-inlay variant
+ * that must BLOCK on the thickness gate). */
+export interface TroughFixtureOptions {
+  /** Channel floor height Z (mm). Default 1.5 (channel depth H−F = 1.5 mm). A
+   * higher value makes the cavity shallower (a thinner inlay). */
+  readonly floorMm?: number;
+}
+
+export function troughFixture(opts: TroughFixtureOptions = {}): { mesh: IndexedMesh; outline: Vec3[] } {
+  const L = TROUGH_HALF_LENGTH_MM, W = 3, H = 3, c = 1, F = opts.floorMm ?? 1.5; // half-length, half-width, top, channel half-width, floor
   const nx = 4;
   const xs: number[] = [];
   for (let i = 0; i <= nx; i++) xs.push(i === 0 ? -L : i === nx ? L : -L + (2 * L * i) / nx);

@@ -223,7 +223,7 @@
  * closed-form / determinism / committed-sha256 tests in
  * cavity/proximalContact.test.ts; no `kernel-ops.json` pin added). See
  * docs/CHANGELOG-kernel.md's `[0.19.0]` entry. */
-export const KERNEL_VERSION = '0.19.0';
+export const KERNEL_VERSION = '0.20.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -750,6 +750,12 @@ export {
   type ProximalContactOptions,
   type ProximalBoxContactResult,
   type ProximalContactResult,
+  constructInlayShell,
+  InlayShellOpenBoundaryError,
+  InlayShellRingMismatchError,
+  InlayShellNotWatertightError,
+  type ConstructInlayShellHooks,
+  type ConstructInlayShellResult,
 } from './cavity/index.ts';
 
 export {

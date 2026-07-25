@@ -59,6 +59,48 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.20.0] — Phase 5 Task 6: inlay/onlay shell — `cavity/inlayShell.ts` (`constructInlayShell`)
+
+**No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned
+fixture hash is byte-identical to `[0.19.0]`.** A brand-new op only; no existing
+op's algorithm or output changed. `constructInlayShell` is NOT added to
+`kernel-ops.json` (like the crown `constructShell`, its output crosses the
+manifold-3d Float32 WASM boundary via `cleanupMesh`, so its determinism is
+pinned instead by a committed sha256 in `cavity/inlayShell.test.ts`, GUARDED by
+the installed manifold-3d version — the same manifoldVersion-guard the
+crown-acceptance qc pin uses; a manifold-3d build change is caught there, never
+mistaken for a kernel regression). In `test/golden/crown-acceptance.test.ts`
+(byte-pinned stage hashes, not a `test-fixtures/` file), all FIVE geometry stage
+pins are verified byte-identical to 0.19.0; only the `crown-standin-qc` pin
+changed, MECHANICALLY and metadata-only — the `QcReport` embeds `kernelVersion`
+(cad-pipeline/gates/report.ts), so `hashQcReport` tracks every version bump even
+with every measured value and geometry hash unchanged (the same mechanical churn
+documented at 0.16.0-0.19.0; the unchanged geometry pins are the proof the qc
+diff is the version string alone, not numerical drift).
+
+Adds `packages/kernel/src/cavity/inlayShell.ts`:
+
+- **`constructInlayShell(fitMesh, patchMesh, hooks?)`** — assembles the inlay/
+  onlay SOLID from the Task-3 fit surface (an open cup) and the Task-4/5 occlusal
+  patch (an open cap), joined along their SHARED cavity-outline ring. Because
+  both surfaces carry that ring as their single open boundary BIT-EXACT (engineered
+  across Task 3/4/5), the stitch is a DIRECT DETERMINISTIC WELD (`weldVertices`,
+  exact-coordinate dedup), NOT a boolean union — preferred for accuracy: a boolean
+  would re-tessellate the margin through the manifold-3d Float32 boundary and
+  perturb the ≤10 µm marginal seal, whereas the weld keeps every input vertex at
+  its exact Float64 leader position, so the Task-3 margin fit and Task-4 seam
+  dihedral survive assembly byte-for-byte. The shared-ring assumption is VERIFIED
+  first (each surface exactly one boundary loop; the two loops' bit-exact
+  coordinate sets equal) — a perturbed/mismatched ring throws
+  `InlayShellRingMismatchError` BEFORE welding (falsifiable). The welded surface
+  is consistently oriented, pinned outward, and re-validated + cleaned through the
+  manifold-3d wrapper (`cleanupMesh` throws `NonManifoldInputError` on a non-2-
+  manifold result); `analyzeMesh` then re-checks watertight + single-component,
+  throwing `InlayShellNotWatertightError` otherwise — a non-watertight stitch can
+  never masquerade as a shell. Deterministic (same inputs + manifold-3d version →
+  byte-identical shell). New errors: `InlayShellOpenBoundaryError`,
+  `InlayShellRingMismatchError`, `InlayShellNotWatertightError`.
+
 ## [0.19.0] — Phase 5 Task 5: Class II proximal box contact adaptation — `cavity/proximalContact.ts` (`adaptProximalContacts`)
 
 **No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned

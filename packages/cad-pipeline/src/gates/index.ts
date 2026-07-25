@@ -63,3 +63,10 @@ export {
   type SeamDihedralGateInput,
 } from './seamDihedral.ts';
 export { runCrownQc, type RunCrownQcInput } from './report.ts';
+export {
+  runInlayQc,
+  selectInlayMinThicknessMm,
+  NonCavityRestorationTypeError,
+  type RunInlayQcInput,
+  type CavityThicknessMinimums,
+} from './inlayReport.ts';

@@ -94,19 +94,18 @@ const µm = (mm: number): string => `${(mm * 1000).toFixed(3)} µm`;
 // golden change (bump + changelog), never a silent regen — the WASM boolean is
 // manifoldVersion-guarded, exactly as the brief requires.
 // ---------------------------------------------------------------------------
-// 0.19.0 (Phase 5 Task 5) added the brand-new cavity/proximalContact.ts op
-// ONLY (`adaptProximalContacts`; `buildOcclusalPatch` gains an ADDITIVE result
-// field with unchanged mesh bytes) — no op in the crown chain changed. All
-// FIVE geometry stage pins below are verified BYTE-IDENTICAL to 0.18.0 (this
-// suite passes against them unmodified — the version guard forced exactly this
-// documented revisit, per its own message). Only the crown-standin-qc pin
-// changed, MECHANICALLY: the QcReport embeds `kernelVersion`
-// (gates/report.ts), so `hashQcReport` tracks every version bump even when
-// every measured value and geometry hash is unchanged — the unchanged geometry
-// pins are precisely the proof this qc diff is the version string alone, not
-// numerical drift (the same mechanical churn documented at 0.16.0-0.18.0).
-// See docs/CHANGELOG-kernel.md's [0.19.0] entry.
-const EXPECTED_KERNEL_VERSION = '0.19.0';
+// 0.20.0 (Phase 5 Task 6) added the brand-new cavity/inlayShell.ts op ONLY
+// (`constructInlayShell`) — no op in the crown chain changed. All FIVE geometry
+// stage pins below are verified BYTE-IDENTICAL to 0.19.0 (this suite passes
+// against them unmodified — the version guard forced exactly this documented
+// revisit, per its own message). Only the crown-standin-qc pin changed,
+// MECHANICALLY: the QcReport embeds `kernelVersion` (gates/report.ts), so
+// `hashQcReport` tracks every version bump even when every measured value and
+// geometry hash is unchanged — the unchanged geometry pins are precisely the
+// proof this qc diff is the version string alone, not numerical drift (the same
+// mechanical churn documented at 0.16.0-0.19.0). See docs/CHANGELOG-kernel.md's
+// [0.20.0] entry.
+const EXPECTED_KERNEL_VERSION = '0.20.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 function installedManifoldVersion(): string {
   const pkg = JSON.parse(readFileSync(join(repoRoot, 'node_modules', 'manifold-3d', 'package.json'), 'utf8')) as {
@@ -130,9 +129,9 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   'crown-standin-morphing': 'ad276e88def5a72c327389af57bc5e7acb3cc03802b631d5ac7402445a7b4d88',
   'crown-standin-shell': 'c472c6ea74c84b741fd47d925241c2c8d21d3caff8fb640d4877e724e49e5764',
   'crown-standin-freeform': 'f48f898de08bb7d1e4bc6a89758ec4d83339bd50040bd7f92010d1e98647d833',
-  // Changed at 0.19.0: version-string-only (QcReport embeds kernelVersion —
+  // Changed at 0.20.0: version-string-only (QcReport embeds kernelVersion —
   // see the EXPECTED_KERNEL_VERSION comment above; geometry pins unchanged).
-  'crown-standin-qc': 'afee9ac33c204232f8c685c6ca2f5eb60f09002702d9697f647f63228430dbac',
+  'crown-standin-qc': '96e5da78ec4ad85e0b7c7bee98d5d5b82d99a21a26d9dc90b6038c8f112231f3',
 };
 
 const GATE_ORDER = ['watertight', 'manifold', 'selfIntersection', 'minWallThickness', 'marginFit', 'seating', 'connectorCrossSection', 'contact'];

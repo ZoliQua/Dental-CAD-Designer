@@ -175,11 +175,17 @@ export type { DecimateMeshPayload, DecimateMeshResult };
 import { constructShellJob, type ConstructShellPayload, type ConstructShellResultPayload } from './shell.ts';
 export type { ConstructShellPayload, ConstructShellResultPayload };
 
+import { cavityShellJob, type CavityShellPayload, type CavityShellResult } from './cavityShell.ts';
+export type { CavityShellPayload, CavityShellResult };
+
 import { applySculptStrokeJob, type ApplySculptStrokePayload, type ApplySculptStrokeResult } from './sculpt.ts';
 export type { ApplySculptStrokePayload, ApplySculptStrokeResult };
 
 import { runQcJob, type RunQcPayload, type RunQcResult } from './runQc.ts';
 export type { RunQcPayload, RunQcResult };
+
+import { runInlayQcJob, type RunInlayQcPayload, type RunInlayQcResult } from './runInlayQc.ts';
+export type { RunInlayQcPayload, RunInlayQcResult };
 
 import {
   placeAnatomyJob,
@@ -414,8 +420,10 @@ export interface JobPayloadMap {
   resolveMorph: ResolveMorphPayload;
   decimateMesh: DecimateMeshPayload;
   constructShell: ConstructShellPayload;
+  cavityShell: CavityShellPayload;
   applySculptStroke: ApplySculptStrokePayload;
   runQc: RunQcPayload;
+  runInlayQc: RunInlayQcPayload;
   undercutScan: UndercutScanPayload;
   undercutScanBatch: UndercutScanBatchPayload;
   computeCurvature: ComputeCurvaturePayload;
@@ -464,8 +472,10 @@ export interface JobResultMap {
   resolveMorph: MorphAnatomyResult;
   decimateMesh: DecimateMeshResult;
   constructShell: ConstructShellResultPayload;
+  cavityShell: CavityShellResult;
   applySculptStroke: ApplySculptStrokeResult;
   runQc: RunQcResult;
+  runInlayQc: RunInlayQcResult;
   undercutScan: UndercutScanResult;
   undercutScanBatch: UndercutScanBatchResult;
   computeCurvature: ComputeCurvatureResult;
@@ -521,8 +531,10 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   resolveMorph: resolveMorphJob,
   decimateMesh: decimateMeshJob,
   constructShell: constructShellJob,
+  cavityShell: cavityShellJob,
   applySculptStroke: applySculptStrokeJob,
   runQc: runQcJob,
+  runInlayQc: runInlayQcJob,
   undercutScan: undercutScanJob,
   undercutScanBatch: undercutScanBatchJob,
   computeCurvature: computeCurvatureJob,

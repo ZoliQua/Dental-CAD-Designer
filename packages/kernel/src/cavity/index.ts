@@ -70,3 +70,15 @@ export {
   type ProximalBoxContactResult,
   type ProximalContactResult,
 } from './proximalContact.ts';
+
+// Phase 5 Task 6: the inlay/onlay SHELL — assemble the fit surface (T3) + the
+// occlusal patch/adapted proximal faces (T4/T5) into a single watertight solid,
+// welded along the shared cavity-outline ring — `cavity/inlayShell.ts`.
+export {
+  constructInlayShell,
+  InlayShellOpenBoundaryError,
+  InlayShellRingMismatchError,
+  InlayShellNotWatertightError,
+  type ConstructInlayShellHooks,
+  type ConstructInlayShellResult,
+} from './inlayShell.ts';
