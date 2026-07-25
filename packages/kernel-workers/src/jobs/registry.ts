@@ -149,6 +149,12 @@ import {
   type InnerSurfaceResult,
 } from './innerSurface.ts';
 export type { InnerSurfacePayload, InnerSurfaceResult };
+import {
+  cavityInnerSurfaceJob,
+  type CavityInnerSurfacePayload,
+  type CavityInnerSurfaceResult,
+} from './cavityInnerSurface.ts';
+export type { CavityInnerSurfacePayload, CavityInnerSurfaceResult };
 
 import { decimateMeshJob, type DecimateMeshPayload, type DecimateMeshResult } from './decimate.ts';
 export type { DecimateMeshPayload, DecimateMeshResult };
@@ -387,6 +393,7 @@ export interface JobPayloadMap {
   sampleSdfGrid: SampleSdfGridPayload;
   offsetMesh: OffsetMeshPayload;
   innerSurface: InnerSurfacePayload;
+  cavityInnerSurface: CavityInnerSurfacePayload;
   placeAnatomy: PlaceAnatomyPayload;
   morphAnatomy: MorphAnatomyPayload;
   resolveMorph: ResolveMorphPayload;
@@ -434,6 +441,7 @@ export interface JobResultMap {
   sampleSdfGrid: SampleSdfGridResult;
   offsetMesh: OffsetMeshResult;
   innerSurface: InnerSurfaceResult;
+  cavityInnerSurface: CavityInnerSurfaceResult;
   placeAnatomy: PlaceAnatomyResult;
   morphAnatomy: MorphAnatomyResult;
   resolveMorph: MorphAnatomyResult;
@@ -488,6 +496,7 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   sampleSdfGrid: sampleSdfGridJob,
   offsetMesh: offsetMeshJob,
   innerSurface: innerSurfaceJob,
+  cavityInnerSurface: cavityInnerSurfaceJob,
   placeAnatomy: placeAnatomyJob,
   morphAnatomy: morphAnatomyJob,
   resolveMorph: resolveMorphJob,

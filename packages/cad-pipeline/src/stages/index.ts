@@ -12,6 +12,13 @@ export {
 } from './innerSurface.ts';
 
 export {
+  runCavityInnerSurfaceStage,
+  MissingCavityOutlineError,
+  MissingClinicalParamError as CavityInnerSurfaceMissingClinicalParamError,
+  type CavityInnerSurfaceStageOptions,
+} from './cavityInnerSurface.ts';
+
+export {
   runAnatomyPlacementStage,
   identifyNeighbors,
   InsufficientNeighborsError,

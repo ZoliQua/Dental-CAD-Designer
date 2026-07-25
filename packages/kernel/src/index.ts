@@ -169,8 +169,25 @@
  * 0.9.0-0.15.0's pure-Float64 ops (regression-pinned by its own analytic
  * closed-form/determinism/committed-hash tests in cavity/regions.test.ts;
  * no `kernel-ops.json` pin added). See docs/CHANGELOG-kernel.md's
- * `[0.16.0]` entry. */
-export const KERNEL_VERSION = '0.16.0';
+ * `[0.16.0]` entry.
+ * 0.17.0 (Phase 5 Task 3): NEW op — `cavity/innerSurface.ts`'s
+ * `buildCavityInnerSurface`: the inlay/onlay inner (fit) surface — the
+ * two-zone cement-gap offset OFF THE CAVITY SURFACE + a solid undercut
+ * blockout (draft-close along the insertion axis) + a skirt stitching the
+ * fit-surface boundary onto the cavity-outline polyline (the ≤10 µm
+ * margin-fit acceptance currency). Reuses the crown intaglio machinery
+ * (`twoZoneGapField` / footpoint `distanceToClosedPolyline` / axis-frame
+ * rotation / `skirtToMargin` / `flipOutwardIfNeeded`, exported from
+ * offset/innerSurface{Offset,Solid}.ts for the reuse), restricted to the
+ * cavity ROI; the ONE genuine difference is the crop (an outline-distance
+ * band, not the crown's horizontal plane — a MOD outline is non-planar and
+ * breaks through the proximal faces). Pure Float64, no manifold-3d boundary;
+ * same "brand-new op, minor bump, existing goldens byte-identical" precedent
+ * as 0.9.0-0.16.0's pure-Float64 ops (regression-pinned by its own analytic
+ * closed-form / determinism / committed-sha256 tests in
+ * cavity/innerSurface.analytic.test.ts; no `kernel-ops.json` pin added). See
+ * docs/CHANGELOG-kernel.md's `[0.17.0]` entry. */
+export const KERNEL_VERSION = '0.17.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -666,6 +683,10 @@ export {
   type CavityBoxRegion,
   type CavityRegionsResult,
   type CavityUndercutScanResult,
+  buildCavityInnerSurface,
+  type CavityInnerSurfaceParams,
+  type CavityInnerSurfaceResult,
+  type CavityInnerSurfaceHooks,
 } from './cavity/index.ts';
 
 export {

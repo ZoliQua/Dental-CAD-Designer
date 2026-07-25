@@ -19,3 +19,13 @@ export {
   type CavityRegionsResult,
   type CavityUndercutScanResult,
 } from './regions.ts';
+
+// Phase 5 Task 3: the inlay/onlay inner (fit) surface — cavity two-zone offset
+// + draft-close blockout + skirt-to-outline (reuses the crown intaglio
+// machinery, restricted to the cavity ROI). `cavity/innerSurface.ts`.
+export {
+  buildCavityInnerSurface,
+  type CavityInnerSurfaceParams,
+  type CavityInnerSurfaceResult,
+  type CavityInnerSurfaceHooks,
+} from './innerSurface.ts';

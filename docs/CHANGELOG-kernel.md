@@ -59,6 +59,74 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.17.0] — Phase 5 Task 3: inlay/onlay inner (fit) surface — `cavity/innerSurface.ts` (`buildCavityInnerSurface`)
+
+**No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned
+fixture hash is byte-identical to `[0.16.0]`.** Brand-new op only; no existing
+op's algorithm or output changed. In `test/golden/crown-acceptance.test.ts`
+(byte-pinned stage hashes, not a `test-fixtures/` file), all FIVE geometry
+stage pins are verified byte-identical to 0.16.0; only the `crown-standin-qc`
+pin changed, MECHANICALLY and metadata-only — the `QcReport` embeds
+`kernelVersion` (cad-pipeline/gates/report.ts), so `hashQcReport` tracks every
+version bump even with every measured value and geometry hash unchanged (the
+same mechanical churn documented at 0.16.0; the unchanged geometry pins are the
+proof the qc diff is the version string alone, not numerical drift).
+
+Adds `packages/kernel/src/cavity/innerSurface.ts`:
+
+- **`buildCavityInnerSurface(mesh, params, hooks?)`** — the inlay/onlay inner
+  (fit) surface: the two-zone cement-gap offset OFF THE CAVITY SURFACE
+  (`marginalGapMm` near the outline ≤ `spacerStartMm`, `cementGapMm` above, C1
+  smoothstep blend) + a **solid undercut blockout** (draft-close along the
+  insertion axis, so re-scanning the result finds ZERO undercut by
+  construction) + a **skirt** stitching the fit-surface boundary EXACTLY onto
+  the cavity-outline polyline (the ≤10 µm margin-fit acceptance currency). The
+  fit surface is the level set `F(x) = signedDistance(x) − gap(h(x)) = 0`, `gap`
+  mm OUTSIDE the closed tooth-with-cavity solid on the void side — the SAME
+  operation as the crown intaglio (`buildInnerSurface`), restricted to the
+  cavity ROI.
+- **Heavy reuse of the P4 crown machinery** (imported, not re-implemented):
+  `twoZoneGapField` + the FOOTPOINT height field `distanceToClosedPolyline`
+  (offset/innerSurfaceOffset.ts) and the axis-frame rotation + footprint mask +
+  `skirtToMargin` zipper + `flipOutwardIfNeeded` (offset/innerSurfaceSolid.ts,
+  whose shared helpers are now `export`ed for this reuse — a pure `export`
+  addition, so every crown output stays byte-identical). The draft-close
+  running-minimum direction is VERIFIED identical to the crown's (both withdraw
+  along +Z), not assumed — pinned falsifiably (see below).
+- **The ONE genuine difference from the crown, extended not forked: the CROP.**
+  The crown crops with one horizontal plane just beyond a roughly-planar margin;
+  a true MOD cavity outline is highly non-planar and BREAKS THROUGH the proximal
+  faces (opening in +Z AND ±X), which a single plane cannot separate. Instead
+  this op crops by the SAME footpoint height field the gap uses — a cell whose
+  footpoint is within `SKIRT_BAND = maxGap + 3·pitch` of the outline is set to
+  the `+Inf` no-data sentinel — cutting a thin, outline-shape-agnostic band
+  around the entire 3-D outline at once and leaving a clean single-loop patch
+  the skirt spans to the exact outline. Documented in the module doc + the
+  reviewer notes.
+
+`@errorBound`: offset MAGNITUDE bound inherited verbatim from the crown op —
+flat marginal/cement zones `pitchMm/2 + eps_f32`, blend zone
+`(1+Lgap)/(1−Lgap)·pitchMm/2 + eps_f32` (`Lgap = 1.5·(cementGap−marginalGap)/
+blendWidth`); the footpoint height-field evaluation eliminates the
+grid-vs-footpoint term; the blockout adds a pitch-scaled draft-fill POSITION
+error; the skirt adds no margin-fit approximation (its rim vertices ARE the
+outline points). Margin-fit + self-consistency residuals are MEASURED and
+reported by the tests/gate.
+
+Pure Float64, deterministic, no manifold-3d boundary. Same "brand-new op,
+minor bump, existing goldens byte-identical" precedent as 0.9.0–0.16.0's
+pure-Float64 ops: **no `kernel-ops.json` pin added** — the op is
+regression-pinned by its own analytic tests in
+`cavity/innerSurface.analytic.test.ts`: measured offset accuracy in the cement
+and marginal zones within the documented bound, **margin fit ≤ 10 µm on the
+cavity outline** (default + onlay variant), a committed sha256 result-hash
+(determinism), and the FALSIFIABLE self-consistency pair — **whole-mesh ZERO
+undercut on the drafted fixture AND the blockout demonstrably filling the
+negative-taper variant's undercut** (whose un-blocked offset scans nonzero,
+proving the blockout does real work). A worker job
+(`kernel-workers/jobs/cavityInnerSurface.ts`, progress + cancel) mirrors the
+crown inner-surface job.
+
 ## [0.16.0] — Phase 5 Task 2: cavity region analysis — the `cavity/` module (`classifyCavityRegions`, `scanCavityUndercut`)
 
 **No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned
