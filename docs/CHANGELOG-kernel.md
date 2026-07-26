@@ -104,11 +104,19 @@ margin subtracted; wired into `runInlayQc` for onlays carrying coverage). The
 end-to-end onlay acceptance (`test/golden/onlay-acceptance.test.ts`) is
 genuinely coupled (the extend-over-cusp output IS the pipeline outline);
 REVIEWER NOTE: it ACKNOWLEDGES the seating gate — the covered-cusp reduction
-bevel meets the cavity wall at a SHARP CONCAVE CORNER on the deliberately
-un-filleted analytic fixture, and the two-zone offset intaglio rounds that
-corner just below the wall → a ~0.05 mm³ die-into-wall interference (a fixture
-sharp-corner + T3 concave-corner-offset artifact, journaled + reported, never
-weakened; a filleted prep / a T3 concave-corner refinement removes it).
+bevel meets the cavity wall at a SHARP CORNER on the deliberately un-filleted
+analytic fixture, and the marching-cubes offset intaglio cuts inside the
+gap-radius corner arc there (arc radius ≈ cement gap 0.08 mm, barely above the
+0.06 mm cell) → a ~0.06 mm³ die-into-wall interference, journaled + reported,
+never weakened. The acknowledgment is SCOPED in the committed suite: the
+interference is asserted BOUNDED (< 0.1 mm³) and LOCALIZED at the junction band
+(≥90% of intersection vertices; centroid pinned; any buccal off-band vertex must
+lie ON the outline-crest marginal-seal locus) so a grown/spread interference — a
+real defect — re-fails. Corner-sharpness CAUSATION is measured falsifiably (the
+fixture's `junctionChamferMm` single-cut chamfer: sharp 6.165e-2 → c=0.2
+3.237e-2 → c=0.4 3.093e-2 mm³, monotone, residual at the same locus); FULL
+removal by a true large-radius fillet remains an OPEN GEOMETRY ITEM (untested —
+the fixture's 0.66 mm buccal wall leaves no room for a large-radius fillet).
 
 ## [0.20.0] — Phase 5 Task 6: inlay/onlay shell — `cavity/inlayShell.ts` (`constructInlayShell`)
 

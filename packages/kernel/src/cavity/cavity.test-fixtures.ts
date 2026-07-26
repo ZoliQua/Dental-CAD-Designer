@@ -545,6 +545,14 @@ export interface ModOnlayCavityMeshOptions {
    * — the bottom of the shallow outer incline. Default 3.5 (so `cov→bHOC` is a
    * 45° incline: Δy = covMarginY-halfWidthMm = -1, Δz = bHOCz-covMarginZ = -1). */
   bHOCz?: number;
+  /** FILLET (single-cut chamfer) size at the reduction-bevel ↔ cavity-buccal-wall
+   * junction (mm). 0 (default) = the SHARP concave corner at `mbB` (the T7
+   * seating-artifact locus); > 0 replaces that corner with a chamfer cut from a
+   * point `c` up the bevel to a point `c` down the wall — the 1-segment fillet
+   * approximation, used to prove the artifact→sharp-corner causation falsifiably
+   * (interference vs corner sharpness). Must be < the bevel length AND < the
+   * buccal wall length. Default 0 keeps every chain byte-identical. */
+  junctionChamferMm?: number;
   /** Mesiodistal subdivisions per zone. Default 6. */
   mdSegmentsPerZone?: number;
 }
@@ -600,6 +608,7 @@ export function modOnlayCavityMesh(opts: ModOnlayCavityMeshOptions = {}): ModOnl
   const covMarginY = opts.covMarginY ?? 6.0;
   const covMarginZ = opts.covMarginZ ?? 7.0;
   const bHOCz = opts.bHOCz ?? 6.5;
+  const junctionChamferMm = opts.junctionChamferMm ?? 0;
   const mdSegmentsPerZone = opts.mdSegmentsPerZone ?? 6;
 
   const halfLen = lengthMm / 2;
@@ -625,6 +634,27 @@ export function modOnlayCavityMesh(opts: ModOnlayCavityMeshOptions = {}): ModOnl
   if (!(covMarginY < halfWidthMm && covMarginY > isthmusHalfWidthMm)) throw new RangeError('modOnlayCavityMesh: need isthmusHalfWidthMm < covMarginY < halfWidthMm');
   if (!(bHOCz < covMarginZ)) throw new RangeError('modOnlayCavityMesh: bHOCz must be below covMarginZ (a descending outer incline)');
   if (!(mdSegmentsPerZone >= 1)) throw new RangeError('modOnlayCavityMesh: mdSegmentsPerZone >= 1');
+
+  // --- junction chamfer geometry (the fillet knob; inert when 0) ---
+  // Bevel (cov -> mbB) and buccal-wall (mbB -> shoulderB) unit directions in the
+  // constant-x (y, z) cross-section; the chamfer replaces the sharp mbB corner
+  // with p1 (c up the bevel) -> p2 (c down the wall).
+  const bevelDy = covMarginY - isthmusHalfWidthMm; // toward +y (lingual-ward)
+  const bevelDz = reductionTableZ - covMarginZ; // downward
+  const bevelLen = Math.hypot(bevelDy, bevelDz);
+  const wallDy = isthmusHalfWidthMm - isthmusFloorHalfWidthMm; // toward +y (draft)
+  const wallDz = floorZ - reductionTableZ; // downward
+  const wallLen = Math.hypot(wallDy, wallDz);
+  if (!(junctionChamferMm >= 0)) throw new RangeError('modOnlayCavityMesh: junctionChamferMm must be >= 0');
+  if (junctionChamferMm > 0 && !(junctionChamferMm < bevelLen && junctionChamferMm < wallLen)) {
+    throw new RangeError(
+      `modOnlayCavityMesh: junctionChamferMm (${junctionChamferMm}) must be < the bevel length (${bevelLen.toFixed(3)}) and < the buccal wall length (${wallLen.toFixed(3)})`,
+    );
+  }
+  const chamferP1Y = -isthmusHalfWidthMm - (junctionChamferMm * bevelDy) / bevelLen;
+  const chamferP1Z = reductionTableZ - (junctionChamferMm * bevelDz) / bevelLen;
+  const chamferP2Y = -isthmusHalfWidthMm + (junctionChamferMm * wallDy) / wallLen;
+  const chamferP2Z = reductionTableZ + (junctionChamferMm * wallDz) / wallLen;
 
   const vertexIndex = new Map<string, number>();
   const positions: number[] = [];
@@ -671,10 +701,14 @@ export function modOnlayCavityMesh(opts: ModOnlayCavityMeshOptions = {}): ModOnl
   const outerChain = (x: number): Vec3[] => [cov(x), bHOC(x), bBase(x), lBase(x), lCusp(x), ML(x)];
 
   // Covered surface chain (inside the onlay outline), buccal -> lingual: the
-  // reduced-cusp bevel (cov -> mbB) then the cavity (mbB -> shoulderB -> [box
-  // floor] -> shoulderL -> ML).
+  // reduced-cusp bevel (cov -> mbB, or cov -> p1 -> p2 when chamfered) then the
+  // cavity (rim -> shoulderB -> [box floor] -> shoulderL -> ML). `rimIdx` is the
+  // chain index of the cavity-buccal-rim point (the top of the actual wall).
+  const chamP1 = (x: number): Vec3 => [x, chamferP1Y, chamferP1Z];
+  const chamP2 = (x: number): Vec3 => [x, chamferP2Y, chamferP2Z];
+  const rimIdx = junctionChamferMm > 0 ? 2 : 1;
   const coveredChain = (x: number, deep: boolean): Vec3[] => {
-    const cuspPrep = [cov(x), mbB(x)];
+    const cuspPrep = junctionChamferMm > 0 ? [cov(x), chamP1(x), chamP2(x)] : [cov(x), mbB(x)];
     if (!deep) return [...cuspPrep, shoulderB(x), shoulderL(x), ML(x)];
     return [...cuspPrep, shoulderB(x), boxB(x), boxL(x), shoulderL(x), ML(x)];
   };
@@ -726,17 +760,26 @@ export function modOnlayCavityMesh(opts: ModOnlayCavityMeshOptions = {}): ModOnl
   triangles.forEach((t, i) => indices.set(t, i * 3));
   const oriented = orientNormalsConsistently({ positions: flatPositions, indices }).mesh;
 
-  // --- the covered-cusp (reduction-bevel) triangle set (the coverage
-  //     selection): every triangle whose 3 vertices all lie on the cov crest
-  //     line (y = -covMarginY, z = covMarginZ) or the cavity buccal rim line
-  //     (y = -isthmusHalfWidthMm, z = reductionTableZ) — the bevel cov -> mbB.
+  // --- the covered-cusp (reduction-bevel [+ chamfer]) triangle set (the
+  //     coverage selection): every SWEPT triangle whose 3 vertices all lie on
+  //     the allowed cross-section loci — the cov crest line + the cavity buccal
+  //     rim line (sharp: mbB; chamfered: p1 and p2). Frame-cap triangles (all 3
+  //     verts at one x station) are excluded: sharp has only 2 distinct allowed
+  //     points per station (impossible), but a chamfered cap CAN ear-clip a
+  //     (cov, p1, p2) triangle that is NOT covered surface.
   //     `orientNormalsConsistently` preserves triangle order. ---
-  const onCov = (i: number): boolean => oriented.positions[i * 3 + 1] === -covMarginY && oriented.positions[i * 3 + 2] === covMarginZ;
-  const onRim = (i: number): boolean => oriented.positions[i * 3 + 1] === -isthmusHalfWidthMm && oriented.positions[i * 3 + 2] === reductionTableZ;
+  const onLocus = (i: number, y: number, z: number): boolean => oriented.positions[i * 3 + 1] === y && oriented.positions[i * 3 + 2] === z;
+  const allowedLoci: [number, number][] = junctionChamferMm > 0
+    ? [[-covMarginY, covMarginZ], [chamferP1Y, chamferP1Z], [chamferP2Y, chamferP2Z]]
+    : [[-covMarginY, covMarginZ], [-isthmusHalfWidthMm, reductionTableZ]];
+  const onAllowed = (i: number): boolean => allowedLoci.some(([y, z]) => onLocus(i, y, z));
   const coveredCuspTriangleIndices: number[] = [];
   for (let t = 0; t < oriented.indices.length / 3; t++) {
     const a = oriented.indices[t * 3]!, b = oriented.indices[t * 3 + 1]!, c = oriented.indices[t * 3 + 2]!;
-    if ((onCov(a) || onRim(a)) && (onCov(b) || onRim(b)) && (onCov(c) || onRim(c))) coveredCuspTriangleIndices.push(t);
+    if (!(onAllowed(a) && onAllowed(b) && onAllowed(c))) continue;
+    const sameX = oriented.positions[a * 3] === oriented.positions[b * 3] && oriented.positions[b * 3] === oriented.positions[c * 3];
+    if (sameX) continue; // a frame-cap triangle, not swept covered surface
+    coveredCuspTriangleIndices.push(t);
   }
 
   // --- the extended onlay outline (buccal run = coverage margin line) ---
@@ -753,17 +796,18 @@ export function modOnlayCavityMesh(opts: ModOnlayCavityMeshOptions = {}): ModOnl
   }
 
   // --- the pre-coverage (inlay-style) outline: buccal run = the cavity buccal
-  //     rim `mbB` (index 1 of the covered chain), enclosing the cavity only ---
+  //     rim (chain index `rimIdx`: mbB sharp / chamfer p2), enclosing the cavity
+  //     only ---
   const inlayOutline: Vec3[] = [];
-  for (const x of fullXs) inlayOutline.push(mbB(x));
+  for (const x of fullXs) inlayOutline.push(coveredChain(x, false)[rimIdx]!);
   {
-    const cc = coveredChain(+halfLen, true); // [cov, mbB, shoulderB, boxB, boxL, shoulderL, ML]
-    for (let i = 2; i < cc.length; i++) inlayOutline.push(cc[i]!); // distal U after mbB
+    const cc = coveredChain(+halfLen, true); // [cov, (p1,) rim, shoulderB, boxB, boxL, shoulderL, ML]
+    for (let i = rimIdx + 1; i < cc.length; i++) inlayOutline.push(cc[i]!); // distal U after the rim
   }
   for (let i = fullXs.length - 2; i >= 0; i--) inlayOutline.push(ML(fullXs[i]!));
   {
     const cc = coveredChain(-halfLen, true);
-    for (let i = cc.length - 2; i >= 2; i--) inlayOutline.push(cc[i]!); // mesial U back to mbB
+    for (let i = cc.length - 2; i >= rimIdx + 1; i--) inlayOutline.push(cc[i]!); // mesial U back to the rim
   }
 
   return {

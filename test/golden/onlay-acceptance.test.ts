@@ -21,6 +21,8 @@ import {
   constructInlayShell,
   measureSeamDihedral,
   extendOutlineOverCusp,
+  intersect,
+  analyzeMesh,
   KERNEL_VERSION,
   type IndexedMesh,
   type Vec3,
@@ -41,15 +43,29 @@ const AXIS: Vec3 = [0, 0, 1];
 const GAP = { marginalGapMm: 0.03, cementGapMm: 0.08, spacerStartMm: 0.8, blendWidthMm: 0.3 };
 const PITCH = 0.06;
 // The seating gate is ACKNOWLEDGED (invariant 4: journaled, reported, never
-// silently bypassed, never threshold-weakened) — see the seating test + the T7
-// report: the covered-cusp reduction BEVEL meets the cavity buccal wall at a
-// SHARP CONCAVE CORNER on this analytic (deliberately un-filleted) fixture, and
-// the two-zone offset intaglio rounds that concave corner just below the wall,
-// producing a small (~0.05 mm³) die-into-wall interference that is a fixture
-// sharp-corner + T3-offset artifact (a filleted prep / a T3 concave-corner
-// refinement removes it), NOT a real seating failure. The gate still MEASURES
-// and REPORTS it.
+// silently bypassed, never threshold-weakened) — see the bounded+localized
+// acknowledgment test below + the T7 report: the covered-cusp reduction BEVEL
+// meets the cavity buccal wall at a SHARP CORNER on this analytic (deliberately
+// un-filleted) fixture, and the marching-cubes offset intaglio cuts inside the
+// gap-radius corner arc there (the arc's curvature radius ≈ the cement gap
+// 0.08 mm is barely above the 0.06 mm cell size), producing a small
+// (~0.06 mm³) die-into-wall interference. Corner-sharpness CAUSATION is
+// measured falsifiably below (a junction chamfer monotonically reduces it at
+// the same locus, ~2x); FULL removal by a true large-radius fillet is an OPEN
+// GEOMETRY ITEM (untested — the fixture's 0.66 mm wall leaves no room for a
+// large-radius fillet without deeper fixture surgery). NOT weakened: the gate
+// still MEASURES, REPORTS, and FAILS on it; the acknowledgment is scoped by the
+// BOUNDED + LOCALIZED assertions below, so a grown or spread interference (a
+// real defect) re-fails the suite.
 const ACK_SEATING = ['seating'] as const;
+// The acknowledgment's scope (documented bounds — see the seating tests):
+// ceiling comfortably above the measured 0.0616 mm³ yet ~50x below a gross
+// over-seat; the junction band brackets the rim (y=-1.5) / wall (z 3.4→4.0)
+// with modest slop; the outline-crest locus is the zero-thickness marginal-seal
+// sliver AT the outline itself (allowed; not interior penetration).
+const ACK_MAX_INTERFERENCE_MM3 = 0.1;
+const JUNCTION_BAND = { yMin: -2.0, yMax: -0.9, zMin: 3.0, zMax: 4.3 };
+const JUNCTION_BAND_MIN_FRACTION = 0.9;
 const PEN = 0.02;
 const ONLAY_MIN = 1.0;
 const CUSP_COVERAGE_MIN = 1.5;
@@ -101,6 +117,39 @@ async function buildOnlay(opts: ModOnlayCavityMeshOptions = {}): Promise<BuiltOn
     fitMesh: fit.mesh, patchMesh: adapted.mesh, shellMesh: shell.mesh, toothMesh: fx.mesh,
     outline, seamEdges: patch.seamEdges, cavityTriangleIndices: patch.cavityTriangleIndices,
     contacts, contactClampWarning: adapted.clampedBoxes.length > 0, boundaryY: fx.coveredCuspBuccolingualBoundaryY,
+  };
+}
+
+/** Interference (shell ∩ tooth) geometry analysis — the acknowledgment-scoping
+ * instrument (volume, junction-band vertex fraction, centroid, off-band verts). */
+interface InterferenceAnalysis {
+  volumeMm3: number;
+  vertexCount: number;
+  inBandFraction: number;
+  centroid: Vec3;
+  /** Vertices outside the junction band (world positions). */
+  offBandVertices: Vec3[];
+}
+async function analyzeInterference(shellMesh: IndexedMesh, toothMesh: IndexedMesh): Promise<InterferenceAnalysis> {
+  const inter = await intersect(shellMesh, toothMesh);
+  const st = inter.indices.length > 0 ? analyzeMesh(inter) : null;
+  const volumeMm3 = Math.abs(st?.signedVolumeMm3 ?? 0);
+  const n = inter.positions.length / 3;
+  let inBand = 0;
+  let cx = 0, cy = 0, cz = 0;
+  const offBandVertices: Vec3[] = [];
+  for (let v = 0; v < n; v++) {
+    const x = inter.positions[v * 3]!, y = inter.positions[v * 3 + 1]!, z = inter.positions[v * 3 + 2]!;
+    cx += x; cy += y; cz += z;
+    if (y >= JUNCTION_BAND.yMin && y <= JUNCTION_BAND.yMax && z >= JUNCTION_BAND.zMin && z <= JUNCTION_BAND.zMax) inBand++;
+    else offBandVertices.push([x, y, z]);
+  }
+  return {
+    volumeMm3,
+    vertexCount: n,
+    inBandFraction: n > 0 ? inBand / n : 1,
+    centroid: n > 0 ? [cx / n, cy / n, cz / n] : [0, 0, 0],
+    offBandVertices,
   };
 }
 
@@ -197,6 +246,85 @@ describe('ONLAY acceptance — healthy onlay passes with ONLAY minimums', () => 
     const again = await runInlayQc(qcInput(built));
     expect(hashReport(again)).toBe(hashReport(report));
   }, 180_000);
+
+  it('the ACKNOWLEDGED seating interference is BOUNDED and LOCALIZED at the known junction artifact', async () => {
+    // WHY these bounds exist: the acknowledgment must not be a blank check. A
+    // future regression that GREW the interference (a gross over-seat) or SPREAD
+    // it into the covered-cusp intaglio (the convex-margin non-clearance defect
+    // this file's GAP>PITCH comment describes) must RE-FAIL the suite, not stay
+    // silently green behind report.passed. This test scopes the acknowledgment
+    // to the KNOWN artifact: (a) BOUNDED below ACK_MAX_INTERFERENCE_MM3
+    // (measured 0.0616 mm³; the 0.1 ceiling is comfortably above run variation
+    // yet ~50x below a gross defect), and (b) LOCALIZED at the bevel↔wall
+    // JUNCTION_BAND (rim y=-1.5, wall z 3.4→4.0, with slop), never reaching the
+    // coverage crest or spreading over the covered-cusp intaglio.
+    const a = await analyzeInterference(built.shellMesh, built.toothMesh);
+    // eslint-disable-next-line no-console
+    console.log(
+      `[ONLAY ACK SCOPE] interference=${a.volumeMm3.toExponential(3)}mm³ (ceiling ${ACK_MAX_INTERFERENCE_MM3}) ` +
+        `verts=${a.vertexCount} inBand=${(a.inBandFraction * 100).toFixed(1)}% centroid=[${a.centroid.map((v) => v.toFixed(2)).join(',')}] ` +
+        `offBand=${a.offBandVertices.map((p) => `[${p.map((v) => v.toFixed(2)).join(',')}]`).join(' ')}`,
+    );
+    // (a) BOUNDED
+    expect(a.volumeMm3).toBeLessThan(ACK_MAX_INTERFERENCE_MM3);
+    // ...and present: if the artifact ever disappears, REMOVE the acknowledgment
+    // (this assertion exists so a fixed artifact retires the ack instead of
+    // leaving a dormant blank check).
+    expect(a.volumeMm3).toBeGreaterThan(0);
+    // (b) LOCALIZED: ≥90% of intersection vertices inside the junction band, and
+    // the centroid inside it.
+    expect(a.inBandFraction).toBeGreaterThanOrEqual(JUNCTION_BAND_MIN_FRACTION);
+    expect(a.centroid[1]).toBeGreaterThanOrEqual(JUNCTION_BAND.yMin);
+    expect(a.centroid[1]).toBeLessThanOrEqual(JUNCTION_BAND.yMax);
+    expect(a.centroid[2]).toBeGreaterThanOrEqual(JUNCTION_BAND.zMin);
+    expect(a.centroid[2]).toBeLessThanOrEqual(JUNCTION_BAND.zMax);
+    // Any vertex buccal of the band (toward the covered cusp) must lie ON the
+    // coverage-crest outline locus itself (y=-covMarginY, z=covMarginZ — the
+    // zero-thickness marginal-seal sliver AT the outline, which the seating
+    // gate's 1e-6 noise-floor doc already anticipates), NEVER in the
+    // covered-cusp intaglio interior (that spread would be finding #3's
+    // convex-margin non-clearance — a genuine defect).
+    const fx = modOnlayCavityMesh();
+    for (const p of a.offBandVertices) {
+      if (p[1] < JUNCTION_BAND.yMin) {
+        expect(Math.abs(p[1] - -fx.covMarginY), `off-band vertex [${p.join(',')}] buccal of the junction must sit on the crest outline`).toBeLessThan(1e-9);
+        expect(Math.abs(p[2] - fx.covMarginZ)).toBeLessThan(1e-9);
+      }
+    }
+  }, 180_000);
+});
+
+describe('ONLAY seating artifact — corner-sharpness CAUSATION (falsifiable)', () => {
+  it('chamfering the junction monotonically REDUCES the interference at the same locus', async () => {
+    // The acknowledgment's causal story ("the sharp bevel↔wall corner drives the
+    // interference") is tested, not narrated: replacing the sharp corner with a
+    // single-cut chamfer (the fixture's junctionChamferMm — the 1-segment fillet
+    // approximation) must REDUCE the interference volume monotonically over
+    // increasing chamfer size while the residual stays AT THE SAME junction
+    // locus. Measured at authoring time: sharp 6.165e-2 → c=0.2 3.237e-2 →
+    // c=0.4 3.093e-2 mm³ (~2x). NOTE the honest limit: a single-cut chamfer
+    // HALVES the artifact (each of the two milder corners still cuts inside its
+    // gap-radius arc at this gap≈pitch scale); FULL removal by a true
+    // large-radius fillet is untested (no room on the fixture's 0.66 mm wall) —
+    // an OPEN GEOMETRY ITEM, per the T7 report.
+    const volumes: number[] = [];
+    for (const c of [0, 0.2, 0.4]) {
+      const fx = modOnlayCavityMesh({ junctionChamferMm: c });
+      const fit = await buildCavityInnerSurface(fx.mesh, { ...GAP, pitchMm: PITCH, cavityOutline: fx.onlayOutline, insertionAxis: AXIS });
+      const patch = buildOcclusalPatch(fx.mesh, fx.onlayOutline, AXIS);
+      const shell = await constructInlayShell(fit.mesh, patch.mesh);
+      const a = await analyzeInterference(shell.mesh, fx.mesh);
+      volumes.push(a.volumeMm3);
+      // eslint-disable-next-line no-console
+      console.log(`[CHAMFER CAUSATION c=${c}] interference=${a.volumeMm3.toExponential(3)}mm³ inBand=${(a.inBandFraction * 100).toFixed(1)}%`);
+      // the residual stays at the junction (the artifact does not migrate)
+      expect(a.inBandFraction).toBeGreaterThanOrEqual(JUNCTION_BAND_MIN_FRACTION);
+    }
+    // monotone decrease over increasing chamfer, by a healthy factor overall
+    expect(volumes[1]!).toBeLessThan(volumes[0]!);
+    expect(volumes[2]!).toBeLessThanOrEqual(volumes[1]!);
+    expect(volumes[0]! / volumes[2]!).toBeGreaterThan(1.5);
+  }, 400_000);
 });
 
 describe('ONLAY acceptance — thin coverage BLOCKS on the region-scoped gate (falsifiable, gate NOT weakened)', () => {

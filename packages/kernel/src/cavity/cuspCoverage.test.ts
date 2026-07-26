@@ -33,8 +33,8 @@ function sha256Points(pts: readonly Vec3[]): string {
 }
 
 describe('modOnlayCavityMesh — onlay fixture topology + closed-form outline', () => {
-  it('is a watertight single-component solid (default + thin + deeper-reduction)', () => {
-    for (const o of [{}, { reductionTableZ: 6.2 }, { reductionTableZ: 4.2 }]) {
+  it('is a watertight single-component solid (default + thin + deeper-reduction + chamfered junction)', () => {
+    for (const o of [{}, { reductionTableZ: 6.2 }, { reductionTableZ: 4.2 }, { junctionChamferMm: 0.2 }, { junctionChamferMm: 0.4 }]) {
       const fx = modOnlayCavityMesh(o);
       const st = analyzeMesh(fx.mesh);
       expect(st.watertight, JSON.stringify(o)).toBe(true);
@@ -42,6 +42,12 @@ describe('modOnlayCavityMesh — onlay fixture topology + closed-form outline', 
       expect(st.degenerateCount).toBe(0);
       expect(st.signedVolumeMm3!).toBeGreaterThan(0);
     }
+  });
+
+  it('junctionChamferMm validates its room (>= 0, < bevel length, < wall length)', () => {
+    expect(() => modOnlayCavityMesh({ junctionChamferMm: -0.1 })).toThrow(RangeError);
+    // wall length ≈ 0.66 mm on the default — a chamfer beyond it must throw
+    expect(() => modOnlayCavityMesh({ junctionChamferMm: 0.7 })).toThrow(RangeError);
   });
 
   it('onlayOutline is closed on-mesh and its buccal run is the coverage-margin crest', () => {
