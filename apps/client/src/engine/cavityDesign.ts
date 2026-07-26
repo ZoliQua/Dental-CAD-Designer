@@ -80,16 +80,22 @@ const CAVITY_FIT_BLEND_WIDTH_MM = 0.3;
  * fit-surface ↔ occlusal-patch convergence wedge — the restoration feathering to
  * the cavosurface margin (the marginal-seal region, governed by `marginFit`) —
  * wraps the whole perimeter and is ~one restoration-thickness wide, NOT the
- * crown's 0.2 mm finish-line feather. These are GEOMETRY-DERIVED bands
- * documented in the Task 6/7 reports + the acceptance goldens; they are kept
- * here as a named engine helper (traceable to that rationale) rather than the
- * profile's `marginExclusionMm` (which is the crown feather). REVIEWER ITEM:
- * promoting these into `clinical-profiles` as dedicated cavity fields is a clean
- * future step (they would then follow the T1 checksum/version discipline); a
- * butt-margin occlusal patch would let smaller bands suffice (Task 6 report).
+ * crown's 0.2 mm finish-line feather. These are GEOMETRY-DERIVED bands documented
+ * in the Task 6/7 reports + the acceptance goldens.
+ *
+ * PHASE 6 TASK 1 — the reviewer item is now DONE: these bands are PROMOTED into
+ * `clinical-profiles` as dedicated `inlayMarginExclusionMm` (1.3) /
+ * `onlayMarginExclusionMm` (1.8) fields (versioned + checksummed, the T1
+ * discipline). This helper now READS THOSE PROFILE FIELDS instead of hardcoding
+ * 1.3/1.8 — bit-identical values (the live UI defaults to zirconia, whose profile
+ * carries exactly 1.3/1.8), so the cavity QC payloads and acceptance goldens do
+ * NOT move. The bands are geometry-derived (material-independent), so the same
+ * values ride on every profile.
  */
 export function cavityMarginExclusionMm(restorationType: 'inlay' | 'onlay'): number {
-  return restorationType === 'onlay' ? 1.8 : 1.3;
+  return restorationType === 'onlay'
+    ? STANDARD_ZIRCONIA_PROFILE.onlayMarginExclusionMm
+    : STANDARD_ZIRCONIA_PROFILE.inlayMarginExclusionMm;
 }
 
 /** The proximal-contact NEIGHBOUR gap (mm) for the synthetic reference boxes —

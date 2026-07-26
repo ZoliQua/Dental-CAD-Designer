@@ -641,6 +641,12 @@ const CROWN_MORPH_PROFILE: PipelineMaterialProfile = {
   onlayMinThicknessMm: 0.5,
   cuspCoverageMinThicknessMm: 0.7,
   marginExclusionMm: 0.2,
+  inlayMarginExclusionMm: 1.3,
+  onlayMarginExclusionMm: 1.8,
+  frameworkMinThicknessMm: 0.5,
+  ponticHygienicClearanceMm: 2.0,
+  ponticRidgeLapReliefMm: 0.05,
+  ponticOvateDepthMm: 1.0,
 };
 
 function crownMorphHash(mesh: IndexedMesh): string {

@@ -38,6 +38,7 @@ function makeProfile(): PipelineMaterialProfile {
     connectorAreaMm2: { posteriorMm2: 9, anteriorMm2: 7 },
     undercutBlockoutThresholdMm: 0.1, occlusalMinWallThicknessMm: 1.0, maxChordDeviationMm: 0.02,
     inlayMinThicknessMm: 1.0, onlayMinThicknessMm: 1.0, cuspCoverageMinThicknessMm: 1.5, marginExclusionMm: 0.2,
+    inlayMarginExclusionMm: 1.3, onlayMarginExclusionMm: 1.8, frameworkMinThicknessMm: 0.5, ponticHygienicClearanceMm: 2.0, ponticRidgeLapReliefMm: 0.05, ponticOvateDepthMm: 1.0,
   };
 }
 

@@ -63,6 +63,26 @@ export interface PipelineMaterialProfile {
    * feather-band exclusion width (Phase 4 carry-in; Phase 5 Task 8 wires it
    * into the live `runQc` path). */
   readonly marginExclusionMm: number;
+  /** See `MaterialProfile.inlayMarginExclusionMm` — the INLAY cavity
+   * marginal-transition band the min-wall gate excludes (Phase 6 Task 1, the P5
+   * marginExclusion promotion off the engine constant). */
+  readonly inlayMarginExclusionMm: number;
+  /** See `MaterialProfile.onlayMarginExclusionMm` — the ONLAY cavity
+   * marginal-transition band (Phase 6 Task 1). */
+  readonly onlayMarginExclusionMm: number;
+  /** See `MaterialProfile.frameworkMinThicknessMm` — the framework (cutback)
+   * min wall thickness the thickness gate uses in framework mode (Phase 6
+   * Task 5). */
+  readonly frameworkMinThicknessMm: number;
+  /** See `MaterialProfile.ponticHygienicClearanceMm` — the hygienic-pontic
+   * gingival clearance (Phase 6 Task 3). */
+  readonly ponticHygienicClearanceMm: number;
+  /** See `MaterialProfile.ponticRidgeLapReliefMm` — the modified-ridge-lap
+   * pontic lingual relief (Phase 6 Task 3). */
+  readonly ponticRidgeLapReliefMm: number;
+  /** See `MaterialProfile.ponticOvateDepthMm` — the ovate-pontic penetration
+   * depth (Phase 6 Task 3). */
+  readonly ponticOvateDepthMm: number;
 }
 
 /** A mesh handle a pipeline stage operates on — content-addressed (mirrors
@@ -137,6 +157,24 @@ export interface PipelineContext {
    * is assigned yet (occlusal-contact-dependent stages, e.g. morphing,
    * cannot run without one; that is THEIR gate to enforce, not this type's). */
   readonly antagonist: PipelineMeshHandle | null;
+  /**
+   * BRIDGE-ONLY (Phase 6 Task 1 scaffold): the pontic teeth of a multi-unit
+   * bridge — the subset of the restoration's teeth that are suspended pontics
+   * (no prep), mirroring `shared-types`' `Restoration.pontics` exactly (same
+   * round-trip-from-`Restoration` convention as `marginLoops`). `undefined`
+   * for crown/inlay/onlay contexts (they have no pontics); `BridgePipelineContext`
+   * narrows this to a required present value. A future bridge stage reads it to
+   * know which units are library-pontic vs abutment-crown. */
+  readonly ponticSites?: readonly FdiTooth[];
+  /** BRIDGE-ONLY: the edentulous-ridge / gingiva mesh the pontic gingival
+   * interface (Phase 6 Task 3) shapes each pontic base against — `null` when a
+   * bridge case has no ridge scan assigned yet (that is the pontic stage's OWN
+   * gate to enforce, like `antagonist`). `undefined` for non-bridge contexts. */
+  readonly gingivaMesh?: PipelineMeshHandle | null;
+  /** BRIDGE-ONLY: the adjacent unit pairs a connector spans (Phase 6 Task 4) —
+   * ordered `[a, b]` FDI pairs (abutment↔pontic, pontic↔pontic). A 3-unit
+   * bridge carries two pairs. `undefined` for non-bridge contexts. */
+  readonly unitAdjacency?: readonly (readonly [FdiTooth, FdiTooth])[];
   /** Content hashes of every stage completed so far THIS session — mirrors
    * `shared-types`' `Restoration.stages` shape exactly (same field names),
    * so a caller can round-trip this straight from/to the persisted
@@ -199,6 +237,45 @@ export type OnlayPipelineContext = PipelineContext & { readonly restorationType:
  * step (which re-reads `restorationType`). */
 export type CavityPipelineContext = PipelineContext & { readonly restorationType: 'inlay' | 'onlay' };
 
+/**
+ * A `PipelineContext` statically known to be a BRIDGE case (Phase 6 Task 1
+ * scaffold) — the narrowing future bridge stages (shared axis, pontic
+ * interface, connectors, assembly — Tasks 2+) type their context parameter
+ * against. Beyond narrowing `restorationType` to `'bridge'` (which no
+ * crown/cavity context unifies with, the compile-time guard rail), it makes the
+ * bridge-only fields REQUIRED and present: a bridge stage can rely on
+ * `ponticSites` / `gingivaMesh` / `unitAdjacency` existing (crown/cavity stages
+ * never see them). `assertBridgeContext` is the runtime guard that establishes
+ * this narrowing for dynamically-typed callers (journal replay). NO bridge
+ * STAGE exists yet (YAGNI — Tasks 2+ build them). */
+export type BridgePipelineContext = PipelineContext & {
+  readonly restorationType: 'bridge';
+  readonly ponticSites: readonly FdiTooth[];
+  readonly gingivaMesh: PipelineMeshHandle | null;
+  readonly unitAdjacency: readonly (readonly [FdiTooth, FdiTooth])[];
+};
+
+/** Thrown by `assertBridgeContext` when a context IS a bridge (right
+ * `restorationType`) but is missing a required bridge-only field
+ * (`ponticSites` / `gingivaMesh` / `unitAdjacency`) — a loud, typed failure
+ * (never a silent narrowing to a type whose fields are actually absent), the
+ * structural counterpart of `RestorationTypeMismatchError`'s type check. */
+export class BridgeContextIncompleteError extends Error {
+  // Explicit field + body assignment, NOT a constructor parameter property —
+  // this file is in the Node worker's strip-only-TS import closure (see
+  // `RestorationTypeMismatchError`'s note).
+  readonly missing: readonly string[];
+  constructor(missing: readonly string[]) {
+    super(
+      `BridgeContextIncompleteError: a bridge context is missing required bridge field(s) ` +
+        `[${missing.join(', ')}] — a bridge stage needs pontic sites, the gingiva mesh handle, ` +
+        `and the unit adjacency to run.`,
+    );
+    this.name = 'BridgeContextIncompleteError';
+    this.missing = missing;
+  }
+}
+
 /** Thrown by the restoration-type guards when a stage is handed a context of
  * the wrong restoration type — a loud, typed failure (never a silent
  * wrong-geometry result), per CLAUDE.md invariant 4's "corrupt → loud typed
@@ -241,4 +318,21 @@ export function assertCavityContext(ctx: PipelineContext): asserts ctx is Cavity
   if (ctx.restorationType !== 'inlay' && ctx.restorationType !== 'onlay') {
     throw new RestorationTypeMismatchError(['inlay', 'onlay'], ctx.restorationType);
   }
+}
+
+/** Runtime guard rail: asserts `ctx` is a bridge case (narrows to
+ * `BridgePipelineContext`), else throws. Throws `RestorationTypeMismatchError`
+ * for the wrong restoration type, or `BridgeContextIncompleteError` for a
+ * bridge context missing a required bridge-only field. Future bridge stages
+ * (Task 2+) call this at entry for the dynamically-typed callers (journal
+ * replay). */
+export function assertBridgeContext(ctx: PipelineContext): asserts ctx is BridgePipelineContext {
+  if (ctx.restorationType !== 'bridge') {
+    throw new RestorationTypeMismatchError('bridge', ctx.restorationType);
+  }
+  const missing: string[] = [];
+  if (ctx.ponticSites === undefined) missing.push('ponticSites');
+  if (ctx.gingivaMesh === undefined) missing.push('gingivaMesh');
+  if (ctx.unitAdjacency === undefined) missing.push('unitAdjacency');
+  if (missing.length > 0) throw new BridgeContextIncompleteError(missing);
 }

@@ -46,5 +46,11 @@ describe('PipelineMaterialProfile ↔ MaterialProfile field parity', () => {
     const p = mirror(STANDARD_ZIRCONIA_PROFILE);
     expect(p.inlayMinThicknessMm).toBe(STANDARD_ZIRCONIA_PROFILE.inlayMinThicknessMm);
     expect(p.marginExclusionMm).toBe(STANDARD_ZIRCONIA_PROFILE.marginExclusionMm);
+    // Phase 6 Task 1: the promoted cavity bands + bridge/pontic/framework fields
+    // mirror through too.
+    expect(p.inlayMarginExclusionMm).toBe(STANDARD_ZIRCONIA_PROFILE.inlayMarginExclusionMm);
+    expect(p.onlayMarginExclusionMm).toBe(STANDARD_ZIRCONIA_PROFILE.onlayMarginExclusionMm);
+    expect(p.frameworkMinThicknessMm).toBe(STANDARD_ZIRCONIA_PROFILE.frameworkMinThicknessMm);
+    expect(p.ponticHygienicClearanceMm).toBe(STANDARD_ZIRCONIA_PROFILE.ponticHygienicClearanceMm);
   });
 });

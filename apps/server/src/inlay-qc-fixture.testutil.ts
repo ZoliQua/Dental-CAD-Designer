@@ -62,9 +62,14 @@ const CUSP_COVERAGE_MIN = 1.5;
 /** The cavity marginal-transition band the min-wall gate excludes (mm) — the
  * inlay's convergence-wedge width; wider for the onlay's broad covered cusp.
  * This is the geometry-scoped `marginExclusionMm` that rides WITH the request in
- * Task 9 (the golden acceptance's `MARGIN_EXCL`). */
-export const INLAY_MARGIN_EXCL = 1.3;
-export const ONLAY_MARGIN_EXCL = 1.8;
+ * Task 9 (the golden acceptance's `MARGIN_EXCL`).
+ *
+ * Phase 6 Task 1 caller-switch: READ FROM THE PROFILE's promoted band fields
+ * (`inlay/onlayMarginExclusionMm`) instead of a hardcoded 1.3/1.8 — bit-identical
+ * values, so the dual-validation + persistence proofs remain byte-for-byte
+ * unchanged (the P5 T9 payload tests keep passing). */
+export const INLAY_MARGIN_EXCL = PROFILE.inlayMarginExclusionMm;
+export const ONLAY_MARGIN_EXCL = PROFILE.onlayMarginExclusionMm;
 
 function handle(mesh: IndexedMesh): PipelineMeshHandle {
   return { contentHash: hashMesh(mesh), mesh };

@@ -112,6 +112,7 @@ function syntheticContext(): PipelineContext {
       connectorAreaMm2: { posteriorMm2: 9, anteriorMm2: 7 },
       undercutBlockoutThresholdMm: 0, occlusalMinWallThicknessMm: 0.5, maxChordDeviationMm: 0.005,
       inlayMinThicknessMm: 0.5, onlayMinThicknessMm: 0.5, cuspCoverageMinThicknessMm: 0.7, marginExclusionMm: 0.2,
+      inlayMarginExclusionMm: 1.3, onlayMarginExclusionMm: 1.8, frameworkMinThicknessMm: 0.5, ponticHygienicClearanceMm: 2.0, ponticRidgeLapReliefMm: 0.05, ponticOvateDepthMm: 1.0,
     },
     insertionAxis: [0, 0, 1],
     targetMesh: handle('die', cylinderTooth(R, H - 1, 6, 16)),
@@ -254,6 +255,7 @@ describe.skipIf(!RUN_REAL)('anatomy morph — REAL arch-case-01 tooth 11 [RUN_AN
       connectorAreaMm2: { posteriorMm2: 9, anteriorMm2: 7 },
       undercutBlockoutThresholdMm: 0, occlusalMinWallThicknessMm: 0.5, maxChordDeviationMm: 0.005,
       inlayMinThicknessMm: 0.5, onlayMinThicknessMm: 0.5, cuspCoverageMinThicknessMm: 0.7, marginExclusionMm: 0.2,
+      inlayMarginExclusionMm: 1.3, onlayMarginExclusionMm: 1.8, frameworkMinThicknessMm: 0.5, ponticHygienicClearanceMm: 2.0, ponticRidgeLapReliefMm: 0.05, ponticOvateDepthMm: 1.0,
     };
     const placeCtx: PipelineContext = {
       restorationId: 'arch-case-01-11',
