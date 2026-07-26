@@ -48,6 +48,8 @@
 //     "assert real engine state, not a screenshot" convention (this file's
 //     top doc) applied to a case with no DOM surface at all to assert
 //     against.
+import type { Operation, Restoration, Vec3 } from '@dqcad/shared-types';
+import { KERNEL_VERSION } from '@dqcad/kernel-workers';
 import { axisEngine } from './axis';
 import { caseStore } from './caseStore';
 import { marginEditor } from './marginEditor';
@@ -113,6 +115,29 @@ export interface DqcadTestHooks {
    * used to prove restoration on its own. `null` before the tool has been
    * started. */
   getAxisDirection(): readonly [number, number, number] | null;
+  /** DEV/TEST-ONLY, Phase 5 Task 11 addition. Commits a CONFIRMED cavity-
+   * outline margin line for `restorationId`/`tooth` — the same data shape
+   * (`MarginLine.resampledPoints`) a manual trace or a working cavity
+   * auto-propose would produce, via the exact engine call
+   * `ui/CavityDesignPanel.dom.test.tsx`'s `setupInlayCase` helper uses
+   * (T8's own established convention), exposed here for a real browser
+   * session. Unlike `seedMarginPropose` above, there is no real-algorithm
+   * walk being bypassed underneath: a standalone check this session (see
+   * `docs/demos/phase-5.md`'s e2e section) confirmed `proposeMarginLoop`
+   * (the curvature-ridge crest walk) finds NO ridge locus anywhere on the
+   * MOD-cavity fixture — `packages/kernel/src/cavity/cavity.test-
+   * fixtures.ts`'s own doc explains why: the fixture's sharp box corners are
+   * deliberately left un-densified (Task 1's "no fillet" simplification,
+   * kept exactly as Tasks 2-10 built and golden-pinned it), which is exactly
+   * the kind of coarse corner `e2e/phase4.spec.ts`'s shoulder-die
+   * `CORNER_REFINEMENT_MM` trick works around for the crown case — doing the
+   * same here would mean deviating from the T1-T10 acceptance fixture
+   * itself, out of scope for a wrap-up task. This hook writes the confirmed
+   * outline directly (`closed: true`, `anchors: []` — no hand-placed anchor
+   * chain exists) so the REST of the cavity pipeline (fit/patch/contacts/
+   * shell/QC, all in `ui/CavityDesignPanel.tsx`) runs through the real
+   * worker-backed UI unmodified. */
+  seedCavityOutline(restorationId: string, tooth: number, points: readonly (readonly [number, number, number])[]): void;
 }
 
 declare global {
@@ -161,6 +186,31 @@ const hooks: DqcadTestHooks = {
   getAxisDirection() {
     const store = useAxisStore.getState();
     return store.status === 'idle' ? null : store.direction;
+  },
+  seedCavityOutline(restorationId, tooth, points) {
+    const restoration = caseStore
+      .getDocument()
+      .restorations.find((r) => r.id === restorationId);
+    if (!restoration) {
+      throw new Error(`seedCavityOutline: no restoration ${restorationId}`);
+    }
+    const next: Restoration = {
+      ...restoration,
+      marginLines: {
+        ...restoration.marginLines,
+        [tooth]: { anchors: [], closed: true, resampledPoints: points.map((p) => [...p] as Vec3) },
+      },
+    };
+    const operation: Operation = {
+      id: crypto.randomUUID(),
+      name: 'margin-edit',
+      params: { restorationId, tooth, source: 'e2e-test-hook-seedCavityOutline' },
+      inputHashes: [],
+      outputHashes: [],
+      kernelVersion: KERNEL_VERSION,
+      timestamp: new Date().toISOString(),
+    };
+    caseStore.updateRestoration(next, operation);
   },
 };
 
