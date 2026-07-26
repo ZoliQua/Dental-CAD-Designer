@@ -3,8 +3,10 @@
 // Phase 5 Task 8 — browser-lane (`client-dom`, real Chromium + real
 // kernel-workers Web Worker pool) CRITICAL PATH for the inlay design workflow.
 // Drives the full cavity pipeline (outline → fit → patch → contacts → shell →
-// QC) through the actual UI on the CLIENT-ported analytic MOD cavity fixture
-// (engine/cavityGeometry.ts — verified accepted by the real kernel cavity ops),
+// QC) through the actual UI on the analytic MOD cavity fixture — the EXACT
+// kernel `modCavityMesh` output, loaded from the committed serialized asset via
+// engine/cavityGeometry.ts (byte-guarded against kernel drift by
+// packages/kernel/src/cavity/cavity.fixture-asset.test.ts) —
 // asserting the store + journal update at each stage, that the QC gate table
 // renders WITH the seam-dihedral row, and that a downstream re-run invalidates a
 // prior QC report (the stale-QC guard — a stale report must NEVER keep

@@ -109,7 +109,17 @@ export interface MinWallThicknessMeasurement extends WallThicknessResult {
    * Computed at INNER-VERTEX resolution from `perInnerVertexMm` (the kernel
    * retains the raw, unmasked inner→outer distance at every inner vertex) — so
    * a caller can see the excluded region is a genuine thin feather governed by
-   * `marginFit`, not a hidden structural defect the band silently swallowed. */
+   * `marginFit`, not a hidden structural defect the band silently swallowed.
+   *
+   * @errorBound Vertex-resolution, not grid-resolution: the INCLUDED minimum is
+   * grid-sampled at ≤ `sampleSpacingMm`, but the kernel does not retain
+   * per-excluded-sample distances, so this excluded minimum is taken over the
+   * inner-surface VERTICES in the band only. A between-vertices excluded point
+   * can be thinner than this value by up to the local inner-mesh edge length
+   * (the 1-Lipschitz distance-field argument). Acceptable because this figure
+   * is a DISCLOSURE about the marginFit-governed feather, never a pass/fail
+   * input — the gate's verdict is computed solely from the grid-sampled
+   * included region with its own conservative sampling margin. */
   readonly minExcludedThicknessMm: number;
   /** Fraction (0..1) of all considered grid samples the margin band excluded
    * (`excludedCount / (excludedCount + sampleCount)`). When it exceeds
