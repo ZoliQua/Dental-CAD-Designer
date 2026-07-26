@@ -59,22 +59,38 @@ const CAVITY_FIT_BLEND_WIDTH_MM = 0.3;
 /**
  * The cavity min-wall MARGINAL-TRANSITION band width (mm) wired into the LIVE
  * `runInlayQc` call — the inlay/onlay analogue of the crown's `marginExclusionMm`
- * feather, but sized for the cavity's much larger cavosurface CONVERGENCE WEDGE.
+ * feather, but sized for the cavity's much larger cavosurface CONVERGENCE WEDGE,
+ * and BRANCHED ON RESTORATION TYPE (Task 9 review fix — a single unconditional
+ * 1.3 previously applied to onlays too, narrower than the T7-derived band):
  *
- * WHERE THE NUMBER LIVES & WHY IT IS NOT THE 0.2 mm CROWN FEATHER: an inlay
+ *   - INLAY → **1.3 mm** (Task 6 derivation, measured on the MOD fixture): the
+ *     fit↔patch global minimum is ALWAYS the convergence wedge (≈0.88 µm/µm from
+ *     the outline), so the band must clear it — below ~1.2 mm the wedge leaks in
+ *     and confounds the structural measurement; above ~1.5 mm the shallow-cavity
+ *     variant over-excludes to 0 samples. 1.3 is the measured separator, pinned
+ *     by the inlay-shell-acceptance golden (`MARGIN_EXCL = 1.3`).
+ *   - ONLAY → **1.8 mm** (Task 7 derivation): the broad covered cusp's
+ *     convergence wedge is WIDER — below ~1.6 mm it leaks into the region-scoped
+ *     coverage minimum and confounds the healthy/thin cusp-coverage separation.
+ *     1.8 is the measured separator, pinned by the onlay-acceptance golden
+ *     (`MARGIN_EXCL = 1.8`).
+ *
+ * WHERE THE NUMBERS LIVE & WHY NOT THE 0.2 mm CROWN FEATHER: an inlay/onlay
  * closes along its ENTIRE cavity outline (not a single cervical margin), so the
  * fit-surface ↔ occlusal-patch convergence wedge — the restoration feathering to
  * the cavosurface margin (the marginal-seal region, governed by `marginFit`) —
  * wraps the whole perimeter and is ~one restoration-thickness wide, NOT the
- * crown's 0.2 mm finish-line feather. This is a GEOMETRY-DERIVED band documented
- * in the Task 6 report + the inlay-shell-acceptance golden (`MARGIN_EXCL = 1.3`);
- * it is kept here as a named engine constant (traceable to that rationale) rather
- * than the profile's `marginExclusionMm` (which is the crown feather). REVIEWER
- * ITEM: promoting this into `clinical-profiles` as a dedicated cavity field is a
- * clean future step (it would then follow the T1 checksum/version discipline); a
- * butt-margin occlusal patch would let a smaller band suffice (Task 6 report).
+ * crown's 0.2 mm finish-line feather. These are GEOMETRY-DERIVED bands
+ * documented in the Task 6/7 reports + the acceptance goldens; they are kept
+ * here as a named engine helper (traceable to that rationale) rather than the
+ * profile's `marginExclusionMm` (which is the crown feather). REVIEWER ITEM:
+ * promoting these into `clinical-profiles` as dedicated cavity fields is a clean
+ * future step (they would then follow the T1 checksum/version discipline); a
+ * butt-margin occlusal patch would let smaller bands suffice (Task 6 report).
  */
-export const CAVITY_MARGIN_EXCLUSION_MM = 1.3;
+export function cavityMarginExclusionMm(restorationType: 'inlay' | 'onlay'): number {
+  return restorationType === 'onlay' ? 1.8 : 1.3;
+}
 
 /** The proximal-contact NEIGHBOUR gap (mm) for the synthetic reference boxes —
  * mirrors the inlay-shell-acceptance golden's `gap = 0.1`. */
@@ -741,8 +757,9 @@ class CavityDesignEngine {
       insertionAxis: session.insertionAxis,
       restorationType: session.restorationType,
       thicknessMinimums: this.cavityMinimums(),
-      // The cavity band (NOT the crown 0.2 feather) — see CAVITY_MARGIN_EXCLUSION_MM.
-      marginExclusionMm: CAVITY_MARGIN_EXCLUSION_MM,
+      // The type-branched cavity band (NOT the crown 0.2 feather) — see
+      // cavityMarginExclusionMm: inlay 1.3 (T6), onlay 1.8 (T7).
+      marginExclusionMm: cavityMarginExclusionMm(session.restorationType),
       ...(coverage ? { coverage } : {}),
       seamEdges: session.patch.seamEdges,
       cavityTriangleIndices: session.patch.cavityTriangleIndices,

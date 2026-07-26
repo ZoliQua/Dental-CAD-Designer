@@ -237,6 +237,11 @@ describe('cavityDesign controller — happy path + stage hashes + coalesced jour
   it('runs QC and stores the QcReport; the seating gate can be ACKNOWLEDGED (journaled, invariant 4)', async () => {
     await runToShell();
     await cavityDesignEngine.runQc();
+    // The INLAY QC payload carries the T6-derived 1.3 mm margin-exclusion band
+    // (the type-branched cavityMarginExclusionMm — onlay uses 1.8, see the
+    // ONLAY suite).
+    const qcPayload = fake.calls.filter((c) => c.job === 'runInlayQc').pop()!.payload as { marginExclusionMm: number };
+    expect(qcPayload.marginExclusionMm).toBe(1.3);
     let qc = currentRestoration().qc!;
     expect(qc.gates.map((g) => g.gate)).toContain('seamDihedral');
     expect(qc.passed).toBe(false); // seating fails, unacknowledged
@@ -306,6 +311,26 @@ describe('cavityDesign controller — ONLAY cusp coverage', () => {
     await cavityDesignEngine.runQc();
     const coveragePayload = fake.calls.filter((c) => c.job === 'runInlayQc').pop()!.payload as { coverage?: unknown };
     expect(coveragePayload.coverage).toBeDefined();
+  });
+
+  it('the ONLAY QC payload carries the T7-derived 1.8 mm margin-exclusion band (runQc AND the acknowledge re-run)', async () => {
+    // Task 9 review fix: the band is BRANCHED on restoration type — a single
+    // unconditional 1.3 previously applied to onlays too, narrower than the
+    // T7-derived separator (below ~1.6 the wedge leaks into the coverage min).
+    cavityDesignEngine.start(restorationId);
+    await cavityDesignEngine.runFit({ pitchMm: 0.06 });
+    await cavityDesignEngine.runPatch();
+    await cavityDesignEngine.runContacts();
+    await cavityDesignEngine.selectCuspCoverage(cavityDesignEngine.defaultCoverageDivider());
+    await cavityDesignEngine.constructShell();
+    await cavityDesignEngine.runQc();
+    const qcPayload = fake.calls.filter((c) => c.job === 'runInlayQc').pop()!.payload as { marginExclusionMm: number };
+    expect(qcPayload.marginExclusionMm).toBe(1.8);
+    // The acknowledge path rebuilds the payload — the band must survive it.
+    await cavityDesignEngine.acknowledgeGate('seating');
+    const ackPayload = fake.calls.filter((c) => c.job === 'runInlayQc').pop()!.payload as { marginExclusionMm: number; acknowledgedGates?: string[] };
+    expect(ackPayload.marginExclusionMm).toBe(1.8);
+    expect(ackPayload.acknowledgedGates).toContain('seating');
   });
 
   it('selecting coverage on an INLAY session throws (onlay-only stage)', async () => {
