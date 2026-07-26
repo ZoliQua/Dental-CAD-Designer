@@ -13,7 +13,7 @@
 // `.ts` extension: reachable from the Node worker entry's import closure — see
 // CLAUDE.md's "Import extension convention".
 import type { SeamEdge, Vec3 } from '@dqcad/kernel';
-import { runInlayQc, type CavityThicknessMinimums, type ContactResidualInput } from '@dqcad/cad-pipeline';
+import { runInlayQc, type CavityThicknessMinimums, type ContactResidualInput, type CoverageDivider } from '@dqcad/cad-pipeline';
 import type { QcReport, RestorationType } from '@dqcad/shared-types';
 import { JobCancelledError, type JobContext } from './context.ts';
 
@@ -36,6 +36,10 @@ export interface RunInlayQcPayload {
   restorationType: RestorationType;
   thicknessMinimums: CavityThicknessMinimums;
   marginExclusionMm: number;
+  /** ONLAY covered-cusp coverage (T7) — present for an onlay carrying a coverage
+   * selection; drives the region-scoped cusp-coverage thickness gate. Ignored by
+   * `runInlayQc` for an inlay (no covered cusp). */
+  coverage?: { coverageDivider: CoverageDivider; cuspCoverageMinThicknessMm: number };
   seamEdges: readonly SeamEdge[];
   cavityTriangleIndices: Uint32Array;
   contacts: readonly ContactResidualInput[];
@@ -83,6 +87,7 @@ export const runInlayQcJob = async (payload: RunInlayQcPayload, ctx: JobContext)
       restorationType: payload.restorationType,
       thicknessMinimums: payload.thicknessMinimums,
       marginExclusionMm: payload.marginExclusionMm,
+      coverage: payload.coverage,
       seamEdges: payload.seamEdges,
       cavityTriangleIndices: payload.cavityTriangleIndices,
       contacts: payload.contacts,

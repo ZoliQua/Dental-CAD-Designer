@@ -76,15 +76,22 @@ export async function measureSelfIntersection(mesh: IndexedMesh): Promise<SelfIn
 
 export interface SelfIntersectionGateInput {
   readonly measurement: SelfIntersectionMeasurement;
+  /** The restoration noun for the message ('crown' / 'inlay' / 'onlay'). The
+   * gate is shared by `runCrownQc` and `runInlayQc`; the crown path omits it
+   * (defaults to 'crown', keeping the crown message byte-identical), while the
+   * cavity path passes its restoration type so the message no longer says "the
+   * crown" for an inlay/onlay (the T6-review copy-artifact fix). */
+  readonly restorationLabel?: string;
 }
 
 /**
- * The self-intersection QC gate — passes iff manifold-3d accepted the crown
- * solid as a valid `Manifold` (the documented proxy). Boolean gate (no
- * threshold). Pure/deterministic; Node- and worker-callable.
+ * The self-intersection QC gate — passes iff manifold-3d accepted the
+ * restoration solid as a valid `Manifold` (the documented proxy). Boolean gate
+ * (no threshold). Pure/deterministic; Node- and worker-callable.
  */
 export function selfIntersectionGate(input: SelfIntersectionGateInput): QcGateResult {
   const { manifoldValid, rejectionStatus } = input.measurement;
+  const noun = input.restorationLabel ?? 'crown';
   return {
     gate: SELF_INTERSECTION_GATE_NAME,
     passed: manifoldValid,
@@ -93,10 +100,10 @@ export function selfIntersectionGate(input: SelfIntersectionGateInput): QcGateRe
     threshold: null,
     unit: null,
     message: manifoldValid
-      ? 'no self-intersection detected — manifold-3d accepts the crown as a valid solid ' +
+      ? `no self-intersection detected — manifold-3d accepts the ${noun} as a valid solid ` +
         '(PROXY: manifold-3d validates 2-manifold topology + finite geometry, not a full triangle–triangle test; ' +
         'a topologically-manifold but geometrically self-intersecting mesh could still pass — see gate @errorBound)'
-      : `self-intersection / invalid-solid — manifold-3d rejected the crown (status ${rejectionStatus ?? 'unknown'}); ` +
+      : `self-intersection / invalid-solid — manifold-3d rejected the ${noun} (status ${rejectionStatus ?? 'unknown'}); ` +
         'the surface is not a valid solid (non-manifold, self-intersecting, or non-finite geometry)',
   };
 }

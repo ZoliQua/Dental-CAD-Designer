@@ -223,7 +223,7 @@ export async function runInlayQc(input: RunInlayQcInput, onProgress?: (fraction:
   const baseGates: readonly QcGate<InlayQcContext>[] = [
     (c) => watertightGate({ stats: c.stats }),
     (c) => manifoldGate({ stats: c.stats }),
-    (c) => selfIntersectionGate({ measurement: c.selfIntersection }),
+    (c) => selfIntersectionGate({ measurement: c.selfIntersection, restorationLabel: c.input.restorationType }),
     (c) =>
       minWallThicknessGate({
         innerSurfaceMesh: c.input.fitSurfaceMesh,

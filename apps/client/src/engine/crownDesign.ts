@@ -924,6 +924,13 @@ class CrownDesignEngine {
         minWallThicknessMm: session.params.minWallThicknessMm,
         occlusalMinWallThicknessMm: STANDARD_ZIRCONIA_PROFILE.occlusalMinWallThicknessMm,
         connectorAreaTargetMm2: STANDARD_ZIRCONIA_PROFILE.connectorAreaMm2.anteriorMm2,
+        // P4 carry-in (closing docs/demos/phase-4.md's open item): the finish-line
+        // feather band is excluded from the min-wall gate so it measures the wall
+        // bulk, not the marginal feather (governed by marginFit). Sourced from the
+        // material profile — the crown's 0.2 mm finish-line feather (invariant 7,
+        // never hardcoded in pipeline code); the cavity path uses its own, larger
+        // cavosurface-convergence band (see engine/cavityDesign.ts).
+        marginExclusionMm: STANDARD_ZIRCONIA_PROFILE.marginExclusionMm,
         contacts: session.morphContacts,
         contactClampWarning: session.morphContacts.some((c) => c.clampBound),
         kernelVersion: KERNEL_VERSION,
@@ -971,6 +978,13 @@ class CrownDesignEngine {
         minWallThicknessMm: session.params.minWallThicknessMm,
         occlusalMinWallThicknessMm: STANDARD_ZIRCONIA_PROFILE.occlusalMinWallThicknessMm,
         connectorAreaTargetMm2: STANDARD_ZIRCONIA_PROFILE.connectorAreaMm2.anteriorMm2,
+        // P4 carry-in (closing docs/demos/phase-4.md's open item): the finish-line
+        // feather band is excluded from the min-wall gate so it measures the wall
+        // bulk, not the marginal feather (governed by marginFit). Sourced from the
+        // material profile — the crown's 0.2 mm finish-line feather (invariant 7,
+        // never hardcoded in pipeline code); the cavity path uses its own, larger
+        // cavosurface-convergence band (see engine/cavityDesign.ts).
+        marginExclusionMm: STANDARD_ZIRCONIA_PROFILE.marginExclusionMm,
         contacts: session.morphContacts,
         contactClampWarning: session.morphContacts.some((c) => c.clampBound),
         kernelVersion: KERNEL_VERSION,

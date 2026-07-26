@@ -228,9 +228,11 @@ export const qcReportSchema = {
   },
 } as const;
 
-// Mirrors shared-types' `Restoration.stages` — 4 optional contentHash
-// strings, nothing else (no producer until Phase 4+, but the shape is fully
-// known already).
+// Mirrors shared-types' `Restoration.stages` — the 4 crown-pipeline contentHash
+// strings (Phase 4) plus the 4 cavity (inlay/onlay) pipeline fields (Phase 5),
+// all optional. `finalMesh` is shared by both families (the final restoration
+// solid). Kept in lockstep with shared-types' `Restoration.stages`; the
+// inlay/onlay QC endpoint that consumes these lands in Phase 5 Task 9.
 const restorationStagesSchema = {
   type: 'object',
   additionalProperties: false,
@@ -239,6 +241,10 @@ const restorationStagesSchema = {
     anatomyPlacement: { type: 'string' },
     morphState: { type: 'string' },
     finalMesh: { type: 'string' },
+    fitSurface: { type: 'string' },
+    occlusalPatch: { type: 'string' },
+    proximalContacts: { type: 'string' },
+    cuspCoverage: { type: 'string' },
   },
 } as const;
 

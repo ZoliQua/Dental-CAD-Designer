@@ -39,4 +39,25 @@ describe('measureSelfIntersection + selfIntersectionGate', () => {
     expect(r.passed).toBe(false);
     expect(r.message).toMatch(/rejected/i);
   }, 60000);
+
+  // ---- T6-review copy-artifact fix: restoration-type-appropriate wording -----
+
+  it('defaults the message noun to "crown" (crown QC path — byte-identical)', async () => {
+    const m = await measureSelfIntersection(box());
+    const r = selfIntersectionGate({ measurement: m });
+    expect(r.message).toContain('accepts the crown as a valid solid');
+    expect(r.message).not.toContain('inlay');
+  }, 60000);
+
+  it('labels an inlay/onlay solid correctly (no "the crown" copy artifact)', async () => {
+    const valid = await measureSelfIntersection(box());
+    const inlay = selfIntersectionGate({ measurement: valid, restorationLabel: 'inlay' });
+    expect(inlay.message).toContain('accepts the inlay as a valid solid');
+    expect(inlay.message).not.toContain('crown');
+
+    const invalid = await measureSelfIntersection(openBox());
+    const onlay = selfIntersectionGate({ measurement: invalid, restorationLabel: 'onlay' });
+    expect(onlay.message).toContain('manifold-3d rejected the onlay');
+    expect(onlay.message).not.toContain('crown');
+  }, 60000);
 });

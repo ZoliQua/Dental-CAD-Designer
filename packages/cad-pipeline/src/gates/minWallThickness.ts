@@ -38,11 +38,26 @@
 // callable identically from the client worker and the Node server (invariant
 // 6), never touching a renderer.
 import type { IndexedMesh, Vec3, WallThicknessResult } from '@dqcad/kernel';
-import { measureWallThickness } from '@dqcad/kernel';
+import { measureWallThickness, distanceToClosedPolyline } from '@dqcad/kernel';
 import type { QcGateResult } from '@dqcad/shared-types';
 
 /** The gate name (stable — used in the QcReport, acknowledgment lookup, UI). */
 export const MIN_WALL_THICKNESS_GATE_NAME = 'minWallThickness';
+
+/**
+ * When the margin-band exclusion removes MORE than this fraction of the sampled
+ * points, the gate is measuring a small residual core and the caller-supplied
+ * `marginExclusionMm` band dominates the result — a defense-in-depth disclosure
+ * (surfaced in the gate message) that the excluded feather/wedge, not the
+ * structural bulk, is most of the surface. Chosen at one HALF of all samples:
+ * once the majority of the wall is excluded, the "min wall" figure is no longer
+ * a whole-restoration statement and the reviewer should confirm the band width
+ * is geometry-appropriate (the crown's 0.2 mm finish-line feather vs the
+ * inlay/onlay's ~restoration-thickness cavosurface convergence wedge). This is a
+ * DISCLOSURE, never a pass/fail change — the gate still passes/fails on the
+ * INCLUDED samples exactly as before (accuracy over speed; never weaken a gate).
+ */
+export const EXCLUDED_DOMINANCE_FRACTION = 0.5;
 
 export interface MinWallThicknessGateInput {
   /** The crown shell's INNER surface (intaglio). */
@@ -88,6 +103,19 @@ export interface MinWallThicknessMeasurement extends WallThicknessResult {
   /** True iff every occlusal sample ≥ occlusal min AND every axial sample ≥
    * axial min, each after subtracting the sampling margin. */
   readonly passed: boolean;
+  /** The THINNEST wall among the EXCLUDED (margin-band) inner vertices — i.e.
+   * how thin the excluded feather/wedge actually got. `Infinity` when nothing
+   * is excluded (no margin loop, exclusion 0, or no vertex fell in the band).
+   * Computed at INNER-VERTEX resolution from `perInnerVertexMm` (the kernel
+   * retains the raw, unmasked inner→outer distance at every inner vertex) — so
+   * a caller can see the excluded region is a genuine thin feather governed by
+   * `marginFit`, not a hidden structural defect the band silently swallowed. */
+  readonly minExcludedThicknessMm: number;
+  /** Fraction (0..1) of all considered grid samples the margin band excluded
+   * (`excludedCount / (excludedCount + sampleCount)`). When it exceeds
+   * `EXCLUDED_DOMINANCE_FRACTION` the band dominates the measurement — disclosed
+   * in the gate message (defense-in-depth for the caller-supplied band). */
+  readonly excludedFraction: number;
 }
 
 /**
@@ -130,7 +158,32 @@ export function measureMinWallThickness(input: MinWallThicknessGateInput): MinWa
       ? input.occlusalMinWallThicknessMm
       : input.minWallThicknessMm;
 
-  return { ...m, governingThresholdMm, conservativeMinThicknessMm, passed };
+  // Max EXCLUDED thinness: the thinnest inner→outer distance among the inner
+  // vertices the margin band excluded. `perInnerVertexMm` carries the raw,
+  // unmasked distance at every inner vertex; an inner vertex is "excluded"
+  // exactly when it is within `marginExclusionMm` of the margin loop (the same
+  // predicate the kernel measurement applied to its grid samples — reapplied
+  // here at vertex resolution because the kernel does not retain per-excluded
+  // sample distances). Surfaced so the excluded band is disclosed as a genuine
+  // feather governed by marginFit, not an unexamined blind spot.
+  const marginLoop = input.marginResampledPoints;
+  const exclusion = input.marginExclusionMm ?? 0;
+  let minExcludedThicknessMm = Infinity;
+  if (marginLoop !== undefined && exclusion > 0 && m.excludedCount > 0) {
+    const positions = input.innerSurfaceMesh.positions;
+    const vertexCount = m.perInnerVertexMm.length;
+    for (let i = 0; i < vertexCount; i++) {
+      const p: Vec3 = [positions[i * 3]!, positions[i * 3 + 1]!, positions[i * 3 + 2]!];
+      if (distanceToClosedPolyline(p, marginLoop) < exclusion) {
+        const d = m.perInnerVertexMm[i]!;
+        if (d < minExcludedThicknessMm) minExcludedThicknessMm = d;
+      }
+    }
+  }
+  const totalSamples = m.sampleCount + m.excludedCount;
+  const excludedFraction = totalSamples > 0 ? m.excludedCount / totalSamples : 0;
+
+  return { ...m, governingThresholdMm, conservativeMinThicknessMm, passed, minExcludedThicknessMm, excludedFraction };
 }
 
 /**
@@ -145,15 +198,30 @@ export function minWallThicknessGate(input: MinWallThicknessGateInput): QcGateRe
   const m = measureMinWallThickness(input);
   const value = Number.isFinite(m.minThicknessMm) ? m.minThicknessMm : null;
   const um = (mm: number): string => (Number.isFinite(mm) ? `${(mm * 1000).toFixed(0)} µm` : '—');
+  // The EXCLUDED-band disclosure (T6-review gate hardening) — appended ONLY when
+  // the margin band actually removed samples, so a run with nothing excluded is
+  // byte-identical to the pre-hardening message (the excluded feather/wedge is a
+  // marginFit concern, and the min-wall figure is a whole-restoration statement
+  // only when the band does not dominate). Surfaces the MAX EXCLUDED THINNESS
+  // (how thin the excluded feather got) and a dominance warning.
+  const excludedDetail =
+    m.excludedCount > 0
+      ? ` — excluded ${m.excludedCount} sample(s) down to ${um(m.minExcludedThicknessMm)} (marginal feather/wedge, governed by marginFit)` +
+        (m.excludedFraction > EXCLUDED_DOMINANCE_FRACTION
+          ? `; WARNING: excluded ${(m.excludedFraction * 100).toFixed(0)}% of samples dominates the measurement (> ${(EXCLUDED_DOMINANCE_FRACTION * 100).toFixed(0)}% — verify the marginExclusion band is geometry-appropriate)`
+          : '')
+      : '';
   const message =
     m.sampleCount === 0
       ? `min wall thickness UNMEASURABLE (no samples — inner/outer surfaces do not face each other)`
       : m.passed
         ? `min wall thickness ${um(m.minThicknessMm)} (conservative ${um(m.conservativeMinThicknessMm)} after −${um(m.sampleSpacingMm)} sampling margin) >= ${um(m.governingThresholdMm)} ` +
-          `(axial ${um(m.minAxialThicknessMm)}, occlusal ${um(m.minOcclusalThicknessMm)}; ${m.excludedCount} margin sample(s) excluded)`
+          `(axial ${um(m.minAxialThicknessMm)}, occlusal ${um(m.minOcclusalThicknessMm)}; ${m.excludedCount} margin sample(s) excluded)` +
+          excludedDetail
         : `min wall thickness ${um(m.minThicknessMm)} (conservative ${um(m.conservativeMinThicknessMm)} after −${um(m.sampleSpacingMm)} sampling margin) BELOW minimum ` +
           `(axial ${um(m.minAxialThicknessMm)} vs ${um(input.minWallThicknessMm)}, occlusal ${um(m.minOcclusalThicknessMm)} vs ${um(input.occlusalMinWallThicknessMm)}) ` +
-          `— thin wall; thicken (autoThicken) or acknowledge`;
+          `— thin wall; thicken (autoThicken) or acknowledge` +
+          excludedDetail;
   return {
     gate: MIN_WALL_THICKNESS_GATE_NAME,
     passed: m.passed,

@@ -131,7 +131,24 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   'crown-standin-freeform': 'f48f898de08bb7d1e4bc6a89758ec4d83339bd50040bd7f92010d1e98647d833',
   // Changed at 0.20.0: version-string-only (QcReport embeds kernelVersion —
   // see the EXPECTED_KERNEL_VERSION comment above; geometry pins unchanged).
-  'crown-standin-qc': 'd56a4318fdc9b3492ce5b28cadabfbab35b91e1bd048c349f4ee3c01bd9fd165',
+  //
+  // Changed again in Phase 5 Task 8 — DELIBERATE, MESSAGE-ONLY (NO KERNEL_VERSION
+  // bump; the T6-review gate-message hardening lives in cad-pipeline, not the
+  // kernel). `hashQcReport` = sha256(JSON.stringify(report)), so the report hash
+  // embeds every gate MESSAGE string. The `minWallThickness` gate now discloses
+  // the MAX EXCLUDED THINNESS when the margin band excludes samples — and the
+  // standin excludes 2985 samples, so its message gained the tail
+  // "— excluded 2985 sample(s) down to 999 µm (marginal feather/wedge, governed
+  // by marginFit)". That STRING is the ONLY thing that changed: this suite's five
+  // geometry pins above are byte-identical (proving no numeric/geometry drift),
+  // and every gate's passed/value/threshold is unchanged (min wall still
+  // 999 µm ≥ 500 µm). No KERNEL_VERSION bump + no test-fixtures/ golden file
+  // changed (the changelog policy governs kernel numeric output, not a
+  // cad-pipeline gate STRING), so this in-test pin is advanced here with this
+  // rationale; see the p5-task-8 report. (selfIntersection keeps "the crown"
+  // wording for the crown path — byte-identical — so ONLY the min-wall
+  // disclosure moved this hash.)
+  'crown-standin-qc': '7f8046b8023b367d3bff37f0331a1a467cf63c187294df178a17fd616ff5335b',
 };
 
 const GATE_ORDER = ['watertight', 'manifold', 'selfIntersection', 'minWallThickness', 'marginFit', 'seating', 'connectorCrossSection', 'contact'];
