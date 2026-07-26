@@ -38,7 +38,7 @@
 //   2. A PURE TRANSLATION (both dies at `tiltDeg === 0`) touches only X (and Y,
 //      here 0), never Z: so every placed ring vertex has `worldZ === marginHeightMm`
 //      BITWISE (no arithmetic on the Z coordinate). The in-plane radius about the
-//      translated centre equals `marginRadiusMm` only to a BOUND (≤ ~1e-12 mm) —
+//      translated centre equals `marginRadiusMm` only to a BOUND (true error ~ a few ULPs ≈ 4e-16 mm; asserted < 1e-14) —
 //      a single Float64 rounding of the coordinate sum `local + t` — NOT bitwise
 //      (because `(a + t) − t` rounds). Stated honestly as a bound, measured in
 //      the test.

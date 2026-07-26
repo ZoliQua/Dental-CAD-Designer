@@ -115,12 +115,12 @@ describe('bridgeFixture — dies sit at closed-form positions', () => {
     }
   });
 
-  it('BOUNDED: the world ring radius equals marginRadiusMm to ~1e-9 mm (a single coordinate-sum rounding, NOT bitwise)', () => {
+  it('BOUNDED: the world ring radius equals marginRadiusMm to 1e-14 mm (a single coordinate-sum rounding, NOT bitwise; true error ~ a few ULPs ≈ 4e-16 — reviewer-verified)', () => {
     for (const die of [f.mesial, f.distal]) {
       const [cx, cy] = die.worldMarginCenterMm;
       for (const p of die.worldMarginRing) {
         const r = Math.hypot(p[0] - cx, p[1] - cy);
-        expect(Math.abs(r - die.marginRadiusMm)).toBeLessThan(1e-9);
+        expect(Math.abs(r - die.marginRadiusMm)).toBeLessThan(1e-14);
       }
     }
   });
