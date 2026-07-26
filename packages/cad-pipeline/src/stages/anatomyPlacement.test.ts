@@ -76,6 +76,10 @@ const PROFILE: PipelineMaterialProfile = {
   undercutBlockoutThresholdMm: 0,
   occlusalMinWallThicknessMm: 0.5,
   maxChordDeviationMm: 0.005,
+  inlayMinThicknessMm: 0.5,
+  onlayMinThicknessMm: 0.5,
+  cuspCoverageMinThicknessMm: 0.7,
+  marginExclusionMm: 0.2,
 };
 
 const TOOTH = 11 as FdiTooth;
@@ -89,6 +93,7 @@ function handle(contentHash: string, mesh: IndexedMesh): PipelineMeshHandle {
 function makeContext(overrides?: Partial<PipelineContext>): PipelineContext {
   return {
     restorationId: 'r-anatomy',
+    restorationType: 'crown',
     materialProfile: PROFILE,
     insertionAxis: [0, 0, 1],
     targetMesh: handle('die-hash', box([-1, -1, 0], [1, 1, 3])),

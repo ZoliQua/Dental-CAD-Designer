@@ -149,6 +149,25 @@ import {
   type InnerSurfaceResult,
 } from './innerSurface.ts';
 export type { InnerSurfacePayload, InnerSurfaceResult };
+import {
+  cavityInnerSurfaceJob,
+  type CavityInnerSurfacePayload,
+  type CavityInnerSurfaceResult,
+} from './cavityInnerSurface.ts';
+export type { CavityInnerSurfacePayload, CavityInnerSurfaceResult };
+import {
+  cavityOcclusalPatchJob,
+  type CavityOcclusalPatchPayload,
+  type CavityOcclusalPatchResult,
+} from './cavityOcclusalPatch.ts';
+export type { CavityOcclusalPatchPayload, CavityOcclusalPatchResult };
+import {
+  cavityProximalContactJob,
+  type CavityProximalContactPayload,
+  type CavityProximalContactResult,
+  type CavityProximalContactFacePayload,
+} from './cavityProximalContact.ts';
+export type { CavityProximalContactPayload, CavityProximalContactResult, CavityProximalContactFacePayload };
 
 import { decimateMeshJob, type DecimateMeshPayload, type DecimateMeshResult } from './decimate.ts';
 export type { DecimateMeshPayload, DecimateMeshResult };
@@ -156,11 +175,17 @@ export type { DecimateMeshPayload, DecimateMeshResult };
 import { constructShellJob, type ConstructShellPayload, type ConstructShellResultPayload } from './shell.ts';
 export type { ConstructShellPayload, ConstructShellResultPayload };
 
+import { cavityShellJob, type CavityShellPayload, type CavityShellResult } from './cavityShell.ts';
+export type { CavityShellPayload, CavityShellResult };
+
 import { applySculptStrokeJob, type ApplySculptStrokePayload, type ApplySculptStrokeResult } from './sculpt.ts';
 export type { ApplySculptStrokePayload, ApplySculptStrokeResult };
 
 import { runQcJob, type RunQcPayload, type RunQcResult } from './runQc.ts';
 export type { RunQcPayload, RunQcResult };
+
+import { runInlayQcJob, type RunInlayQcPayload, type RunInlayQcResult } from './runInlayQc.ts';
+export type { RunInlayQcPayload, RunInlayQcResult };
 
 import {
   placeAnatomyJob,
@@ -387,13 +412,18 @@ export interface JobPayloadMap {
   sampleSdfGrid: SampleSdfGridPayload;
   offsetMesh: OffsetMeshPayload;
   innerSurface: InnerSurfacePayload;
+  cavityInnerSurface: CavityInnerSurfacePayload;
+  cavityOcclusalPatch: CavityOcclusalPatchPayload;
+  cavityProximalContact: CavityProximalContactPayload;
   placeAnatomy: PlaceAnatomyPayload;
   morphAnatomy: MorphAnatomyPayload;
   resolveMorph: ResolveMorphPayload;
   decimateMesh: DecimateMeshPayload;
   constructShell: ConstructShellPayload;
+  cavityShell: CavityShellPayload;
   applySculptStroke: ApplySculptStrokePayload;
   runQc: RunQcPayload;
+  runInlayQc: RunInlayQcPayload;
   undercutScan: UndercutScanPayload;
   undercutScanBatch: UndercutScanBatchPayload;
   computeCurvature: ComputeCurvaturePayload;
@@ -434,13 +464,18 @@ export interface JobResultMap {
   sampleSdfGrid: SampleSdfGridResult;
   offsetMesh: OffsetMeshResult;
   innerSurface: InnerSurfaceResult;
+  cavityInnerSurface: CavityInnerSurfaceResult;
+  cavityOcclusalPatch: CavityOcclusalPatchResult;
+  cavityProximalContact: CavityProximalContactResult;
   placeAnatomy: PlaceAnatomyResult;
   morphAnatomy: MorphAnatomyResult;
   resolveMorph: MorphAnatomyResult;
   decimateMesh: DecimateMeshResult;
   constructShell: ConstructShellResultPayload;
+  cavityShell: CavityShellResult;
   applySculptStroke: ApplySculptStrokeResult;
   runQc: RunQcResult;
+  runInlayQc: RunInlayQcResult;
   undercutScan: UndercutScanResult;
   undercutScanBatch: UndercutScanBatchResult;
   computeCurvature: ComputeCurvatureResult;
@@ -488,13 +523,18 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   sampleSdfGrid: sampleSdfGridJob,
   offsetMesh: offsetMeshJob,
   innerSurface: innerSurfaceJob,
+  cavityInnerSurface: cavityInnerSurfaceJob,
+  cavityOcclusalPatch: cavityOcclusalPatchJob,
+  cavityProximalContact: cavityProximalContactJob,
   placeAnatomy: placeAnatomyJob,
   morphAnatomy: morphAnatomyJob,
   resolveMorph: resolveMorphJob,
   decimateMesh: decimateMeshJob,
   constructShell: constructShellJob,
+  cavityShell: cavityShellJob,
   applySculptStroke: applySculptStrokeJob,
   runQc: runQcJob,
+  runInlayQc: runInlayQcJob,
   undercutScan: undercutScanJob,
   undercutScanBatch: undercutScanBatchJob,
   computeCurvature: computeCurvatureJob,

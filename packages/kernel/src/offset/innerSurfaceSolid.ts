@@ -135,8 +135,10 @@ const SDF_SLICES_PER_YIELD = 4;
 const CROP_OUTSIDE = Number.POSITIVE_INFINITY;
 
 /** Margin-loop dedup epsilon — the mesh weld epsilon (margin `resampledPoints`
- * share an exact point at every segment boundary; see margin/band.ts). */
-const MARGIN_DEDUP_EPSILON_MM = MESH_WELD_EPSILON_MM;
+ * share an exact point at every segment boundary; see margin/band.ts).
+ * Exported: the cavity inner-surface op (cavity/innerSurface.ts) reuses the
+ * SAME dedup epsilon for the cavity outline (the shared skirt machinery). */
+export const MARGIN_DEDUP_EPSILON_MM = MESH_WELD_EPSILON_MM;
 
 function yieldToEventLoop(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
@@ -231,21 +233,27 @@ function validateParams(params: InnerSurfaceSolidParams): void {
 
 /** A rotation expressed as its three orthonormal ROW vectors `{u, v, w}`:
  * `applyR(p) = (p.u, p.v, p.w)` maps world -> the frame where `+Z` is `w`
- * (the insertion axis); `applyRT` is its inverse (transpose). */
-interface AxisFrame {
+ * (the insertion axis); `applyRT` is its inverse (transpose).
+ *
+ * NOTE (shared crown/cavity primitive): `AxisFrame` + `axisFrame`/`applyR`/
+ * `applyRT`/`rotateMesh` are exported so the cavity inner-surface op
+ * (cavity/innerSurface.ts) rotates into the SAME insertion-axis frame with the
+ * SAME arithmetic — reuse, not a re-implementation. Kept out of the kernel's
+ * public index (internal shared helpers, imported by relative path only). */
+export interface AxisFrame {
   readonly u: Vec3;
   readonly v: Vec3;
   readonly w: Vec3;
 }
 
-function axisFrame(insertionAxis: Vec3): AxisFrame {
+export function axisFrame(insertionAxis: Vec3): AxisFrame {
   const len = Math.hypot(insertionAxis[0], insertionAxis[1], insertionAxis[2]);
   const w: Vec3 = [insertionAxis[0] / len, insertionAxis[1] / len, insertionAxis[2] / len];
   const { u, v } = orthonormalBasis(w);
   return { u, v, w };
 }
 
-function applyR(f: AxisFrame, p: Vec3): Vec3 {
+export function applyR(f: AxisFrame, p: Vec3): Vec3 {
   return [
     p[0] * f.u[0] + p[1] * f.u[1] + p[2] * f.u[2],
     p[0] * f.v[0] + p[1] * f.v[1] + p[2] * f.v[2],
@@ -253,7 +261,7 @@ function applyR(f: AxisFrame, p: Vec3): Vec3 {
   ];
 }
 
-function applyRT(f: AxisFrame, q: Vec3): Vec3 {
+export function applyRT(f: AxisFrame, q: Vec3): Vec3 {
   return [
     q[0] * f.u[0] + q[1] * f.v[0] + q[2] * f.w[0],
     q[0] * f.u[1] + q[1] * f.v[1] + q[2] * f.w[1],
@@ -261,7 +269,7 @@ function applyRT(f: AxisFrame, q: Vec3): Vec3 {
   ];
 }
 
-function rotateMesh(mesh: IndexedMesh, f: AxisFrame): IndexedMesh {
+export function rotateMesh(mesh: IndexedMesh, f: AxisFrame): IndexedMesh {
   const n = mesh.positions.length / 3;
   const positions = new Float64Array(mesh.positions.length);
   for (let i = 0; i < n; i++) {
@@ -336,7 +344,7 @@ function boundaryVertexLoops(mesh: IndexedMesh): number[][] {
  * including the closing wraparound — same rule as margin/band.ts's
  * `marginLoopPolyline` (`resampledPoints` share a point at every segment
  * boundary). Guards the skirt against degenerate (zero-length) triangles. */
-function dedupLoop(loop: readonly Vec3[], eps: number): Vec3[] {
+export function dedupLoop(loop: readonly Vec3[], eps: number): Vec3[] {
   const d3 = (a: Vec3, b: Vec3): number => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
   const out: Vec3[] = [loop[0]!];
   for (let i = 1; i < loop.length; i++) {
@@ -347,7 +355,7 @@ function dedupLoop(loop: readonly Vec3[], eps: number): Vec3[] {
 }
 
 /** Even-odd ray-cast point-in-polygon test (2D, the axis-frame x/y plane). */
-function pointInPolygon2d(px: number, py: number, poly: readonly [number, number][]): boolean {
+export function pointInPolygon2d(px: number, py: number, poly: readonly [number, number][]): boolean {
   let inside = false;
   const n = poly.length;
   for (let i = 0, j = n - 1; i < n; j = i++) {
@@ -359,7 +367,7 @@ function pointInPolygon2d(px: number, py: number, poly: readonly [number, number
 }
 
 /** Min squared distance from `(px, py)` to the CLOSED polyline `poly` (2D). */
-function distSqToPolyline2d(px: number, py: number, poly: readonly [number, number][]): number {
+export function distSqToPolyline2d(px: number, py: number, poly: readonly [number, number][]): number {
   let min = Infinity;
   const n = poly.length;
   for (let i = 0; i < n; i++) {
@@ -494,10 +502,30 @@ async function buildBlockedPatch(
  * `marginLoopWorld` are the EXACT confirmed margin points (world frame) — the
  * skirt bottom rim, so the finished boundary == the margin polyline.
  */
-function skirtToMargin(
+/** How the skirt zipper pairs the patch boundary ring against the target
+ * (margin/outline) ring.
+ *
+ *  - `'index'` (DEFAULT — the crown): advance whichever ring is behind in
+ *    normalized INDEX fraction (i/M vs j/N). Robust for a roughly-planar margin
+ *    whose two rings are near-uniformly distributed; the crown ships on this and
+ *    stays byte-identical (omitting the option ⇒ 'index').
+ *  - `'arcLength'` (the CAVITY — Phase 5 Task 3): advance by normalized 3-D
+ *    ARC-LENGTH fraction. A true MOD cavity OUTLINE is non-planar and BREAKS
+ *    THROUGH the proximal faces (the "U" drops 3+ mm), so its points are NOT
+ *    proportionally distributed in index vs the patch boundary's MC points —
+ *    index pairing then fabricates skirt triangles that SPAN the notch (they
+ *    tilt into facing-undercut). Arc-length pairing matches the two near-parallel
+ *    offset curves into a THIN, draft-safe ribbon (measured: whole-mesh undercut
+ *    142 → 0 on the drafted MOD fixture — see cavity/innerSurface.analytic.test.ts).
+ *    This is the ONE place the crown skirt did NOT transfer cleanly; parameterized
+ *    here rather than forked. */
+export type SkirtPairing = 'index' | 'arcLength';
+
+export function skirtToMargin(
   patchWorld: IndexedMesh,
   marginLoopWorld: readonly Vec3[],
   axisUnit: Vec3,
+  pairing: SkirtPairing = 'index',
 ): { mesh: IndexedMesh; skirtTriangleCount: number } {
   // Margin centre + a tangent basis (u, v) perpendicular to the axis, for a
   // consistent azimuth measurement of both loops.
@@ -612,19 +640,41 @@ function skirtToMargin(
   }
   const marginVi = (idx: number): number => patchVertexCount + idx; // local margin index -> combined vertex
 
-  // Zipper by INDEX FRACTION (not azimuth): advance whichever CCW ring is
-  // behind in normalized arc-position (i/M vs j/N). This is strictly
-  // monotone — it never backtracks — so it is robust to the jagged MC patch
-  // boundary (whose per-vertex azimuth is NOT monotone), yielding a clean,
-  // manifold annulus. Both rings start aligned (above), so proportional
-  // index-correspondence pairs them without crossing. Deterministic.
+  // Per-ring "position after advancing k steps" in [0, 1] — INDEX fraction
+  // ((k)/count) for the crown, or normalized cumulative 3-D ARC-LENGTH fraction
+  // for the cavity (see `SkirtPairing`'s doc). Precomputed so the zipper below
+  // is O(M + N).
+  const cumFractions = (count: number, posAt: (k: number) => Vec3): number[] => {
+    if (pairing === 'index') {
+      const f = new Array<number>(count + 1);
+      for (let k = 0; k <= count; k++) f[k] = k / count;
+      return f;
+    }
+    const cum = new Array<number>(count + 1);
+    cum[0] = 0;
+    for (let k = 1; k <= count; k++) {
+      const a = posAt((k - 1) % count);
+      const b = posAt(k % count);
+      cum[k] = cum[k - 1]! + Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+    }
+    const total = cum[count]!;
+    if (total > 0) for (let k = 0; k <= count; k++) cum[k]! /= total;
+    return cum;
+  };
+  const fracP = cumFractions(M, (k) => vpos(patchOrder[k]!));
+  const fracM = cumFractions(N, (k) => marginLoopWorld[marginIdx[k]!]!);
+
+  // Zipper: advance whichever CCW ring is behind in its normalized position
+  // (`fracP[i+1]` vs `fracM[j+1]`). Strictly monotone — never backtracks — so
+  // it yields a clean, manifold annulus; both rings start aligned (above), so
+  // proportional correspondence pairs them without crossing. Deterministic.
   const skirtTris: number[] = [];
   let i = 0;
   let j = 0;
   while (i < M || j < N) {
     const pCur = patchOrder[i % M]!;
     const mCur = marginVi(j % N);
-    const advanceP = j >= N || (i < M && (i + 1) / M <= (j + 1) / N);
+    const advanceP = j >= N || (i < M && fracP[i + 1]! <= fracM[j + 1]!);
     if (advanceP) {
       const pNext = patchOrder[(i + 1) % M]!;
       skirtTris.push(pCur, mCur, pNext);
@@ -655,7 +705,7 @@ function skirtToMargin(
  * outward (+∇F, away from the die), so this pins the whole consistently-
  * oriented surface to that outward sign, deterministically (max |normal.axis|,
  * ties broken by lowest triangle index). */
-function flipOutwardIfNeeded(mesh: IndexedMesh, axisUnit: Vec3): IndexedMesh {
+export function flipOutwardIfNeeded(mesh: IndexedMesh, axisUnit: Vec3): IndexedMesh {
   const triCount = mesh.indices.length / 3;
   let bestT = 0;
   let bestAbs = -1;

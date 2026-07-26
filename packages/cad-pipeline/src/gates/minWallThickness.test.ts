@@ -6,7 +6,13 @@
 // the profile (0.5 mm zirconia), never hardcoded in the gate.
 import { describe, expect, it } from 'vitest';
 import { buildInnerSurface, type IndexedMesh, type Vec3 } from '@dqcad/kernel';
-import { minWallThicknessGate, measureMinWallThickness, MinWallThicknessInputError, MIN_WALL_THICKNESS_GATE_NAME } from './minWallThickness.ts';
+import {
+  minWallThicknessGate,
+  measureMinWallThickness,
+  MinWallThicknessInputError,
+  MIN_WALL_THICKNESS_GATE_NAME,
+  EXCLUDED_DOMINANCE_FRACTION,
+} from './minWallThickness.ts';
 
 const MARGIN_R = 1.2;
 const TOP_R = 0.8;
@@ -164,6 +170,93 @@ describe('minWallThicknessGate', () => {
     expect(m.passed).toBe(false);
     expect(m.minThicknessMm).toBeLessThan(MIN_WALL_MM);
   }, 120000);
+
+  // ---- T6-review gate hardening: disclose the excluded margin band ----------
+
+  it('surfaces the MAX EXCLUDED THINNESS + count when the margin band excludes samples', async () => {
+    const inner = await intaglio();
+    const outer = outerDome(1.0);
+    const res = minWallThicknessGate({
+      innerSurfaceMesh: inner,
+      outerSurfaceMesh: outer,
+      minWallThicknessMm: MIN_WALL_MM,
+      occlusalMinWallThicknessMm: OCCLUSAL_MIN_MM,
+      insertionAxis: AXIS,
+      marginResampledPoints: marginCircle(MARGIN_R, MARGIN_Z, 240),
+      marginExclusionMm: 0.5,
+    });
+    const m = measureMinWallThickness({
+      innerSurfaceMesh: inner,
+      outerSurfaceMesh: outer,
+      minWallThicknessMm: MIN_WALL_MM,
+      occlusalMinWallThicknessMm: OCCLUSAL_MIN_MM,
+      insertionAxis: AXIS,
+      marginResampledPoints: marginCircle(MARGIN_R, MARGIN_Z, 240),
+      marginExclusionMm: 0.5,
+    });
+    expect(m.excludedCount).toBeGreaterThan(0);
+    expect(Number.isFinite(m.minExcludedThicknessMm)).toBe(true);
+    // The message names the excluded count AND how thin the excluded feather got.
+    expect(res.message).toMatch(/excluded \d+ sample\(s\) down to .* µm \(marginal feather\/wedge, governed by marginFit\)/);
+    console.log(`[gate] excluded-band disclosure: ${res.message}`);
+  }, 120000);
+
+  it('appends NO excluded detail when nothing is excluded (byte-identical base message)', async () => {
+    const inner = await intaglio();
+    const outer = outerDome(1.0);
+    const withNoBand = minWallThicknessGate({
+      innerSurfaceMesh: inner,
+      outerSurfaceMesh: outer,
+      minWallThicknessMm: MIN_WALL_MM,
+      occlusalMinWallThicknessMm: OCCLUSAL_MIN_MM,
+      insertionAxis: AXIS,
+      // no marginResampledPoints / marginExclusionMm → 0 excluded
+    });
+    expect(withNoBand.message).not.toMatch(/down to/);
+    expect(withNoBand.message).not.toMatch(/WARNING/);
+    const m = measureMinWallThickness({
+      innerSurfaceMesh: inner,
+      outerSurfaceMesh: outer,
+      minWallThicknessMm: MIN_WALL_MM,
+      occlusalMinWallThicknessMm: OCCLUSAL_MIN_MM,
+      insertionAxis: AXIS,
+    });
+    expect(m.excludedCount).toBe(0);
+    expect(m.minExcludedThicknessMm).toBe(Infinity);
+    expect(m.excludedFraction).toBe(0);
+  }, 120000);
+
+  it('WARNS (in the message) when the excluded band dominates the samples (> half)', async () => {
+    const inner = await intaglio();
+    const outer = outerDome(1.0);
+    // Sweep a range of band widths; on this small intaglio a wide band excludes
+    // the majority of samples — assert the dominance warning appears iff the
+    // excluded fraction actually crosses the documented threshold (never a
+    // pass/fail change — the gate still judges the included samples).
+    let sawDominance = false;
+    for (const marginExclusionMm of [0.5, 1.0, 1.5, 2.0]) {
+      const args = {
+        innerSurfaceMesh: inner,
+        outerSurfaceMesh: outer,
+        minWallThicknessMm: MIN_WALL_MM,
+        occlusalMinWallThicknessMm: OCCLUSAL_MIN_MM,
+        insertionAxis: AXIS,
+        marginResampledPoints: marginCircle(MARGIN_R, MARGIN_Z, 240),
+        marginExclusionMm,
+      };
+      const m = measureMinWallThickness(args);
+      const res = minWallThicknessGate(args);
+      const dominates = m.excludedFraction > EXCLUDED_DOMINANCE_FRACTION;
+      // The invariant: warning text is present exactly when the band dominates.
+      expect(res.message.includes('dominates the measurement')).toBe(dominates);
+      if (dominates) {
+        sawDominance = true;
+        expect(res.message).toMatch(/WARNING: excluded \d+% of samples dominates the measurement/);
+        console.log(`[gate] dominance warning at band ${marginExclusionMm}mm (frac ${(m.excludedFraction * 100).toFixed(0)}%): ${res.message}`);
+      }
+    }
+    expect(sawDominance).toBe(true);
+  }, 180000);
 
   it('throws when a required threshold is missing/non-finite (never defaults)', async () => {
     const inner = await intaglio();

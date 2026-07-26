@@ -9,6 +9,7 @@ import type { MeshAsset, SceneNode } from '@dqcad/shared-types';
 import { caseStore } from '../engine/caseStore';
 import { AlignmentPanel } from './AlignmentPanel';
 import { AxisPanel } from './AxisPanel';
+import { CavityDesignPanel } from './CavityDesignPanel';
 import { CrownDesignPanel } from './CrownDesignPanel';
 import { CurvaturePanel } from './CurvaturePanel';
 import { ImportPanel } from './ImportPanel';
@@ -45,6 +46,7 @@ export function Sidebar() {
       <MarginPanel />
       <AxisPanel />
       <CrownDesignPanel />
+      <CavityDesignPanel />
       <MeasurementPanel />
       <AlignmentPanel />
       <SurfaceDistancePanel />

@@ -1,6 +1,6 @@
 {
   "id": "emax-lithium-disilicate",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "label": "e.max Lithium Disilicate (monolithic)",
   "restorationParams": {
     "cementGapMm": 0.05,
@@ -17,5 +17,9 @@
   "undercutBlockoutThresholdMm": 0,
   "occlusalMinWallThicknessMm": 1.0,
   "maxChordDeviationMm": 0.005,
-  "checksum": "bdaa8360faecc5168b994b77ed75c0ee16a7ef020dc5cffc387f8a787e89e1d9"
+  "inlayMinThicknessMm": 1.0,
+  "onlayMinThicknessMm": 1.0,
+  "cuspCoverageMinThicknessMm": 1.5,
+  "marginExclusionMm": 0.2,
+  "checksum": "3a2c471faa00718c0f61118f52b3152dc9c8ce0058eb488ea5bb041ac6505d54"
 }

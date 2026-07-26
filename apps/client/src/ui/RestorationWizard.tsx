@@ -34,14 +34,24 @@ import {
 import { useCaseStore } from '../state/caseStore';
 import { FdiToothChart } from './FdiToothChart';
 
-/** Restoration types selectable THIS phase — inlay/onlay are shown, greyed,
- * with an i18n'd "Phase 5" note (this task's brief: "inlay/onlay greyed with
- * i18n'd Phase 5 note"). */
+/** Restoration types selectable via the wizard. Inlay/onlay were greyed out
+ * (with an i18n'd "Phase 5" note) from Phase 3 Task 2 through Phase 5 Tasks
+ * 1-10 — those tasks built the kernel/pipeline/CavityDesignPanel machinery
+ * but never revisited this picker, so a dentist could not actually CREATE an
+ * inlay/onlay restoration through the product UI even though the full
+ * design workflow existed downstream (`ui/CavityDesignPanel.tsx`). Phase 5
+ * Task 11 (phase wrap-up) closes this gap: `engine/marginEditor.ts` and
+ * `engine/restorations.ts` are already restoration-type-agnostic (verified —
+ * neither branches on `'crown'`/`'bridge'` except the bridge-specific
+ * multi-tooth/contiguity path above), so enabling the two remaining types
+ * needed no other change. The `enabled: false` / phase-note rendering path
+ * is kept (not deleted) as the established mechanism for a future
+ * not-yet-implemented restoration type. */
 const SELECTABLE_TYPES: readonly { type: RestorationType; enabled: boolean }[] = [
   { type: 'crown', enabled: true },
   { type: 'bridge', enabled: true },
-  { type: 'inlay', enabled: false },
-  { type: 'onlay', enabled: false },
+  { type: 'inlay', enabled: true },
+  { type: 'onlay', enabled: true },
 ];
 
 interface Draft {

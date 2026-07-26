@@ -22,6 +22,14 @@ export {
   type MinWallThicknessMeasurement,
 } from './minWallThickness.ts';
 export {
+  cuspCoverageThicknessGate,
+  measureCuspCoverageThickness,
+  CUSP_COVERAGE_THICKNESS_GATE_NAME,
+  type CuspCoverageThicknessGateInput,
+  type CuspCoverageThicknessMeasurement,
+  type CoverageDivider,
+} from './cuspCoverageThickness.ts';
+export {
   watertightGate,
   manifoldGate,
   WATERTIGHT_GATE_NAME,
@@ -56,4 +64,17 @@ export {
   type ContactResidualInput,
   type ContactGateInput,
 } from './contact.ts';
+export {
+  seamDihedralGate,
+  SEAM_DIHEDRAL_GATE_NAME,
+  SEAM_DIHEDRAL_GATE_THRESHOLD_DEG,
+  type SeamDihedralGateInput,
+} from './seamDihedral.ts';
 export { runCrownQc, type RunCrownQcInput } from './report.ts';
+export {
+  runInlayQc,
+  selectInlayMinThicknessMm,
+  NonCavityRestorationTypeError,
+  type RunInlayQcInput,
+  type CavityThicknessMinimums,
+} from './inlayReport.ts';

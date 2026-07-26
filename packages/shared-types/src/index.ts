@@ -241,12 +241,28 @@ export interface Restoration {
   marginLines: Partial<Record<FdiTooth, MarginLine>>;
   insertionAxis: Vec3;
   params: RestorationParams;
-  /** Content hashes into the mesh store for each completed pipeline stage. */
+  /** Content hashes into the mesh store for each completed pipeline stage.
+   * The first four are the CROWN pipeline stages (Phase 4); the cavity fields
+   * (`fitSurface`/`occlusalPatch`/`proximalContacts`/`cuspCoverage`) are the
+   * inlay/onlay pipeline stages (Phase 5). `finalMesh` is SHARED — it is the
+   * final watertight restoration solid for both families (the crown shell and
+   * the inlay/onlay shell), so the stale-QC guard (`qc.journalHash` vs
+   * `finalMesh`) works uniformly across restoration types. Every field is
+   * optional: a given restoration only ever populates its own family's fields. */
   stages: {
     innerSurface?: string;
     anatomyPlacement?: string;
     morphState?: string;
     finalMesh?: string;
+    /** Inlay/onlay cavity FIT (inner) surface — `cavityInnerSurface` output. */
+    fitSurface?: string;
+    /** Inlay/onlay occlusal anatomy patch — `cavityOcclusalPatch` output. */
+    occlusalPatch?: string;
+    /** Inlay/onlay adapted proximal-box contacts — `cavityProximalContact` output. */
+    proximalContacts?: string;
+    /** Onlay covered-cusp coverage selection marker (the coverage divider) —
+     * onlay only; feeds the region-scoped cusp-coverage thickness gate in QC. */
+    cuspCoverage?: string;
   };
   qc: QcReport | null;
 }

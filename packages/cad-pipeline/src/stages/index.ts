@@ -12,6 +12,29 @@ export {
 } from './innerSurface.ts';
 
 export {
+  runCavityInnerSurfaceStage,
+  MissingCavityOutlineError,
+  MissingClinicalParamError as CavityInnerSurfaceMissingClinicalParamError,
+  type CavityInnerSurfaceStageOptions,
+} from './cavityInnerSurface.ts';
+
+export {
+  runCavityOcclusalPatchStage,
+  MissingCavityOutlineError as CavityOcclusalPatchMissingCavityOutlineError,
+  type CavityOcclusalPatchStageOptions,
+  type CavityOcclusalPatchStageResult,
+} from './cavityOcclusalPatch.ts';
+
+export {
+  runCavityProximalContactStage,
+  AmbiguousProximalPairingError,
+  CavityProximalContactMissingClinicalParamError,
+  type CavityProximalContactStageOptions,
+  type CavityProximalContactStageResult,
+  type CavityProximalContactBoxParams,
+} from './cavityProximalContact.ts';
+
+export {
   runAnatomyPlacementStage,
   identifyNeighbors,
   InsufficientNeighborsError,
@@ -37,6 +60,19 @@ export {
   MissingClinicalParamError as ShellMissingClinicalParamError,
   type ShellStageOptions,
 } from './shell.ts';
+
+export {
+  runCavityShellStage,
+  type CavityShellStageOptions,
+  type CavityShellStageResult,
+} from './cavityShell.ts';
+
+export {
+  runCavityCuspCoverageStage,
+  MissingCavityOutlineError as CuspCoverageMissingOutlineError,
+  type CavityCuspCoverageStageOptions,
+  type CavityCuspCoverageStageResult,
+} from './cavityCuspCoverage.ts';
 
 export {
   runSculptStage,

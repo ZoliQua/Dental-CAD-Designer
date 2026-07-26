@@ -637,6 +637,10 @@ const CROWN_MORPH_PROFILE: PipelineMaterialProfile = {
   undercutBlockoutThresholdMm: 0,
   occlusalMinWallThicknessMm: 0.5,
   maxChordDeviationMm: 0.005,
+  inlayMinThicknessMm: 0.5,
+  onlayMinThicknessMm: 0.5,
+  cuspCoverageMinThicknessMm: 0.7,
+  marginExclusionMm: 0.2,
 };
 
 function crownMorphHash(mesh: IndexedMesh): string {
@@ -692,6 +696,7 @@ export function recordCrownMorphJournal(): RecordedJournal {
   const handle = (contentHash: string, mesh: IndexedMesh): PipelineMeshHandle => ({ contentHash, mesh });
   const context: PipelineContext = {
     restorationId: 'journal-crown-morph',
+    restorationType: 'crown',
     materialProfile: CROWN_MORPH_PROFILE,
     insertionAxis: [0, 0, 1],
     targetMesh: handle('die', crownMorphCylinder(R, H - 1, 6, 16)),

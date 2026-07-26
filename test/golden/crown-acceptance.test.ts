@@ -94,7 +94,18 @@ const µm = (mm: number): string => `${(mm * 1000).toFixed(3)} µm`;
 // golden change (bump + changelog), never a silent regen — the WASM boolean is
 // manifoldVersion-guarded, exactly as the brief requires.
 // ---------------------------------------------------------------------------
-const EXPECTED_KERNEL_VERSION = '0.15.0';
+// 0.20.0 (Phase 5 Task 6) added the brand-new cavity/inlayShell.ts op ONLY
+// (`constructInlayShell`) — no op in the crown chain changed. All FIVE geometry
+// stage pins below are verified BYTE-IDENTICAL to 0.19.0 (this suite passes
+// against them unmodified — the version guard forced exactly this documented
+// revisit, per its own message). Only the crown-standin-qc pin changed,
+// MECHANICALLY: the QcReport embeds `kernelVersion` (gates/report.ts), so
+// `hashQcReport` tracks every version bump even when every measured value and
+// geometry hash is unchanged — the unchanged geometry pins are precisely the
+// proof this qc diff is the version string alone, not numerical drift (the same
+// mechanical churn documented at 0.16.0-0.19.0). See docs/CHANGELOG-kernel.md's
+// [0.20.0] entry.
+const EXPECTED_KERNEL_VERSION = '0.21.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 function installedManifoldVersion(): string {
   const pkg = JSON.parse(readFileSync(join(repoRoot, 'node_modules', 'manifold-3d', 'package.json'), 'utf8')) as {
@@ -118,7 +129,26 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   'crown-standin-morphing': 'ad276e88def5a72c327389af57bc5e7acb3cc03802b631d5ac7402445a7b4d88',
   'crown-standin-shell': 'c472c6ea74c84b741fd47d925241c2c8d21d3caff8fb640d4877e724e49e5764',
   'crown-standin-freeform': 'f48f898de08bb7d1e4bc6a89758ec4d83339bd50040bd7f92010d1e98647d833',
-  'crown-standin-qc': 'fbedad9acdcf9800ef053e3de083182fea86714fe77b16907e42b8b7acacf65d',
+  // Changed at 0.20.0: version-string-only (QcReport embeds kernelVersion —
+  // see the EXPECTED_KERNEL_VERSION comment above; geometry pins unchanged).
+  //
+  // Changed again in Phase 5 Task 8 — DELIBERATE, MESSAGE-ONLY (NO KERNEL_VERSION
+  // bump; the T6-review gate-message hardening lives in cad-pipeline, not the
+  // kernel). `hashQcReport` = sha256(JSON.stringify(report)), so the report hash
+  // embeds every gate MESSAGE string. The `minWallThickness` gate now discloses
+  // the MAX EXCLUDED THINNESS when the margin band excludes samples — and the
+  // standin excludes 2985 samples, so its message gained the tail
+  // "— excluded 2985 sample(s) down to 999 µm (marginal feather/wedge, governed
+  // by marginFit)". That STRING is the ONLY thing that changed: this suite's five
+  // geometry pins above are byte-identical (proving no numeric/geometry drift),
+  // and every gate's passed/value/threshold is unchanged (min wall still
+  // 999 µm ≥ 500 µm). No KERNEL_VERSION bump + no test-fixtures/ golden file
+  // changed (the changelog policy governs kernel numeric output, not a
+  // cad-pipeline gate STRING), so this in-test pin is advanced here with this
+  // rationale; see the p5-task-8 report. (selfIntersection keeps "the crown"
+  // wording for the crown path — byte-identical — so ONLY the min-wall
+  // disclosure moved this hash.)
+  'crown-standin-qc': '7f8046b8023b367d3bff37f0331a1a467cf63c187294df178a17fd616ff5335b',
 };
 
 const GATE_ORDER = ['watertight', 'manifold', 'selfIntersection', 'minWallThickness', 'marginFit', 'seating', 'connectorCrossSection', 'contact'];
@@ -378,7 +408,7 @@ describe.skipIf(!RUN_REAL)('crown acceptance — REAL arch-case-01 tooth 11 [RUN
     const starter = loadToothAssetInProcess(TOOTH);
     const asset: PipelineToothAsset = { contentHash: starter.metadata.meshChecksum, mesh: starter.mesh, landmarks: starter.landmarks, canonicalFrame: starter.canonicalFrame };
     const baseCtx: PipelineContext = {
-      restorationId: 'crown-real-11', materialProfile: PROFILE, insertionAxis,
+      restorationId: 'crown-real-11', restorationType: 'crown', materialProfile: PROFILE, insertionAxis,
       targetMesh: handle('upper', upper),
       marginLoops: { [TOOTH]: { closed: ref11.closed, resampledPoints: ref11.resampledPoints } },
       neighbors: { [12 as FdiTooth]: handle('nb12', nb12), [21 as FdiTooth]: handle('nb21', nb21) },

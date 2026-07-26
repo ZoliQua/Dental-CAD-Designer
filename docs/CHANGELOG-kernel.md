@@ -59,6 +59,350 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.21.0] — Phase 5 Task 7: onlay cusp coverage — `cavity/cuspCoverage.ts` (`identifyCuspRegions`, `extendOutlineOverCusp`)
+
+**No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned
+fixture hash is byte-identical to `[0.20.0]`.** A brand-new op only; no existing
+op's algorithm or output changed. In `test/golden/crown-acceptance.test.ts`
+(byte-pinned stage hashes, not a `test-fixtures/` file), all FIVE geometry stage
+pins are verified byte-identical to 0.20.0; only the `crown-standin-qc` pin
+changed, MECHANICALLY and metadata-only — the `QcReport` embeds `kernelVersion`
+(cad-pipeline/gates/report.ts), so `hashQcReport` tracks every version bump even
+with every measured value and geometry hash unchanged (the same mechanical churn
+documented at 0.16.0-0.20.0; the unchanged geometry pins are the proof the qc
+diff is the version string alone, not numerical drift).
+
+Adds `packages/kernel/src/cavity/cuspCoverage.ts` (an ONLAY = an inlay on an
+extended outline; the extended outline feeds the WHOLE T3–T6 cavity pipeline
+UNCHANGED):
+
+- **`identifyCuspRegions(mesh, insertionAxis, options?)`** — geometric cusp
+  detection: local along-axis height (`pos·â`) maxima on the OCCLUSAL
+  (axis-facing) surface, each grown into a cusp region by a descending flood,
+  filtered by a documented prominence. Returns cusps sorted by tip height
+  descending. On the MOD onlay fixture: exactly two — the intact LINGUAL cusp
+  and the reduced BUCCAL crest (the coverage-margin ridge) — closed-form
+  checkable. New error `NoCuspFoundError`.
+- **`extendOutlineOverCusp(mesh, baseOutline, insertionAxis, coveredCuspTriangleIndices)`**
+  — the outline extension: the extended cavosurface ring is the single BOUNDARY
+  LOOP of `cavityRegion ∪ coveredCuspRegion` (the coverage SELECTION unions the
+  covered cusp's occlusal surface into the restoration; the shared cavity/cusp
+  edges become interior and vanish, splicing the cavity outline and the cusp
+  crest into one ring). Deterministic (committed sha256 in cuspCoverage.test.ts);
+  reproduces the fixture `onlayOutline` EXACTLY. New error `CoverageBoundaryError`.
+
+Pure Float64, no manifold-3d boundary; same "brand-new op, minor bump, existing
+goldens byte-identical" precedent as 0.9.0-0.20.0's pure-Float64 ops
+(regression-pinned by its own analytic closed-form / determinism / committed-
+sha256 tests in cavity/cuspCoverage.test.ts; no `kernel-ops.json` pin added).
+
+New downstream plumbing (no numerical change to any existing op): the
+`cuspCoverageThickness` cad-pipeline gate (the ONLAY covered-cusp REGION-SCOPED
+`cuspCoverageMinThicknessMm` min-wall check — samples classified covered-cusp vs
+body by a coverage-divider half-space, the wedge band excluded, the sampling
+margin subtracted; wired into `runInlayQc` for onlays carrying coverage). The
+end-to-end onlay acceptance (`test/golden/onlay-acceptance.test.ts`) is
+genuinely coupled (the extend-over-cusp output IS the pipeline outline);
+REVIEWER NOTE: it ACKNOWLEDGES the seating gate — the covered-cusp reduction
+bevel meets the cavity wall at a SHARP CORNER on the deliberately un-filleted
+analytic fixture, and the marching-cubes offset intaglio cuts inside the
+gap-radius corner arc there (arc radius ≈ cement gap 0.08 mm, barely above the
+0.06 mm cell) → a ~0.06 mm³ die-into-wall interference, journaled + reported,
+never weakened. The acknowledgment is SCOPED in the committed suite: the
+interference is asserted BOUNDED (< 0.1 mm³) and LOCALIZED at the junction band
+(≥90% of intersection vertices; centroid pinned; any buccal off-band vertex must
+lie ON the outline-crest marginal-seal locus) so a grown/spread interference — a
+real defect — re-fails. Corner-sharpness CAUSATION is measured falsifiably (the
+fixture's `junctionChamferMm` single-cut chamfer: sharp 6.165e-2 → c=0.2
+3.237e-2 → c=0.4 3.093e-2 mm³, monotone, residual at the same locus); FULL
+removal by a true large-radius fillet remains an OPEN GEOMETRY ITEM (untested —
+the fixture's 0.66 mm buccal wall leaves no room for a large-radius fillet).
+
+## [0.20.0] — Phase 5 Task 6: inlay/onlay shell — `cavity/inlayShell.ts` (`constructInlayShell`)
+
+**No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned
+fixture hash is byte-identical to `[0.19.0]`.** A brand-new op only; no existing
+op's algorithm or output changed. `constructInlayShell` is NOT added to
+`kernel-ops.json` (like the crown `constructShell`, its output crosses the
+manifold-3d Float32 WASM boundary via `cleanupMesh`, so its determinism is
+pinned instead by a committed sha256 in `cavity/inlayShell.test.ts`, GUARDED by
+the installed manifold-3d version — the same manifoldVersion-guard the
+crown-acceptance qc pin uses; a manifold-3d build change is caught there, never
+mistaken for a kernel regression). In `test/golden/crown-acceptance.test.ts`
+(byte-pinned stage hashes, not a `test-fixtures/` file), all FIVE geometry stage
+pins are verified byte-identical to 0.19.0; only the `crown-standin-qc` pin
+changed, MECHANICALLY and metadata-only — the `QcReport` embeds `kernelVersion`
+(cad-pipeline/gates/report.ts), so `hashQcReport` tracks every version bump even
+with every measured value and geometry hash unchanged (the same mechanical churn
+documented at 0.16.0-0.19.0; the unchanged geometry pins are the proof the qc
+diff is the version string alone, not numerical drift).
+
+Adds `packages/kernel/src/cavity/inlayShell.ts`:
+
+- **`constructInlayShell(fitMesh, patchMesh, hooks?)`** — assembles the inlay/
+  onlay SOLID from the Task-3 fit surface (an open cup) and the Task-4/5 occlusal
+  patch (an open cap), joined along their SHARED cavity-outline ring. Because
+  both surfaces carry that ring as their single open boundary BIT-EXACT (engineered
+  across Task 3/4/5), the stitch is a DIRECT DETERMINISTIC WELD (`weldVertices`,
+  exact-coordinate dedup), NOT a boolean union — preferred for accuracy: a boolean
+  would re-tessellate the margin through the manifold-3d Float32 boundary and
+  perturb the ≤10 µm marginal seal, whereas the weld keeps every input vertex at
+  its exact Float64 leader position, so the Task-3 margin fit and Task-4 seam
+  dihedral survive assembly byte-for-byte. The shared-ring assumption is VERIFIED
+  first (each surface exactly one boundary loop; the two loops' bit-exact
+  coordinate sets equal) — a perturbed/mismatched ring throws
+  `InlayShellRingMismatchError` BEFORE welding (falsifiable). The welded surface
+  is consistently oriented, pinned outward, and re-validated + cleaned through the
+  manifold-3d wrapper (`cleanupMesh` throws `NonManifoldInputError` on a non-2-
+  manifold result); `analyzeMesh` then re-checks watertight + single-component,
+  throwing `InlayShellNotWatertightError` otherwise — a non-watertight stitch can
+  never masquerade as a shell. Deterministic (same inputs + manifold-3d version →
+  byte-identical shell). New errors: `InlayShellOpenBoundaryError`,
+  `InlayShellRingMismatchError`, `InlayShellNotWatertightError`.
+
+## [0.19.0] — Phase 5 Task 5: Class II proximal box contact adaptation — `cavity/proximalContact.ts` (`adaptProximalContacts`)
+
+**No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned
+fixture hash is byte-identical to `[0.18.0]`.** A brand-new op only; no
+existing op's algorithm or output changed (`buildOcclusalPatch` gains the
+ADDITIVE `proximalFaces` result field — pure extra output from already-computed
+internals; its patch-mesh bytes and committed sha256 pin in
+cavity/occlusalPatch.test.ts are unchanged, which that test proves). In
+`test/golden/crown-acceptance.test.ts` (byte-pinned stage hashes, not a
+`test-fixtures/` file), all FIVE geometry stage pins are verified
+byte-identical to 0.18.0; only the `crown-standin-qc` pin changed,
+MECHANICALLY and metadata-only — the `QcReport` embeds `kernelVersion`
+(cad-pipeline/gates/report.ts), so `hashQcReport` tracks every version bump
+even with every measured value and geometry hash unchanged (the same
+mechanical churn documented at 0.16.0-0.18.0; the unchanged geometry pins are
+the proof the qc diff is the version string alone, not numerical drift).
+
+Adds `packages/kernel/src/cavity/proximalContact.ts`:
+
+- **`adaptProximalContacts(patchMesh, adaptations, options?)`** — the inlay's
+  proximal faces (the Task-4 patch's break-through faces) adapt to the
+  neighbouring teeth at the profile's target penetration
+  (`proximalContactPenetrationMm`, passed in by the stage), one adaptation per
+  box (mesial + distal). Mechanism: a dedicated per-box 1-D BUMP displacement
+  of the proximal face's occlusal top rim (the patch's proximal cross-section
+  column interior) — chosen over a region-scoped RBF because (1) the hard
+  invariant is a BYTE-IDENTICAL outline ring and the bump pins by
+  construction (the pinned set is never written) where an RBF pins only to
+  solver precision; (2) the deformation space is one curve per box; (3) a
+  `seamAnchorBandMm` zero-displacement band at both rim ends pins the entire
+  seam-boundary-triangle support, so the re-measured seam dihedral is exactly
+  the pre-adaptation value (proven, not assumed — the tests re-measure).
+  The driven rim vertex's travel is a FIXED-iteration (4) Newton root-find on
+  the neighbour's signed distance along a fixed approach direction, clamped
+  to ±`maxTravelMm` (1.5 default, documented): an unreachable target clamps
+  and reports `clampBound` + an honestly-large MEASURED residual. Achieved
+  contact is GENUINE (closest-point of the adapted face vs the neighbour
+  mesh, never a prescription re-read); `@errorBound` = max over boxes of
+  max(contact residual, face-wide residual), conservative. One documented
+  deviation from P4's `refineContactTarget`: the approach direction is
+  negated for a pre-penetrating start so the Newton update converges in both
+  regimes (P4 assumed an outside start).
+- Closed-form residual on the synthetic planar-neighbour case: 0 nm (mesial +
+  distal, gaps 0.05-0.4 mm swept) — fp-exact Newton on a planar face; the
+  documented general bound is the measured residual itself, carried per box.
+
+New downstream plumbing (no numerical change to any existing op): the
+`cavityProximalContact` worker job (kernel-workers; seam-before → adapt →
+seam-after, coarse progress + cancellation, byte-identical to direct kernel
+calls) and the `runCavityProximalContactStage` cad-pipeline stage (ONE
+journaled op `cavityProximalContact.adapt`; FDI neighbours pair to patch faces
+geometrically; per-box residuals + seam before/after + clamp warning
+journaled; `errorBoundMm` carried).
+
+## [0.18.0] — Phase 5 Task 4: occlusal patch + G1 boundary blend — `cavity/occlusalPatch.ts` (`buildOcclusalPatch`) + `cavity/seamDihedral.ts` (`measureSeamDihedral`)
+
+**No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned
+fixture hash is byte-identical to `[0.17.0]`.** Brand-new ops only; no existing
+op's algorithm or output changed. In `test/golden/crown-acceptance.test.ts`
+(byte-pinned stage hashes, not a `test-fixtures/` file), all FIVE geometry
+stage pins are verified byte-identical to 0.17.0; only the `crown-standin-qc`
+pin changed, MECHANICALLY and metadata-only — the `QcReport` embeds
+`kernelVersion` (cad-pipeline/gates/report.ts), so `hashQcReport` tracks every
+version bump even with every measured value and geometry hash unchanged (the
+same mechanical churn documented at 0.16.0/0.17.0; the unchanged geometry pins
+are the proof the qc diff is the version string alone, not numerical drift).
+
+Adds `packages/kernel/src/cavity/occlusalPatch.ts` + `cavity/seamDihedral.ts`:
+
+- **`buildOcclusalPatch(mesh, cavityOutline, insertionAxis, options?)`** — the
+  inlay/onlay OUTER surface: an occlusal anatomy patch over the cavity opening
+  whose boundary loop is EXACTLY the dedup'd cavity outline (the same bit-exact
+  ring the Task-3 fit surface skirts to, so Task 6 can stitch them into the
+  shell), G1-blended into the surrounding intact tooth along the OCCLUSAL SEAM
+  segments. **The seam/free partition** is resolved geometrically and matches
+  the fixture's closed-form labels: for each outline edge the SURROUNDING
+  (non-cavity, from `classifyCavityRegions`) tooth triangle's outward normal is
+  projected on the axis — `≥ cos(SEAM_SURROUNDING_MAX_ANGLE_DEG=60°)` ⇒ an
+  occlusal SEAM (the cusp inclines, ~0.9 on the fixture); otherwise a proximal
+  FREE break-through edge (the cut faces, ~0). **The blend** is a per-station
+  cubic-Hermite buccolingual cross-sweep: the two occlusal margin runs give
+  paired buccal/lingual station points, and each cross-section is a cubic
+  Hermite along the axis whose endpoint positions are the exact outline points
+  and whose endpoint TANGENTS equal the surrounding tooth surface tangent
+  (recovered from the surrounding facet normal) — so the patch is G1 with the
+  tooth AT the seam analytically. The interior dips into a mesiodistally-running
+  central groove (a MODEST PROCEDURAL placeholder, like the tooth library, NOT
+  patient anatomy — provenance documented honestly). The proximal FREE
+  boundaries are the proximal face zipped (monotone arc-length) from the
+  occlusal marginal ridge down to the exact outline U — no G1 constraint (there
+  is nothing to be continuous with), never in the G1 measurement.
+- **`measureSeamDihedral(patchMesh, toothMesh, seamEdges, options?)`** — the
+  blend-INDEPENDENT G1 measurable: for each seam edge, the angle between the
+  patch boundary triangle's outward normal and the surrounding tooth triangle's
+  outward normal across that edge; returns max + mean + per-segment breakdown.
+  Validated on CLOSED-FORM inputs (a flat patch meeting a plane → 0° exactly;
+  two flat strips at a known wedge β → β exactly; a flat disk cap meeting a
+  UV-sphere zone → the colatitude, converging as the mesh refines) BEFORE it
+  judges any blend, and FALSIFIABLE (a large angle reads large; the fixture flat
+  lid reads ~24.8°). Consumed by cad-pipeline's `seamDihedralGate` (< 5° phase
+  acceptance; seam ONLY — free segments never dilute the value; an empty seam
+  set FAILS, never a silent pass).
+
+`@errorBound`: SEAM G1 is EXACT in the continuous limit (the Hermite endpoint
+tangent equals the sampled surrounding tooth tangent); the only residual in the
+MEASURED seam dihedral is discretization O(‖ζ″‖·Δt) with Δt = 1/`crossSegments`
+(computed a-priori as `seamDihedralBoundDeg` and measured — ~0.46° on the
+default fixture at `crossSegments = 48`, driven → 0 by refinement). A curvature
+term enters only for a doubly-curved surrounding surface (0 on the fixture's
+ruled cusp inclines). The proximal free boundary adds no seam-fit error and its
+rim vertices ARE the outline points (bit-exact).
+
+Pure Float64, deterministic, no manifold-3d boundary. Same "brand-new op, minor
+bump, existing goldens byte-identical" precedent as 0.9.0–0.17.0's pure-Float64
+ops: **no `kernel-ops.json` pin added** — regression-pinned by their own analytic
+closed-form / determinism / committed-sha256 tests in
+`cavity/occlusalPatch.test.ts` (partition matches the closed-form labels, patch
+boundary == outline bit-exact, MEASURED seam dihedral < 5° on the MOD fixture +
+onlay variant, the FALSIFIABLE flat-lid failure, committed result-hash) +
+`cavity/seamDihedral.test.ts` (the closed-form measurement validation). A worker
+job (`kernel-workers/jobs/cavityOcclusalPatch.ts`, coarse progress + cancel)
+mirrors the cavity inner-surface job.
+
+## [0.17.0] — Phase 5 Task 3: inlay/onlay inner (fit) surface — `cavity/innerSurface.ts` (`buildCavityInnerSurface`)
+
+**No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned
+fixture hash is byte-identical to `[0.16.0]`.** Brand-new op only; no existing
+op's algorithm or output changed. In `test/golden/crown-acceptance.test.ts`
+(byte-pinned stage hashes, not a `test-fixtures/` file), all FIVE geometry
+stage pins are verified byte-identical to 0.16.0; only the `crown-standin-qc`
+pin changed, MECHANICALLY and metadata-only — the `QcReport` embeds
+`kernelVersion` (cad-pipeline/gates/report.ts), so `hashQcReport` tracks every
+version bump even with every measured value and geometry hash unchanged (the
+same mechanical churn documented at 0.16.0; the unchanged geometry pins are the
+proof the qc diff is the version string alone, not numerical drift).
+
+Adds `packages/kernel/src/cavity/innerSurface.ts`:
+
+- **`buildCavityInnerSurface(mesh, params, hooks?)`** — the inlay/onlay inner
+  (fit) surface: the two-zone cement-gap offset OFF THE CAVITY SURFACE
+  (`marginalGapMm` near the outline ≤ `spacerStartMm`, `cementGapMm` above, C1
+  smoothstep blend) + a **solid undercut blockout** (draft-close along the
+  insertion axis, so re-scanning the result finds ZERO undercut by
+  construction) + a **skirt** stitching the fit-surface boundary EXACTLY onto
+  the cavity-outline polyline (the ≤10 µm margin-fit acceptance currency). The
+  fit surface is the level set `F(x) = signedDistance(x) − gap(h(x)) = 0`, `gap`
+  mm OUTSIDE the closed tooth-with-cavity solid on the void side — the SAME
+  operation as the crown intaglio (`buildInnerSurface`), restricted to the
+  cavity ROI.
+- **Heavy reuse of the P4 crown machinery** (imported, not re-implemented):
+  `twoZoneGapField` + the FOOTPOINT height field `distanceToClosedPolyline`
+  (offset/innerSurfaceOffset.ts) and the axis-frame rotation + footprint mask +
+  `skirtToMargin` zipper + `flipOutwardIfNeeded` (offset/innerSurfaceSolid.ts,
+  whose shared helpers are now `export`ed for this reuse — a pure `export`
+  addition, so every crown output stays byte-identical). The draft-close
+  running-minimum direction is VERIFIED identical to the crown's (both withdraw
+  along +Z), not assumed — pinned falsifiably (see below).
+- **The ONE genuine difference from the crown, extended not forked: the CROP.**
+  The crown crops with one horizontal plane just beyond a roughly-planar margin;
+  a true MOD cavity outline is highly non-planar and BREAKS THROUGH the proximal
+  faces (opening in +Z AND ±X), which a single plane cannot separate. Instead
+  this op crops by the SAME footpoint height field the gap uses — a cell whose
+  footpoint is within `SKIRT_BAND = maxGap + 3·pitch` of the outline is set to
+  the `+Inf` no-data sentinel — cutting a thin, outline-shape-agnostic band
+  around the entire 3-D outline at once and leaving a clean single-loop patch
+  the skirt spans to the exact outline. Documented in the module doc + the
+  reviewer notes.
+
+`@errorBound`: offset MAGNITUDE bound inherited verbatim from the crown op —
+flat marginal/cement zones `pitchMm/2 + eps_f32`, blend zone
+`(1+Lgap)/(1−Lgap)·pitchMm/2 + eps_f32` (`Lgap = 1.5·(cementGap−marginalGap)/
+blendWidth`); the footpoint height-field evaluation eliminates the
+grid-vs-footpoint term; the blockout adds a pitch-scaled draft-fill POSITION
+error; the skirt adds no margin-fit approximation (its rim vertices ARE the
+outline points). Margin-fit + self-consistency residuals are MEASURED and
+reported by the tests/gate.
+
+Pure Float64, deterministic, no manifold-3d boundary. Same "brand-new op,
+minor bump, existing goldens byte-identical" precedent as 0.9.0–0.16.0's
+pure-Float64 ops: **no `kernel-ops.json` pin added** — the op is
+regression-pinned by its own analytic tests in
+`cavity/innerSurface.analytic.test.ts`: measured offset accuracy in the cement
+and marginal zones within the documented bound, **margin fit ≤ 10 µm on the
+cavity outline** (default + onlay variant), a committed sha256 result-hash
+(determinism), and the FALSIFIABLE self-consistency pair — **whole-mesh ZERO
+undercut on the drafted fixture AND the blockout demonstrably filling the
+negative-taper variant's undercut** (whose un-blocked offset scans nonzero,
+proving the blockout does real work). A worker job
+(`kernel-workers/jobs/cavityInnerSurface.ts`, progress + cancel) mirrors the
+crown inner-surface job.
+
+## [0.16.0] — Phase 5 Task 2: cavity region analysis — the `cavity/` module (`classifyCavityRegions`, `scanCavityUndercut`)
+
+**No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned
+fixture hash is byte-identical to `[0.15.0]`.** Brand-new ops only; no existing
+op's algorithm or output changed. In `test/golden/crown-acceptance.test.ts`
+(byte-pinned stage hashes, not a `test-fixtures/` file), all FIVE geometry
+stage pins are verified byte-identical to 0.15.0; only the `crown-standin-qc`
+pin changed, MECHANICALLY and metadata-only — the `QcReport` embeds
+`kernelVersion` (cad-pipeline/gates/report.ts), so `hashQcReport` tracks every
+version bump even with every measured value and geometry hash unchanged. The
+unchanged geometry pins are the proof that qc diff is the version string
+alone, not numerical drift.
+
+Adds `packages/kernel/src/cavity/regions.ts`:
+
+- **`classifyCavityRegions(mesh, cavityOutline, insertionAxisUnit, options?)`**
+  — classifies the cavity surface ENCLOSED by the cavity outline (the margin
+  currency: a dense, closed, on-mesh ring, run through the reused
+  `marginLoopPolyline` for dedup/closure) into **floor / axial walls /
+  proximal-box walls** relative to the insertion axis. Method (that module's
+  doc has the full derivation): outline points snapped to mesh vertices
+  (bit-exact key lookup, nearest-vertex fallback within `MESH_WELD_EPSILON_MM`);
+  the resulting closed EDGE ring separates the closed 2-manifold into exactly
+  two components (barrier flood fill); the CAVITY is the side whose
+  area-weighted outward-normal sum (reused `regionAreaWeightedNormalSum`)
+  opens along the axis. Floor = `normal·axis ≥ cos(floorMaxAngleDeg)`
+  (default 45° — a documented ALGORITHM parameter, echoed in the result for
+  journaling); proximal boxes = floor components stepping down ≥
+  `floorStepMinMm` (default 0.5 mm) from the reference (highest) floor level
+  with a well-defined axis-perpendicular proximal direction; box walls = the
+  wall half-space at/beyond each box's pulpal step along that direction.
+  Every region is returned in the `AxisRegion` currency (triangle-index
+  subsets, sorted — Phase 5 Task 5 consumes the box regions directly).
+- **`scanCavityUndercut(mesh, bvh, cavityRegion, axisUnit, options?)`** — the
+  P3 `undercutScanIndices` primitive scoped to the cavity region (a cavity's
+  undercut = its wall subset facing-away/occluded along the axis), plus the
+  sorted mesh-triangle-id list of undercut triangles.
+
+Pure Float64, deterministic, no manifold-3d boundary. Same "brand-new op,
+minor bump, existing goldens byte-identical" precedent as 0.9.0–0.15.0's
+pure-Float64 ops: **no `kernel-ops.json` pin added** — the op is
+regression-pinned by its own closed-form analytic tests (per-region triangle
+counts + zero misclassified triangles against the MOD-cavity fixture's
+constructed answer, across property-varied parameters) and a committed
+sha256 result-hash test in `cavity/regions.test.ts`. The undercut scan is
+pinned BOTH ways (falsifiable zero: exactly 0 undercut triangles on the
+drafted fixture AND exactly the 20m drafted-wall triangles detected on the
+negative-taper variant). No worker job: measured sub-millisecond on the
+fixture (see `.superpowers/sdd/p5-task-2-report.md`) — far under the >~10 ms
+worker threshold; re-measure when a pipeline stage runs it on a large real
+scan.
+
 ## [0.15.0] — Phase 4 Task 12b: morph→shell coupling robustness — `shell/healOuterAnatomy.ts` (`healOuterAnatomy`) + `shell/shell.ts` `constructShell` robust trim
 
 **No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned

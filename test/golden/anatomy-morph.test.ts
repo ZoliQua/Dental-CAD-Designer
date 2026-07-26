@@ -102,6 +102,7 @@ const PLACED = handle('placed-11', cylinderTooth(R, H, 11, 24));
 function syntheticContext(): PipelineContext {
   return {
     restorationId: 'golden-morph',
+    restorationType: 'crown',
     materialProfile: {
       id: 'standard-zirconia', version: '1.1.0',
       restorationParams: {
@@ -110,6 +111,7 @@ function syntheticContext(): PipelineContext {
       },
       connectorAreaMm2: { posteriorMm2: 9, anteriorMm2: 7 },
       undercutBlockoutThresholdMm: 0, occlusalMinWallThicknessMm: 0.5, maxChordDeviationMm: 0.005,
+      inlayMinThicknessMm: 0.5, onlayMinThicknessMm: 0.5, cuspCoverageMinThicknessMm: 0.7, marginExclusionMm: 0.2,
     },
     insertionAxis: [0, 0, 1],
     targetMesh: handle('die', cylinderTooth(R, H - 1, 6, 16)),
@@ -251,9 +253,11 @@ describe.skipIf(!RUN_REAL)('anatomy morph — REAL arch-case-01 tooth 11 [RUN_AN
       },
       connectorAreaMm2: { posteriorMm2: 9, anteriorMm2: 7 },
       undercutBlockoutThresholdMm: 0, occlusalMinWallThicknessMm: 0.5, maxChordDeviationMm: 0.005,
+      inlayMinThicknessMm: 0.5, onlayMinThicknessMm: 0.5, cuspCoverageMinThicknessMm: 0.7, marginExclusionMm: 0.2,
     };
     const placeCtx: PipelineContext = {
       restorationId: 'arch-case-01-11',
+      restorationType: 'crown',
       materialProfile: profile,
       insertionAxis,
       targetMesh: handle('upper', upper),

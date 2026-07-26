@@ -19,7 +19,13 @@
 // content-portable and reproducible server-side.
 import { createHash } from 'node:crypto';
 import type { IndexedMesh } from '@dqcad/kernel';
-import { runShellStage, type PipelineContext, type ShellStageOptions } from '@dqcad/cad-pipeline';
+import {
+  runCavityShellStage,
+  runShellStage,
+  type CavityShellStageOptions,
+  type PipelineContext,
+  type ShellStageOptions,
+} from '@dqcad/cad-pipeline';
 import type { FdiTooth } from '@dqcad/shared-types';
 
 /**
@@ -87,6 +93,40 @@ export async function replayShellStage(
   if (!result.mesh || result.meshContentHash === null) {
     // Unreachable for the shell stage (it always produces a mesh) — defensive.
     throw new Error('replayShellStage: shell stage produced no mesh/hash');
+  }
+  return {
+    mesh: result.mesh,
+    meshContentHash: result.meshContentHash,
+    inputHashes: result.inputHashes,
+  };
+}
+
+/**
+ * Phase 5 Task 9: the CAVITY (inlay/onlay) analogue of `replayShellStage` — re-
+ * runs the inlay SHELL stage (`runCavityShellStage`, the fit↔patch weld that
+ * produces the final watertight inlay/onlay solid) in the server runtime and
+ * returns its output mesh + canonical content hash. The caller supplies the SAME
+ * cavity `PipelineContext` (restoration type inlay/onlay — `runCavityShellStage`
+ * asserts it) and the SAME fit/patch handles the original design used; a
+ * deterministic `constructInlayShell` (at a fixed manifold-3d version) then
+ * reproduces the recorded `stages.finalMesh` hash bit-for-bit.
+ *
+ * `options.hashMesh` is forced to this module's canonical `hashMesh` (identical
+ * to the crown replay) so the reproducibility claim rests on the SAME hash the
+ * client stored — a caller cannot supply a different hashing function and mask a
+ * real divergence.
+ *
+ * @throws {RestorationTypeMismatchError} if `context` is not an inlay/onlay case.
+ */
+export async function replayCavityShellStage(
+  context: PipelineContext,
+  tooth: FdiTooth,
+  options: Omit<CavityShellStageOptions, 'hashMesh'>,
+): Promise<ReplayShellStageResult> {
+  const result = await runCavityShellStage(context, tooth, { ...options, hashMesh });
+  if (!result.mesh || result.meshContentHash === null) {
+    // Unreachable for the shell stage (it always produces a mesh) — defensive.
+    throw new Error('replayCavityShellStage: cavity shell stage produced no mesh/hash');
   }
   return {
     mesh: result.mesh,

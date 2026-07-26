@@ -85,6 +85,7 @@ const PROFILE: PipelineMaterialProfile = {
   },
   connectorAreaMm2: { posteriorMm2: 9, anteriorMm2: 7 },
   undercutBlockoutThresholdMm: 0, occlusalMinWallThicknessMm: 0.5, maxChordDeviationMm: 0.005,
+  inlayMinThicknessMm: 0.5, onlayMinThicknessMm: 0.5, cuspCoverageMinThicknessMm: 0.7, marginExclusionMm: 0.2,
 };
 
 const TOOTH = 11 as FdiTooth;
@@ -97,6 +98,7 @@ const MORPH_OPTIONS = { contactInfluenceRadiusMm: 0.8, contactFacingRadiusMm: 1.
 function makeContext(overrides?: Partial<PipelineContext>): PipelineContext {
   return {
     restorationId: 'r-morph',
+    restorationType: 'crown',
     materialProfile: PROFILE,
     insertionAxis: [0, 0, 1],
     targetMesh: handle('die', cylinderTooth(R, H - 1, 6, 16)),

@@ -106,6 +106,10 @@ const PROFILE: PipelineMaterialProfile = {
   undercutBlockoutThresholdMm: 0,
   occlusalMinWallThicknessMm: 0.5,
   maxChordDeviationMm: 0.005,
+  inlayMinThicknessMm: 0.5,
+  onlayMinThicknessMm: 0.5,
+  cuspCoverageMinThicknessMm: 0.7,
+  marginExclusionMm: 0.2,
 };
 
 let INNER: IndexedMesh;
@@ -132,6 +136,7 @@ async function setup(): Promise<void> {
 function makeContext(): PipelineContext {
   return {
     restorationId: 'r-sculpt',
+    restorationType: 'crown',
     materialProfile: PROFILE,
     insertionAxis: AXIS,
     targetMesh: handle('die', buildFrustum(MARGIN_R, TOP_R, MARGIN_Z, TOP_Z, 96, 1, true, true)),

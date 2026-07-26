@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./cavity-fixtures": "./src/cavity/cavity.test-fixtures.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

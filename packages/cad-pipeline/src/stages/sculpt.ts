@@ -43,6 +43,7 @@ import {
   type SculptStroke,
 } from '@dqcad/kernel';
 import type { PipelineContext, PipelineMeshHandle } from '../pipeline/context.ts';
+import { assertCrownContext } from '../pipeline/context.ts';
 import type { RestorationStageResult } from '../pipeline/stageResult.ts';
 import { measureMarginFit } from '../gates/marginFit.ts';
 
@@ -110,6 +111,7 @@ function marginFitToShellMm(shell: IndexedMesh, margin: readonly [number, number
  * @throws propagates the kernel's `SculptStrokeParamError` / `SculptNotWatertightError`.
  */
 export function runSculptStage(context: PipelineContext, tooth: FdiTooth, options: SculptStageOptions): RestorationStageResult {
+  assertCrownContext(context); // crown-only stage — Phase 5 Task 1 guard rail
   const marginLoopInput = context.marginLoops[tooth];
   if (!marginLoopInput) throw new MissingMarginLoopError(tooth);
   if (options.strokes.length === 0) throw new EmptySculptGestureError();

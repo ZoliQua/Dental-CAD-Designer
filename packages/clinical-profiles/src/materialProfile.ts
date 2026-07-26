@@ -99,6 +99,66 @@ export interface MaterialProfile {
    * future export call site (CLAUDE.md invariant 7).
    */
   maxChordDeviationMm: number;
+  /**
+   * Phase 5 Task 1: minimum material thickness (mm) for an INLAY at the
+   * occlusal isthmus / pulpal floor — the thinnest cross-section the inlay
+   * thickness gate (Phase 5 Task 6) allows before BLOCKING export.
+   *
+   * Source (e.max / lithium disilicate): Ivoclar IPS e.max IFU — a minimum
+   * of 1.0 mm at the isthmus/occlusal for inlay/onlay restorations.
+   * Source (zirconia): monolithic-zirconia norm of 0.5 mm minimum (the same
+   * value zirconia uses for `restorationParams.minWallThicknessMm`, its
+   * single monolithic minimum — PLAN.md §3 "Monolithic; framework 0.5"). Not
+   * derived from `minWallThicknessMm` (an inlay has no axial crown wall — the
+   * relevant minimum is the isthmus/floor), so every profile states it
+   * explicitly with no silent fallback.
+   */
+  inlayMinThicknessMm: number;
+  /**
+   * Phase 5 Task 1: minimum material thickness (mm) for an ONLAY at the
+   * isthmus / pulpal floor (the non-cusp-coverage regions) — the onlay
+   * counterpart of `inlayMinThicknessMm`, read by the thickness gate when the
+   * restoration type is `'onlay'` (Phase 5 Task 7).
+   *
+   * Source (e.max): Ivoclar IPS e.max IFU — 1.0 mm minimum at the
+   * isthmus/occlusal (same isthmus minimum as the inlay case; the ADDED
+   * requirement an onlay carries is `cuspCoverageMinThicknessMm` over the
+   * covered cusps). Source (zirconia): 0.5 mm monolithic-zirconia norm.
+   */
+  onlayMinThicknessMm: number;
+  /**
+   * Phase 5 Task 1: minimum material thickness (mm) over a COVERED CUSP of an
+   * onlay — the reduced-cusp occlusal coverage must be at least this thick
+   * (Phase 5 Task 7's cusp-coverage thickness rule, a stricter minimum than
+   * the isthmus `onlayMinThicknessMm` because a covered cusp bears full
+   * occlusal load).
+   *
+   * Source (e.max): Ivoclar IPS e.max IFU partial-coverage guidance — 1.5 mm
+   * minimum over occlusal cusp coverage. Source (zirconia): 0.7 mm documented
+   * monolithic-zirconia partial-coverage norm.
+   */
+  cuspCoverageMinThicknessMm: number;
+  /**
+   * Phase 5 Task 1 (Phase 4 carry-in): the marginal feather-band width (mm)
+   * the minimum-wall-thickness gate EXCLUDES from its measurement — the ring
+   * of near-margin surface where a restoration legitimately thins toward the
+   * finish line for the marginal seal (wall → 0 at the very margin, by
+   * design, not a defect). Samples within this distance of the confirmed
+   * margin loop are dropped before the gate takes its minimum, so the gate
+   * measures the restoration BODY, not the seal sliver.
+   *
+   * Source: not a clinical-material IFU value but a QC-measurement parameter,
+   * moved here (0.2 mm) from a per-call test constant per docs/demos/phase-4.md's
+   * open item ("wire `marginExclusionMm` into the live `runQc` call, sourced
+   * from the material profile") and the Phase 4 Task 12b feather-band
+   * rationale (the min-wall gate measures the crown/inlay body; the marginal
+   * band feathering to the finish line is excluded, never a weakened
+   * threshold). Carried on the profile so the value is versioned/checksummed
+   * with every other parameter rather than hardcoded at a call site
+   * (CLAUDE.md invariant 7). Consumed by the live `runQc` path in Phase 5
+   * Task 8.
+   */
+  marginExclusionMm: number;
   /** SHA-256 hex of `canonicalStringify` over every OTHER field of this
    * object — see this module's top doc. */
   checksum: string;
@@ -132,9 +192,15 @@ function requireFiniteNumber(value: unknown, fieldPath: string): number {
   return value;
 }
 
-function requireRange(value: number, fieldPath: string, min: number, max: number): number {
+function requireRange(
+  value: number,
+  fieldPath: string,
+  min: number,
+  max: number,
+  source = 'PLAN.md §3',
+): number {
   if (value < min || value > max) {
-    fail(`${fieldPath} must be within [${min}, ${max}] mm (PLAN.md §3), got ${value}`);
+    fail(`${fieldPath} must be within [${min}, ${max}] mm (${source}), got ${value}`);
   }
   return value;
 }
@@ -279,6 +345,47 @@ export function validateMaterialProfileShape(raw: unknown): MaterialProfile {
     0.02,
   );
 
+  // Phase 5 Task 1: inlay/onlay thickness minimums (IFU / documented norms —
+  // see each field's TSDoc on `MaterialProfile`). Floored at 0.3 mm (PLAN.md
+  // §3's lowest stated minimum across every material row, "Min wall thickness
+  // — metal: 0.3 mm") and ceilinged at 5 mm (matching
+  // restorationParams.minWallThicknessMm's own sanity ceiling) — a generous
+  // corruption guard, not an invented clinical limit.
+  const inlayMinThicknessMm = requireRange(
+    requireFiniteNumber(root['inlayMinThicknessMm'], 'profile.inlayMinThicknessMm'),
+    'profile.inlayMinThicknessMm',
+    0.3,
+    5,
+    'e.max IFU 1.0 / zirconia 0.5 norm',
+  );
+  const onlayMinThicknessMm = requireRange(
+    requireFiniteNumber(root['onlayMinThicknessMm'], 'profile.onlayMinThicknessMm'),
+    'profile.onlayMinThicknessMm',
+    0.3,
+    5,
+    'e.max IFU 1.0 / zirconia 0.5 norm',
+  );
+  const cuspCoverageMinThicknessMm = requireRange(
+    requireFiniteNumber(root['cuspCoverageMinThicknessMm'], 'profile.cuspCoverageMinThicknessMm'),
+    'profile.cuspCoverageMinThicknessMm',
+    0.3,
+    5,
+    'e.max IFU 1.5 / zirconia 0.7 norm',
+  );
+
+  // Phase 5 Task 1 (Phase 4 carry-in): marginal feather-band exclusion width
+  // (mm). 0 (no exclusion) is valid; ceilinged at 1.0 mm — a feather band
+  // wider than that would exclude clinically-load-bearing body, not just the
+  // seal sliver. Not a PLAN §3 clinical value (a QC-measurement parameter —
+  // see the field's TSDoc), hence the docs/demos/phase-4.md source note.
+  const marginExclusionMm = requireRange(
+    requireFiniteNumber(root['marginExclusionMm'], 'profile.marginExclusionMm'),
+    'profile.marginExclusionMm',
+    0,
+    1.0,
+    'docs/demos/phase-4.md feather-band carry-in',
+  );
+
   const allowedKeys = new Set([
     'id',
     'version',
@@ -288,6 +395,10 @@ export function validateMaterialProfileShape(raw: unknown): MaterialProfile {
     'undercutBlockoutThresholdMm',
     'occlusalMinWallThicknessMm',
     'maxChordDeviationMm',
+    'inlayMinThicknessMm',
+    'onlayMinThicknessMm',
+    'cuspCoverageMinThicknessMm',
+    'marginExclusionMm',
     'checksum',
   ]);
   for (const key of Object.keys(root)) {
@@ -305,6 +416,10 @@ export function validateMaterialProfileShape(raw: unknown): MaterialProfile {
     undercutBlockoutThresholdMm,
     occlusalMinWallThicknessMm,
     maxChordDeviationMm,
+    inlayMinThicknessMm,
+    onlayMinThicknessMm,
+    cuspCoverageMinThicknessMm,
+    marginExclusionMm,
     checksum,
   };
 }

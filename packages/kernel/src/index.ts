@@ -155,8 +155,89 @@
  * coupled crown-acceptance stage-hash golden (test/golden/crown-acceptance.test.ts's
  * byte-pinned hashes) DID change — deliberately: the standin now feeds the
  * MORPHED outer through the heal into the shell (the genuine coupled lineage),
- * replacing the synthetic dome. See docs/CHANGELOG-kernel.md's `[0.15.0]` entry. */
-export const KERNEL_VERSION = '0.15.0';
+ * replacing the synthetic dome. See docs/CHANGELOG-kernel.md's `[0.15.0]` entry.
+ * 0.16.0 (Phase 5 Task 2): NEW op — the `cavity/` module
+ * (`classifyCavityRegions`: classify the cavity surface enclosed by the
+ * cavity outline into floor / axial-wall / proximal-box-wall regions
+ * relative to the insertion axis — outline-edge-ring barrier flood fill for
+ * the exact enclosed region, facing-threshold floor/wall split,
+ * floor-step + proximal-direction box identification, all in the
+ * `AxisRegion` currency; and `scanCavityUndercut`: the P3
+ * `undercutScanIndices` primitive scoped to the cavity region — a cavity's
+ * insertion-axis suitability). Pure Float64, no manifold-3d boundary; same
+ * "brand-new op, minor bump, existing goldens byte-identical" precedent as
+ * 0.9.0-0.15.0's pure-Float64 ops (regression-pinned by its own analytic
+ * closed-form/determinism/committed-hash tests in cavity/regions.test.ts;
+ * no `kernel-ops.json` pin added). See docs/CHANGELOG-kernel.md's
+ * `[0.16.0]` entry.
+ * 0.17.0 (Phase 5 Task 3): NEW op — `cavity/innerSurface.ts`'s
+ * `buildCavityInnerSurface`: the inlay/onlay inner (fit) surface — the
+ * two-zone cement-gap offset OFF THE CAVITY SURFACE + a solid undercut
+ * blockout (draft-close along the insertion axis) + a skirt stitching the
+ * fit-surface boundary onto the cavity-outline polyline (the ≤10 µm
+ * margin-fit acceptance currency). Reuses the crown intaglio machinery
+ * (`twoZoneGapField` / footpoint `distanceToClosedPolyline` / axis-frame
+ * rotation / `skirtToMargin` / `flipOutwardIfNeeded`, exported from
+ * offset/innerSurface{Offset,Solid}.ts for the reuse), restricted to the
+ * cavity ROI; the ONE genuine difference is the crop (an outline-distance
+ * band, not the crown's horizontal plane — a MOD outline is non-planar and
+ * breaks through the proximal faces). Pure Float64, no manifold-3d boundary;
+ * same "brand-new op, minor bump, existing goldens byte-identical" precedent
+ * as 0.9.0-0.16.0's pure-Float64 ops (regression-pinned by its own analytic
+ * closed-form / determinism / committed-sha256 tests in
+ * cavity/innerSurface.analytic.test.ts; no `kernel-ops.json` pin added). See
+ * docs/CHANGELOG-kernel.md's `[0.17.0]` entry.
+ * 0.18.0 (Phase 5 Task 4): NEW ops — `cavity/occlusalPatch.ts`'s
+ * `buildOcclusalPatch`: the inlay/onlay OUTER surface — an occlusal anatomy
+ * patch over the cavity opening, boundary bit-exact on the cavity outline
+ * (shared with the Task-3 fit surface for the Task-6 shell stitch),
+ * G1-blended into the surrounding tooth along the OCCLUSAL SEAM segments via
+ * a per-station cubic-Hermite buccolingual cross-sweep whose endpoint
+ * tangents match the surrounding tooth normal (analytic G1); the proximal
+ * BREAK-THROUGH segments are FREE boundaries (the proximal face zipped to the
+ * outline U), never in the G1 measurement. And `cavity/seamDihedral.ts`'s
+ * `measureSeamDihedral`: the blend-INDEPENDENT G1 measurable (max seam
+ * dihedral, the < 5° phase acceptance), validated on closed-form cases
+ * (flat→0 exact, wedge β→β exact, sphere→colatitude). Pure Float64, no
+ * manifold-3d boundary; same "brand-new op, minor bump, existing goldens
+ * byte-identical" precedent as 0.9.0-0.17.0's pure-Float64 ops
+ * (regression-pinned by their own analytic closed-form / determinism /
+ * committed-sha256 tests in cavity/occlusalPatch.test.ts +
+ * cavity/seamDihedral.test.ts; no `kernel-ops.json` pin added). See
+ * docs/CHANGELOG-kernel.md's `[0.18.0]` entry.
+ *
+ * 0.19.0 (Phase 5 Task 5): NEW op — `cavity/proximalContact.ts`'s
+ * `adaptProximalContacts`: the Class II proximal box contact adaptation —
+ * the occlusal patch's proximal faces adapt to the neighbouring teeth at the
+ * profile's target penetration via a per-box 1-D bump displacement of the
+ * proximal rim (deterministic fixed-iteration clamped Newton root-find
+ * against the neighbour's signed distance; outline ring + seam anchor band
+ * pinned BYTE-EXACTLY by construction — the pinned set is never written).
+ * Achieved contact is MEASURED (closest-point vs the neighbour mesh), never
+ * a prescription re-read; a clamped unreachable target reports an
+ * honestly-large residual + warning. `buildOcclusalPatch` additionally
+ * EXPOSES `proximalFaces` (a pure additive result field — the patch mesh
+ * bytes and its committed sha256 pin are unchanged). Pure Float64, no
+ * manifold-3d boundary; same "brand-new op, minor bump, existing goldens
+ * byte-identical" precedent as 0.9.0-0.18.0 (regression-pinned by its own
+ * closed-form / determinism / committed-sha256 tests in
+ * cavity/proximalContact.test.ts; no `kernel-ops.json` pin added). See
+ * docs/CHANGELOG-kernel.md's `[0.19.0]` entry.
+ * 0.21.0 (Phase 5 Task 7): NEW op — `cavity/cuspCoverage.ts`'s
+ * `identifyCuspRegions` (geometric cusp detection: local along-axis height
+ * maxima on the occlusal surface, each grown into a cusp region) and
+ * `extendOutlineOverCusp` (the ONLAY outline extension: the extended cavosurface
+ * ring is the single BOUNDARY LOOP of `cavityRegion ∪ coveredCuspRegion` — the
+ * coverage selection unions the covered cusp's occlusal surface into the
+ * restoration; the shared cavity/cusp edges vanish, splicing the cavity outline
+ * and the cusp crest into one ring). The extended outline feeds the WHOLE T3–T6
+ * cavity pipeline UNCHANGED (an onlay = an inlay on the extended outline). Pure
+ * Float64, no manifold-3d boundary; same "brand-new op, minor bump, existing
+ * goldens byte-identical" precedent as 0.9.0-0.20.0's pure-Float64 ops
+ * (regression-pinned by its own analytic closed-form / determinism /
+ * committed-sha256 tests in cavity/cuspCoverage.test.ts; no `kernel-ops.json`
+ * pin added). See docs/CHANGELOG-kernel.md's `[0.21.0]` entry. */
+export const KERNEL_VERSION = '0.21.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -635,6 +716,71 @@ export {
   type SuggestInsertionAxisResult,
   type SuggestInsertionAxisForRegionsResult,
 } from './axis/index.ts';
+
+export {
+  classifyCavityRegions,
+  scanCavityUndercut,
+  proximalDirectionUnit,
+  CAVITY_FLOOR_MAX_ANGLE_DEG,
+  CAVITY_FLOOR_STEP_MIN_MM,
+  CAVITY_ZONE_BOUNDARY_EPSILON_MM,
+  CAVITY_SIDE_MIN_MEAN_PROJECTION,
+  CavityOutlineNotOnMeshError,
+  CavityOutlineNotEdgeConnectedError,
+  CavityPartitionError,
+  AmbiguousCavitySideError,
+  type ClassifyCavityRegionsOptions,
+  type CavityBoxRegion,
+  type CavityRegionsResult,
+  type CavityUndercutScanResult,
+  buildCavityInnerSurface,
+  type CavityInnerSurfaceParams,
+  type CavityInnerSurfaceResult,
+  type CavityInnerSurfaceHooks,
+  buildOcclusalPatch,
+  SEAM_SURROUNDING_MAX_ANGLE_DEG,
+  DEFAULT_PATCH_CROSS_SEGMENTS,
+  OcclusalSeamPartitionError,
+  SeamChainLengthMismatchError,
+  SurroundingTriangleError,
+  type OcclusalPatchOptions,
+  type OcclusalPatchResult,
+  measureSeamDihedral,
+  SeamEdgeNotOnMeshError,
+  type SeamEdge,
+  type SeamDihedralSample,
+  type SeamDihedralMeasurement,
+  type MeasureSeamDihedralOptions,
+  type ProximalFaceBoundary,
+  adaptProximalContacts,
+  DEFAULT_PROXIMAL_MAX_TRAVEL_MM,
+  DEFAULT_SEAM_ANCHOR_BAND_MM,
+  PROXIMAL_CONTACT_REFINEMENT_ITERATIONS,
+  ProximalColumnNotOnPatchError,
+  ProximalColumnOverlapError,
+  ProximalNeighborMeshError,
+  ProximalBandTooWideError,
+  type ProximalAdaptationInput,
+  type ProximalContactOptions,
+  type ProximalBoxContactResult,
+  type ProximalContactResult,
+  constructInlayShell,
+  InlayShellOpenBoundaryError,
+  InlayShellRingMismatchError,
+  InlayShellNotWatertightError,
+  type ConstructInlayShellHooks,
+  type ConstructInlayShellResult,
+  identifyCuspRegions,
+  extendOutlineOverCusp,
+  CUSP_OCCLUSAL_MAX_ANGLE_DEG,
+  CUSP_MIN_PROMINENCE_MM,
+  NoCuspFoundError,
+  CoverageBoundaryError,
+  type CuspRegion,
+  type CuspRegionsResult,
+  type IdentifyCuspRegionsOptions,
+  type ExtendOutlineOverCuspResult,
+} from './cavity/index.ts';
 
 export {
   blockoutPreview,

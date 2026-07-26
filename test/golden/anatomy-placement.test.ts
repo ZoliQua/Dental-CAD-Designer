@@ -78,6 +78,7 @@ const SYNTHETIC_ASSET: PipelineToothAsset = {
 function syntheticContext(): PipelineContext {
   return {
     restorationId: 'golden-anatomy',
+    restorationType: 'crown',
     materialProfile: {
       id: 'standard-zirconia', version: '1.1.0',
       restorationParams: {
@@ -86,6 +87,7 @@ function syntheticContext(): PipelineContext {
       },
       connectorAreaMm2: { posteriorMm2: 9, anteriorMm2: 7 },
       undercutBlockoutThresholdMm: 0, occlusalMinWallThicknessMm: 0.5, maxChordDeviationMm: 0.005,
+      inlayMinThicknessMm: 0.5, onlayMinThicknessMm: 0.5, cuspCoverageMinThicknessMm: 0.7, marginExclusionMm: 0.2,
     },
     insertionAxis: [0, 0, 1],
     targetMesh: handle('die', box([-1, -1, 0], [1, 1, 3])),
@@ -194,6 +196,7 @@ describe.skipIf(!RUN_REAL)('anatomy placement — REAL arch-case-01 tooth 11 [RU
 
     const context: PipelineContext = {
       restorationId: 'arch-case-01-11',
+      restorationType: 'crown',
       materialProfile: {
         id: 'standard-zirconia', version: '1.1.0',
         restorationParams: {
@@ -202,6 +205,7 @@ describe.skipIf(!RUN_REAL)('anatomy placement — REAL arch-case-01 tooth 11 [RU
         },
         connectorAreaMm2: { posteriorMm2: 9, anteriorMm2: 7 },
         undercutBlockoutThresholdMm: 0, occlusalMinWallThicknessMm: 0.5, maxChordDeviationMm: 0.005,
+        inlayMinThicknessMm: 0.5, onlayMinThicknessMm: 0.5, cuspCoverageMinThicknessMm: 0.7, marginExclusionMm: 0.2,
       },
       insertionAxis,
       targetMesh: handle('upper', upper),
