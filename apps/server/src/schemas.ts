@@ -628,7 +628,13 @@ const connectorCrossSectionInputSchema = {
   },
 } as const;
 
-export const validateQcBodySchema = {
+// The CROWN branch (Phase 4 Task 11, unchanged shape). `restorationType` is
+// OPTIONAL here (`enum: ['crown', 'bridge']`) so the existing client/tests that
+// POST a crown body WITHOUT it keep validating; the route handler treats an
+// absent/`crown`/`bridge` type as the crown path. `additionalProperties: false`
+// still rejects the cavity-only fields — so a cavity body can NEVER validate
+// against this branch (it lacks `crownSolid` and carries `inlaySolid` etc.).
+export const crownValidateQcBodySchema = {
   type: 'object',
   required: [
     'crownSolid',
@@ -648,6 +654,7 @@ export const validateQcBodySchema = {
   ],
   additionalProperties: false,
   properties: {
+    restorationType: { type: 'string', enum: ['crown', 'bridge'] },
     crownSolid: meshDataInputSchema,
     innerSurfaceMesh: meshDataInputSchema,
     outerSurfaceMesh: meshDataInputSchema,
@@ -672,6 +679,124 @@ export const validateQcBodySchema = {
      * independently and 409s on any disagreement (invariant 6). */
     clientReport: qcReportSchema,
   },
+} as const;
+
+// ---------------------------------------------------------------------------
+// The INLAY/ONLAY branch (Phase 5 Task 9). Mirrors cad-pipeline's
+// `RunInlayQcInput`: the cavity mesh set (`inlaySolid`/`fitSurfaceMesh`/
+// `patchMesh`/`toothWithCavitySolid`), the cavity outline, the seam/coverage
+// geometry, the profile-resolved thickness minimums, and — riding WITH the
+// request — the cavity `marginExclusionMm` band (a geometry-scoped parameter:
+// the server MUST use the exact value the client used, and the bit-identical
+// dual-validation proof catches any divergence). `restorationType` is REQUIRED
+// and pinned to `['inlay', 'onlay']` — that is what disambiguates this branch
+// from the crown one and what the route handler dispatches on.
+// ---------------------------------------------------------------------------
+
+const seamEdgeInputSchema = {
+  type: 'object',
+  required: ['a', 'b', 'segment'],
+  additionalProperties: false,
+  properties: {
+    a: vec3Schema,
+    b: vec3Schema,
+    segment: { type: 'string' },
+  },
+} as const;
+
+const coverageDividerInputSchema = {
+  type: 'object',
+  required: ['pointMm', 'normalMm'],
+  additionalProperties: false,
+  properties: {
+    pointMm: vec3Schema,
+    normalMm: vec3Schema,
+  },
+} as const;
+
+const cavityCoverageInputSchema = {
+  type: 'object',
+  required: ['coverageDivider', 'cuspCoverageMinThicknessMm'],
+  additionalProperties: false,
+  properties: {
+    coverageDivider: coverageDividerInputSchema,
+    cuspCoverageMinThicknessMm: { type: 'number' },
+  },
+} as const;
+
+const cavityThicknessMinimumsInputSchema = {
+  type: 'object',
+  required: ['inlayMinThicknessMm', 'onlayMinThicknessMm'],
+  additionalProperties: false,
+  properties: {
+    inlayMinThicknessMm: { type: 'number' },
+    onlayMinThicknessMm: { type: 'number' },
+  },
+} as const;
+
+export const inlayValidateQcBodySchema = {
+  type: 'object',
+  required: [
+    'restorationType',
+    'inlaySolid',
+    'fitSurfaceMesh',
+    'patchMesh',
+    'toothWithCavitySolid',
+    'cavityOutlineResampledPoints',
+    'insertionAxis',
+    'thicknessMinimums',
+    'marginExclusionMm',
+    'seamEdges',
+    'cavityTriangleIndices',
+    'contacts',
+    'contactClampWarning',
+    'kernelVersion',
+    'profileVersion',
+    'journalHash',
+  ],
+  additionalProperties: false,
+  properties: {
+    restorationType: { type: 'string', enum: ['inlay', 'onlay'] },
+    inlaySolid: meshDataInputSchema,
+    fitSurfaceMesh: meshDataInputSchema,
+    patchMesh: meshDataInputSchema,
+    toothWithCavitySolid: meshDataInputSchema,
+    cavityOutlineResampledPoints: { type: 'array', items: vec3Schema },
+    insertionAxis: vec3Schema,
+    thicknessMinimums: cavityThicknessMinimumsInputSchema,
+    // The cavity marginal-transition band — rides WITH the request (see this
+    // section's doc); the server passes it straight into `runInlayQc`.
+    marginExclusionMm: { type: 'number' },
+    // ONLAY covered-cusp coverage — present only for an onlay carrying a
+    // coverage selection (drives the region-scoped cuspCoverage gate).
+    coverage: cavityCoverageInputSchema,
+    seamEdges: { type: 'array', items: seamEdgeInputSchema },
+    cavityTriangleIndices: { type: 'array', items: { type: 'integer', minimum: 0 } },
+    contacts: { type: 'array', items: contactResidualInputSchema },
+    contactClampWarning: { type: 'boolean' },
+    marginFitThresholdMm: { type: 'number' },
+    seamDihedralThresholdDeg: { type: 'number' },
+    seatingInterferenceVolumeToleranceMm3: { type: 'number' },
+    contactToleranceMm: { type: 'number' },
+    kernelVersion: { type: 'string' },
+    profileVersion: { type: 'string' },
+    journalHash: { type: 'string' },
+    acknowledgedGates: { type: 'array', items: { type: 'string' } },
+    /** OPTIONAL cross-check only — the server NEVER trusts this; it recomputes
+     * independently and 409s on any disagreement (invariant 6). */
+    clientReport: qcReportSchema,
+  },
+} as const;
+
+// The route's body schema is the discriminated union of the two branches. Fastify/
+// AJV `oneOf` requires EXACTLY ONE to validate: a crown body (has `crownSolid`,
+// lacks `inlaySolid`) matches only the crown branch; an inlay/onlay body (has
+// `restorationType: 'inlay'|'onlay'` + `inlaySolid`) matches only the inlay
+// branch; a malformed body matches neither → 400. `additionalProperties: false`
+// on both branches makes the two field sets mutually exclusive, so there is no
+// oneOf ambiguity.
+export const validateQcBodySchema = {
+  oneOf: [crownValidateQcBodySchema, inlayValidateQcBodySchema],
 } as const;
 
 export const validateQcResponseSchema = {

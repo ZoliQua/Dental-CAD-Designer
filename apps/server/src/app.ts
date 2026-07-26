@@ -6,13 +6,17 @@ import { PrismaClient } from '@prisma/client';
 import type { Case } from '@prisma/client';
 import Fastify from 'fastify';
 import type { FastifyInstance } from 'fastify';
-import { KERNEL_VERSION, type IndexedMesh, type Vec3 } from '@dqcad/kernel';
-import type { CaseDocument, QcGateResult, QcReport } from '@dqcad/shared-types';
+import { KERNEL_VERSION, type IndexedMesh, type SeamEdge, type Vec3 } from '@dqcad/kernel';
+import type { CaseDocument, QcGateResult, QcReport, RestorationType } from '@dqcad/shared-types';
 import {
   runCrownQc,
+  runInlayQc,
+  type CavityThicknessMinimums,
   type ConnectorCrossSection,
   type ContactResidualInput,
+  type CoverageDivider,
   type RunCrownQcInput,
+  type RunInlayQcInput,
 } from '@dqcad/cad-pipeline';
 import {
   loadToothAssetFromBytes,
@@ -112,7 +116,10 @@ interface MeshDataInput {
   indices: number[];
 }
 
-interface ValidateQcBody {
+interface CrownValidateQcBody {
+  /** Optional (absent for the legacy crown client); the route treats absent /
+   * 'crown' / 'bridge' as the crown path. */
+  restorationType?: 'crown' | 'bridge';
   crownSolid: MeshDataInput;
   innerSurfaceMesh: MeshDataInput;
   outerSurfaceMesh: MeshDataInput;
@@ -135,6 +142,56 @@ interface ValidateQcBody {
   acknowledgedGates?: string[];
   /** OPTIONAL cross-check — see the route + schemas.ts. Never trusted. */
   clientReport?: QcReport;
+}
+
+interface SeamEdgeInput {
+  a: number[];
+  b: number[];
+  segment: string;
+}
+
+// Phase 5 Task 9 — the inlay/onlay validate-qc body. Mirrors cad-pipeline's
+// `RunInlayQcInput` over JSON (see schemas.ts's inlay branch). `restorationType`
+// is REQUIRED and pinned to 'inlay'/'onlay' — it is the discriminator the route
+// dispatches on.
+interface InlayValidateQcBody {
+  restorationType: 'inlay' | 'onlay';
+  inlaySolid: MeshDataInput;
+  fitSurfaceMesh: MeshDataInput;
+  patchMesh: MeshDataInput;
+  toothWithCavitySolid: MeshDataInput;
+  cavityOutlineResampledPoints: number[][];
+  insertionAxis: number[];
+  thicknessMinimums: CavityThicknessMinimums;
+  /** The cavity marginal-transition band — rides WITH the request (a
+   * geometry-scoped parameter; the server uses the exact value the client used,
+   * and the bit-identical proof catches any divergence). */
+  marginExclusionMm: number;
+  coverage?: { coverageDivider: { pointMm: number[]; normalMm: number[] }; cuspCoverageMinThicknessMm: number };
+  seamEdges: SeamEdgeInput[];
+  cavityTriangleIndices: number[];
+  contacts: ContactResidualInput[];
+  contactClampWarning: boolean;
+  marginFitThresholdMm?: number;
+  seamDihedralThresholdDeg?: number;
+  seatingInterferenceVolumeToleranceMm3?: number;
+  contactToleranceMm?: number;
+  kernelVersion: string;
+  profileVersion: string;
+  journalHash: string;
+  acknowledgedGates?: string[];
+  /** OPTIONAL cross-check — see the route + schemas.ts. Never trusted. */
+  clientReport?: QcReport;
+}
+
+/** The route's discriminated body: crown OR cavity (schemas.ts's `oneOf`). */
+type ValidateQcBody = CrownValidateQcBody | InlayValidateQcBody;
+
+/** Narrows the union to the cavity branch. Absent `restorationType` (the legacy
+ * crown client) or 'crown'/'bridge' → the crown path. */
+function isInlayBody(body: ValidateQcBody): body is InlayValidateQcBody {
+  const t = (body as { restorationType?: RestorationType }).restorationType;
+  return t === 'inlay' || t === 'onlay';
 }
 
 interface UploadToothLibraryBody {
@@ -163,6 +220,19 @@ function toVec3(a: readonly number[]): Vec3 {
     throw new Error('expected a 3-component vector');
   }
   return [x, y, z];
+}
+
+/** Rebuilds the cavity outline / margin polyline (Float64 Vec3 tuples) from the
+ * JSON number arrays — bit-identical to the client's (JSON round-trips Float64
+ * exactly). */
+function toLoop(points: readonly number[][]): Vec3[] {
+  return points.map(toVec3);
+}
+
+/** Rebuilds the seam edge set (Task 4/5 `seamEdges`) — the G1-gate currency —
+ * from the JSON representation. */
+function toSeamEdges(edges: readonly SeamEdgeInput[]): SeamEdge[] {
+  return edges.map((e) => ({ a: toVec3(e.a), b: toVec3(e.b), segment: e.segment }));
 }
 
 /** Independent (never client-trusting) diff of the server-computed report
@@ -195,6 +265,77 @@ function diffQcReports(server: QcReport, client: QcReport): QcReportDifference[]
     for (const f of fields) scalar(`gates[${i}].${f}`, s[f], c[f]);
   }
   return diffs;
+}
+
+/** Rebuilds a `RunCrownQcInput` from the crown validate-qc body (Phase 4 Task
+ * 11). Pure JSON → kernel reconstruction; the server recomputes, never trusts. */
+function reconstructCrownQcInput(b: CrownValidateQcBody): RunCrownQcInput {
+  return {
+    crownSolid: toIndexedMesh(b.crownSolid),
+    innerSurfaceMesh: toIndexedMesh(b.innerSurfaceMesh),
+    outerSurfaceMesh: toIndexedMesh(b.outerSurfaceMesh),
+    dieSolid: toIndexedMesh(b.dieSolid),
+    marginResampledPoints: toLoop(b.marginResampledPoints),
+    insertionAxis: toVec3(b.insertionAxis),
+    minWallThicknessMm: b.minWallThicknessMm,
+    occlusalMinWallThicknessMm: b.occlusalMinWallThicknessMm,
+    connectorAreaTargetMm2: b.connectorAreaTargetMm2,
+    contacts: b.contacts,
+    contactClampWarning: b.contactClampWarning,
+    marginExclusionMm: b.marginExclusionMm,
+    marginFitThresholdMm: b.marginFitThresholdMm,
+    seatingInterferenceVolumeToleranceMm3: b.seatingInterferenceVolumeToleranceMm3,
+    contactToleranceMm: b.contactToleranceMm,
+    connectors: b.connectors,
+    kernelVersion: b.kernelVersion,
+    profileVersion: b.profileVersion,
+    journalHash: b.journalHash,
+    acknowledgedGates: b.acknowledgedGates,
+  };
+}
+
+/** Rebuilds a `RunInlayQcInput` from the inlay/onlay validate-qc body (Phase 5
+ * Task 9) — the restoration-type-aware context reconstruction. Every value comes
+ * from the request (the meshes, the cavity outline, the seam/coverage geometry,
+ * the profile-resolved thickness minimums, AND the geometry-scoped
+ * `marginExclusionMm` band that rides with the request); the server then runs
+ * `runInlayQc` INDEPENDENTLY. `cavityTriangleIndices` is rebuilt as a `Uint32Array`
+ * (the worker-payload currency), so the seam gate's excluded-triangle set is
+ * byte-for-byte what the client used. */
+function reconstructInlayQcInput(b: InlayValidateQcBody): RunInlayQcInput {
+  const coverage: RunInlayQcInput['coverage'] = b.coverage
+    ? {
+        coverageDivider: {
+          pointMm: toVec3(b.coverage.coverageDivider.pointMm),
+          normalMm: toVec3(b.coverage.coverageDivider.normalMm),
+        } satisfies CoverageDivider,
+        cuspCoverageMinThicknessMm: b.coverage.cuspCoverageMinThicknessMm,
+      }
+    : undefined;
+  return {
+    inlaySolid: toIndexedMesh(b.inlaySolid),
+    fitSurfaceMesh: toIndexedMesh(b.fitSurfaceMesh),
+    patchMesh: toIndexedMesh(b.patchMesh),
+    toothWithCavitySolid: toIndexedMesh(b.toothWithCavitySolid),
+    cavityOutlineResampledPoints: toLoop(b.cavityOutlineResampledPoints),
+    insertionAxis: toVec3(b.insertionAxis),
+    restorationType: b.restorationType,
+    thicknessMinimums: b.thicknessMinimums,
+    coverage,
+    marginExclusionMm: b.marginExclusionMm,
+    seamEdges: toSeamEdges(b.seamEdges),
+    cavityTriangleIndices: Uint32Array.from(b.cavityTriangleIndices),
+    contacts: b.contacts,
+    contactClampWarning: b.contactClampWarning,
+    marginFitThresholdMm: b.marginFitThresholdMm,
+    seamDihedralThresholdDeg: b.seamDihedralThresholdDeg,
+    seatingInterferenceVolumeToleranceMm3: b.seatingInterferenceVolumeToleranceMm3,
+    contactToleranceMm: b.contactToleranceMm,
+    kernelVersion: b.kernelVersion,
+    profileVersion: b.profileVersion,
+    journalHash: b.journalHash,
+    acknowledgedGates: b.acknowledgedGates,
+  };
 }
 
 export interface BuildAppOptions {
@@ -507,43 +648,32 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     },
   );
 
-  // Phase 4 Task 11: THE dual-validation route (CLAUDE.md invariant 6). Re-runs
-  // `runCrownQc` INDEPENDENTLY in the Node server from the crown mesh set + the
-  // exact QC context the client used, and returns the server-side `QcReport` —
-  // bit-identical to the client's (deterministic, DOM/Three-free gates). The
-  // server NEVER trusts a client-sent report: `clientReport`, if present, is a
-  // cross-check only — a disagreement is a 409 hard error with a per-field
-  // diagnostic bundle (the "client/server QC mismatch = hard error" convention).
+  // Phase 4 Task 11 / Phase 5 Task 9: THE dual-validation route (CLAUDE.md
+  // invariant 6). Re-runs the restoration-type-aware QC gate suite INDEPENDENTLY
+  // in the Node server from the mesh set + the exact QC context the client used,
+  // and returns the server-side `QcReport` — bit-identical to the client's
+  // (deterministic, DOM/Three-free gates). The body is a discriminated union
+  // (schemas.ts's `oneOf`): a crown body → `runCrownQc`; an inlay/onlay body
+  // (`restorationType: 'inlay'|'onlay'`) → `runInlayQc`. The server NEVER trusts
+  // a client-sent report: `clientReport`, if present, is a cross-check only — a
+  // disagreement is a 409 hard error with a per-field diagnostic bundle (the
+  // "client/server QC mismatch = hard error" convention).
+  //
+  // `bodyLimit` is raised to `meshMaxBytes` (the mesh-upload ceiling) because a
+  // cavity fit surface (marching-cubes at ~20 µm pitch) serializes to well past
+  // Fastify's 1 MiB default; the crown path fit comfortably under it but shares
+  // the same generous ceiling now.
   app.post<{ Params: { id: string }; Body: ValidateQcBody }>(
     '/api/restorations/:id/validate-qc',
-    { schema: { params: caseIdParamsSchema, body: validateQcBodySchema, response: validateQcResponseSchema } },
+    {
+      bodyLimit: meshMaxBytes,
+      schema: { params: caseIdParamsSchema, body: validateQcBodySchema, response: validateQcResponseSchema },
+    },
     async (request, reply) => {
       const b = request.body;
-      const input: RunCrownQcInput = {
-        crownSolid: toIndexedMesh(b.crownSolid),
-        innerSurfaceMesh: toIndexedMesh(b.innerSurfaceMesh),
-        outerSurfaceMesh: toIndexedMesh(b.outerSurfaceMesh),
-        dieSolid: toIndexedMesh(b.dieSolid),
-        marginResampledPoints: b.marginResampledPoints.map(toVec3),
-        insertionAxis: toVec3(b.insertionAxis),
-        minWallThicknessMm: b.minWallThicknessMm,
-        occlusalMinWallThicknessMm: b.occlusalMinWallThicknessMm,
-        connectorAreaTargetMm2: b.connectorAreaTargetMm2,
-        contacts: b.contacts,
-        contactClampWarning: b.contactClampWarning,
-        marginExclusionMm: b.marginExclusionMm,
-        marginFitThresholdMm: b.marginFitThresholdMm,
-        seatingInterferenceVolumeToleranceMm3: b.seatingInterferenceVolumeToleranceMm3,
-        contactToleranceMm: b.contactToleranceMm,
-        connectors: b.connectors,
-        kernelVersion: b.kernelVersion,
-        profileVersion: b.profileVersion,
-        journalHash: b.journalHash,
-        acknowledgedGates: b.acknowledgedGates,
-      };
 
       // Independent recompute — the source of truth (invariant 6).
-      const report = await runCrownQc(input);
+      const report = isInlayBody(b) ? await runInlayQc(reconstructInlayQcInput(b)) : await runCrownQc(reconstructCrownQcInput(b));
 
       if (b.clientReport) {
         const differences = diffQcReports(report, b.clientReport);
