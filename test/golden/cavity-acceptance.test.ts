@@ -58,7 +58,7 @@ const µm = (mm: number): string => `${(mm * 1000).toFixed(3)} µm`;
 // golden change (bump + changelog), never a silent regen (the WASM boolean is
 // manifoldVersion-guarded, the crown-acceptance precedent).
 // ---------------------------------------------------------------------------
-const EXPECTED_KERNEL_VERSION = '0.21.0';
+const EXPECTED_KERNEL_VERSION = '0.22.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 function installedManifoldVersion(): string {
   const pkg = JSON.parse(readFileSync(join(repoRoot, 'node_modules', 'manifold-3d', 'package.json'), 'utf8')) as { version: string };
@@ -77,7 +77,11 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   'cavity-inlay-occlusalPatch': '33b0f565b104599879d3092f7de416f0d991375d9d74d318a6f60efaf9f3bd52',
   'cavity-inlay-proximalContact': '09ee8088b75c0ecc918c412d9a197aa156ddebec6d842fe3ac567b05328db401',
   'cavity-inlay-shell': '1d81e21d9892acd607015724e5ed0476a614408a1fb032cd0473a9901af91861',
-  'cavity-inlay-qc': '45c32643d3863a102213762b28350f879d78f07b5cc29f80b8dfb3b0fe62e562',
+  // Advanced 0.21.0 → 0.22.0 (Phase 6 Task 2): MECHANICAL, metadata-only churn —
+  // the QcReport embeds kernelVersion, so hashQcReport tracks the version bump
+  // while every geometry pin above is BYTE-IDENTICAL to 0.21.0 (verified). The
+  // bridge op does not touch the cavity chain. See CHANGELOG-kernel.md [0.22.0].
+  'cavity-inlay-qc': 'aae5213d3b1ee27b348aa4237fd572ba3f5286c75fc137efa5567690f9dd8181',
   // --- onlay chain (incl. cuspCoverage.select) ---
   // NOTE: the cuspCoverage pin is BIT-IDENTICAL to the kernel op's committed
   // extended-outline golden (cuspCoverage.test.ts's sha at 0.21.0) — a strong
@@ -87,7 +91,9 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   'cavity-onlay-occlusalPatch': '579ee8361396e0cfcd72ba9d194278c1d353dbb6f9c59a3cb5a38302e30fb62c',
   'cavity-onlay-proximalContact': '4b0151794b4c4387b734820436a709adb43d7cdade36d407e20bea111c7d5fdf',
   'cavity-onlay-shell': 'cd9bc9e37841493a502ae367dc62fcc1a9b3a8e72d5471f6116e12c0c65595ce',
-  'cavity-onlay-qc': 'd37307b511f7f55cb6a7533b771e7587d587584047f4f5ded4db92be1317ad51',
+  // Advanced 0.21.0 → 0.22.0 (Phase 6 Task 2): MECHANICAL, metadata-only (as
+  // cavity-inlay-qc above — kernelVersion in the QcReport; geometry byte-identical).
+  'cavity-onlay-qc': '06019c696ed8a0d7a331881a3e3a25dd184bae7118d654cc876c3dca3853bb7c',
 };
 
 const INLAY_GATE_ORDER = ['watertight', 'manifold', 'selfIntersection', 'minWallThickness', 'marginFit', 'seamDihedral', 'seating', 'contact'];

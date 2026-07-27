@@ -80,3 +80,12 @@ export {
   EmptySculptGestureError,
   type SculptStageOptions,
 } from './sculpt.ts';
+
+export {
+  runBridgeAbutmentSurfacesStage,
+  NoAbutmentMarginsError,
+  MissingClinicalParamError as BridgeAbutmentSurfacesMissingClinicalParamError,
+  type BridgeAbutmentSurfacesStageOptions,
+  type BridgeAbutmentSurface,
+  type BridgeAbutmentSurfacesStageResult,
+} from './bridgeAbutmentSurfaces.ts';

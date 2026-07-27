@@ -59,6 +59,51 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.22.0] — Phase 6 Task 2: bridge shared insertion axis — `bridge/sharedAxis.ts` (`assessSharedAxis`, `suggestSharedAxis`)
+
+**No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned
+fixture hash is byte-identical to `[0.21.0]`.** A brand-new op only; no existing
+op's algorithm or output changed. In `test/golden/crown-acceptance.test.ts` and
+`test/golden/cavity-acceptance.test.ts` (byte-pinned stage hashes, not
+`test-fixtures/` files), all geometry stage pins are verified byte-identical to
+0.21.0; only the `crown-standin-qc` / `cavity-inlay-qc` / `cavity-onlay-qc` pins
+changed, MECHANICALLY and metadata-only — the `QcReport` embeds `kernelVersion`
+(cad-pipeline/gates/report.ts), so `hashQcReport` tracks every version bump even
+with every measured value and geometry hash unchanged (the same mechanical churn
+documented at 0.16.0-0.21.0; the unchanged geometry pins are the proof the qc
+diff is the version string alone, not numerical drift).
+
+Adds `packages/kernel/src/bridge/sharedAxis.ts` — the bridge SHARED insertion
+axis (a bridge seats as ONE rigid piece along ONE axis, undercut-acceptable
+across BOTH abutment preps):
+
+- **`assessSharedAxis(mesh, bvh, regions, directionUnit, options?)`** — the
+  FALSIFIABLE given-axis verdict: the union-of-regions undercut + a per-abutment
+  breakdown + a `sharedAxisAcceptable` boolean (`true` iff EVERY abutment has
+  zero undercut at that axis). Pure aggregation over the P3 machinery
+  (`undercutScanIndices` / `unionRegions` / `regionTriangleAreasMm2` — REUSED
+  verbatim, occlusion always queried against the FULL bvh). New over
+  `suggestInsertionAxisForRegions` (which only reports at the axis IT chose):
+  this assesses an ARBITRARY candidate axis, so the parallel bridge's analytic
+  `[0,0,1]` is verified EXACT-ZERO on both preps and a tilted bridge is shown to
+  have NO acceptable shared axis (a whole-hemisphere sweep + the suggested axis
+  both leave a residual on at least one abutment).
+- **`suggestSharedAxis(mesh, bvh, regions, options?)`** — the bridge axis
+  suggestion: `suggestInsertionAxisForRegions` (REUSED verbatim) + a uniform
+  `assessSharedAxis` readout at the suggested common axis.
+
+Per-abutment fit surfaces are built with the SAME P4 `buildInnerSurface` (a
+bridge abutment intaglio IS a crown intaglio) against the SHARED axis — no new
+kernel op there; the bridge-specific choice (the shared axis) lives in the stage
+(`cad-pipeline/stages/bridgeAbutmentSurfaces.ts`) + worker
+(`kernel-workers/jobs/bridgeAbutmentSurfaces.ts`). Pure Float64, no manifold-3d
+boundary, no new approximation; regression-pinned by its own analytic exact-zero
+/ tilt-residual / determinism tests (bridge/sharedAxis.test.ts) + the
+shared-vs-own-axis + self-consistency + margin-fit tests
+(bridge/abutmentInnerSurface.test.ts); no `kernel-ops.json` pin added — same
+"brand-new op, minor bump, existing goldens byte-identical" precedent as
+0.9.0-0.21.0's pure-Float64 ops.
+
 ## [0.21.0] — Phase 5 Task 7: onlay cusp coverage — `cavity/cuspCoverage.ts` (`identifyCuspRegions`, `extendOutlineOverCusp`)
 
 **No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned

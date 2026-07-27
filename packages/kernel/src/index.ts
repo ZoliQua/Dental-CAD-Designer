@@ -236,8 +236,22 @@
  * goldens byte-identical" precedent as 0.9.0-0.20.0's pure-Float64 ops
  * (regression-pinned by its own analytic closed-form / determinism /
  * committed-sha256 tests in cavity/cuspCoverage.test.ts; no `kernel-ops.json`
- * pin added). See docs/CHANGELOG-kernel.md's `[0.21.0]` entry. */
-export const KERNEL_VERSION = '0.21.0';
+ * pin added). See docs/CHANGELOG-kernel.md's `[0.21.0]` entry.
+ * 0.22.0 (Phase 6 Task 2): NEW op — `bridge/sharedAxis.ts`'s `assessSharedAxis`
+ * (the FALSIFIABLE given-axis union+per-abutment undercut verdict for a bridge's
+ * shared insertion axis) and `suggestSharedAxis` (the bridge axis suggestion =
+ * `suggestInsertionAxisForRegions` + a uniform assessment readout). Pure
+ * aggregation over the P3 `undercutScanIndices`/`unionRegions`/
+ * `regionTriangleAreasMm2`/`suggestInsertionAxisForRegions` machinery (REUSED
+ * verbatim — see sharedAxis.ts's reuse map); no manifold-3d boundary, no new
+ * approximation. Same "brand-new op, minor bump, existing goldens byte-identical"
+ * precedent as 0.9.0-0.21.0's pure-Float64 ops (regression-pinned by its own
+ * analytic exact-zero / tilt-residual / determinism tests in
+ * bridge/sharedAxis.test.ts; no `kernel-ops.json` pin added). The
+ * crown-acceptance QC pin advances MECHANICALLY (the version string is embedded
+ * in the QcReport JSON — metadata-only churn, all five geometry stage pins
+ * byte-identical). See docs/CHANGELOG-kernel.md's `[0.22.0]` entry. */
+export const KERNEL_VERSION = '0.22.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -716,6 +730,15 @@ export {
   type SuggestInsertionAxisResult,
   type SuggestInsertionAxisForRegionsResult,
 } from './axis/index.ts';
+
+export {
+  assessSharedAxis,
+  suggestSharedAxis,
+  type SharedAxisRegionReport,
+  type SharedAxisAssessment,
+  type AssessSharedAxisOptions,
+  type SharedAxisSuggestion,
+} from './bridge/index.ts';
 
 export {
   classifyCavityRegions,
