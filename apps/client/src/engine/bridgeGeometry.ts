@@ -27,12 +27,26 @@
 // FAILS that test until the asset is deliberately regenerated (npx tsx
 // scripts/generate-client-bridge-fixture.ts), reviewed, and committed.
 //
-// Test-fixture module (used only by the dom test, never by production UI); it
-// lives in engine/ so the ui test may import it under the layer rule.
+// PRODUCTION NOTE (corrected): this module is NOT test-only. In this
+// synthetic-fixture-driven phase the production `ui/BridgeDesignPanel.tsx` also
+// imports `buildBridgeFixture()` AS THE DISCLOSED DEMONSTRATION FIXTURE (the
+// panel renders an un-missable synthetic-data banner over every stage; there is
+// no real bridge-geometry capture yet — a tracked real-case pending). The
+// browser-lane dom test consumes the same asset. It lives in engine/ so both the
+// panel and the ui test may import it under the layer rule; DATA crosses the
+// package boundary (never kernel test CODE).
 import asset from './bridgeFixture.asset.json';
 import type { IndexedBuffers } from './crownGeometry';
 
 type Vec3 = readonly [number, number, number];
+
+/** The FDI teeth the demonstration fixture models (mesial abutment · pontic ·
+ * distal abutment). Lightweight (reads only the unit labels — no buffer
+ * allocation), so the panel can compare the selected case's teeth against the
+ * demo fixture and surface a mismatch WITHOUT building the ~280 KB geometry. */
+export const BRIDGE_FIXTURE_TEETH: readonly number[] = (asset as { units: { label: string }[] }).units.map((u) =>
+  Number(u.label),
+);
 
 export interface ClientBridgeUnit {
   label: string;

@@ -51,7 +51,7 @@ function marginLine(): MarginLine {
   return { anchors: [], closed: true, resampledPoints: RING };
 }
 
-function setupBridgeCase(): string {
+function setupBridgeCase(teeth: FdiTooth[] = [14, 15, 16] as FdiTooth[], pontics: FdiTooth[] = [15] as FdiTooth[]): string {
   // A dummy target arch mesh + node — the bridge controller requires a target
   // node id + confirmed abutment margins to start (the geometry currency comes
   // from the serialized fixture asset via the panel's buildBridgeFixture()).
@@ -66,9 +66,11 @@ function setupBridgeCase(): string {
     operations: [],
   });
   const node = caseStore.addSceneNode('bridge-arch', 'prepDie');
-  const restoration = createRestoration({ type: 'bridge', teeth: [14, 15, 16] as FdiTooth[], pontics: [15] as FdiTooth[], targetNodeId: node.id });
+  const restoration = createRestoration({ type: 'bridge', teeth, pontics, targetNodeId: node.id });
+  const ponticSet = new Set(pontics);
+  const marginLines = Object.fromEntries(teeth.filter((t) => !ponticSet.has(t)).map((t) => [t, marginLine()]));
   caseStore.updateRestoration(
-    { ...restoration, marginLines: { 14: marginLine(), 16: marginLine() } },
+    { ...restoration, marginLines },
     { id: 'op-margins', name: 'margin-edit', params: {}, inputHashes: [], outputHashes: [], kernelVersion: '0.0.0-test', timestamp: new Date().toISOString() },
   );
   return restoration.id;
@@ -99,13 +101,36 @@ describe('BridgeDesignPanel — browser-lane critical path (real WorkerPool, 3-u
     expect(Object.keys(fx.ponticReliefByStyle).sort()).toEqual(['hygienic', 'ovate', 'ridgeLap']);
   });
 
+  it('a real case whose teeth ≠ the fixture (24-25-26) starts WITH an explicit teeth-mismatch disclosure', async () => {
+    const user = userEvent.setup();
+    const id = setupBridgeCase([24, 25, 26] as FdiTooth[], [25] as FdiTooth[]);
+
+    render(<BridgeDesignPanel />);
+    await user.selectOptions(screen.getByTestId('bridge-restoration-select'), id);
+    await user.click(screen.getByTestId('bridge-start-button'));
+
+    // Start is ALLOWED (the phase is fixture-driven) but the mismatch is surfaced
+    // LOUDLY: the case (24-25-26) does not match the demo fixture (14-15-16).
+    expect(screen.getByTestId('bridge-synthetic-notice')).toBeTruthy();
+    const mismatch = screen.getByTestId('bridge-synthetic-mismatch');
+    expect(mismatch.textContent).toContain('24-25-26');
+    expect(mismatch.textContent).toContain('14-15-16');
+  }, 30_000);
+
   it('drives margins → abutments → pontic → connectors → framework → assembly → QC, then edits a connector to BLOCK + acknowledge', async () => {
     const user = userEvent.setup();
     const id = setupBridgeCase();
 
     render(<BridgeDesignPanel />);
+    // The synthetic-data disclosure is present BEFORE start (the picker view).
+    expect(screen.getByTestId('bridge-synthetic-start-note')).toBeTruthy();
     await user.selectOptions(screen.getByTestId('bridge-restoration-select'), id);
     await user.click(screen.getByTestId('bridge-start-button'));
+
+    // The UN-MISSABLE synthetic-data banner renders over the active workflow; the
+    // 14-15-16 case MATCHES the fixture, so no mismatch line.
+    expect(screen.getByTestId('bridge-synthetic-notice')).toBeTruthy();
+    expect(screen.queryByTestId('bridge-synthetic-mismatch')).toBeNull();
 
     // Margins already confirmed (14 & 16) + the shared-axis verdict renders.
     expect(screen.getByTestId('bridge-stage-margins').getAttribute('data-complete')).toBe('true');
@@ -169,6 +194,8 @@ describe('BridgeDesignPanel — browser-lane critical path (real WorkerPool, 3-u
     expect(screen.getByTestId('bridge-qc-gate-ponticRelief')).toBeTruthy();
     expect(screen.getByTestId('bridge-qc-passed')).toBeTruthy();
     expect(screen.getByTestId('bridge-qc-scope-note')).toBeTruthy();
+    // The synthetic-data disclosure is REPEATED in the QC results.
+    expect(screen.getByTestId('bridge-qc-synthetic-note')).toBeTruthy();
 
     // --- The connector editor drives a BLOCK + the stale-QC guard ---
     // Edit connector 14–15 to ~5 mm² (semi-axis 1.2) and re-commit.

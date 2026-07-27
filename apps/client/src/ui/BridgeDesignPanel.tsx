@@ -16,11 +16,26 @@
 //     pontic-relief rows; per-gate pass/fail/ACKNOWLEDGE; the T6-review
 //     per-unit-not-whole-solid scope note);
 // an HONEST failure banner, and the insertion-axis placeholder warning.
+//
+// ## SYNTHETIC-DATA DISCLOSURE (patient safety — Phase 6 is fixture-driven)
+//
+// There is NO real multi-abutment bridge-geometry capture in the client yet (a
+// tracked real-case pending). So `start()` runs the workflow on the fixed
+// synthetic demonstration fixture (`buildBridgeFixture()`, teeth 14-15-16) for
+// ANY selected bridge restoration. That would let fabricated readouts masquerade
+// as real per-case results — so this panel renders an UN-MISSABLE synthetic-data
+// banner over EVERY stage (and repeats it in the QC results), and when the
+// selected case's teeth ≠ the fixture's it surfaces the MISMATCH explicitly
+// ("your case: X · demo fixture: 14-15-16"). GUARD DECISION: we ALLOW start on a
+// mismatch (with the loud disclosure) rather than refuse — the entire Phase-6
+// bridge workflow is a synthetic demonstration and refusing would make the panel
+// unusable for the only geometry that exists; the always-on banner + explicit
+// mismatch line make it impossible to mistake the demo for clinical results.
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Restoration } from '@dqcad/shared-types';
 import { bridgeDesignEngine, type PonticStyleName } from '../engine/bridgeDesign';
-import { buildBridgeFixture } from '../engine/bridgeGeometry';
+import { buildBridgeFixture, BRIDGE_FIXTURE_TEETH } from '../engine/bridgeGeometry';
 import { isBridgeQcStale } from '../engine/bridgeWorkflow';
 import { insertionAxisIsPlaceholder } from '../engine/restorations';
 import { useCaseStore } from '../state/caseStore';
@@ -47,6 +62,16 @@ const REASON_KEY: Record<BridgePrerequisiteCode, string> = {
 };
 
 const PONTIC_STYLES: readonly PonticStyleName[] = ['hygienic', 'ridgeLap', 'ovate'];
+
+/** The demonstration fixture's teeth as a display string ("14-15-16"). */
+const FIXTURE_TEETH_LABEL = [...BRIDGE_FIXTURE_TEETH].join('-');
+
+/** Whether the selected case's teeth match the demonstration fixture's set. */
+function teethMatchFixture(caseTeeth: readonly number[]): boolean {
+  const a = [...caseTeeth].sort((x, y) => x - y);
+  const b = [...BRIDGE_FIXTURE_TEETH].sort((x, y) => x - y);
+  return a.length === b.length && a.every((t, i) => t === b[i]);
+}
 
 /** Fire-and-forget an async engine action — the engine surfaces its own failures
  * into bridgeStore.error (rendered by the banner). */
@@ -84,6 +109,9 @@ export function BridgeDesignPanel() {
     return (
       <section className="bridge-panel" data-testid="bridge-panel">
         <h2 className="bridge-panel__title">{t('bridge.panelTitle')}</h2>
+        <p className="bridge-panel__synthetic-start-note" role="note" data-testid="bridge-synthetic-start-note">
+          {t('bridge.syntheticStartNote', { fixtureTeeth: FIXTURE_TEETH_LABEL })}
+        </p>
         {restorations.length === 0 ? (
           <p className="bridge-panel__empty">{t('bridge.needsRestoration')}</p>
         ) : (
@@ -124,6 +152,8 @@ function BridgeWorkflow({ restorationId }: { restorationId: string }) {
   const busyStage = useBridgeStore((state) => state.busyStage);
 
   const restoration = document.restorations.find((r) => r.id === restorationId);
+  const caseTeeth = restoration?.teeth ?? [];
+  const mismatch = !teethMatchFixture(caseTeeth);
 
   return (
     <section className="bridge-panel bridge-panel--active" data-testid="bridge-panel">
@@ -132,6 +162,19 @@ function BridgeWorkflow({ restorationId }: { restorationId: string }) {
         <button type="button" onClick={() => bridgeDesignEngine.clear()} data-testid="bridge-close-button">
           {t('bridge.cancelButton')}
         </button>
+      </div>
+
+      {/* UN-MISSABLE synthetic-data disclosure — over EVERY stage view (patient
+          safety; the whole workflow runs on the demo fixture, not the case). */}
+      <div className="bridge-panel__synthetic-banner" role="alert" data-testid="bridge-synthetic-notice">
+        <strong className="bridge-panel__synthetic-banner-title">{t('bridge.syntheticTitle')}</strong>{' '}
+        <span>{t('bridge.syntheticNotice', { fixtureTeeth: FIXTURE_TEETH_LABEL })}</span>
+        {mismatch && (
+          <span className="bridge-panel__synthetic-mismatch" data-testid="bridge-synthetic-mismatch">
+            {' '}
+            {t('bridge.syntheticMismatch', { caseTeeth: [...caseTeeth].join('-') || '—', fixtureTeeth: FIXTURE_TEETH_LABEL })}
+          </span>
+        )}
       </div>
 
       {restoration && insertionAxisIsPlaceholder(restoration) && (
@@ -446,6 +489,9 @@ function QcStage({ busy, restoration }: { busy: boolean; restoration: Restoratio
           </table>
           <p className="bridge-qc__scope-note" data-testid="bridge-qc-scope-note">
             {t('bridge.qcScopeNote')}
+          </p>
+          <p className="bridge-qc__synthetic-note" role="alert" data-testid="bridge-qc-synthetic-note">
+            {t('bridge.qcSyntheticNote', { fixtureTeeth: FIXTURE_TEETH_LABEL })}
           </p>
         </>
       )}

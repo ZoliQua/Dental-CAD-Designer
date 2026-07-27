@@ -277,6 +277,28 @@ describe('bridgeDesign — the invalidation cascade (no stale PASS survives)', (
     expect(useBridgeStore.getState().assembly).toBeNull();
     expect(useBridgeStore.getState().qc).toBeNull();
   });
+
+  it('re-committing a CAPTURED upstream milestone (abutmentSurfaces) clears ALL downstream hashes + the QcReport', async () => {
+    const id = setupBridgeCase();
+    await driveToQc(id);
+    expect(restoration(id).qc).not.toBeNull();
+
+    // Re-commit the earliest milestone → the full cascade clears everything after it.
+    await bridgeDesignEngine.commitAbutmentSurfaces();
+    const r = restoration(id);
+    expect(r.qc).toBeNull();
+    expect(r.stages.bridgePontic).toBeUndefined();
+    expect(r.stages.bridgeConnectors).toBeUndefined();
+    expect(r.stages.bridgeFramework).toBeUndefined();
+    expect(r.stages.finalMesh).toBeUndefined();
+    // the store summaries downstream of abutmentSurfaces were cleared too.
+    const store = useBridgeStore.getState();
+    expect(store.pontic).toBeNull();
+    expect(store.connectors).toBeNull();
+    expect(store.framework).toBeNull();
+    expect(store.assembly).toBeNull();
+    expect(store.qc).toBeNull();
+  });
 });
 
 describe('bridgeDesign — HONEST failure surfacing', () => {
