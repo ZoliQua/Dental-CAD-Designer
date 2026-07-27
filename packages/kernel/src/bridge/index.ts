@@ -31,3 +31,36 @@ export {
   type PonticReliefPatchStats,
   type PonticReliefMeasurement,
 } from './ponticInterface.ts';
+
+// Phase 6 Task 4 — the bridge CONNECTOR op (editable 2D profiles + deterministic
+// watertight loft + the exact closed-form minimum cross-section area, the
+// fracture-strength gate value). See connector.ts's module doc + @errorBound.
+export {
+  CONNECTOR_PROFILE_MIN_AREA_MM2,
+  makeEllipseConnectorProfile,
+  ellipseConnectorProfileAreaMm2,
+  connectorProfileSignedArea,
+  validateConnectorProfile,
+  buildConnectorFrame,
+  loftConnectorProfiles,
+  connectorAreaQuadratic,
+  analyticConnectorMinArea,
+  sampleConnectorCrossSectionAreas,
+  measureConnectorMinArea,
+  connectorAxialLengthMm,
+  NonClosedProfileError,
+  DegenerateProfileError,
+  SelfIntersectingProfileError,
+  ProfileVertexCountMismatchError,
+  ProfileWindingMismatchError,
+  type Vec2,
+  type ConnectorProfile2D,
+  type ConnectorFrame,
+  type ConnectorProfileInfo,
+  type LoftConnectorResult,
+  type ConnectorAreaQuadratic,
+  type ConnectorAnalyticMinArea,
+  type SampledConnectorAreas,
+  type SampleConnectorAreasOptions,
+  type MeasureConnectorMinAreaResult,
+} from './connector.ts';

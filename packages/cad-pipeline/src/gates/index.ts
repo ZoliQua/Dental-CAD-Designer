@@ -53,9 +53,13 @@ export {
 } from './seating.ts';
 export {
   connectorCrossSectionGate,
+  connectorPositionalTargetMm2,
+  fdiPositionDigit,
+  isPosteriorTooth,
   CONNECTOR_CROSS_SECTION_GATE_NAME,
   type ConnectorCrossSection,
   type ConnectorCrossSectionGateInput,
+  type ConnectorAreaTargetsMm2,
 } from './connectorCrossSection.ts';
 export {
   contactGate,

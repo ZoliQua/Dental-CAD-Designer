@@ -89,3 +89,13 @@ export {
   type BridgeAbutmentSurface,
   type BridgeAbutmentSurfacesStageResult,
 } from './bridgeAbutmentSurfaces.ts';
+
+export {
+  runBridgeConnectorsStage,
+  NoConnectorsError,
+  MissingUnitMeshError,
+  type BridgeConnectorsStageOptions,
+  type BridgeConnectorResult,
+  type BridgeConnectorsStageResult,
+  type EditableConnectorProfiles,
+} from './bridgeConnectors.ts';

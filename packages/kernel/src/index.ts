@@ -269,8 +269,24 @@
  * no `kernel-ops.json` pin added). The crown/cavity-acceptance QC pins advance
  * MECHANICALLY (version string embedded in the QcReport JSON — metadata-only
  * churn, every geometry pin byte-identical). See docs/CHANGELOG-kernel.md's
- * `[0.23.0]` entry. */
-export const KERNEL_VERSION = '0.23.0';
+ * `[0.23.0]` entry.
+ * 0.24.0 (Phase 6 Task 4): NEW op — `bridge/connector.ts` (the bridge CONNECTOR:
+ * editable/validated 2D cross-section profiles, a deterministic watertight ruled
+ * LOFT via `orientNormalsConsistently`, and the fracture-strength gate value —
+ * the EXACT closed-form minimum cross-section area of the ruled loft, since the
+ * section area `A(t)=a·t²+b·t+c` is a quadratic in the axial parameter, so its
+ * continuous minimum is closed-form with NO station-sampling error). A secondary
+ * mesh-sectioning instrument (live readout) is validated to agree and carries an
+ * honest station-spacing fail-safe (`guaranteedLowerBoundMm2`). Pure Float64; no
+ * manifold-3d boundary (the unit+connector union is Task 6). Same "brand-new op,
+ * minor bump, existing goldens byte-identical" precedent as 0.9.0-0.23.0's
+ * pure-Float64 ops (regression-pinned by its own closed-form instrument-validation
+ * / fail-safe-falsifiability / loft-watertight / determinism tests in
+ * bridge/connector.test.ts; no `kernel-ops.json` pin added). The crown/cavity-
+ * acceptance QC pins advance MECHANICALLY (version string embedded in the QcReport
+ * JSON — metadata-only churn, every geometry pin byte-identical). See
+ * docs/CHANGELOG-kernel.md's `[0.24.0]` entry. */
+export const KERNEL_VERSION = '0.24.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -773,6 +789,33 @@ export {
   type ShapePonticBaseResult,
   type PonticReliefPatchStats,
   type PonticReliefMeasurement,
+  CONNECTOR_PROFILE_MIN_AREA_MM2,
+  makeEllipseConnectorProfile,
+  ellipseConnectorProfileAreaMm2,
+  connectorProfileSignedArea,
+  validateConnectorProfile,
+  buildConnectorFrame,
+  loftConnectorProfiles,
+  connectorAreaQuadratic,
+  analyticConnectorMinArea,
+  sampleConnectorCrossSectionAreas,
+  measureConnectorMinArea,
+  connectorAxialLengthMm,
+  NonClosedProfileError,
+  DegenerateProfileError,
+  SelfIntersectingProfileError,
+  ProfileVertexCountMismatchError,
+  ProfileWindingMismatchError,
+  type Vec2,
+  type ConnectorProfile2D,
+  type ConnectorFrame,
+  type ConnectorProfileInfo,
+  type LoftConnectorResult,
+  type ConnectorAreaQuadratic,
+  type ConnectorAnalyticMinArea,
+  type SampledConnectorAreas,
+  type SampleConnectorAreasOptions,
+  type MeasureConnectorMinAreaResult,
 } from './bridge/index.ts';
 
 export {

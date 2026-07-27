@@ -59,6 +59,42 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.24.0] — Phase 6 Task 4: bridge connectors — `bridge/connector.ts` (editable profiles, ruled loft, minimum cross-section area)
+
+**No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned
+fixture hash is byte-identical to `[0.23.0]`.** A brand-new op only; no existing
+op's numerical output changed.
+
+Phase 6 Task 4 adds the bridge CONNECTOR op (`bridge/connector.ts`): editable
+2D cross-section profiles (validated closed / simple / consistently-wound — the
+`margin/validate.ts` precedent in 2D, with typed errors `NonClosedProfileError`
+/ `DegenerateProfileError` / `SelfIntersectingProfileError` / `ProfileVertexCountMismatchError`
+/ `ProfileWindingMismatchError`); a deterministic watertight ruled LOFT between
+two index-paired profiles (`loftConnectorProfiles`, closed via
+`orientNormalsConsistently`); and the fracture-strength gate value — the minimum
+cross-section area of the connector. The ideal ruled-ring section area
+`A(t)=a·t²+b·t+c` is EXACTLY a quadratic in the axial parameter, so its
+continuous minimum is CLOSED-FORM (`analyticConnectorMinArea`, no station error);
+a secondary mesh-sectioning instrument (`sampleConnectorCrossSectionAreas`, the
+live-readout view) sections the real triangulated solid and carries a RIGOROUS
+second-difference station margin — `max_k |A_{k−1}−2A_k+A_{k+1}|/8` — so its
+`guaranteedLowerBoundMm2` provably never over-reports the actual solid's minimum
+(the gate value). Pure Float64; no manifold-3d boundary (the unit+connector union
+is Task 6). Regression-pinned by its own closed-form-instrument-validation /
+station-margin-falsifiability / loft-watertight / determinism tests in
+`bridge/connector.test.ts` (no `kernel-ops.json` pin added — same "brand-new
+pure-Float64 op" precedent as `[0.9.0]`–`[0.23.0]`).
+
+The crown/cavity-acceptance QC pins (`test/golden/crown-acceptance.test.ts`,
+`test/golden/cavity-acceptance.test.ts`) advance MECHANICALLY: `hashQcReport`
+= sha256 over the QcReport JSON, which embeds `kernelVersion`, so the version
+string alone shifts the three `*-qc` hashes while EVERY geometry stage pin is
+byte-identical to `[0.23.0]` (verified: `npm run test:golden` green, no geometry
+pin moved). The gate ordering (`connectorCrossSection` between `seating` and
+`contact`) is unchanged, and the single-crown connector gate is still the N/A
+PASS path — byte-identical (Task 4 only fills in the never-run-for-a-crown bridge
+branch).
+
 ## [0.23.0] — Phase 6 Task 3: pontic gingival interface — `bridge/ponticInterface.ts` (`shapePonticBase`, `measurePonticRelief`)
 
 **No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned
