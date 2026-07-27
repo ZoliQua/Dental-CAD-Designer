@@ -75,4 +75,5 @@ export {
   FrameworkCutbackParamError,
   type FrameworkCutbackOptions,
   type FrameworkCutbackResult,
+  type FrameworkCutbackValidation,
 } from './frameworkCutback.ts';

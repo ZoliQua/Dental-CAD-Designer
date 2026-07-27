@@ -835,6 +835,7 @@ export {
   FrameworkCutbackParamError,
   type FrameworkCutbackOptions,
   type FrameworkCutbackResult,
+  type FrameworkCutbackValidation,
 } from './bridge/index.ts';
 
 export {

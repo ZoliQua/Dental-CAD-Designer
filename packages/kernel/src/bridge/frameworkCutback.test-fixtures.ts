@@ -18,7 +18,12 @@
 //   axis = +z. Solid material fills the region between an OUTER surface and an
 //   inner CAVITY:
 //     • outer wall   — cylinder radius R, z ∈ [0, H]      (+radial normal)
-//     • outer top cap— disk radius R at z = H             (+z normal)
+//     • outer dome   — spherical cap, sphere centre (0,0,H) radius R, apex at
+//                       (0,0,H+R)                          (radial-from-centre
+//                       normal; a DOME not a flat cap so the wall/dome junction
+//                       normal is purely radial and the outer surface shrinks
+//                       cleanly under an inward cutback — the realistic
+//                       occlusal-surface case, no sharp-edge fold artifact)
 //     • margin rim   — annulus r ≤ ρ ≤ R at z = 0         (−z normal; the
 //                       finish line is its OUTER edge, ρ = R)
 //     • cavity wall  — cylinder radius r, z ∈ [0, h]      (−radial normal:
@@ -63,6 +68,13 @@ export interface ClosedShellUnitOptions {
   readonly outerWallRings?: number;
   /** Cavity-wall z-rings. Default 6. */
   readonly innerWallRings?: number;
+  /** Outer-top DOME latitude rings (≥ 2). Default 6. The outer top is a spherical
+   * dome (sphere centre (0,0,H), radius R) rather than a flat cap: a flat cap's
+   * sharp 90° rim would give its rim vertices a 45° normal that tucks the cap
+   * under itself even at a clinical cutback. A dome's wall/cap junction normal is
+   * purely radial (both sides radial), so the dome SHRINKS cleanly (like a sphere
+   * offset inward) — the realistic occlusal-surface case. */
+  readonly domeRings?: number;
 }
 
 export interface ClosedShellUnit {
@@ -74,7 +86,7 @@ export interface ClosedShellUnit {
   readonly marginLoop: Vec3[];
   /** `outerWallRingIndices[ri][s]` → vertex index (ri = 0..outerWallRings). */
   readonly outerWallRingIndices: number[][];
-  /** The outer-top-cap centre vertex index (at (0,0,H)). */
+  /** The outer DOME APEX vertex index (at (0,0,H+R)) — the sphere pole. */
   readonly outerTopCenterIndex: number;
   /** `innerWallRingIndices[ri][s]` → vertex index (ri = 0..innerWallRings). */
   readonly innerWallRingIndices: number[][];
@@ -96,9 +108,10 @@ export function closedShellUnit(options: ClosedShellUnitOptions = {}): ClosedShe
   const n = options.segments ?? 48;
   const kW = options.outerWallRings ?? 8;
   const kI = options.innerWallRings ?? 6;
+  const kD = options.domeRings ?? 6;
   if (!(R > r && r > 0)) throw new Error('closedShellUnit: require R > r > 0');
   if (!(H > h && h > 0)) throw new Error('closedShellUnit: require H > h > 0');
-  if (!(n >= 3 && kW >= 2 && kI >= 1)) throw new Error('closedShellUnit: require n>=3, kW>=2, kI>=1');
+  if (!(n >= 3 && kW >= 2 && kI >= 1 && kD >= 2)) throw new Error('closedShellUnit: require n>=3, kW>=2, kI>=1, kD>=2');
 
   const positions: number[] = [];
   const fit: boolean[] = [];
@@ -118,7 +131,19 @@ export function closedShellUnit(options: ClosedShellUnitOptions = {}): ClosedShe
     for (let s = 0; s < n; s++) ring.push(pushVertex(R * Math.cos(angle(s)), R * Math.sin(angle(s)), z, false));
     outerWallRingIndices.push(ring);
   }
-  const outerTopCenterIndex = pushVertex(0, 0, H, false);
+  // Outer DOME (fit = false): sphere centre (0,0,H), radius R. Intermediate
+  // latitude rings j = 1..kD-1 (φ from just below π/2 up toward 0) + the apex.
+  // The base latitude φ = π/2 IS the wall-top ring (radius R, z = H) — reused.
+  const domeRingIndices: number[][] = [];
+  for (let j = 1; j < kD; j++) {
+    const phi = (Math.PI / 2) * ((kD - j) / kD); // j=1 → near base; j=kD-1 → near apex
+    const ringRadius = R * Math.sin(phi);
+    const ringZ = H + R * Math.cos(phi);
+    const ring: number[] = [];
+    for (let s = 0; s < n; s++) ring.push(pushVertex(ringRadius * Math.cos(angle(s)), ringRadius * Math.sin(angle(s)), ringZ, false));
+    domeRingIndices.push(ring);
+  }
+  const outerTopCenterIndex = pushVertex(0, 0, H + R, false); // dome apex (sphere pole)
 
   // Cavity wall rings (fit = true) + ceiling centre (fit = true).
   const innerWallRingIndices: number[][] = [];
@@ -137,7 +162,7 @@ export function closedShellUnit(options: ClosedShellUnitOptions = {}): ClosedShe
     tris.push(a, b, c, a, c, d);
   };
 
-  // --- OUTER surface: wall quads + top-cap fan ---
+  // --- OUTER surface: wall quads + dome bands + apex fan ---
   const outerTriStart = tris.length / 3;
   for (let ri = 0; ri < kW; ri++) {
     for (let s = 0; s < n; s++) {
@@ -145,8 +170,16 @@ export function closedShellUnit(options: ClosedShellUnitOptions = {}): ClosedShe
       quad(outerWallRingIndices[ri]![s]!, outerWallRingIndices[ri]![s1]!, outerWallRingIndices[ri + 1]![s1]!, outerWallRingIndices[ri + 1]![s]!);
     }
   }
-  const topRing = outerWallRingIndices[kW]!;
-  for (let s = 0; s < n; s++) tris.push(outerTopCenterIndex, topRing[s]!, topRing[(s + 1) % n]!);
+  // Dome: wall-top ring → dome ring 1 → ... → dome ring kD-1 → apex.
+  const domeRingsAll = [outerWallRingIndices[kW]!, ...domeRingIndices];
+  for (let d = 0; d < domeRingsAll.length - 1; d++) {
+    for (let s = 0; s < n; s++) {
+      const s1 = (s + 1) % n;
+      quad(domeRingsAll[d]![s]!, domeRingsAll[d]![s1]!, domeRingsAll[d + 1]![s1]!, domeRingsAll[d + 1]![s]!);
+    }
+  }
+  const apexRing = domeRingsAll[domeRingsAll.length - 1]!;
+  for (let s = 0; s < n; s++) tris.push(outerTopCenterIndex, apexRing[s]!, apexRing[(s + 1) % n]!);
   const outerTriEnd = tris.length / 3;
 
   // --- MARGIN rim annulus at z=0 (outer ring 0 ↔ inner ring 0) ---
@@ -186,7 +219,7 @@ export function closedShellUnit(options: ClosedShellUnitOptions = {}): ClosedShe
     innerTopCenterIndex,
     outerTriRange: [outerTriStart, outerTriEnd],
     innerTriRange: [innerTriStart, innerTriEnd],
-    params: { outerRadiusMm: R, innerRadiusMm: r, outerHeightMm: H, innerHeightMm: h, segments: n, outerWallRings: kW, innerWallRings: kI },
+    params: { outerRadiusMm: R, innerRadiusMm: r, outerHeightMm: H, innerHeightMm: h, segments: n, outerWallRings: kW, innerWallRings: kI, domeRings: kD },
   };
 }
 

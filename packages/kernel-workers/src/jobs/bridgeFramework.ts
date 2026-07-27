@@ -43,6 +43,11 @@ export interface BridgeFrameworkUnitResultPayload {
   fullWeightVertexCount: number;
   taperedVertexCount: number;
   preservedVertexCount: number;
+  /** The kernel op's self-validation flag — surfaced so a worker-driven cutback
+   * cannot return a folded mesh silently either (see the op's "Self-validation"
+   * doc). */
+  selfIntersectionRisk: boolean;
+  flippedTriangleCount: number;
 }
 
 export interface BridgeFrameworkResult {
@@ -105,6 +110,8 @@ export const bridgeFrameworkJob = async (
       fullWeightVertexCount: cut.fullWeightVertexCount,
       taperedVertexCount: cut.taperedVertexCount,
       preservedVertexCount: cut.preservedVertexCount,
+      selfIntersectionRisk: cut.validation.selfIntersectionRisk,
+      flippedTriangleCount: cut.validation.flippedTriangleCount,
     });
     ctx.progress((i + 1) / n);
   }

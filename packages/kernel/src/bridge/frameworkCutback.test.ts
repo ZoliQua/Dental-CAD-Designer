@@ -73,13 +73,37 @@ describe('frameworkCutback — closed-form invariants', () => {
     }
   });
 
-  it('offsets the flat top cap inward by EXACTLY the veneering space (planar ⇒ exact)', () => {
+  it('offsets the dome apex inward by EXACTLY the veneering space (sphere pole normal = +z ⇒ exact)', () => {
     const ci = u.outerTopCenterIndex;
-    // Centre: normal = +z, full weight, moved straight down by d.
+    // Apex at (0,0,H+R): normal = +z (sphere pole), full weight, moved straight
+    // down by exactly d.
     expect(after[ci * 3]).toBeCloseTo(0, 12);
     expect(after[ci * 3 + 1]).toBeCloseTo(0, 12);
-    expect(after[ci * 3 + 2]).toBeCloseTo(params.outerHeightMm - d, 12);
+    expect(after[ci * 3 + 2]).toBeCloseTo(params.outerHeightMm + params.outerRadiusMm - d, 12);
     expect(res.appliedCutbackMm[ci]).toBeCloseTo(d, 12);
+  });
+
+  it('offsets the spherical dome inward by the veneering space — displacement EXACT, radial shrink within the facet bound', () => {
+    // A dome vertex sits on the sphere of radius R about (0,0,H); moved inward
+    // along its area-weighted normal by full d. The DISPLACEMENT magnitude is
+    // exactly d (the exact invariant); the radial distance from the centre shrinks
+    // to ≈ R−d, off by only the FACET term (the vertex normal is not exactly the
+    // sphere radial on a faceted dome — same story as the cylinder wall).
+    const O = [0, 0, params.outerHeightMm];
+    let checked = 0;
+    for (let i = 0; i < before.length / 3; i++) {
+      const db = Math.hypot(before[i * 3]! - O[0]!, before[i * 3 + 1]! - O[1]!, before[i * 3 + 2]! - O[2]!);
+      if (Math.abs(db - params.outerRadiusMm) > 1e-9) continue; // not on the dome sphere
+      if (res.appliedCutbackMm[i]! < d - 1e-9) continue; // not full weight (near margin)
+      const dispMag = Math.hypot(after[i * 3]! - before[i * 3]!, after[i * 3 + 1]! - before[i * 3 + 1]!, after[i * 3 + 2]! - before[i * 3 + 2]!);
+      expect(dispMag).toBeCloseTo(d, 12); // EXACT displacement along the normal
+      const da = Math.hypot(after[i * 3]! - O[0]!, after[i * 3 + 1]! - O[1]!, after[i * 3 + 2]! - O[2]!);
+      expect(da).toBeLessThan(params.outerRadiusMm); // shrank inward
+      expect(da).toBeGreaterThanOrEqual(params.outerRadiusMm - d); // never MORE than d (safe direction)
+      expect(da - (params.outerRadiusMm - d)).toBeLessThanOrEqual(res.errorBoundMm + 1e-9); // within the facet @errorBound
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(0);
   });
 
   it('offsets an interior wall ring by the veneering space in displacement, d·cos(π/n) in surface offset (facet term)', () => {
@@ -116,15 +140,27 @@ describe('frameworkCutback — closed-form invariants', () => {
     expect(res.taperBandMm).toBe(band);
   });
 
-  it('re-measures the margin fit as 0 µm (byte-preserved) before and after', () => {
-    // Margin fit here = max deviation of a margin-ring vertex from its original
-    // position. Byte-preserved ⇒ exactly 0 (≪ 10 µm).
+  it('self-validates the output as clean in the clinical envelope (no false positive)', () => {
+    expect(res.validation.selfIntersectionRisk).toBe(false);
+    expect(res.validation.flippedTriangleCount).toBe(0);
+    expect(res.validation.degenerateTriangleCount).toBe(0);
+    expect(res.validation.watertight).toBe(true); // topology preserved
+    expect(res.validation.manifoldEdges).toBe(true);
+    expect(res.validation.componentCount).toBe(1);
+  });
+
+  it('BYTE-FREEZES the margin ring ⇒ positional deviation is exactly 0 by construction (the real marginFit gate on the assembled solid is Task 6)', () => {
+    // This is NOT the marginFit gate (restoration-margin ↔ die coincidence — that
+    // needs the assembled solid + die, Task 6). It asserts the weaker, exact fact
+    // this op guarantees: the margin-ring vertices are byte-frozen (weight 0 on
+    // the taper loop), so their deviation from the pre-cutback position is exactly
+    // 0 — the seal geometry the marginFit gate later measures is untouched, so the
+    // gate result cannot regress across the cutback.
     let maxDevMm = 0;
     for (const vi of u.outerWallRingIndices[0]!) {
       maxDevMm = Math.max(maxDevMm, Math.hypot(after[vi * 3]! - before[vi * 3]!, after[vi * 3 + 1]! - before[vi * 3 + 1]!, after[vi * 3 + 2]! - before[vi * 3 + 2]!));
     }
-    expect(maxDevMm).toBe(0);
-    expect(maxDevMm).toBeLessThan(0.01); // ≤ 10 µm
+    expect(maxDevMm).toBe(0); // byte-frozen by construction (≪ the 10 µm marginFit ceiling)
   });
 
   it('THINS the wall by the cutback (measured inner↔outer) — the framework thickness gate premise', () => {
@@ -136,6 +172,35 @@ describe('frameworkCutback — closed-form invariants', () => {
     // Before ≈ R − r = 2.0; after ≈ (R−d) − r = 1.0 — reduced by ≈ d.
     expect(tBefore).toBeGreaterThan(tAfter);
     expect(tBefore - tAfter).toBeGreaterThan(d - 0.15); // reduced by ≈ the cutback
+  });
+});
+
+describe('frameworkCutback — self-validation (fold-over) is FALSIFIABLE', () => {
+  // A per-vertex normal displacement is topology-preserving, so it can only fail
+  // GEOMETRICALLY by folding through itself when the cutback exceeds the local
+  // feature size. On the convex fixture the outer wall (radius R) folds through
+  // the axis once d > R; on real anatomy a concave fossa folds at MUCH smaller d
+  // — the detector (flipped/degenerate face normals) is feature-agnostic.
+  const u = closedShellUnit(); // R = 3.0
+
+  it('FIRES on a pathological cutback (d > R ⇒ the wall folds through the axis)', () => {
+    const res = frameworkCutback(u.mesh, { veneeringSpaceMm: 4.0, fitVertexMask: u.fitVertexMask, marginLoop: u.marginLoop, marginTaperBandMm: 0.6 });
+    expect(res.validation.selfIntersectionRisk).toBe(true);
+    expect(res.validation.flippedTriangleCount).toBeGreaterThan(0);
+    // It is a FLAG, not a throw — the mesh is still returned (export QC / Task 6
+    // is the authority that blocks), but never silently: the flag is raised.
+    expect(res.mesh.positions.length).toBe(u.mesh.positions.length);
+  });
+
+  it('stays CLEAN across the clinical envelope (no false positive up to the fixture wall/occlusal budget)', () => {
+    // The fixture's safe budget is d < min(R−r, H−h) = 2.0 mm (beyond that the
+    // occlusal cap sinks onto the cavity ceiling and inverts — correctly flagged).
+    // Clinical veneering spaces (~1 mm) sit comfortably inside it.
+    for (const d of [0.5, 1.0, 1.5]) {
+      const res = frameworkCutback(u.mesh, { veneeringSpaceMm: d, fitVertexMask: u.fitVertexMask, marginLoop: u.marginLoop, marginTaperBandMm: 0.6 });
+      expect(res.validation.selfIntersectionRisk).toBe(false);
+      expect(res.validation.flippedTriangleCount).toBe(0);
+    }
   });
 });
 

@@ -134,6 +134,21 @@ describe('runBridgeFrameworkStage — framework mode', () => {
     }
   });
 
+  it('surfaces the self-intersection flag: clean units → false; a folded unit → true (journaled)', () => {
+    const ctx = makeBridgeContext();
+    // Clean clinical cutback (veneeringSpace 1.0 ≪ the hex R = 2.0) → no fold.
+    const clean = runBridgeFrameworkStage(ctx, { mode: 'framework', units: [hexPrismUnit(A)], hashMesh });
+    expect(clean.anyUnitSelfIntersectionRisk).toBe(false);
+    expect(clean.units[0]!.selfIntersectionRisk).toBe(false);
+    expect(clean.params['anyUnitSelfIntersectionRisk']).toBe(false);
+    // A pathological veneering space (> the hex radius) folds the wall → flag fires.
+    const folded = makeBridgeContext({ materialProfile: { ...PROFILE, veneeringSpaceMm: 3.0 } });
+    const res = runBridgeFrameworkStage(folded, { mode: 'framework', units: [hexPrismUnit(A)], hashMesh });
+    expect(res.anyUnitSelfIntersectionRisk).toBe(true);
+    expect(res.units[0]!.selfIntersectionRisk).toBe(true);
+    expect(res.units[0]!.flippedTriangleCount).toBeGreaterThan(0);
+  });
+
   it('is deterministic (byte-identical hashes across runs)', () => {
     const ctx = makeBridgeContext();
     const a = runBridgeFrameworkStage(ctx, { mode: 'framework', units: [hexPrismUnit(A)], hashMesh });

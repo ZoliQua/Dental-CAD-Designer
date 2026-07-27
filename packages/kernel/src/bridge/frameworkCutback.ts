@@ -30,11 +30,21 @@
 // the boundary loop (the prep margin for an abutment; the base perimeter for a
 // pontic) to 1 beyond a band of width `marginTaperBandMm`, via the C1 smoothstep
 // `w = t²(3−2t)`, `t = clamp(distanceToBoundary / band, 0, 1)` (the P4 feather
-// precedent). CONSEQUENCE, disclosed rather than overclaimed: within that band
-// the achieved veneering space is `veneeringSpaceMm · w < veneeringSpaceMm` — the
-// space is full ONLY beyond `marginTaperBandMm` of the boundary. The band width
-// and the count of tapered vertices are returned so a caller/QC report can state
-// the taper region's extent honestly.
+// precedent). CONSEQUENCE, disclosed rather than overclaimed (and consistent with
+// the `@errorBound` below — the same document must not contradict itself on the
+// number a technician trusts): there are TWO separate shortfalls in the achieved
+// veneering space, and they compound:
+//   1. WITHIN the taper band (distance < `marginTaperBandMm` of the boundary) the
+//      space is `veneeringSpaceMm · w`, ramping 0 → full — deliberately less, to
+//      keep the seal closed.
+//   2. OUTSIDE the taper band (`w = 1`) the space is NOT exactly `veneeringSpaceMm`
+//      either: on any CURVED/FACETED surface (i.e. everywhere on real anatomy) the
+//      achieved surface offset is `veneeringSpaceMm · cos φ`, i.e. full only to
+//      within `errorBoundMm = veneeringSpaceMm · (1 − cos φ_max)` (see `@errorBound`).
+// So the honest statement is: the veneering space equals `veneeringSpaceMm` to
+// within `errorBoundMm` OUTSIDE the taper band, and tapers to 0 inside it — never
+// "uniformly full". The band width, the tapered-vertex count, and `errorBoundMm`
+// are all returned so a caller/QC report can state both shortfalls honestly.
 //
 // ## The outer/fit partition
 //
@@ -55,24 +65,41 @@
 // angle between a moved vertex's area-weighted normal and its incident face
 // normals — i.e. the surface moves inward by AT MOST the intended amount, never
 // more (`errorBoundMm = veneeringSpaceMm · (1 − cos φ_max)`, the measured max
-// over moved vertices, returned). This is the SAFE direction for the thickness
-// gate: the framework stays at least as thick as intended, so the cutback never
-// silently removes MORE material than requested. (The per-vertex DISPLACEMENT
-// magnitude is exactly `veneeringSpaceMm · w` by construction — the facet term
-// is only the surface-offset ↔ displacement gap on curvature.)
+// over moved vertices, returned). WHOSE safety this "safe direction" protects,
+// stated plainly: the shortfall lands on the VENEERING SPACE — the ceramist gets
+// slightly LESS porcelain room than nominal, and the framework wall ends up
+// slightly THICKER than nominal. So the thickness gate never under-reports a thin
+// wall (patient-safety direction), at the honest cost of a hair less layering
+// space (an esthetic/handling concern, disclosed, never a structural one). (The
+// per-vertex DISPLACEMENT magnitude is exactly `veneeringSpaceMm · w` by
+// construction — the facet term is only the surface-offset ↔ displacement gap on
+// curvature.)
 //
-// Topology-preservation caveat (reviewer note): a per-vertex normal displacement
-// can self-intersect if `veneeringSpaceMm` approaches the local feature size /
-// radius of curvature of a concave outer feature. Clinical veneering spaces
-// (~1 mm) are small relative to crown outer curvature; the op does not re-mesh,
-// so a caller that needs a guaranteed-clean result on a pathological input must
-// validate the output (the T5 fixture asserts the result stays watertight +
-// manifold via `analyzeMesh`).
+// ## Self-validation — a silent bad mesh is impossible (reviewer IMPORTANT 1)
+//
+// A per-vertex normal displacement is TOPOLOGY-preserving (indices untouched), so
+// it can never change watertightness / manifold-edge / component counts — but it
+// CAN self-intersect GEOMETRICALLY if `veneeringSpaceMm` approaches the local
+// feature size / radius of curvature of a CONCAVE outer feature (a fossa far
+// sharper than a cylinder wall — real anatomy, not the T5 fixture). The tell-tale
+// signature of that fold-over is a triangle whose face normal FLIPPED direction
+// (or collapsed to ~zero area) relative to before the cutback. This op therefore
+// ALWAYS re-validates its own output and returns a `validation` struct:
+// `analyzeMesh`'s watertight/manifoldEdges/componentCount (the preserved topology,
+// reported for completeness — these mirror the input by construction, so a
+// legitimately OPEN outer patch reports `watertight:false` and that is NOT a
+// failure), PLUS `flippedTriangleCount` / `degenerateTriangleCount` and the
+// derived `selfIntersectionRisk` flag. Decision: FLAG, do not throw — export QC
+// (Task 6) is the authority that BLOCKS; this op refuses to hand back a folded
+// mesh WITHOUT a raised flag, so a downstream consumer cannot use a bad mesh
+// silently. The flag is always computed, so the clinical envelope (~1 mm on real
+// curvature) is clean while a pathological cutback is caught at the source.
 //
 // Deterministic: pure Float64, fixed iteration order — same mesh + params ⇒
 // byte-identical output.
 import type { IndexedMesh } from '../mesh/types.ts';
 import type { Vec3 } from '../bvh/geometry.ts';
+import { analyzeMesh } from '../intake/analyze.ts';
 import { distanceToClosedPolyline } from '../offset/innerSurfaceOffset.ts';
 
 /** Thrown for an invalid cutback parameter (never defaulted here — the pipeline
@@ -90,7 +117,14 @@ export interface FrameworkCutbackOptions {
   readonly veneeringSpaceMm: number;
   /** Per-vertex fit mask — `fitVertexMask[i] === true` ⇒ vertex `i` is a
    * fit/preserved surface vertex (weight 0, byte-exact). Length MUST equal the
-   * mesh vertex count. */
+   * mesh vertex count.
+   *
+   * TODO (Task 6 — real assembly): this mask is CONSTRUCTION PROVENANCE. The T5
+   * fixture/stage supply it analytically; when Task 6 wires real assembled units,
+   * the mask MUST be derived from the shell's inner/outer vertex split recorded at
+   * STITCH TIME (not re-inferred geometrically), and the assembler must GUARD that
+   * every intaglio vertex is marked — a mis-derived mask would silently cut back a
+   * fit surface. Record this so it is not forgotten. */
   readonly fitVertexMask: ReadonlyArray<boolean>;
   /** The preserved-region boundary loop (dense polyline): the prep margin for an
    * abutment, the base perimeter for a pontic. The cutback tapers to 0 within
@@ -128,6 +162,29 @@ export interface FrameworkCutbackResult {
   readonly preservedVertexCount: number;
   /** Echo of the taper band width (mm), for journaling + the honest disclosure. */
   readonly taperBandMm: number;
+  /** Self-validation of the cut-back mesh — see this module's "Self-validation"
+   * doc. ALWAYS computed (a silent bad mesh is impossible). */
+  readonly validation: FrameworkCutbackValidation;
+}
+
+export interface FrameworkCutbackValidation {
+  /** `analyzeMesh(output).watertight` — mirrors the INPUT by construction (a
+   * normal displacement never changes edge topology). `false` for a legitimately
+   * OPEN outer patch is NOT a failure — see this module's doc. */
+  readonly watertight: boolean;
+  /** `analyzeMesh(output).manifoldEdges` — mirrors the input by construction. */
+  readonly manifoldEdges: boolean;
+  /** Connected-component count of the output — mirrors the input by construction. */
+  readonly componentCount: number;
+  /** Triangles whose face normal FLIPPED direction (dot with the pre-cutback
+   * normal < 0) — the tell-tale signature of a fold-over / self-intersection. */
+  readonly flippedTriangleCount: number;
+  /** Triangles that collapsed to ~zero area after the cutback. */
+  readonly degenerateTriangleCount: number;
+  /** `true` iff any triangle flipped or collapsed — the actionable flag. FLAG,
+   * not throw: export QC (Task 6) BLOCKS; this op refuses to hand back a folded
+   * mesh without raising this, so a bad mesh can never be used silently. */
+  readonly selfIntersectionRisk: boolean;
 }
 
 /** Area-weighted per-vertex normals (Float64, deterministic) + the max angle
@@ -236,8 +293,9 @@ export function frameworkCutback(mesh: IndexedMesh, options: FrameworkCutbackOpt
   }
 
   const errorBoundMm = d * (1 - Math.cos(maxMovedFacetAngle));
+  const outMesh: IndexedMesh = { positions, indices: new Uint32Array(mesh.indices) };
   return {
-    mesh: { positions, indices: new Uint32Array(mesh.indices) },
+    mesh: outMesh,
     appliedCutbackMm,
     errorBoundMm,
     maxAppliedCutbackMm: maxApplied,
@@ -246,5 +304,44 @@ export function frameworkCutback(mesh: IndexedMesh, options: FrameworkCutbackOpt
     taperedVertexCount: taperedCount,
     preservedVertexCount: preservedCount,
     taperBandMm: band,
+    validation: validateCutback(mesh, outMesh),
+  };
+}
+
+/** Re-validates the cut-back mesh — see this module's "Self-validation" doc.
+ * `analyzeMesh` reports the (preserved) topology; the fold-over check (a triangle
+ * whose face normal flipped or collapsed relative to the input) is the geometric
+ * self-intersection signature a topology check alone cannot see. Deterministic. */
+function validateCutback(before: IndexedMesh, after: IndexedMesh): FrameworkCutbackValidation {
+  const stats = analyzeMesh(after);
+  const triCount = after.indices.length / 3;
+  let flipped = 0;
+  let degenerate = 0;
+  // Absolute area floor (mm²) below which a triangle is treated as collapsed —
+  // 1e-12 mm² = a (1 µm)² sliver, far below any real facet.
+  const AREA_EPS_MM2 = 1e-12;
+  const faceNormal = (m: IndexedMesh, t: number): Vec3 => {
+    const ia = m.indices[t * 3]!, ib = m.indices[t * 3 + 1]!, ic = m.indices[t * 3 + 2]!;
+    const ux = m.positions[ib * 3]! - m.positions[ia * 3]!, uy = m.positions[ib * 3 + 1]! - m.positions[ia * 3 + 1]!, uz = m.positions[ib * 3 + 2]! - m.positions[ia * 3 + 2]!;
+    const vx = m.positions[ic * 3]! - m.positions[ia * 3]!, vy = m.positions[ic * 3 + 1]! - m.positions[ia * 3 + 1]!, vz = m.positions[ic * 3 + 2]! - m.positions[ia * 3 + 2]!;
+    return [uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx];
+  };
+  for (let t = 0; t < triCount; t++) {
+    const nb = faceNormal(before, t);
+    const na = faceNormal(after, t);
+    const areaAfter = Math.hypot(na[0], na[1], na[2]) / 2;
+    if (areaAfter < AREA_EPS_MM2) {
+      degenerate++;
+    } else if (nb[0] * na[0] + nb[1] * na[1] + nb[2] * na[2] < 0) {
+      flipped++; // face normal reversed ⇒ the triangle folded through its neighbours
+    }
+  }
+  return {
+    watertight: stats.watertight,
+    manifoldEdges: stats.manifoldEdges,
+    componentCount: stats.componentCount,
+    flippedTriangleCount: flipped,
+    degenerateTriangleCount: degenerate,
+    selfIntersectionRisk: flipped > 0 || degenerate > 0,
   };
 }

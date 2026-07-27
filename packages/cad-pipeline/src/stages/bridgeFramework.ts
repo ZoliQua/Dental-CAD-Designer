@@ -103,6 +103,13 @@ export interface FrameworkUnitResult {
   readonly taperedVertexCount: number;
   /** Count of preserved (byte-exact) vertices — every vertex in full-contour. */
   readonly preservedVertexCount: number;
+  /** The cutback SELF-INTERSECTION flag (from the kernel op's self-validation) —
+   * `true` iff the normal displacement folded the mesh (a pathological cutback
+   * exceeding the local feature size). FLAG, not block: export QC (Task 6) is the
+   * authority — but a folded unit is never silent. `false` in full-contour. */
+  readonly selfIntersectionRisk: boolean;
+  /** Flipped-triangle count from the op's self-validation (0 in full-contour). */
+  readonly flippedTriangleCount: number;
 }
 
 export interface BridgeFrameworkStageResult {
@@ -116,6 +123,10 @@ export interface BridgeFrameworkStageResult {
   readonly outputHashes: readonly string[];
   /** Max unit error bound (mm) — 0 in full-contour. */
   readonly errorBoundMm: number;
+  /** `true` iff ANY unit's cutback folded (self-intersection) — the aggregate of
+   * the per-unit flags, surfaced so a caller/QC cannot miss a folded unit.
+   * `false` in full-contour. */
+  readonly anyUnitSelfIntersectionRisk: boolean;
 }
 
 /**
@@ -151,6 +162,8 @@ export function runBridgeFrameworkStage(
       errorBoundMm: 0,
       taperedVertexCount: 0,
       preservedVertexCount: u.mesh.positions.length / 3,
+      selfIntersectionRisk: false,
+      flippedTriangleCount: 0,
     }));
     return {
       stage: 'framework',
@@ -165,6 +178,7 @@ export function runBridgeFrameworkStage(
       inputHashes,
       outputHashes: inputHashes, // byte-identical — hashes do not move
       errorBoundMm: 0,
+      anyUnitSelfIntersectionRisk: false,
     };
   }
 
@@ -176,6 +190,7 @@ export function runBridgeFrameworkStage(
   const units: FrameworkUnitResult[] = [];
   const perUnitParams: Record<string, unknown>[] = [];
   let maxErrorBoundMm = 0;
+  let anyRisk = false;
   for (const u of options.units) {
     const cut = frameworkCutback(u.mesh, {
       veneeringSpaceMm,
@@ -185,6 +200,7 @@ export function runBridgeFrameworkStage(
     });
     const meshContentHash = options.hashMesh(cut.mesh);
     maxErrorBoundMm = Math.max(maxErrorBoundMm, cut.errorBoundMm);
+    anyRisk = anyRisk || cut.validation.selfIntersectionRisk;
     units.push({
       tooth: u.tooth,
       mesh: cut.mesh,
@@ -194,6 +210,8 @@ export function runBridgeFrameworkStage(
       errorBoundMm: cut.errorBoundMm,
       taperedVertexCount: cut.taperedVertexCount,
       preservedVertexCount: cut.preservedVertexCount,
+      selfIntersectionRisk: cut.validation.selfIntersectionRisk,
+      flippedTriangleCount: cut.validation.flippedTriangleCount,
     });
     perUnitParams.push({
       tooth: u.tooth as unknown as number,
@@ -203,6 +221,10 @@ export function runBridgeFrameworkStage(
       fullWeightVertexCount: cut.fullWeightVertexCount,
       taperedVertexCount: cut.taperedVertexCount,
       preservedVertexCount: cut.preservedVertexCount,
+      // The cutback's self-validation, journaled — a folded unit is auditable.
+      selfIntersectionRisk: cut.validation.selfIntersectionRisk,
+      flippedTriangleCount: cut.validation.flippedTriangleCount,
+      degenerateTriangleCount: cut.validation.degenerateTriangleCount,
     });
   }
 
@@ -215,10 +237,12 @@ export function runBridgeFrameworkStage(
       mode: 'framework',
       veneeringSpaceMm,
       marginTaperBandMm,
+      anyUnitSelfIntersectionRisk: anyRisk,
       perUnit: perUnitParams,
     },
     inputHashes,
     outputHashes: units.map((u) => u.meshContentHash),
     errorBoundMm: maxErrorBoundMm,
+    anyUnitSelfIntersectionRisk: anyRisk,
   };
 }
