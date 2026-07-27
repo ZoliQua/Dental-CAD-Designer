@@ -245,6 +245,12 @@ const restorationStagesSchema = {
     occlusalPatch: { type: 'string' },
     proximalContacts: { type: 'string' },
     cuspCoverage: { type: 'string' },
+    // Phase 6 Task 7 — bridge (multi-unit) pipeline stage hashes; additive,
+    // all optional (a given restoration only populates its own family's fields).
+    bridgeAbutmentSurfaces: { type: 'string' },
+    bridgePontic: { type: 'string' },
+    bridgeConnectors: { type: 'string' },
+    bridgeFramework: { type: 'string' },
   },
 } as const;
 

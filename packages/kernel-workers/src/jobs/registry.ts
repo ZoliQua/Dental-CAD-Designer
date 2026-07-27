@@ -217,6 +217,9 @@ export type { RunQcPayload, RunQcResult };
 import { runInlayQcJob, type RunInlayQcPayload, type RunInlayQcResult } from './runInlayQc.ts';
 export type { RunInlayQcPayload, RunInlayQcResult };
 
+import { runBridgeQcJob, type RunBridgeQcPayload, type RunBridgeQcResult } from './runBridgeQc.ts';
+export type { RunBridgeQcPayload, RunBridgeQcResult };
+
 import {
   placeAnatomyJob,
   UnknownLandmarkError as PlaceAnatomyUnknownLandmarkError,
@@ -459,6 +462,7 @@ export interface JobPayloadMap {
   applySculptStroke: ApplySculptStrokePayload;
   runQc: RunQcPayload;
   runInlayQc: RunInlayQcPayload;
+  runBridgeQc: RunBridgeQcPayload;
   undercutScan: UndercutScanPayload;
   undercutScanBatch: UndercutScanBatchPayload;
   computeCurvature: ComputeCurvaturePayload;
@@ -516,6 +520,7 @@ export interface JobResultMap {
   applySculptStroke: ApplySculptStrokeResult;
   runQc: RunQcResult;
   runInlayQc: RunInlayQcResult;
+  runBridgeQc: RunBridgeQcResult;
   undercutScan: UndercutScanResult;
   undercutScanBatch: UndercutScanBatchResult;
   computeCurvature: ComputeCurvatureResult;
@@ -580,6 +585,7 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   applySculptStroke: applySculptStrokeJob,
   runQc: runQcJob,
   runInlayQc: runInlayQcJob,
+  runBridgeQc: runBridgeQcJob,
   undercutScan: undercutScanJob,
   undercutScanBatch: undercutScanBatchJob,
   computeCurvature: computeCurvatureJob,

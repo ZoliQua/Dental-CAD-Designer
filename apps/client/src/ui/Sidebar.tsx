@@ -10,6 +10,7 @@ import { caseStore } from '../engine/caseStore';
 import { AlignmentPanel } from './AlignmentPanel';
 import { AxisPanel } from './AxisPanel';
 import { CavityDesignPanel } from './CavityDesignPanel';
+import { BridgeDesignPanel } from './BridgeDesignPanel';
 import { CrownDesignPanel } from './CrownDesignPanel';
 import { CurvaturePanel } from './CurvaturePanel';
 import { ImportPanel } from './ImportPanel';
@@ -47,6 +48,7 @@ export function Sidebar() {
       <AxisPanel />
       <CrownDesignPanel />
       <CavityDesignPanel />
+      <BridgeDesignPanel />
       <MeasurementPanel />
       <AlignmentPanel />
       <SurfaceDistancePanel />
