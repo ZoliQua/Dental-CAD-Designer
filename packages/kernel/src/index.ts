@@ -250,8 +250,27 @@
  * bridge/sharedAxis.test.ts; no `kernel-ops.json` pin added). The
  * crown-acceptance QC pin advances MECHANICALLY (the version string is embedded
  * in the QcReport JSON — metadata-only churn, all five geometry stage pins
- * byte-identical). See docs/CHANGELOG-kernel.md's `[0.22.0]` entry. */
-export const KERNEL_VERSION = '0.22.0';
+ * byte-identical). See docs/CHANGELOG-kernel.md's `[0.22.0]` entry.
+ * 0.23.0 (Phase 6 Task 3): NEW op — `bridge/ponticInterface.ts`'s
+ * `shapePonticBase` (the deterministic per-style pontic-base CONSTRUCTION: the
+ * base as an analytic offset of the ridge crest cylinder, `base = crest + t(φ)·n`,
+ * with hygienic/ridgeLap/ovate target fields + honest patch partition) and
+ * `measurePonticRelief` (the blend-independent MEASUREMENT: `signedClosestPoint`
+ * per dense base sample, per-patch deviation-from-configured with the PRIMARY
+ * acceptance patch strictly separate from the relieved/transition/outside
+ * regions — validated closed-form against the analytic cylinder BEFORE it judges
+ * any construction). Pure Float64; the base vertices are exact on the analytic
+ * offset cylinder, the measurement inherits `signedClosestPoint`'s exact bound,
+ * the mesh-vs-analytic gap is a one-sided inscribed-chord sagitta (surfaced as
+ * `errorBoundMm`). No manifold-3d boundary; same "brand-new op, minor bump,
+ * existing goldens byte-identical" precedent as 0.9.0-0.22.0's pure-Float64 ops
+ * (regression-pinned by its own closed-form instrument-validation / per-style
+ * ±20 µm / falsifiability / determinism tests in bridge/ponticInterface.test.ts;
+ * no `kernel-ops.json` pin added). The crown/cavity-acceptance QC pins advance
+ * MECHANICALLY (version string embedded in the QcReport JSON — metadata-only
+ * churn, every geometry pin byte-identical). See docs/CHANGELOG-kernel.md's
+ * `[0.23.0]` entry. */
+export const KERNEL_VERSION = '0.23.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -734,10 +753,26 @@ export {
 export {
   assessSharedAxis,
   suggestSharedAxis,
+  shapePonticBase,
+  synthPonticSeatRing,
+  measurePonticRelief,
+  analyticCylinderSignedDistanceMm,
+  crestSagittaBoundMm,
+  PonticInterfaceParamError,
   type SharedAxisRegionReport,
   type SharedAxisAssessment,
   type AssessSharedAxisOptions,
   type SharedAxisSuggestion,
+  type PonticInterfaceStyle,
+  type RidgeCrestCylinder,
+  type PonticPatch,
+  type PonticInterfaceParams,
+  type PonticBaseFootprint,
+  type PonticBaseResolution,
+  type PonticBaseSample,
+  type ShapePonticBaseResult,
+  type PonticReliefPatchStats,
+  type PonticReliefMeasurement,
 } from './bridge/index.ts';
 
 export {

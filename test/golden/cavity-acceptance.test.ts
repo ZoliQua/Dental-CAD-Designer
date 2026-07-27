@@ -58,7 +58,7 @@ const µm = (mm: number): string => `${(mm * 1000).toFixed(3)} µm`;
 // golden change (bump + changelog), never a silent regen (the WASM boolean is
 // manifoldVersion-guarded, the crown-acceptance precedent).
 // ---------------------------------------------------------------------------
-const EXPECTED_KERNEL_VERSION = '0.22.0';
+const EXPECTED_KERNEL_VERSION = '0.23.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 function installedManifoldVersion(): string {
   const pkg = JSON.parse(readFileSync(join(repoRoot, 'node_modules', 'manifold-3d', 'package.json'), 'utf8')) as { version: string };
@@ -81,7 +81,7 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // the QcReport embeds kernelVersion, so hashQcReport tracks the version bump
   // while every geometry pin above is BYTE-IDENTICAL to 0.21.0 (verified). The
   // bridge op does not touch the cavity chain. See CHANGELOG-kernel.md [0.22.0].
-  'cavity-inlay-qc': 'aae5213d3b1ee27b348aa4237fd572ba3f5286c75fc137efa5567690f9dd8181',
+  'cavity-inlay-qc': 'a604a133a430e0009696431771fd9f99423570ae9664effa90f4120570a8b9aa',
   // --- onlay chain (incl. cuspCoverage.select) ---
   // NOTE: the cuspCoverage pin is BIT-IDENTICAL to the kernel op's committed
   // extended-outline golden (cuspCoverage.test.ts's sha at 0.21.0) — a strong
@@ -93,7 +93,7 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   'cavity-onlay-shell': 'cd9bc9e37841493a502ae367dc62fcc1a9b3a8e72d5471f6116e12c0c65595ce',
   // Advanced 0.21.0 → 0.22.0 (Phase 6 Task 2): MECHANICAL, metadata-only (as
   // cavity-inlay-qc above — kernelVersion in the QcReport; geometry byte-identical).
-  'cavity-onlay-qc': '06019c696ed8a0d7a331881a3e3a25dd184bae7118d654cc876c3dca3853bb7c',
+  'cavity-onlay-qc': '8a09fa5419500d36acc4cf0d85d0ab110bf4f5432a1922457b9bd6ecca3f5ee8',
 };
 
 const INLAY_GATE_ORDER = ['watertight', 'manifold', 'selfIntersection', 'minWallThickness', 'marginFit', 'seamDihedral', 'seating', 'contact'];

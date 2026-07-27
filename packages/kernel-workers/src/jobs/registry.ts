@@ -162,6 +162,12 @@ import {
 } from './bridgeAbutmentSurfaces.ts';
 export type { BridgeAbutmentSurfacesPayload, BridgeAbutmentSurfacesResult };
 import {
+  bridgePonticJob,
+  type BridgePonticPayload,
+  type BridgePonticResult,
+} from './bridgePontic.ts';
+export type { BridgePonticPayload, BridgePonticResult };
+import {
   cavityOcclusalPatchJob,
   type CavityOcclusalPatchPayload,
   type CavityOcclusalPatchResult,
@@ -420,6 +426,7 @@ export interface JobPayloadMap {
   innerSurface: InnerSurfacePayload;
   cavityInnerSurface: CavityInnerSurfacePayload;
   bridgeAbutmentSurfaces: BridgeAbutmentSurfacesPayload;
+  bridgePontic: BridgePonticPayload;
   cavityOcclusalPatch: CavityOcclusalPatchPayload;
   cavityProximalContact: CavityProximalContactPayload;
   placeAnatomy: PlaceAnatomyPayload;
@@ -473,6 +480,7 @@ export interface JobResultMap {
   innerSurface: InnerSurfaceResult;
   cavityInnerSurface: CavityInnerSurfaceResult;
   bridgeAbutmentSurfaces: BridgeAbutmentSurfacesResult;
+  bridgePontic: BridgePonticResult;
   cavityOcclusalPatch: CavityOcclusalPatchResult;
   cavityProximalContact: CavityProximalContactResult;
   placeAnatomy: PlaceAnatomyResult;
@@ -533,6 +541,7 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   innerSurface: innerSurfaceJob,
   cavityInnerSurface: cavityInnerSurfaceJob,
   bridgeAbutmentSurfaces: bridgeAbutmentSurfacesJob,
+  bridgePontic: bridgePonticJob,
   cavityOcclusalPatch: cavityOcclusalPatchJob,
   cavityProximalContact: cavityProximalContactJob,
   placeAnatomy: placeAnatomyJob,

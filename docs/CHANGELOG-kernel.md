@@ -59,6 +59,60 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.23.0] — Phase 6 Task 3: pontic gingival interface — `bridge/ponticInterface.ts` (`shapePonticBase`, `measurePonticRelief`)
+
+**No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned
+fixture hash is byte-identical to `[0.22.0]`.** A brand-new op only; no existing
+op's algorithm or output changed. In `test/golden/crown-acceptance.test.ts` and
+`test/golden/cavity-acceptance.test.ts` (byte-pinned stage hashes, not
+`test-fixtures/` files), all geometry stage pins are verified byte-identical to
+0.22.0; only the `crown-standin-qc` / `cavity-inlay-qc` / `cavity-onlay-qc` pins
+changed, MECHANICALLY and metadata-only — the `QcReport` embeds `kernelVersion`
+(cad-pipeline/gates/report.ts), so `hashQcReport` tracks every version bump even
+with every measured value and geometry hash unchanged (the same mechanical churn
+documented at 0.16.0-0.22.0; the unchanged geometry pins are the proof the qc
+diff is the version string alone, not numerical drift).
+
+Adds `packages/kernel/src/bridge/ponticInterface.ts` — the PONTIC GINGIVAL
+INTERFACE. A bridge pontic's base is shaped against the edentulous-ridge
+(gingiva) mesh per clinical STYLE at the CONFIGURED relief, with the PLAN
+acceptance that the MEASURED pontic-gingiva relation matches the configured value
+within ±20 µm per style. Two independent halves (the P5 seam-dihedral lesson: the
+instrument is validated before it judges):
+
+- **`shapePonticBase(crest, style, params, footprint, resolution)`** — the
+  deterministic CONSTRUCTION. Builds the base as an analytic OFFSET of the ridge
+  crest cylinder (`base(x,φ) = crest(x,φ) + t(φ)·n(φ)`, radial signed distance to
+  the cylinder is EXACTLY t(φ)) with a per-style target field + an honest patch
+  partition: **hygienic** — uniform clearance over the WHOLE base; **modified
+  ridge-lap** — relief over the BUCCAL contact patch, lingual RELIEVED region
+  reported separately, central transition ramp; **ovate** — −depth penetration
+  over the seat patch, outside ramps to emergence. Returns the base surface mesh
+  (open patch) + a DENSE, mesh-resolution-independent sample set (each sample
+  carrying its geometric patch + intended target) + the `errorBoundMm`.
+- **`measurePonticRelief(gingivaMesh, bvh, pseudonormals, samples, crest?)`** —
+  the blend-independent MEASUREMENT. Per sample: `signedClosestPoint` to the
+  gingiva mesh (sign + outside/clearance, − inside/penetration); buckets by the
+  sample's GEOMETRIC patch; reports the PRIMARY (acceptance) patch min/max/mean
+  deviation-from-target strictly separate from the relieved/transition/outside
+  patches (never diluted). Optional analytic-cylinder cross-check.
+
+Pure Float64, no manifold-3d boundary, no new approximation beyond the surfaced
+one-sided inscribed-chord sagitta (`errorBoundMm` = `max R·(1−cos(Δφ/2))` over
+the sampled band; the mesh under-approximates the arc so a measured relief reads
+`configured + [0, sagitta]`). The construction shapes the pontic BASE only — the
+pontic body stays library-shaped (Task 4 connects it; Task 6 assembles the
+watertight solid). Regression-pinned by its own tests
+(bridge/ponticInterface.test.ts): closed-form instrument validation FIRST, then
+per-style ±20 µm (hygienic 0.16 / ridge-lap 0.19 / ovate 0.06 µm measured maxAbs
+deviation), relieved/non-patch regions reported separately, falsifiability
+(mis-configured 1000 µm / raw-on-ridge 2000 µm ≫ 20), determinism, fc.pre
+properties. Same "brand-new op, minor bump, existing goldens byte-identical"
+precedent as 0.9.0-0.22.0's pure-Float64 ops; no `kernel-ops.json` pin added.
+The pontic stage + worker (cad-pipeline/stages/bridgePontic.ts,
+kernel-workers/jobs/bridgePontic.ts) journal the placement + style + configured
+relief params; the ±20 µm gate itself is consumed by Task 6's whole-bridge QC.
+
 ## [0.22.0] — Phase 6 Task 2: bridge shared insertion axis — `bridge/sharedAxis.ts` (`assessSharedAxis`, `suggestSharedAxis`)
 
 **No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned

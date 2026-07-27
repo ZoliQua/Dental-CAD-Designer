@@ -105,7 +105,7 @@ const µm = (mm: number): string => `${(mm * 1000).toFixed(3)} µm`;
 // proof this qc diff is the version string alone, not numerical drift (the same
 // mechanical churn documented at 0.16.0-0.19.0). See docs/CHANGELOG-kernel.md's
 // [0.20.0] entry.
-const EXPECTED_KERNEL_VERSION = '0.22.0';
+const EXPECTED_KERNEL_VERSION = '0.23.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 function installedManifoldVersion(): string {
   const pkg = JSON.parse(readFileSync(join(repoRoot, 'node_modules', 'manifold-3d', 'package.json'), 'utf8')) as {
@@ -154,7 +154,7 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // and every geometry stage pin above is BYTE-IDENTICAL to 0.21.0 (verified:
   // the five geometry pins did not move this run). The new bridge op does not
   // touch the crown chain. See docs/CHANGELOG-kernel.md's [0.22.0] entry.
-  'crown-standin-qc': '5a699832b7f03fcea566feff93ecbc7e00e2064d222ec4cb8e2b56db50ef53b2',
+  'crown-standin-qc': 'edd5663e62373b99fa6550b8994a58b91b6aa265462d3bb9d71c372ca8ae6cc6',
 };
 
 const GATE_ORDER = ['watertight', 'manifold', 'selfIntersection', 'minWallThickness', 'marginFit', 'seating', 'connectorCrossSection', 'contact'];
