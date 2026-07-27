@@ -235,6 +235,11 @@ export function runBridgeConnectorsStage(
       profileSource,
     });
     gateConnectors.push({ label, minAreaMm2, teeth: [ta, tb], targetMm2 });
+    // Journaled per-connector record: `minAreaMm2` (the mesh-sampled, never-over-
+    // reporting lower bound — `measurement.sampled.guaranteedLowerBoundMm2`) is the
+    // VERDICT DRIVER the gate consumes; `analyticMinAreaMm2` (the exact closed-form
+    // ideal-ring minimum) and `stationMarginMm2` are AUDIT fields (validation oracle
+    // + the margin subtracted) — see the kernel connector op's @errorBound.
     paramPairs.push({
       teeth: [ta, tb],
       axis: frame.axis,

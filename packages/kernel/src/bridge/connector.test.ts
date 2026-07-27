@@ -23,11 +23,13 @@ import {
   analyticConnectorMinArea,
   measureConnectorMinArea,
   connectorAxialLengthMm,
+  sampleConnectorCrossSectionAreas,
   NonClosedProfileError,
   DegenerateProfileError,
   SelfIntersectingProfileError,
   ProfileVertexCountMismatchError,
   ProfileWindingMismatchError,
+  NonSimpleConnectorSectionError,
   type ConnectorProfile2D,
   type Vec2,
 } from './connector.ts';
@@ -284,6 +286,46 @@ describe('connector — station-spacing fail-safe (falsifiable)', () => {
     expect(result.sampled.minAreaMm2).toBeLessThan(result.analytic.minAreaMm2);
     expect(result.sampled.stationMarginMm2).toBeLessThan(0.02);
     expect(result.minAreaMm2).toBeLessThanOrEqual(result.sampled.minAreaMm2);
+  });
+});
+
+// ===========================================================================
+// 4b. SIMPLE-SECTION GUARD — an adversarial self-intersecting PAIRING is refused
+// ===========================================================================
+describe('connector — simple-section guard (falsifiable)', () => {
+  // A non-convex L-shape; both ends use the SAME simple polygon, but the second
+  // end's vertex list is index-SHIFTED by 3 — a valid simple same-winding profile
+  // whose index-PAIRING to the first connects each vertex to a far one, so the
+  // ruled surface self-intersects and its perpendicular sections become non-simple.
+  const L: ConnectorProfile2D = [[0, 0], [2, 0], [2, 1], [1, 1], [1, 2], [0, 2]];
+  const shifted: ConnectorProfile2D = [...L.slice(3), ...L.slice(0, 3)];
+
+  it('both profiles are individually simple + same winding (the pairing, not a profile, is adversarial)', () => {
+    const a = validateConnectorProfile(L);
+    const b = validateConnectorProfile(shifted);
+    expect(a.ccw).toBe(b.ccw); // same winding — passes the loft's winding check
+    expect(a.vertexCount).toBe(b.vertexCount);
+  });
+
+  it('measureConnectorMinArea REFUSES (throws NonSimpleConnectorSectionError) rather than report a bogus area', () => {
+    const frame = buildConnectorFrame(ORIGIN, AXIS, 3);
+    const { mesh } = loftConnectorProfiles(L, shifted, frame); // loft still succeeds (topologically valid)
+    const sampled = sampleConnectorCrossSectionAreas(mesh, frame, connectorAreaQuadratic(L, shifted));
+    expect(sampled.sectionsSimple).toBe(false); // the flag fires
+    expect(sampled.firstNonSimpleStationMm).not.toBeNull();
+    expect(() => measureConnectorMinArea(mesh, frame, L, shifted)).toThrow(NonSimpleConnectorSectionError);
+  });
+
+  it('the DEFAULT + moderate-twist envelope stays simple (no false positive)', () => {
+    const frame = buildConnectorFrame(ORIGIN, AXIS, 4);
+    const straight = makeEllipseConnectorProfile(2.2, 1.8, 64);
+    const twisted = twistedCircleProfile(2.0, 64, (45 * Math.PI) / 180);
+    const circle = circleProfile(2.0, 64);
+    for (const [pa, pb] of [[straight, straight], [circle, twisted]] as const) {
+      const { mesh } = loftConnectorProfiles(pa, pb, frame);
+      expect(sampleConnectorCrossSectionAreas(mesh, frame, connectorAreaQuadratic(pa, pb)).sectionsSimple).toBe(true);
+      expect(() => measureConnectorMinArea(mesh, frame, pa, pb)).not.toThrow();
+    }
   });
 });
 

@@ -806,6 +806,7 @@ export {
   SelfIntersectingProfileError,
   ProfileVertexCountMismatchError,
   ProfileWindingMismatchError,
+  NonSimpleConnectorSectionError,
   type Vec2,
   type ConnectorProfile2D,
   type ConnectorFrame,

@@ -19,34 +19,45 @@
 //      by the DEFAULT profiles (identical angular sampling ⇒ identical fractional
 //      arc positions), and an editable caller supplies matched-count profiles (or
 //      resamples to a common count first). Typed errors on every degenerate case.
-//   3. THE AREA INSTRUMENT — the gate value. The cross-section area of the ruled
-//      loft, sectioned perpendicular to the axis, is EXACTLY a QUADRATIC in the
-//      axial parameter t∈[0,1] (each ring vertex R_i(t)=(1−t)A_i+t·B_i is linear
-//      in t, so each shoelace term is quadratic), so its continuous minimum over
-//      the whole connector is CLOSED-FORM — there is no station-sampling error at
-//      all. The gate consumes this exact `minAreaMm2`. A SECONDARY sampled
-//      sectioning of the actual solid mesh (the live-readout instrument) is
-//      provided + validated to agree, and its station-spacing HAZARD is made
-//      concrete: a waist BETWEEN sample stations makes the naive sampled-min
-//      OVER-report the true min (by up to the documented station margin) — which
-//      is exactly WHY the gate uses the closed-form min, not the sampled min.
+//   3. THE AREA INSTRUMENT — two halves, one authoritative. The gate VERDICT is
+//      driven by a mesh-sampled, never-over-reporting lower bound on the ACTUAL
+//      triangulated solid's minimum cross-section area; a closed-form quadratic
+//      minimum is the VALIDATION oracle (and an audit field), not the verdict.
+//      (a) The IDEAL ruled-ring section area is EXACTLY a QUADRATIC in the axial
+//      parameter t∈[0,1] (each ring vertex R_i(t)=(1−t)A_i+t·B_i is linear in t,
+//      so each shoelace term is quadratic) ⇒ `analyticConnectorMinArea` computes
+//      its continuous minimum in CLOSED FORM. This validates the instrument
+//      against known analytic areas but is NOT what ships: the real triangulated
+//      ruled surface of a twisted connector bows INWARD, so its true waist can lie
+//      BELOW the ideal N-gon-ring minimum. (b) `sampleConnectorCrossSectionAreas`
+//      sections the ACTUAL solid mesh at dense interior stations (bracketed by the
+//      two exact profile caps) and subtracts a rigorous station margin — its
+//      `guaranteedLowerBoundMm2` is `measureConnectorMinArea`'s `minAreaMm2`, the
+//      value the gate consumes. Its station-spacing HAZARD is made concrete: a
+//      waist BETWEEN sample stations makes the naive sampled-min OVER-report the
+//      true min (by up to the station margin) — which is exactly WHY the shipped
+//      value subtracts that margin.
 //
-// @errorBound The area gate value (`analyticMinAreaMm2` / `MeasureConnectorMinAreaResult.minAreaMm2`)
-// is the EXACT continuous minimum of the ruled-loft cross-section-area quadratic
-// `A(t)=a·t²+b·t+c` over t∈[0,1] (Float64 arithmetic only — no interpolation, no
-// station sampling). It CANNOT over-report the minimum: the closed-form minimum
-// of a quadratic on a closed interval is exact. The SECONDARY sampled instrument
-// (`SampledConnectorAreas`) sections the mesh at a finite set of stations; its
-// raw `minAreaMm2` can over-report the true minimum by up to
-// `stationMarginMm2 = L·(stationSpacingMm/2)` (L = max|A'(s)| over the span, from
-// the same quadratic), so it additionally reports a `guaranteedLowerBoundMm2 =
-// minAreaMm2 − stationMarginMm2` that provably never over-reports — but the GATE
-// uses the exact closed-form value regardless. The sampled section polygon of the
-// TRIANGULATED solid differs from the ideal ruled ring only by the wall-diagonal
-// tessellation term (reported as `sampledVsAnalyticMaxAbsMm2`), which vanishes for
-// a constant-section prism (A=B ⇒ every section is exactly the profile) and is
-// sub-0.01 mm² at realistic segment counts — three orders of magnitude below the
-// 9 mm² gate, so it never affects the block/pass verdict.
+// @errorBound THE GATE VALUE — `MeasureConnectorMinAreaResult.minAreaMm2` =
+// `sampled.guaranteedLowerBoundMm2` — is a PROVEN LOWER BOUND on the actual
+// triangulated connector solid's minimum cross-section area; it never
+// over-reports. It is `sampled.minAreaMm2 − sampled.stationMarginMm2`, where the
+// margin is the rigorous second-difference bound `max_k |A_{k−1} − 2A_k +
+// A_{k+1}| / 8` (see `sampleConnectorCrossSectionAreas`'s doc for why this binds
+// the MESH's own per-segment quadratic area function exactly, robust to concavity
+// and to twist). The EXACT closed-form minimum of the IDEAL ruled ring
+// (`analytic.minAreaMm2`) is Float64-exact but describes the ideal N-gon ring, not
+// the manufactured triangulated solid — it is reported as the closed-form
+// VALIDATION oracle + a journaled audit field, NOT the verdict; for an untwisted
+// connector the two agree to `sampledVsAnalyticMaxAbsMm2` (the wall-diagonal
+// tessellation term, ~0 for a constant prism, sub-0.01 mm² at realistic segment
+// counts — three orders of magnitude below the 9 mm² gate). PRECONDITION (guarded,
+// see below): the never-over-report proof requires each sampled section to be a
+// SINGLE SIMPLE polygon (so |shoelace| = enclosed area and the constant-second-
+// difference structure holds); `measureConnectorMinArea` REFUSES (throws
+// `NonSimpleConnectorSectionError`) rather than report a bogus area when an
+// (adversarial) editable PAIRING produces a self-intersecting ruled surface whose
+// perpendicular section is non-simple.
 //
 // Pure, deterministic, Float64 (CLAUDE.md invariant 1/2). No manifold-3d boundary
 // (the union of unit+connector solids is Task 6, through the manifold wrapper);
@@ -145,6 +156,16 @@ export interface SampledConnectorAreas {
   /** `minAreaMm2 − stationMarginMm2` — provably ≤ the true minimum cross-section
    * area of the actual triangulated solid (never over-reports). THE GATE VALUE. */
   readonly guaranteedLowerBoundMm2: number;
+  /** Whether EVERY interior mesh section was a SINGLE SIMPLE polygon — the
+   * precondition of the never-over-report proof (see the module @errorBound). A
+   * self-intersecting ruled surface (from an adversarial editable PAIRING)
+   * produces a non-simple section (multiple loops or a self-crossing loop), for
+   * which `guaranteedLowerBoundMm2` is meaningless; `measureConnectorMinArea`
+   * throws `NonSimpleConnectorSectionError` in that case rather than report it. */
+  readonly sectionsSimple: boolean;
+  /** The first station (mm) whose section was non-simple, or `null` if all
+   * simple. */
+  readonly firstNonSimpleStationMm: number | null;
 }
 
 export interface MeasureConnectorMinAreaResult {
@@ -204,6 +225,32 @@ export class ProfileWindingMismatchError extends Error {
   constructor() {
     super('connector: the two loft profiles must have the SAME winding (both CCW or both CW) so corresponding vertices ring the same way');
     this.name = 'ProfileWindingMismatchError';
+  }
+}
+
+/** Thrown by `measureConnectorMinArea` (and flagged by
+ * `sampleConnectorCrossSectionAreas`) when a sampled perpendicular section of the
+ * connector solid is NON-SIMPLE — either not a single closed loop, or a single
+ * loop that self-crosses in 2D. This means the (editable) profile PAIRING
+ * produced a SELF-INTERSECTING ruled surface (each profile is validated simple in
+ * 2D, but the index-pairing between them is not): the shoelace of a non-simple
+ * polygon is not its enclosed area, so the never-over-report lower-bound proof
+ * (which needs a fixed simple-polygon cut-set — see the module @errorBound + the
+ * sampler doc) lapses. The instrument REFUSES to report a bogus area. `stationMm`
+ * is the first offending station. The default and moderate-twist envelope (a
+ * simple ruled surface) never triggers this. */
+export class NonSimpleConnectorSectionError extends Error {
+  readonly stationMm: number;
+  readonly loopCount: number;
+  constructor(stationMm: number, loopCount: number) {
+    super(
+      `connector: the cross-section at station ${stationMm.toFixed(4)} mm is NON-SIMPLE ` +
+        `(${loopCount} closed loop(s)${loopCount === 1 ? ', self-crossing' : ''}) — the profile PAIRING produces a ` +
+        `self-intersecting ruled surface; the minimum-area guarantee requires simple sections. Refusing to report a bogus area.`,
+    );
+    this.name = 'NonSimpleConnectorSectionError';
+    this.stationMm = stationMm;
+    this.loopCount = loopCount;
   }
 }
 
@@ -417,6 +464,21 @@ function earClip(poly: readonly Vec2[]): [number, number, number][] {
  * `orientNormalsConsistently` (the fixture's assembly pattern) for a single
  * outward-wound watertight manifold. Deterministic, Float64.
  *
+ * ## Simple-section precondition (the pairing, not just each profile)
+ *
+ * Each profile is validated SIMPLE in 2D, but their index-PAIRING is not: an
+ * adversarial pairing (e.g. corresponding vertices that ring the two profiles in
+ * crossing orders) yields a SELF-INTERSECTING ruled surface even from two simple
+ * profiles. That surface is still a closed watertight mesh (this loft always
+ * produces one), but its perpendicular sections become NON-SIMPLE — for which the
+ * area instrument's never-over-report proof (which needs a fixed simple-polygon
+ * cut-set, `|shoelace| = enclosed area`) lapses. This op does not reject such a
+ * loft (the mesh is topologically valid); the AREA instrument
+ * (`measureConnectorMinArea`) is where the guard lives — it checks each sampled
+ * section is a single simple polygon and throws `NonSimpleConnectorSectionError`
+ * rather than report a bogus area. The default + moderate-twist envelope produces
+ * simple sections and is unaffected.
+ *
  * @throws {ProfileVertexCountMismatchError} if the counts differ.
  * @throws {ProfileWindingMismatchError} if the windings differ.
  * @throws {NonClosedProfileError}/{DegenerateProfileError}/{SelfIntersectingProfileError}
@@ -551,9 +613,8 @@ export function analyticConnectorMinArea(
 // The secondary sampled instrument (mesh sectioning — live readout + hazard demo)
 // ---------------------------------------------------------------------------
 
-/** |shoelace area| (mm²) of a section polyline projected onto the frame's
- * (e1,e2) — translation- and basis-orientation-invariant. */
-function sectionPolylineAreaMm2(pointsFlat: Float64Array, e1: Vec3, e2: Vec3): number {
+/** Project a section polyline's 3D points onto the frame's (e1,e2) — a 2D ring. */
+function sectionPolylineUV(pointsFlat: Float64Array, e1: Vec3, e2: Vec3): Vec2[] {
   const m = pointsFlat.length / 3;
   const uv: Vec2[] = [];
   for (let i = 0; i < m; i++) {
@@ -562,9 +623,31 @@ function sectionPolylineAreaMm2(pointsFlat: Float64Array, e1: Vec3, e2: Vec3): n
     const z = pointsFlat[i * 3 + 2]!;
     uv.push([x * e1[0] + y * e1[1] + z * e1[2], x * e2[0] + y * e2[1] + z * e2[2]]);
   }
+  return uv;
+}
+
+/** |shoelace area| (mm²) of a 2D ring. */
+function ringAreaMm2(uv: readonly Vec2[]): number {
   let a2 = 0;
+  const m = uv.length;
   for (let i = 0; i < m; i++) a2 += cross2(uv[i]!, uv[(i + 1) % m]!);
   return Math.abs(a2) / 2;
+}
+
+/** Is a closed 2D ring SIMPLE (no two non-adjacent edges properly cross)? The
+ * same proper-intersection scan `validateConnectorProfile` uses. */
+function closedRingIsSimple(uv: readonly Vec2[]): boolean {
+  const n = uv.length;
+  if (n < 3) return false;
+  for (let i = 0; i < n; i++) {
+    const a1 = uv[i]!;
+    const a2 = uv[(i + 1) % n]!;
+    for (let j = i + 1; j < n; j++) {
+      if (j === i || j === (i + 1) % n || (j + 1) % n === i) continue;
+      if (segmentsProperlyIntersect(a1, a2, uv[j]!, uv[(j + 1) % n]!)) return false;
+    }
+  }
+  return true;
 }
 
 export interface SampleConnectorAreasOptions {
@@ -615,13 +698,26 @@ export function sampleConnectorCrossSectionAreas(
   const capB = Math.abs(quadratic.a + quadratic.b + quadratic.c); // |A(t=1)|
   const stationsMm: number[] = [0];
   const areasMm2: number[] = [capA];
+  // Simple-section guard: a valid (non-self-intersecting) ruled loft sections into
+  // EXACTLY ONE simple closed loop per interior station; anything else means the
+  // pairing self-intersects and the area/bound are bogus (see the module
+  // @errorBound + the loft doc's simple-section precondition).
+  let sectionsSimple = true;
+  let firstNonSimpleStationMm: number | null = null;
   for (let k = 1; k <= stationCount; k++) {
     const s = (span * k) / (stationCount + 1);
     const point = add3(frame.originMm, scale3(frame.axis, s));
     const { polylines } = sectionMesh(mesh, { point, normal: frame.axis });
+    const closedLoops = polylines.filter((pl) => pl.closed);
     let area = 0;
-    for (const pl of polylines) {
-      if (pl.closed) area += sectionPolylineAreaMm2(pl.points, frame.e1, frame.e2);
+    for (const pl of closedLoops) area += ringAreaMm2(sectionPolylineUV(pl.points, frame.e1, frame.e2));
+    // A simple connector section is one simple closed loop. More than one loop, or
+    // a single self-crossing loop, flags a self-intersecting ruled surface.
+    const simpleHere =
+      closedLoops.length === 1 && closedRingIsSimple(sectionPolylineUV(closedLoops[0]!.points, frame.e1, frame.e2));
+    if (!simpleHere && sectionsSimple) {
+      sectionsSimple = false;
+      firstNonSimpleStationMm = s;
     }
     stationsMm.push(s);
     areasMm2.push(area);
@@ -653,14 +749,23 @@ export function sampleConnectorCrossSectionAreas(
     stationsMm,
     stationMarginMm2,
     guaranteedLowerBoundMm2: minAreaMm2 - stationMarginMm2,
+    sectionsSimple,
+    firstNonSimpleStationMm,
   };
 }
 
 /**
- * Measure the connector's minimum cross-section area — the exact closed-form
- * value (the gate value) PLUS the sampled instrument (live readout + hazard
- * demo) PLUS the tessellation cross-check. See this module's @errorBound.
- * Deterministic.
+ * Measure the connector's minimum cross-section area — THE GATE VALUE
+ * (`sampled.guaranteedLowerBoundMm2`, the fail-safe mesh lower bound) PLUS the
+ * closed-form validation oracle (`analytic`) PLUS the tessellation cross-check.
+ * See this module's @errorBound. Deterministic.
+ *
+ * GUARD (the simple-section precondition): if any sampled section is non-simple
+ * (a self-intersecting ruled surface from an adversarial editable pairing — see
+ * the loft doc), the never-over-report bound is invalid, so this REFUSES rather
+ * than report a bogus area.
+ *
+ * @throws {NonSimpleConnectorSectionError} if a sampled section is non-simple.
  */
 export function measureConnectorMinArea(
   mesh: IndexedMesh,
@@ -671,6 +776,14 @@ export function measureConnectorMinArea(
 ): MeasureConnectorMinAreaResult {
   const analytic = analyticConnectorMinArea(profileA, profileB, frame.spanMm);
   const sampled = sampleConnectorCrossSectionAreas(mesh, frame, analytic.quadratic, options);
+  if (!sampled.sectionsSimple) {
+    // Determine the offending loop count at the first non-simple station for the
+    // diagnostic (re-section once; cheap, only on the refusal path).
+    const s = sampled.firstNonSimpleStationMm!;
+    const point = add3(frame.originMm, scale3(frame.axis, s));
+    const loopCount = sectionMesh(mesh, { point, normal: frame.axis }).polylines.filter((pl) => pl.closed).length;
+    throw new NonSimpleConnectorSectionError(s, loopCount);
+  }
   // Tessellation cross-check over the INTERIOR mesh sections only (indices 1..n-2;
   // 0 and last are the exact analytic caps): |meshSection_k − analytic(t_k)|.
   let maxAbs = 0;
