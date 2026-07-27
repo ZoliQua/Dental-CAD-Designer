@@ -20,8 +20,11 @@
 import { createHash } from 'node:crypto';
 import type { IndexedMesh } from '@dqcad/kernel';
 import {
+  runBridgeAssemblyStage,
   runCavityShellStage,
   runShellStage,
+  type BridgeAssemblyStageOptions,
+  type BridgePipelineContext,
   type CavityShellStageOptions,
   type PipelineContext,
   type ShellStageOptions,
@@ -97,6 +100,40 @@ export async function replayShellStage(
   return {
     mesh: result.mesh,
     meshContentHash: result.meshContentHash,
+    inputHashes: result.inputHashes,
+  };
+}
+
+/**
+ * Phase 6 Task 8: the BRIDGE analogue of `replayShellStage` — re-runs the bridge
+ * ASSEMBLY stage (`runBridgeAssemblyStage`, the boolean-union fuse that produces
+ * the final watertight single-component bridge solid) in the server runtime and
+ * returns its output mesh + canonical content hash. The caller supplies the SAME
+ * bridge `PipelineContext` (restoration type bridge — `runBridgeAssemblyStage`
+ * asserts it via `assertBridgeContext`) and the SAME unit + connector mesh handles
+ * the original design fused; a deterministic `assembleBridge` (at a fixed
+ * manifold-3d version) then reproduces the recorded `stages.finalMesh` hash
+ * bit-for-bit + the stage `Operation.outputHashes`.
+ *
+ * The assembly stage is the natural replay unit for a bridge (the P4-shell /
+ * P5-cavity-shell precedent — the final watertight-solid producer). `options.hashMesh`
+ * is forced to this module's canonical `hashMesh` so the reproducibility claim
+ * rests on the SAME hash the client stored — a caller cannot supply a different
+ * hashing function and mask a real divergence.
+ *
+ * @throws {RestorationTypeMismatchError}/{BridgeContextIncompleteError} if `context`
+ *   is not a complete bridge case (via `assertBridgeContext`).
+ * @throws {NoAssemblySolidsError} if no solids are supplied.
+ * @throws {BridgeAssemblyError} (propagated) if the fuse is non-watertight/disjoint.
+ */
+export async function replayBridgeAssemblyStage(
+  context: BridgePipelineContext,
+  options: Omit<BridgeAssemblyStageOptions, 'hashMesh'>,
+): Promise<ReplayShellStageResult> {
+  const result = await runBridgeAssemblyStage(context, { ...options, hashMesh });
+  return {
+    mesh: result.assembledSolid,
+    meshContentHash: result.contentHash,
     inputHashes: result.inputHashes,
   };
 }

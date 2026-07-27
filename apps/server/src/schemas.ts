@@ -634,12 +634,14 @@ const connectorCrossSectionInputSchema = {
   },
 } as const;
 
-// The CROWN branch (Phase 4 Task 11, unchanged shape). `restorationType` is
-// OPTIONAL here (`enum: ['crown', 'bridge']`) so the existing client/tests that
-// POST a crown body WITHOUT it keep validating; the route handler treats an
-// absent/`crown`/`bridge` type as the crown path. `additionalProperties: false`
-// still rejects the cavity-only fields — so a cavity body can NEVER validate
-// against this branch (it lacks `crownSolid` and carries `inlaySolid` etc.).
+// The CROWN branch (Phase 4 Task 11). `restorationType` is OPTIONAL here
+// (`enum: ['crown']`) so the existing client/tests that POST a crown body
+// WITHOUT it keep validating; the route handler treats an absent/`crown` type as
+// the crown path. `additionalProperties: false` still rejects the cavity-only and
+// bridge-only fields — so a cavity or bridge body can NEVER validate against this
+// branch (it lacks `crownSolid` and carries `inlaySolid`/`assembledSolid` etc.).
+// Phase 6 Task 8: `bridge` is REMOVED from this enum (it was a placeholder that
+// fell through to the crown path); bridges now have their OWN branch below.
 export const crownValidateQcBodySchema = {
   type: 'object',
   required: [
@@ -660,7 +662,7 @@ export const crownValidateQcBodySchema = {
   ],
   additionalProperties: false,
   properties: {
-    restorationType: { type: 'string', enum: ['crown', 'bridge'] },
+    restorationType: { type: 'string', enum: ['crown'] },
     crownSolid: meshDataInputSchema,
     innerSurfaceMesh: meshDataInputSchema,
     outerSurfaceMesh: meshDataInputSchema,
@@ -794,15 +796,130 @@ export const inlayValidateQcBodySchema = {
   },
 } as const;
 
-// The route's body schema is the discriminated union of the two branches. Fastify/
-// AJV `oneOf` requires EXACTLY ONE to validate: a crown body (has `crownSolid`,
-// lacks `inlaySolid`) matches only the crown branch; an inlay/onlay body (has
-// `restorationType: 'inlay'|'onlay'` + `inlaySolid`) matches only the inlay
-// branch; a malformed body matches neither → 400. `additionalProperties: false`
-// on both branches makes the two field sets mutually exclusive, so there is no
-// oneOf ambiguity.
+// ---------------------------------------------------------------------------
+// The BRIDGE branch (Phase 6 Task 8). Mirrors cad-pipeline's `RunBridgeQcInput`
+// — the largest input surface yet: the fused watertight `assembledSolid`, the
+// per-unit surfaces (inner/outer + margin loop + insertion axis + the abutment's
+// fit-region descriptor), the abutment prep `dieSolids` (for the whole-bridge
+// seating simulation), the measured `connectors` (each carrying its
+// kernel-measured min cross-section area + its own positional target), the
+// profile-resolved thickness/connector thresholds, the framework mode, the
+// pontic-relief measurement scalars, and — riding WITH the request (the P5
+// precedent) — every geometry-scoped parameter, so the server recomputes the
+// EXACT gates the client did and the bit-identical proof catches any divergence.
+// `restorationType` is REQUIRED and pinned to `['bridge']` — the discriminator the
+// route dispatches on.
+// ---------------------------------------------------------------------------
+
+const fitRegionInputSchema = {
+  type: 'object',
+  required: ['axisPointMm', 'axis', 'maxRadialMm', 'minAxialMm', 'maxAxialMm'],
+  additionalProperties: false,
+  properties: {
+    axisPointMm: vec3Schema,
+    axis: vec3Schema,
+    maxRadialMm: { type: 'number' },
+    minAxialMm: { type: 'number' },
+    maxAxialMm: { type: 'number' },
+  },
+} as const;
+
+const bridgeUnitInputSchema = {
+  type: 'object',
+  required: ['label', 'kind', 'innerSurfaceMesh', 'outerSurfaceMesh', 'insertionAxis', 'marginLoop'],
+  additionalProperties: false,
+  properties: {
+    label: { type: 'string' },
+    kind: { type: 'string', enum: ['abutment', 'pontic'] },
+    innerSurfaceMesh: meshDataInputSchema,
+    outerSurfaceMesh: meshDataInputSchema,
+    insertionAxis: vec3Schema,
+    marginLoop: { type: 'array', items: vec3Schema },
+    marginExclusionMm: { type: 'number' },
+    // REQUIRED for an abutment (the marginFit gate extracts its intaglio patch
+    // off the assembled solid with it), absent for a pontic — the route handler
+    // enforces the abutment/pontic pairing (AJV can't express the conditional).
+    fitRegion: fitRegionInputSchema,
+  },
+} as const;
+
+const bridgeConnectorInputSchema = {
+  type: 'object',
+  required: ['label', 'minAreaMm2'],
+  additionalProperties: false,
+  properties: {
+    label: { type: 'string' },
+    minAreaMm2: { type: 'number' },
+    // The two FDI teeth this connector spans (for the positional-target rule).
+    teeth: { type: 'array', items: fdiToothSchema, minItems: 2, maxItems: 2 },
+    // This connector's OWN positional target (pre-resolved via the FDI rule).
+    targetMm2: { type: 'number' },
+  },
+} as const;
+
+const ponticReliefInputSchema = {
+  type: 'object',
+  required: ['maxAbsDeviationMm', 'style', 'configuredReliefMm'],
+  additionalProperties: false,
+  properties: {
+    maxAbsDeviationMm: { type: 'number' },
+    style: { type: 'string' },
+    configuredReliefMm: { type: 'number' },
+    thresholdMm: { type: 'number' },
+  },
+} as const;
+
+export const bridgeValidateQcBodySchema = {
+  type: 'object',
+  required: [
+    'restorationType',
+    'assembledSolid',
+    'units',
+    'dieSolids',
+    'connectors',
+    'minWallThicknessMm',
+    'occlusalMinWallThicknessMm',
+    'connectorAreaTargetMm2',
+    'ponticRelief',
+    'kernelVersion',
+    'profileVersion',
+    'journalHash',
+  ],
+  additionalProperties: false,
+  properties: {
+    restorationType: { type: 'string', enum: ['bridge'] },
+    assembledSolid: meshDataInputSchema,
+    units: { type: 'array', items: bridgeUnitInputSchema, minItems: 1 },
+    dieSolids: { type: 'array', items: meshDataInputSchema, minItems: 1 },
+    connectors: { type: 'array', items: bridgeConnectorInputSchema },
+    minWallThicknessMm: { type: 'number' },
+    occlusalMinWallThicknessMm: { type: 'number' },
+    connectorAreaTargetMm2: { type: 'number' },
+    frameworkMode: { type: 'boolean' },
+    frameworkMinThicknessMm: { type: 'number' },
+    ponticRelief: ponticReliefInputSchema,
+    marginFitThresholdMm: { type: 'number' },
+    seatingInterferenceVolumeToleranceMm3: { type: 'number' },
+    kernelVersion: { type: 'string' },
+    profileVersion: { type: 'string' },
+    journalHash: { type: 'string' },
+    acknowledgedGates: { type: 'array', items: { type: 'string' } },
+    /** OPTIONAL cross-check only — the server NEVER trusts this; it recomputes
+     * independently and 409s on any disagreement (invariant 6). */
+    clientReport: qcReportSchema,
+  },
+} as const;
+
+// The route's body schema is the discriminated union of the three branches.
+// Fastify/AJV `oneOf` requires EXACTLY ONE to validate: a crown body (has
+// `crownSolid`, lacks `inlaySolid`/`assembledSolid`) matches only the crown
+// branch; an inlay/onlay body (`restorationType: 'inlay'|'onlay'` + `inlaySolid`)
+// matches only the inlay branch; a bridge body (`restorationType: 'bridge'` +
+// `assembledSolid`/`units`) matches only the bridge branch; a malformed body
+// matches none → 400. `additionalProperties: false` on all three branches makes
+// the field sets mutually exclusive, so there is no oneOf ambiguity.
 export const validateQcBodySchema = {
-  oneOf: [crownValidateQcBodySchema, inlayValidateQcBodySchema],
+  oneOf: [crownValidateQcBodySchema, inlayValidateQcBodySchema, bridgeValidateQcBodySchema],
 } as const;
 
 export const validateQcResponseSchema = {
