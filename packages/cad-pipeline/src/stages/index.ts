@@ -99,3 +99,14 @@ export {
   type BridgeConnectorsStageResult,
   type EditableConnectorProfiles,
 } from './bridgeConnectors.ts';
+
+export {
+  runBridgeFrameworkStage,
+  MissingVeneeringSpaceError,
+  NoFrameworkUnitsError,
+  type FrameworkMode,
+  type FrameworkUnitInput,
+  type BridgeFrameworkStageOptions,
+  type FrameworkUnitResult,
+  type BridgeFrameworkStageResult,
+} from './bridgeFramework.ts';

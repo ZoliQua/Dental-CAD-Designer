@@ -246,6 +246,24 @@ export interface MaterialProfile {
    * value.
    */
   ponticOvateDepthMm: number;
+  /**
+   * Phase 6 Task 5: the VENEERING SPACE (mm) — the depth the unit's OUTER
+   * (anatomic) surface is offset inward in FRAMEWORK mode to leave room for
+   * hand-layered veneering ceramic (the "cutback"). Consumed by the Phase 6
+   * Task 5 framework-cutback op + stage; irrelevant in full-contour mode.
+   *
+   * Source: documented clinical PLACEHOLDER (the P4 e.max-honesty precedent —
+   * PLAN.md §3 has no veneering-space row). Classic hand-layering leaves
+   * ~0.8–1.5 mm of space for the veneering porcelain over a coping/framework;
+   * 1.0 mm is a common mid-range teaching default (both materials carry the
+   * same placeholder — the cutback op binds the CONFIGURED value, so a
+   * documented default is acceptable; revisit with a cited source). NOTE the
+   * design tension surfaced in Task 5: this is the FULL cutback depth reached
+   * on the free anatomic surface only — the cutback TAPERS to zero across a
+   * thin band approaching the margin (to preserve the marginal seal), so the
+   * veneering space is by definition NOT uniform in that near-margin band.
+   */
+  veneeringSpaceMm: number;
   /** SHA-256 hex of `canonicalStringify` over every OTHER field of this
    * object — see this module's top doc. */
   checksum: string;
@@ -528,6 +546,18 @@ export function validateMaterialProfileShape(raw: unknown): MaterialProfile {
     5,
     'documented clinical placeholder (ovate depth)',
   );
+  // Phase 6 Task 5: the veneering-space cutback depth (mm). Floored at 0 (no
+  // cutback is a valid, if degenerate, choice), ceilinged at 2.0 mm — a
+  // veneering space above ~1.5 mm is already atypical, 2.0 is a generous
+  // corruption guard rather than an invented clinical limit. Documented
+  // placeholder (see the field's TSDoc).
+  const veneeringSpaceMm = requireRange(
+    requireFiniteNumber(root['veneeringSpaceMm'], 'profile.veneeringSpaceMm'),
+    'profile.veneeringSpaceMm',
+    0,
+    2.0,
+    'documented clinical placeholder (hand-layering veneering space 0.8–1.5 mm)',
+  );
 
   const allowedKeys = new Set([
     'id',
@@ -548,6 +578,7 @@ export function validateMaterialProfileShape(raw: unknown): MaterialProfile {
     'ponticHygienicClearanceMm',
     'ponticRidgeLapReliefMm',
     'ponticOvateDepthMm',
+    'veneeringSpaceMm',
     'checksum',
   ]);
   for (const key of Object.keys(root)) {
@@ -575,6 +606,7 @@ export function validateMaterialProfileShape(raw: unknown): MaterialProfile {
     ponticHygienicClearanceMm,
     ponticRidgeLapReliefMm,
     ponticOvateDepthMm,
+    veneeringSpaceMm,
     checksum,
   };
 }

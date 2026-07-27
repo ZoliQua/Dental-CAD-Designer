@@ -65,3 +65,14 @@ export {
   type SampleConnectorAreasOptions,
   type MeasureConnectorMinAreaResult,
 } from './connector.ts';
+
+// Phase 6 Task 5 — the framework CUTBACK op (reduced anatomy for veneering:
+// the outer surface offset inward by the veneering space, fit surfaces + margin
+// preserved byte-exact via a topology-preserving tapered normal displacement).
+// See frameworkCutback.ts's module doc + @errorBound.
+export {
+  frameworkCutback,
+  FrameworkCutbackParamError,
+  type FrameworkCutbackOptions,
+  type FrameworkCutbackResult,
+} from './frameworkCutback.ts';

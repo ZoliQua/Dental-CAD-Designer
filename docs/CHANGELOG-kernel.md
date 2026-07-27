@@ -59,6 +59,41 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.25.0] — Phase 6 Task 5: framework cutback — `bridge/frameworkCutback.ts` (reduced anatomy for veneering, fit + margin byte-preserved)
+
+**No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned
+fixture hash is byte-identical to `[0.24.0]`.** A brand-new op only; no existing
+op's numerical output changed.
+
+Phase 6 Task 5 adds the framework CUTBACK op (`bridge/frameworkCutback.ts`): in
+framework mode a unit's OUTER anatomic surface is offset INWARD by the veneering
+space, leaving room for hand-layered ceramic, while the FIT surfaces (abutment
+intaglio / pontic base) and the marginal SEAL survive byte-exact. Deliberately
+NOT an SDF/marching-cubes offset (the `offsetMesh` / `healOuterAnatomy`
+precedent): marching cubes re-tessellates everything, so NO input vertex would
+survive bit-for-bit — incompatible with the byte-exact fit-preservation invariant.
+Instead the cutback is a TOPOLOGY-PRESERVING per-vertex normal displacement: the
+connectivity is untouched, fit + margin vertices keep their exact Float64 coords
+(weight 0), and only outer vertices move inward, along their own area-weighted
+normal, by a smoothstep weight `w = t²(3−2t)`, `t = clamp(distToMargin/band,0,1)`
+that TAPERS to 0 at the preserved-region boundary (the P4 feather precedent — the
+seal cannot open). `@errorBound`: on planar regions the achieved surface offset is
+EXACTLY `veneeringSpace·w`; on a faceted curved surface it is `veneeringSpace·w·cos φ`
+(φ = vertex-normal ↔ face-normal angle) — the surface moves inward by at most the
+intended amount, never more (the safe direction for the thickness gate). Pure
+Float64; no manifold-3d boundary (the unit union is Task 6). Regression-pinned by
+its closed-form fit-byte-identity / margin-preservation / cutback-accuracy /
+determinism tests in `bridge/frameworkCutback.test.ts` (no `kernel-ops.json` pin
+added — same "brand-new pure-Float64 op" precedent as `[0.9.0]`–`[0.24.0]`).
+
+The crown/cavity-acceptance QC pins (`test/golden/crown-acceptance.test.ts`,
+`test/golden/cavity-acceptance.test.ts`) advance MECHANICALLY: `hashQcReport`
+= sha256 over the QcReport JSON, which embeds `kernelVersion`, so the version
+string alone shifts the three `*-qc` hashes while EVERY geometry stage pin is
+byte-identical to `[0.24.0]` (verified: `npm run test:golden` green, no geometry
+pin moved). The mode-switched thickness gate (framework vs full-contour) is an
+ADDITIVE branch on `minWallThickness.ts`; the full-contour path is byte-unchanged.
+
 ## [0.24.0] — Phase 6 Task 4: bridge connectors — `bridge/connector.ts` (editable profiles, ruled loft, minimum cross-section area)
 
 **No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned

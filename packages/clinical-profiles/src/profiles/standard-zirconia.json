@@ -1,6 +1,6 @@
 {
   "id": "standard-zirconia",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "label": "Standard Zirconia (monolithic)",
   "restorationParams": {
     "cementGapMm": 0.05,
@@ -27,5 +27,6 @@
   "ponticHygienicClearanceMm": 2.0,
   "ponticRidgeLapReliefMm": 0.05,
   "ponticOvateDepthMm": 1.0,
-  "checksum": "974f3d38015a6d68b240a9c3a68de98d2512760fda69a4068741d9b908aa01d1"
+  "veneeringSpaceMm": 1.0,
+  "checksum": "746ce09b5fc519ea243098ffdcf16e692aa11cfd198c35b36fda9357fdcaf279"
 }

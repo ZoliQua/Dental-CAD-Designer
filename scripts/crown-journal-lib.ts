@@ -252,7 +252,7 @@ export const PROFILE: PipelineMaterialProfile = {
   frameworkMinThicknessMm: 0.5,
   ponticHygienicClearanceMm: 2.0,
   ponticRidgeLapReliefMm: 0.05,
-  ponticOvateDepthMm: 1.0,
+  ponticOvateDepthMm: 1.0, veneeringSpaceMm: 1.0,
 };
 
 // The FIT/SHELL sub-scene primitives.

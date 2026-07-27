@@ -143,7 +143,7 @@ export const PROFILE: PipelineMaterialProfile = {
   frameworkMinThicknessMm: 0.5,
   ponticHygienicClearanceMm: 2.0,
   ponticRidgeLapReliefMm: 0.05,
-  ponticOvateDepthMm: 1.0,
+  ponticOvateDepthMm: 1.0, veneeringSpaceMm: 1.0,
 };
 
 const die = (): IndexedMesh => buildFrustum(MARGIN_R, TOP_R, MARGIN_Z, TOP_Z, 96, true, true);

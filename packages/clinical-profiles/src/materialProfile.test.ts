@@ -149,6 +149,8 @@ describe('validateMaterialProfileShape', () => {
     expect(profile.ponticHygienicClearanceMm).toBe(2.0);
     expect(profile.ponticRidgeLapReliefMm).toBe(0.05);
     expect(profile.ponticOvateDepthMm).toBe(1.0);
+    // Phase 6 Task 5: the framework veneering-space cutback depth.
+    expect(profile.veneeringSpaceMm).toBe(1.0);
   });
 
   it.each([
@@ -158,6 +160,7 @@ describe('validateMaterialProfileShape', () => {
     'ponticHygienicClearanceMm',
     'ponticRidgeLapReliefMm',
     'ponticOvateDepthMm',
+    'veneeringSpaceMm',
   ])('rejects a missing %s', (field) => {
     const raw = validRawProfile();
     delete raw[field];
@@ -173,6 +176,8 @@ describe('validateMaterialProfileShape', () => {
     ['ponticHygienicClearanceMm', 6], // above the 5 mm sanity ceiling
     ['ponticRidgeLapReliefMm', 1.5], // above the 1 mm ceiling
     ['ponticOvateDepthMm', -0.1], // below 0
+    ['veneeringSpaceMm', 2.5], // above the 2.0 mm ceiling
+    ['veneeringSpaceMm', -0.1], // below 0
   ])('rejects %s = %s (outside its documented range)', (field, badValue) => {
     const raw = validRawProfile();
     raw[field] = badValue;
@@ -205,6 +210,10 @@ describe('EMAX_LITHIUM_DISILICATE_PROFILE — Phase 5 inlay/onlay IFU values', (
     // e.max framework is the documented occlusal-min placeholder (1.0), distinct from zirconia's 0.5.
     expect(EMAX_LITHIUM_DISILICATE_PROFILE.frameworkMinThicknessMm).toBe(1.0);
     expect(STANDARD_ZIRCONIA_PROFILE.frameworkMinThicknessMm).toBe(0.5);
+    // Phase 6 Task 5: veneering space is the same documented hand-layering
+    // placeholder on both profiles.
+    expect(EMAX_LITHIUM_DISILICATE_PROFILE.veneeringSpaceMm).toBe(1.0);
+    expect(STANDARD_ZIRCONIA_PROFILE.veneeringSpaceMm).toBe(1.0);
   });
 });
 

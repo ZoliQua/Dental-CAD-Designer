@@ -35,7 +35,10 @@ import { loadMaterialProfile, type MaterialProfile } from './materialProfile.ts'
  * `ponticHygienicClearanceMm`/`ponticRidgeLapReliefMm`/`ponticOvateDepthMm`) and
  * the P5 marginExclusion promotion (`inlayMarginExclusionMm` = 1.3 /
  * `onlayMarginExclusionMm` = 1.8, geometry-derived bands moved off the engine
- * constant); checksum bumped accordingly.
+ * constant); checksum bumped accordingly. Version 1.4.0 (Phase 6 Task 5): gained
+ * `veneeringSpaceMm` (1.0 — the framework-cutback depth, a documented
+ * hand-layering placeholder; see materialProfile.ts's TSDoc); checksum bumped
+ * accordingly.
  */
 export const STANDARD_ZIRCONIA_PROFILE: MaterialProfile = loadMaterialProfile(standardZirconiaJson);
 
@@ -65,7 +68,10 @@ export const STANDARD_ZIRCONIA_PROFILE: MaterialProfile = loadMaterialProfile(st
  * the pontic-interface placeholders) and the P5 marginExclusion promotion
  * (`inlayMarginExclusionMm` = 1.3 / `onlayMarginExclusionMm` = 1.8 — the bands
  * are geometry-derived, hence material-independent = the same values as
- * zirconia); checksum bumped accordingly.
+ * zirconia); checksum bumped accordingly. Version 1.3.0 (Phase 6 Task 5): gained
+ * `veneeringSpaceMm` (1.0 — same documented hand-layering placeholder as
+ * zirconia; e.max is predominantly monolithic so this is a placeholder pending a
+ * genuine layered-e.max figure); checksum bumped accordingly.
  */
 export const EMAX_LITHIUM_DISILICATE_PROFILE: MaterialProfile = loadMaterialProfile(
   emaxLithiumDisilicateJson,

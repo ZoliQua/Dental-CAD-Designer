@@ -52,5 +52,7 @@ describe('PipelineMaterialProfile ↔ MaterialProfile field parity', () => {
     expect(p.onlayMarginExclusionMm).toBe(STANDARD_ZIRCONIA_PROFILE.onlayMarginExclusionMm);
     expect(p.frameworkMinThicknessMm).toBe(STANDARD_ZIRCONIA_PROFILE.frameworkMinThicknessMm);
     expect(p.ponticHygienicClearanceMm).toBe(STANDARD_ZIRCONIA_PROFILE.ponticHygienicClearanceMm);
+    // Phase 6 Task 5: the framework veneering-space cutback depth mirrors through.
+    expect(p.veneeringSpaceMm).toBe(STANDARD_ZIRCONIA_PROFILE.veneeringSpaceMm);
   });
 });

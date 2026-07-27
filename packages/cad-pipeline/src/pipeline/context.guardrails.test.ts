@@ -51,7 +51,7 @@ function makeContext(restorationType: PipelineContext['restorationType']): Pipel
       frameworkMinThicknessMm: 0.5,
       ponticHygienicClearanceMm: 2.0,
       ponticRidgeLapReliefMm: 0.05,
-      ponticOvateDepthMm: 1.0,
+      ponticOvateDepthMm: 1.0, veneeringSpaceMm: 1.0,
     },
     insertionAxis: axis,
     targetMesh: { contentHash: 'h', mesh: { positions: new Float64Array(), indices: new Uint32Array() } },

@@ -83,6 +83,9 @@ export interface PipelineMaterialProfile {
   /** See `MaterialProfile.ponticOvateDepthMm` — the ovate-pontic penetration
    * depth (Phase 6 Task 3). */
   readonly ponticOvateDepthMm: number;
+  /** See `MaterialProfile.veneeringSpaceMm` — the framework-cutback depth the
+   * outer anatomy is offset inward by in framework mode (Phase 6 Task 5). */
+  readonly veneeringSpaceMm: number;
 }
 
 /** A mesh handle a pipeline stage operates on — content-addressed (mirrors

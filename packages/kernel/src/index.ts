@@ -285,8 +285,22 @@
  * bridge/connector.test.ts; no `kernel-ops.json` pin added). The crown/cavity-
  * acceptance QC pins advance MECHANICALLY (version string embedded in the QcReport
  * JSON — metadata-only churn, every geometry pin byte-identical). See
- * docs/CHANGELOG-kernel.md's `[0.24.0]` entry. */
-export const KERNEL_VERSION = '0.24.0';
+ * docs/CHANGELOG-kernel.md's `[0.24.0]` entry.
+ * 0.25.0 (Phase 6 Task 5): NEW op — `bridge/frameworkCutback.ts` (the FRAMEWORK
+ * cutback: reduced anatomy for veneering — the outer surface offset inward by the
+ * veneering space via a TOPOLOGY-PRESERVING tapered per-vertex normal displacement,
+ * deliberately NOT an SDF/marching-cubes remesh so the fit surfaces + margin rim
+ * survive BYTE-EXACT; the cutback tapers to 0 at the preserved-region boundary so
+ * the marginal seal cannot open — `@errorBound` = the facet term `d·(1−cos φ)`,
+ * always the safe direction). Pure Float64; no manifold-3d boundary (the unit union
+ * is Task 6). Same "brand-new op, minor bump, existing goldens byte-identical"
+ * precedent as 0.9.0-0.24.0's pure-Float64 ops (regression-pinned by its fit-byte-
+ * identity / margin-preservation / cutback-accuracy / determinism tests in
+ * bridge/frameworkCutback.test.ts; no `kernel-ops.json` pin added). The crown/cavity-
+ * acceptance QC pins advance MECHANICALLY (version string embedded in the QcReport
+ * JSON — metadata-only churn, every geometry pin byte-identical). See
+ * docs/CHANGELOG-kernel.md's `[0.25.0]` entry. */
+export const KERNEL_VERSION = '0.25.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -817,6 +831,10 @@ export {
   type SampledConnectorAreas,
   type SampleConnectorAreasOptions,
   type MeasureConnectorMinAreaResult,
+  frameworkCutback,
+  FrameworkCutbackParamError,
+  type FrameworkCutbackOptions,
+  type FrameworkCutbackResult,
 } from './bridge/index.ts';
 
 export {
