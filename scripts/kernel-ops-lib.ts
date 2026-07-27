@@ -71,6 +71,7 @@ import {
   blockoutPreview,
   buildInnerSurface,
   constructShell,
+  assembleBridge,
   type IndexedMesh,
   type SurfaceSpline,
   type SurfacePoint,
@@ -1051,6 +1052,49 @@ export async function computeKernelOpsSnapshot(): Promise<KernelOpsSnapshot> {
     });
   }
 
+  // --- 21. assembleBridge (Phase 6 Task 6) -------------------------------
+  // Three overlapping axis-aligned boxes (two "units" + a bridging "connector")
+  // fused into ONE watertight single-component solid through the manifold-3d
+  // wrapper's `union` (fold-union). Like constructShell above, this op EXERCISES
+  // THE WASM BOUNDARY, so the manifoldVersion guard protects it exactly like
+  // union/subtract/intersect. A watertight + single-component self-check guards
+  // against pinning a broken fuse. Inline synthetic (no committed file), small +
+  // fast — the full clinical 3-unit acceptance lives in
+  // test/golden/bridge-acceptance.test.ts.
+  {
+    const box = (cx: number, hx: number, h: number): IndexedMesh => {
+      const x0 = cx - hx, x1 = cx + hx, y0 = -h, y1 = h, z0 = -h, z1 = h;
+      const positions = new Float64Array([x0, y0, z0, x1, y0, z0, x1, y1, z0, x0, y1, z0, x0, y0, z1, x1, y0, z1, x1, y1, z1, x0, y1, z1]);
+      const indices = new Uint32Array([0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7]);
+      return { positions, indices };
+    };
+    const solids = [box(-2, 1.2, 1), box(2, 1.2, 1), box(0, 1.5, 0.5)];
+    const assembled = await assembleBridge(solids);
+    if (!assembled.watertight || assembled.componentCount !== 1) {
+      throw new Error(
+        `kernel-ops golden: assembleBridge produced a non-watertight/multi-component solid ` +
+          `(watertight=${assembled.watertight}, components=${assembled.componentCount}) — investigate before regenerating`,
+      );
+    }
+    ops.push({
+      id: 'assembleBridge',
+      op: 'assembleBridge',
+      fixture: 'inline synthetic: two overlapping unit boxes + one bridging connector box → fold-union',
+      params: { inputCount: solids.length },
+      hash: sha256Of(
+        assembled.solid.positions,
+        assembled.solid.indices,
+        JSON.stringify({ watertight: assembled.watertight, componentCount: assembled.componentCount }),
+      ),
+      meta: {
+        triangleCount: assembled.triangleCount,
+        watertight: assembled.watertight,
+        componentCount: assembled.componentCount,
+        volumeMm3: assembled.volumeMm3,
+      },
+    });
+  }
+
   return {
     kernelVersion: KERNEL_VERSION,
     manifoldVersion: getInstalledManifoldVersion(),
@@ -1069,6 +1113,7 @@ export async function computeKernelOpsSnapshot(): Promise<KernelOpsSnapshot> {
       'suggestAxis (Phase 3 Task 9, KERNEL_VERSION 0.6.0): NEW pinned entry — arch-case-01 upperjaw, ROI extracted (radiusMm=2) from tooth 11\'s COMMITTED hand-traced reference margin anchors (Task 7 — a fixed, already-golden-pinned seed, no ambient-point survey needed), default suggestInsertionAxis params, a <2s runtime self-check (this task\'s interactivity target — measured and asserted at generation time, not just reported). Every other op entry is UNCHANGED by this bump.',
       'blockoutPreview (Phase 3 Task 10, KERNEL_VERSION 0.7.0): NEW pinned entry — SAME real fixture/ROI as suggestAxis (arch-case-01 upperjaw, tooth 11 reference margin, radiusMm=2), direction = the WORST-ranked candidate suggestAxis itself evaluated (a real, reproducible, non-fabricated direction guaranteed to carry genuine undercut on this real fixture, since the BEST candidate is by construction near the zero-undercut optimum and would pin a near-empty golden), thresholdMm = DEFAULT_UNDERCUT_BLOCKOUT_THRESHOLD_MM (clinical-profiles, 0). A non-empty-selection self-check guards against a silently-degenerate regeneration. Every other op entry is UNCHANGED by this bump.',
       'constructShell (Phase 4 Task 7, KERNEL_VERSION 0.13.0): NEW pinned entry — inline synthetic cone-frustum die -> buildInnerSurface (pitchMm=0.1, coarse) + occlusally-capped open-cervical anatomy dome (0.7mm radial offset), joined at the margin-band seam into a watertight shell through the manifold-3d wrapper (cleanupMesh). This entry EXERCISES THE WASM BOUNDARY for the shell op, so the manifoldVersion guard protects it exactly like union/subtract/intersect. A watertight + single-component self-check guards against pinning a broken shell. Every other op entry is UNCHANGED by this bump (verified byte-identical via the regeneration diff).',
+      'assembleBridge (Phase 6 Task 6, KERNEL_VERSION 0.26.0): NEW pinned entry — inline synthetic three overlapping boxes (two unit boxes + one bridging connector box) fold-unioned into ONE watertight single-component solid through the manifold-3d wrapper (union). This entry EXERCISES THE WASM BOUNDARY for the whole-bridge assembly, so the manifoldVersion guard protects it exactly like union/subtract/intersect and constructShell. A watertight + single-component self-check guards against pinning a broken fuse. Every other op entry is UNCHANGED by this bump (verified byte-identical via the regeneration diff).',
     ],
     ops,
   };

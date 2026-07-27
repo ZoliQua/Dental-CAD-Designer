@@ -299,8 +299,20 @@
  * bridge/frameworkCutback.test.ts; no `kernel-ops.json` pin added). The crown/cavity-
  * acceptance QC pins advance MECHANICALLY (version string embedded in the QcReport
  * JSON — metadata-only churn, every geometry pin byte-identical). See
- * docs/CHANGELOG-kernel.md's `[0.25.0]` entry. */
-export const KERNEL_VERSION = '0.25.0';
+ * docs/CHANGELOG-kernel.md's `[0.25.0]` entry.
+ *
+ * 0.26.0 (Phase 6 Task 6): NEW op — `bridge/bridgeAssembly.ts`'s `assembleBridge`
+ * (the whole-bridge UNION: abutment units + pontic + connectors → ONE watertight
+ * single-component solid, through the manifold-3d wrapper's `union`; repair-before-
+ * boolean, output re-validated watertight + manifold + single-component, a disjoint
+ * result surfaced as a typed `BridgeAssemblyError`). This op EXERCISES THE WASM
+ * BOUNDARY, so — exactly like `union`/`subtract`/`intersect`/`constructShell` (0.13.0)
+ * — it gets a `kernel-ops.json` pinned entry under the manifoldVersion guard (a
+ * watertight + single-component self-check guards the pin). The crown/cavity-
+ * acceptance QC pins advance MECHANICALLY (kernelVersion embedded in the QcReport
+ * JSON — metadata-only churn, every geometry pin byte-identical). See
+ * docs/CHANGELOG-kernel.md's `[0.26.0]` entry. */
+export const KERNEL_VERSION = '0.26.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -836,6 +848,12 @@ export {
   type FrameworkCutbackOptions,
   type FrameworkCutbackResult,
   type FrameworkCutbackValidation,
+  assembleBridge,
+  extractFitPatch,
+  BridgeAssemblyError,
+  type BridgeAssemblyResult,
+  type BridgeAssemblyFailureReason,
+  type FitRegionDescriptor,
 } from './bridge/index.ts';
 
 export {

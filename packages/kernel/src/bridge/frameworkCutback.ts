@@ -119,12 +119,17 @@ export interface FrameworkCutbackOptions {
    * fit/preserved surface vertex (weight 0, byte-exact). Length MUST equal the
    * mesh vertex count.
    *
-   * TODO (Task 6 — real assembly): this mask is CONSTRUCTION PROVENANCE. The T5
-   * fixture/stage supply it analytically; when Task 6 wires real assembled units,
-   * the mask MUST be derived from the shell's inner/outer vertex split recorded at
-   * STITCH TIME (not re-inferred geometrically), and the assembler must GUARD that
-   * every intaglio vertex is marked — a mis-derived mask would silently cut back a
-   * fit surface. Record this so it is not forgotten. */
+   * RESOLVED (Task 6): this mask is CONSTRUCTION PROVENANCE and is consumed
+   * PRE-UNION (the cutback runs per unit BEFORE the whole-bridge assembly), where
+   * the shell's inner/outer vertex split is known — the unit builder supplies it
+   * (the T5 fixture's `closedShellUnit.fitVertexMask`; a real shell records it at
+   * stitch time). It is deliberately NOT carried THROUGH the assembly union: a
+   * manifold boolean re-indexes/merges vertices, so a per-vertex mask cannot
+   * survive it. The POST-union fit region (for the assembled-solid margin re-
+   * measurement) is instead identified GEOMETRICALLY — see
+   * `bridge/bridgeAssembly.ts`'s `FitRegionDescriptor` / `extractFitPatch` and its
+   * "Provenance on the assembled solid" module doc for the full closure (WIRED for
+   * the pre-union cutback, SCOPED-by-geometry post-union). */
   readonly fitVertexMask: ReadonlyArray<boolean>;
   /** The preserved-region boundary loop (dense polyline): the prep margin for an
    * abutment, the base perimeter for a pontic. The cutback tapers to 0 within

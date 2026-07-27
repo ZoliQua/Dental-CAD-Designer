@@ -74,7 +74,19 @@ export {
   SEAM_DIHEDRAL_GATE_THRESHOLD_DEG,
   type SeamDihedralGateInput,
 } from './seamDihedral.ts';
+export {
+  ponticReliefGate,
+  PONTIC_RELIEF_GATE_NAME,
+  PONTIC_RELIEF_GATE_THRESHOLD_MM,
+  type PonticReliefGateInput,
+} from './ponticRelief.ts';
 export { runCrownQc, type RunCrownQcInput } from './report.ts';
+export {
+  runBridgeQc,
+  BridgeQcInputError,
+  type RunBridgeQcInput,
+  type BridgeUnitQcInput,
+} from './bridgeReport.ts';
 export {
   runInlayQc,
   selectInlayMinThicknessMm,

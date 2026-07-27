@@ -110,3 +110,10 @@ export {
   type FrameworkUnitResult,
   type BridgeFrameworkStageResult,
 } from './bridgeFramework.ts';
+
+export {
+  runBridgeAssemblyStage,
+  NoAssemblySolidsError,
+  type BridgeAssemblyStageOptions,
+  type BridgeAssemblyStageResult,
+} from './bridgeAssembly.ts';

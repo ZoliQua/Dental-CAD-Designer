@@ -59,6 +59,39 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.26.0] — Phase 6 Task 6: whole-bridge assembly — `bridge/bridgeAssembly.ts` (`assembleBridge`, units + connectors → one watertight solid)
+
+**`kernel-ops.json` gains ONE new pinned entry (`assembleBridge`) and its
+`kernelVersion` field advances `0.13.0 → 0.26.0`; EVERY existing op hash is
+byte-identical (verified via the regeneration diff).** No existing op's numerical
+output changed.
+
+Phase 6 Task 6 adds the whole-bridge ASSEMBLY op (`bridge/bridgeAssembly.ts`):
+the abutment units + pontic + connectors — independent watertight solids up to
+here — are fused into ONE watertight single-component solid via the manifold-3d
+wrapper's `union` (fold-union across all solids). A boolean UNION, NOT a P5-style
+shared-ring weld: the connectors GENUINELY OVERLAP the unit bodies (they loft into
+the proximal walls; there is no shared boundary loop to weld along), and only a
+union resolves the interior faces buried in the merged material. Repair-before-
+boolean (every input checked watertight up front), output re-validated watertight
++ manifold + single-component (a disjoint fuse → a typed `BridgeAssemblyError`,
+never a silent multi-body solid). `extractFitPatch` (a pure-Float64 helper) selects
+each abutment intaglio off the fused solid by its known cavity region, so the
+whole-bridge QC RE-MEASURES margin fit on the ASSEMBLED solid (survive-assembly:
+the WASM Float32 boundary touches the rim; the acceptance requires ≤ 10 µm — proven
+0.00016 µm on the fixture). `@errorBound`: the wrapper's shared Float64→Float32
+WASM-boundary bound (`boolean/manifold.ts`).
+
+This op EXERCISES THE WASM BOUNDARY, so — exactly like `union`/`subtract`/
+`intersect` and `constructShell` (`[0.13.0]`) — it gets a `kernel-ops.json` pinned
+entry (inline synthetic three-box fold-union) under the manifoldVersion guard, with
+a watertight + single-component self-check. The crown/cavity-acceptance QC pins
+advance MECHANICALLY (the QcReport embeds `kernelVersion`; the three `*-qc` hashes
+shift on the version string while EVERY geometry stage pin is byte-identical to
+`[0.25.0]` — verified). `cad-pipeline` gains the whole-bridge QC assembler
+`runBridgeQc` (`gates/bridgeReport.ts`) + the NEW `ponticRelief` gate (T3's ±20 µm
+measurement → a pass/fail) — no `kernel/` numerics changed by those.
+
 ## [0.25.0] — Phase 6 Task 5: framework cutback — `bridge/frameworkCutback.ts` (reduced anatomy for veneering, fit + margin byte-preserved)
 
 **No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned

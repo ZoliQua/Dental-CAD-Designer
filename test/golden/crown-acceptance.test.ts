@@ -105,7 +105,7 @@ const µm = (mm: number): string => `${(mm * 1000).toFixed(3)} µm`;
 // proof this qc diff is the version string alone, not numerical drift (the same
 // mechanical churn documented at 0.16.0-0.19.0). See docs/CHANGELOG-kernel.md's
 // [0.20.0] entry.
-const EXPECTED_KERNEL_VERSION = '0.25.0';
+const EXPECTED_KERNEL_VERSION = '0.26.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 function installedManifoldVersion(): string {
   const pkg = JSON.parse(readFileSync(join(repoRoot, 'node_modules', 'manifold-3d', 'package.json'), 'utf8')) as {
@@ -158,7 +158,11 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // bridge/frameworkCutback op does not touch the crown chain; hashQcReport tracks
   // the embedded kernelVersion string, every geometry pin above BYTE-IDENTICAL to
   // 0.24.0 (verified). See docs/CHANGELOG-kernel.md's [0.25.0] entry.
-  'crown-standin-qc': '33d6be67aab4fbf2c5241d8fc21c93f67fd077bef6fea749c38a82d98f1ad991',
+  // Advanced 0.25.0 → 0.26.0 (Phase 6 Task 6): MECHANICAL, metadata-only — the new
+  // bridge/bridgeAssembly (whole-bridge union) op does not touch the crown chain;
+  // hashQcReport tracks the embedded kernelVersion, every geometry pin BYTE-IDENTICAL
+  // to 0.25.0 (verified). See docs/CHANGELOG-kernel.md's [0.26.0] entry.
+  'crown-standin-qc': '26136cdfd5a5674d2074939c8d580c2886000a2cb7b48550e0716531ff77ec11',
 };
 
 const GATE_ORDER = ['watertight', 'manifold', 'selfIntersection', 'minWallThickness', 'marginFit', 'seating', 'connectorCrossSection', 'contact'];

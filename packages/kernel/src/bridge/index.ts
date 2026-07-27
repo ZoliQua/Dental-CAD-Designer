@@ -77,3 +77,16 @@ export {
   type FrameworkCutbackResult,
   type FrameworkCutbackValidation,
 } from './frameworkCutback.ts';
+
+// Phase 6 Task 6 — the whole-bridge ASSEMBLY op (units + pontic + connectors →
+// ONE watertight single-component solid via boolean union) + the geometric
+// fit-surface extractor that re-measures margin fit on the assembled solid.
+// See bridgeAssembly.ts's module doc (union-vs-weld, survive-assembly, provenance).
+export {
+  assembleBridge,
+  extractFitPatch,
+  BridgeAssemblyError,
+  type BridgeAssemblyResult,
+  type BridgeAssemblyFailureReason,
+  type FitRegionDescriptor,
+} from './bridgeAssembly.ts';
