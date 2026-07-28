@@ -446,6 +446,40 @@ describe('crownDesign controller — silent-failure defense at the QC call sites
     expect(store.errorStage).toBe('qc');
     expect(store.busyStage).toBeNull();
   });
+
+  // P7-T1 fix round (review finding 1): the same class at the MID-WORKFLOW
+  // actions — post-reload the stage gates pass from persisted hashes while the
+  // session fields are null; the panel's fire-and-forget run() wrapper swallows
+  // the rejection, so a pre-try throw is a silent no-op.
+  it('runMorph: a CrownStageOrderError from the session-shape check lands in the visible error state', async () => {
+    crownDesignEngine.start(restorationId);
+    caseStore.updateRestoration(
+      { ...currentRestoration(), stages: { ...currentRestoration().stages, anatomyPlacement: 'persisted-anatomy-hash' } },
+      { id: 'p2', name: 'test-persist', params: {}, inputHashes: [], outputHashes: [], kernelVersion: 'test', timestamp: new Date().toISOString() },
+    );
+
+    await expect(crownDesignEngine.runMorph()).rejects.toThrow(CrownStageOrderError);
+
+    const store = useCrownStore.getState();
+    expect(store.error).toMatch(/CrownStageOrderError/);
+    expect(store.errorStage).toBe('morph');
+    expect(store.busyStage).toBeNull();
+  });
+
+  it('constructShell: a CrownStageOrderError from the session-shape check lands in the visible error state', async () => {
+    crownDesignEngine.start(restorationId);
+    caseStore.updateRestoration(
+      { ...currentRestoration(), stages: { ...currentRestoration().stages, morphState: 'persisted-morph-hash' } },
+      { id: 'p3', name: 'test-persist', params: {}, inputHashes: [], outputHashes: [], kernelVersion: 'test', timestamp: new Date().toISOString() },
+    );
+
+    await expect(crownDesignEngine.constructShell()).rejects.toThrow(CrownStageOrderError);
+
+    const store = useCrownStore.getState();
+    expect(store.error).toMatch(/CrownStageOrderError/);
+    expect(store.errorStage).toBe('shell');
+    expect(store.busyStage).toBeNull();
+  });
 });
 
 describe('crownDesign controller — HONEST failure surfacing', () => {

@@ -619,15 +619,18 @@ class CrownDesignEngine {
    */
   async runMorph(): Promise<void> {
     const session = this.requireSession();
-    this.assertRunnable('morph');
-    if (!session.placed || !session.anatomyInput) {
-      throw new CrownStageOrderError('morph', 'anatomyIncomplete');
-    }
-    const planId = `${session.restorationId}:${session.placed.contentHash}`;
-    const contacts = this.buildMorphContacts(session, session.anatomyInput);
-    const strengths = useCrownStore.getState().strengths;
     this.publish({ busyStage: 'morph', progress: 0, error: null, errorStage: null });
+    // P7-T1 fix round (19b class): sync validation inside the try — post-reload
+    // the gate passes from the persisted anatomyPlacement hash while the
+    // session fields are null; a pre-try throw would be a silent no-op.
     try {
+      this.assertRunnable('morph');
+      if (!session.placed || !session.anatomyInput) {
+        throw new CrownStageOrderError('morph', 'anatomyIncomplete');
+      }
+      const planId = `${session.restorationId}:${session.placed.contentHash}`;
+      const contacts = this.buildMorphContacts(session, session.anatomyInput);
+      const strengths = useCrownStore.getState().strengths;
       const result = await this.pool().run(
         'morphAnatomy',
         {
@@ -773,13 +776,16 @@ class CrownDesignEngine {
    */
   async constructShell(opts: { autoThicken?: boolean } = {}): Promise<void> {
     const session = this.requireSession();
-    this.assertRunnable('shell');
-    if (!session.morphOuter || !session.inner) {
-      throw new CrownStageOrderError('shell', 'morphIncomplete');
-    }
-    const autoThicken = opts.autoThicken ?? false;
     this.publish({ busyStage: 'shell', progress: 0, error: null, errorStage: null });
+    // P7-T1 fix round (19b class): sync validation inside the try — post-reload
+    // the gate passes from the persisted morphState hash while the session
+    // fields are null; a pre-try throw would be a silent no-op.
     try {
+      this.assertRunnable('shell');
+      if (!session.morphOuter || !session.inner) {
+        throw new CrownStageOrderError('shell', 'morphIncomplete');
+      }
+      const autoThicken = opts.autoThicken ?? false;
       const result = await this.pool().run('constructShell', {
         outerPositions: session.morphOuter.positions,
         outerIndices: session.morphOuter.indices,

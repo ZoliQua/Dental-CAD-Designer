@@ -545,11 +545,14 @@ class CavityDesignEngine {
    */
   async runContacts(): Promise<void> {
     const session = this.requireSession();
-    this.assertRunnable('contacts');
-    if (!session.patch) throw new CavityStageOrderError('contacts', 'patchIncomplete');
-    const adaptations = this.buildAdaptations(session);
     this.publish({ busyStage: 'contacts', progress: 0, error: null, errorStage: null });
+    // P7-T1 fix round (19b class): sync validation inside the try — post-reload
+    // the gate passes from the persisted occlusalPatch hash while the session
+    // fields are null; a pre-try throw would be a silent no-op.
     try {
+      this.assertRunnable('contacts');
+      if (!session.patch) throw new CavityStageOrderError('contacts', 'patchIncomplete');
+      const adaptations = this.buildAdaptations(session);
       const result = await this.pool().run(
         'cavityProximalContact',
         {
@@ -682,10 +685,13 @@ class CavityDesignEngine {
    */
   async constructShell(): Promise<void> {
     const session = this.requireSession();
-    this.assertRunnable('shell');
-    if (!session.fit || !session.contacts) throw new CavityStageOrderError('shell', 'contactsIncomplete');
     this.publish({ busyStage: 'shell', progress: 0, error: null, errorStage: null });
+    // P7-T1 fix round (19b class): sync validation inside the try — post-reload
+    // the gate passes from the persisted proximalContacts hash while the
+    // session fields are null; a pre-try throw would be a silent no-op.
     try {
+      this.assertRunnable('shell');
+      if (!session.fit || !session.contacts) throw new CavityStageOrderError('shell', 'contactsIncomplete');
       const result = await this.pool().run(
         'cavityShell',
         {

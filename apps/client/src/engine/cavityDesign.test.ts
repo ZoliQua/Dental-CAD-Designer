@@ -416,6 +416,40 @@ describe('cavityDesign controller — silent-failure defense at the QC call site
     expect(store.errorStage).toBe('qc');
     expect(store.busyStage).toBeNull();
   });
+
+  // P7-T1 fix round (review finding 1): the same class at the MID-WORKFLOW
+  // actions — post-reload the stage gates pass from persisted hashes while the
+  // session fields are null; the panel's fire-and-forget run() wrapper swallows
+  // the rejection, so a pre-try throw is a silent no-op.
+  it('runContacts: a CavityStageOrderError from the session-shape check lands in the visible error state', async () => {
+    cavityDesignEngine.start(restorationId);
+    caseStore.updateRestoration(
+      { ...currentRestoration(), stages: { ...currentRestoration().stages, occlusalPatch: 'persisted-patch-hash' } },
+      { id: 'p2', name: 'test-persist', params: {}, inputHashes: [], outputHashes: [], kernelVersion: 'test', timestamp: new Date().toISOString() },
+    );
+
+    await expect(cavityDesignEngine.runContacts()).rejects.toThrow(CavityStageOrderError);
+
+    const store = useCavityStore.getState();
+    expect(store.error).toMatch(/CavityStageOrderError/);
+    expect(store.errorStage).toBe('contacts');
+    expect(store.busyStage).toBeNull();
+  });
+
+  it('constructShell: a CavityStageOrderError from the session-shape check lands in the visible error state', async () => {
+    cavityDesignEngine.start(restorationId);
+    caseStore.updateRestoration(
+      { ...currentRestoration(), stages: { ...currentRestoration().stages, proximalContacts: 'persisted-contacts-hash' } },
+      { id: 'p3', name: 'test-persist', params: {}, inputHashes: [], outputHashes: [], kernelVersion: 'test', timestamp: new Date().toISOString() },
+    );
+
+    await expect(cavityDesignEngine.constructShell()).rejects.toThrow(CavityStageOrderError);
+
+    const store = useCavityStore.getState();
+    expect(store.error).toMatch(/CavityStageOrderError/);
+    expect(store.errorStage).toBe('shell');
+    expect(store.busyStage).toBeNull();
+  });
 });
 
 describe('cavityDesign controller — HONEST failure surfacing', () => {

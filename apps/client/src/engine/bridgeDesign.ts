@@ -262,6 +262,13 @@ interface Session {
   /** The journaled connector decision recovered on start() from persistence
    * (null when absent/unusable) — consumed by `ensureConnectorsMaterialized`. */
   persistedConnectors: PersistedConnectorDecision[] | null;
+  /** Whether the persisted `bridgeAbutmentSurfaces` stage hash has been proven
+   * to match THIS session's captured abutment inner+outer surfaces — set by
+   * `commitAbutmentSurfaces` (it produced the hash from this geometry) or by
+   * the reload verification in `ensureSessionMaterialized` (P7-T1 fix round:
+   * those surfaces feed the marginFit/seating gates and must never be consumed
+   * unverified after a reload). */
+  abutmentSurfacesVerified: boolean;
 }
 
 function nowIso(): string {
@@ -337,6 +344,7 @@ class BridgeDesignEngine {
       frameworkMode: null,
       assembled: null,
       persistedConnectors: null,
+      abutmentSurfacesVerified: false,
     };
     // P7-T1 (the 19b root fix): a restoration re-opened AFTER a reload carries
     // persisted stage hashes but this fresh session carries none of the state
@@ -545,6 +553,25 @@ class BridgeDesignEngine {
   private async ensureSessionMaterialized(session: Session): Promise<void> {
     const restoration = this.restoration();
     const stages = restoration.stages;
+    // P7-T1 fix round (review finding 2): the captured abutment inner/outer
+    // surfaces feed the marginFit + seating gates but are NOT covered by the
+    // finalMesh verification (that hashes the fused unit `mesh` solids, not
+    // the fit/anatomy surfaces). Re-hash EXACTLY what commitAbutmentSurfaces
+    // sealed (abutment inner+outer, combined in order) and require it to
+    // reproduce the persisted stage hash — once per reloaded session.
+    // (The margin loops / fitRegions / dies have NO persisted hash of their
+    // own — an inherent persistence limit, documented in the task report.)
+    if (stages.bridgeAbutmentSurfaces !== undefined && !session.abutmentSurfacesVerified) {
+      const abutments = session.geometry.units.filter((u) => u.kind === 'abutment');
+      const combined = combineMeshes(abutments.flatMap((u) => [u.inner, u.outer]));
+      const contentHash = await this.hashMesh(combined.positions, combined.indices);
+      if (contentHash !== stages.bridgeAbutmentSurfaces) {
+        throw new BridgeSessionRestoreError(
+          'the captured abutment fit/anatomy surfaces do not reproduce the persisted abutment-surfaces hash (the geometry asset has drifted from the saved design)',
+        );
+      }
+      session.abutmentSurfacesVerified = true;
+    }
     if (stages.bridgePontic !== undefined && session.pontic === null) {
       throw new BridgeSessionRestoreError(
         'the journaled bridge-pontic decision for the persisted pontic stage was not found (or no longer matches the captured per-style relief)',
@@ -665,6 +692,9 @@ class BridgeDesignEngine {
         },
         [],
       );
+      // The persisted hash was just produced from THIS session's captured
+      // surfaces — no reload re-verification needed until the next start().
+      session.abutmentSurfacesVerified = true;
       this.publish({
         busyStage: null,
         progress: 1,

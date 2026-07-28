@@ -243,7 +243,11 @@ async function runFullWorkflow(opts: { semiAxisOverrides?: Record<string, number
  * in-memory session/store is gone, then the panel re-opens the bridge session
  * against the SAME captured geometry asset. `mutate` lets a test corrupt the
  * persisted document between "save" and "load". */
-function reload(id: string, mutate?: (saved: CaseDocument) => CaseDocument): void {
+function reload(
+  id: string,
+  mutate?: (saved: CaseDocument) => CaseDocument,
+  mutateGeometry?: (g: BridgeSessionGeometry) => BridgeSessionGeometry,
+): void {
   let saved = caseStore.getDocument();
   if (mutate) saved = mutate(saved);
   bridgeDesignEngine.resetForTests();
@@ -251,7 +255,8 @@ function reload(id: string, mutate?: (saved: CaseDocument) => CaseDocument): voi
   caseStore.loadDocument(saved);
   pool = new DeterministicPool();
   bridgeDesignEngine.__setPoolForTests(pool);
-  bridgeDesignEngine.start(id, geometry());
+  const g = geometry();
+  bridgeDesignEngine.start(id, mutateGeometry ? mutateGeometry(g) : g);
 }
 
 describe('bridgeDesign — 19b: reload → runQc produces a REAL result (never a silent no-op)', () => {
@@ -383,6 +388,29 @@ describe('bridgeDesign — honestly NON-reconstructable persistence fails VISIBL
     expect(state.errorKey).toBe('bridge.errorSessionRestore');
     expect(state.error).toContain('BridgeSessionRestoreError');
     // No QC report was written for a design we could not faithfully restore.
+    expect(restoration(id).qc).toBeNull();
+  });
+
+  // P7-T1 fix round (review finding 2): the captured abutment fit/anatomy
+  // surfaces feed the marginFit + seating gates but were previously consumed
+  // UNVERIFIED — a drifted asset whose inner/outer buffers changed while the
+  // unit `mesh` + connector frames stayed put would silently re-attach.
+  it('a drifted captured abutment inner surface (bridgeAbutmentSurfaces hash mismatch) fails visibly', async () => {
+    const id = await runFullWorkflow({ runQc: false });
+
+    reload(id, undefined, (g) => ({
+      ...g,
+      units: g.units.map((u) =>
+        u.label === '14'
+          ? { ...u, inner: tetra(99) } // drifted fit surface; unit mesh untouched
+          : u,
+      ),
+    }));
+
+    await expect(bridgeDesignEngine.runQc()).rejects.toThrow(BridgeSessionRestoreError);
+    const state = useBridgeStore.getState();
+    expect(state.errorKey).toBe('bridge.errorSessionRestore');
+    expect(state.error).toContain('BridgeSessionRestoreError');
     expect(restoration(id).qc).toBeNull();
   });
 });
