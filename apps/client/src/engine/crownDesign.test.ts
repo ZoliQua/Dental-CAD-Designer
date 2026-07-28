@@ -404,6 +404,50 @@ describe('crownDesign controller — invalidation cascade (stale QC can never di
   });
 });
 
+describe('crownDesign controller — silent-failure defense at the QC call sites (P7-T1, the 19b sibling sweep)', () => {
+  // The 19b shape: persisted stage hashes say "qc may run" (as after a page
+  // reload) but the in-memory session has no shell — the pre-try session-shape
+  // check used to throw its CrownStageOrderError BEFORE the try block, so the
+  // click silently no-op'd. Both call sites must surface it VISIBLY.
+  function persistStagesWithoutSession(qcReport: import('@dqcad/shared-types').QcReport | null): void {
+    caseStore.updateRestoration(
+      { ...currentRestoration(), stages: { ...currentRestoration().stages, finalMesh: 'persisted-shell-hash' }, qc: qcReport },
+      { id: 'p', name: 'test-persist', params: {}, inputHashes: [], outputHashes: [], kernelVersion: 'test', timestamp: new Date().toISOString() },
+    );
+  }
+  const minimalReport: import('@dqcad/shared-types').QcReport = {
+    gates: [{ gate: 'minWallThickness', passed: false, acknowledged: false, value: 0.3, threshold: 0.5, unit: 'mm', message: 'thin' }],
+    passed: false,
+    kernelVersion: 'test',
+    profileVersion: 'test',
+    journalHash: 'persisted-shell-hash',
+  };
+
+  it('runQc: a CrownStageOrderError from the session-shape check lands in the visible error state', async () => {
+    crownDesignEngine.start(restorationId);
+    persistStagesWithoutSession(null);
+
+    await expect(crownDesignEngine.runQc()).rejects.toThrow(CrownStageOrderError);
+
+    const store = useCrownStore.getState();
+    expect(store.error).toMatch(/CrownStageOrderError/);
+    expect(store.errorStage).toBe('qc');
+    expect(store.busyStage).toBeNull();
+  });
+
+  it('acknowledgeGate: a CrownStageOrderError from the session-shape check lands in the visible error state', async () => {
+    crownDesignEngine.start(restorationId);
+    persistStagesWithoutSession(minimalReport);
+
+    await expect(crownDesignEngine.acknowledgeGate('minWallThickness')).rejects.toThrow(CrownStageOrderError);
+
+    const store = useCrownStore.getState();
+    expect(store.error).toMatch(/CrownStageOrderError/);
+    expect(store.errorStage).toBe('qc');
+    expect(store.busyStage).toBeNull();
+  });
+});
+
 describe('crownDesign controller — HONEST failure surfacing', () => {
   it('a shell failure sets an error state and never writes finalMesh (QC stays blocked)', async () => {
     fake.failShell = true;

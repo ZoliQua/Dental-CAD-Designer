@@ -924,6 +924,27 @@ export const validateQcBodySchema = {
 
 export const validateQcResponseSchema = {
   200: qcReportSchema,
+  // Phase 7 Task 1 (the P6-T8 carry-in): a SCHEMA-valid but semantically
+  // invalid body (a typed QC input error thrown during the server's
+  // independent recompute) maps to 400 with the diagnostic. This schema must
+  // stay PERMISSIVE (no `additionalProperties: false`, `required` covering
+  // both shapes): Fastify serializes its OWN AJV validation-error 400s
+  // through the same 400 response schema, and their body
+  // (`statusCode`/`code`/`error: 'Bad Request'`/`message`) must survive
+  // serialization unchanged alongside our `qc-invalid-input` shape.
+  400: {
+    type: 'object',
+    required: ['error', 'message'],
+    properties: {
+      error: { type: 'string' },
+      message: { type: 'string' },
+      /** Present on the qc-invalid-input shape: the typed error's class name. */
+      errorName: { type: 'string' },
+      /** Present on Fastify's own validation-error shape. */
+      statusCode: { type: 'number' },
+      code: { type: 'string' },
+    },
+  },
   409: {
     type: 'object',
     required: ['error', 'message', 'differences'],

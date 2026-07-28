@@ -582,6 +582,7 @@
     "reasonAssemblyIncomplete": "előbb állítsd össze a hidat",
     "statusRunning": "Feldolgozás…",
     "errorBanner": "{{stage}} sikertelen — {{message}}",
+    "errorSessionRestore": "A mentett hídterv nem állítható helyre ebben a munkamenetben ({{detail}}). Futtasd újra a tervezési lépéseket (hídtag → összekötők → váz → összeállítás), majd futtasd újra a QC-t.",
     "clearError": "Elvetés",
     "axisPlaceholderWarning": "A közös behelyezési tengely nincs megerősítve — a tervezés az alapértelmezett [0,0,1] irány mentén történik. Erősítsd meg a közös tengelyt a behelyezési tengely eszközben az összes pillér helyes alámenet-kezeléséhez.",
     "syntheticTitle": "⚠ DEMONSTRÁCIÓS ADAT — NEM ennek az esetnek a szkennje",

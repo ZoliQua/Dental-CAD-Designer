@@ -12,6 +12,10 @@ import {
   runBridgeQc,
   runCrownQc,
   runInlayQc,
+  BridgeQcInputError,
+  MarginFitInputError,
+  MinWallThicknessInputError,
+  NonCavityRestorationTypeError,
   type BridgeUnitQcInput,
   type CavityThicknessMinimums,
   type ConnectorCrossSection,
@@ -812,11 +816,34 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       // Independent recompute — the source of truth (invariant 6). Dispatch on
       // the discriminator: bridge → runBridgeQc; inlay/onlay → runInlayQc; else
       // (absent/'crown') → runCrownQc.
-      const report = isBridgeBody(b)
-        ? await runBridgeQc(reconstructBridgeQcInput(b))
-        : isInlayBody(b)
-          ? await runInlayQc(reconstructInlayQcInput(b))
-          : await runCrownQc(reconstructCrownQcInput(b));
+      //
+      // P7-T1 (the P6-T8 carry-in): a body can be SCHEMA-valid (passes the AJV
+      // oneOf) yet semantically invalid for the QC pipeline — e.g. an abutment
+      // unit without `fitRegion` (schema-optional; the AJV schema cannot
+      // express "required iff kind==='abutment'"), or an empty margin/outline
+      // polyline. Those surface as TYPED input errors from the reconstruction/
+      // gate pipeline and are the CLIENT's fault → 400 with the diagnostic
+      // message, on all three branches uniformly. Anything else is a genuine
+      // server bug and still escapes to 500 — never blanket-caught.
+      let report: QcReport;
+      try {
+        report = isBridgeBody(b)
+          ? await runBridgeQc(reconstructBridgeQcInput(b))
+          : isInlayBody(b)
+            ? await runInlayQc(reconstructInlayQcInput(b))
+            : await runCrownQc(reconstructCrownQcInput(b));
+      } catch (error) {
+        if (
+          error instanceof BridgeQcInputError ||
+          error instanceof MarginFitInputError ||
+          error instanceof MinWallThicknessInputError ||
+          error instanceof NonCavityRestorationTypeError
+        ) {
+          reply.code(400);
+          return { error: 'qc-invalid-input' as const, errorName: error.name, message: error.message };
+        }
+        throw error;
+      }
 
       if (b.clientReport) {
         const differences = diffQcReports(report, b.clientReport);

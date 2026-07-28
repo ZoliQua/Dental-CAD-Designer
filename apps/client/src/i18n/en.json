@@ -582,6 +582,7 @@
     "reasonAssemblyIncomplete": "assemble the bridge first",
     "statusRunning": "Working…",
     "errorBanner": "{{stage}} failed — {{message}}",
+    "errorSessionRestore": "The saved bridge design could not be restored into this session ({{detail}}). Re-run the design stages (pontic → connectors → framework → assembly), then run QC again.",
     "clearError": "Dismiss",
     "syntheticTitle": "⚠ DEMONSTRATION DATA — NOT this case's scan",
     "syntheticNotice": "The bridge workflow runs on a SYNTHETIC demonstration fixture (teeth {{fixtureTeeth}}), not the selected case's scan geometry. Real multi-abutment bridge capture is a tracked pending; every readout below is illustrative, NOT clinical.",

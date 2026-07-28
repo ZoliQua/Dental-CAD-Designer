@@ -582,6 +582,7 @@
     "reasonAssemblyIncomplete": "zuerst die Brücke zusammenfügen",
     "statusRunning": "In Arbeit…",
     "errorBanner": "{{stage}} fehlgeschlagen — {{message}}",
+    "errorSessionRestore": "Das gespeicherte Brückendesign konnte in dieser Sitzung nicht wiederhergestellt werden ({{detail}}). Führen Sie die Designschritte erneut aus (Brückenglied → Verbinder → Gerüst → Zusammenfügung) und starten Sie die QC erneut.",
     "clearError": "Verwerfen",
     "axisPlaceholderWarning": "Gemeinsame Einschubachse nicht bestätigt — Design entlang der Standardrichtung [0,0,1]. Bestätigen Sie die gemeinsame Achse im Einschubachsen-Werkzeug für korrekte Unterschnitt-Behandlung über alle Pfeiler.",
     "syntheticTitle": "⚠ DEMONSTRATIONSDATEN — NICHT der Scan dieses Falls",

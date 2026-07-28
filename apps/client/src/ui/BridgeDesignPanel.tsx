@@ -149,6 +149,8 @@ function BridgeWorkflow({ restorationId }: { restorationId: string }) {
   const document = useCaseStore((state) => state.document);
   const error = useBridgeStore((state) => state.error);
   const errorStage = useBridgeStore((state) => state.errorStage);
+  const errorKey = useBridgeStore((state) => state.errorKey);
+  const errorDetail = useBridgeStore((state) => state.errorDetail);
   const busyStage = useBridgeStore((state) => state.busyStage);
 
   const restoration = document.restorations.find((r) => r.id === restorationId);
@@ -185,7 +187,15 @@ function BridgeWorkflow({ restorationId }: { restorationId: string }) {
 
       {error && (
         <div className="bridge-panel__error-banner" role="alert" data-testid="bridge-error">
-          <span>{t('bridge.errorBanner', { stage: errorStage ? t(STAGE_TITLE_KEY[errorStage]) : '', message: error })}</span>
+          <span>
+            {t('bridge.errorBanner', {
+              stage: errorStage ? t(STAGE_TITLE_KEY[errorStage]) : '',
+              // A KNOWN actionable failure (P7-T1: the session-restore error)
+              // renders its localized message; the technical detail rides as
+              // an untranslated diagnostic interpolation.
+              message: errorKey ? t(errorKey, { detail: errorDetail ?? '' }) : error,
+            })}
+          </span>
           <button type="button" onClick={() => bridgeDesignEngine.clearError()} data-testid="bridge-error-clear">
             {t('bridge.clearError')}
           </button>

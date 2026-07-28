@@ -902,14 +902,18 @@ class CrownDesignEngine {
    */
   async runQc(): Promise<void> {
     const session = this.requireSession();
-    this.assertRunnable('qc');
-    if (!session.shell || !session.inner || !session.morphOuter) {
-      throw new CrownStageOrderError('qc', 'shellIncomplete');
-    }
-    const document = caseStore.getDocument();
-    const profileVersion = document.settings.profileVersion || 'unversioned';
     this.publish({ busyStage: 'qc', progress: 0, error: null, errorStage: null });
+    // P7-T1 (the 19b sibling sweep): the synchronous order check + session-
+    // shape check live INSIDE the try — a pre-try throw (e.g. persisted stage
+    // hashes without session state, after a reload) would escape `failStage`
+    // and leave the click a silent no-op.
     try {
+      this.assertRunnable('qc');
+      if (!session.shell || !session.inner || !session.morphOuter) {
+        throw new CrownStageOrderError('qc', 'shellIncomplete');
+      }
+      const document = caseStore.getDocument();
+      const profileVersion = document.settings.profileVersion || 'unversioned';
       const { report } = await this.pool().run('runQc', {
         crownPositions: session.shell.positions,
         crownIndices: session.shell.indices,
@@ -954,16 +958,17 @@ class CrownDesignEngine {
    */
   async acknowledgeGate(gate: string): Promise<void> {
     const session = this.requireSession();
-    const restoration = this.restoration();
-    if (restoration.qc === null || !session.shell || !session.inner || !session.morphOuter) {
-      throw new CrownStageOrderError('qc', 'shellIncomplete');
-    }
-    const alreadyAck = restoration.qc.gates.filter((g) => g.acknowledged).map((g) => g.gate);
-    const acknowledgedGates = Array.from(new Set([...alreadyAck, gate]));
-    const document = caseStore.getDocument();
-    const profileVersion = document.settings.profileVersion || 'unversioned';
     this.publish({ busyStage: 'qc', error: null, errorStage: null });
+    // Same defense as runQc (P7-T1): no pre-try synchronous escape.
     try {
+      const restoration = this.restoration();
+      if (restoration.qc === null || !session.shell || !session.inner || !session.morphOuter) {
+        throw new CrownStageOrderError('qc', 'shellIncomplete');
+      }
+      const alreadyAck = restoration.qc.gates.filter((g) => g.acknowledged).map((g) => g.gate);
+      const acknowledgedGates = Array.from(new Set([...alreadyAck, gate]));
+      const document = caseStore.getDocument();
+      const profileVersion = document.settings.profileVersion || 'unversioned';
       const { report } = await this.pool().run('runQc', {
         crownPositions: session.shell.positions,
         crownIndices: session.shell.indices,

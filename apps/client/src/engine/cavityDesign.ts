@@ -785,10 +785,14 @@ class CavityDesignEngine {
    */
   async runQc(): Promise<void> {
     const session = this.requireSession();
-    this.assertRunnable('qc');
-    const payload = this.buildQcPayload(session);
     this.publish({ busyStage: 'qc', progress: 0, error: null, errorStage: null });
+    // P7-T1 (the 19b sibling sweep): the synchronous order check + payload
+    // build live INSIDE the try — a pre-try throw (e.g. persisted stage hashes
+    // without session state, after a reload) would escape `failStage` and
+    // leave the click a silent no-op.
     try {
+      this.assertRunnable('qc');
+      const payload = this.buildQcPayload(session);
       const { report } = await this.pool().run('runInlayQc', payload, { onProgress: (f) => this.publish({ progress: f }) });
       this.commitQc(report, 'inlay-qc', { passed: report.passed, gateCount: report.gates.length });
       this.publish({ busyStage: null, progress: 1, qc: report });
@@ -808,13 +812,14 @@ class CavityDesignEngine {
    */
   async acknowledgeGate(gate: string): Promise<void> {
     const session = this.requireSession();
-    const restoration = this.restoration();
-    if (restoration.qc === null) throw new CavityStageOrderError('qc', 'shellIncomplete');
-    const alreadyAck = restoration.qc.gates.filter((g) => g.acknowledged).map((g) => g.gate);
-    const acknowledgedGates = Array.from(new Set([...alreadyAck, gate]));
-    const payload = this.buildQcPayload(session, acknowledgedGates);
     this.publish({ busyStage: 'qc', error: null, errorStage: null });
+    // Same defense as runQc (P7-T1): no pre-try synchronous escape.
     try {
+      const restoration = this.restoration();
+      if (restoration.qc === null) throw new CavityStageOrderError('qc', 'shellIncomplete');
+      const alreadyAck = restoration.qc.gates.filter((g) => g.acknowledged).map((g) => g.gate);
+      const acknowledgedGates = Array.from(new Set([...alreadyAck, gate]));
+      const payload = this.buildQcPayload(session, acknowledgedGates);
       const { report } = await this.pool().run('runInlayQc', payload);
       this.commitQc(report, 'inlay-qc-ack', { acknowledgedGate: gate, acknowledgedGates });
       this.publish({ busyStage: null, qc: report });

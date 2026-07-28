@@ -141,6 +141,43 @@ function ellipseProfileFlat(semiAxisMm: number, segments: number): number[] {
   return out;
 }
 
+/** Runtime narrowing for a journaled pontic style (the journal params are
+ * untyped JSON — never trusted structurally). */
+function isPonticStyleName(value: string): value is PonticStyleName {
+  return value === 'hygienic' || value === 'ridgeLap' || value === 'ovate';
+}
+
+/** Runtime narrowing of a `bridge-connectors` op's journaled `connectors`
+ * params into typed per-connector decisions. Returns null unless the list is
+ * well-formed AND covers EVERY captured connector label exactly once (a
+ * partial/mismatched decision must not silently re-attach). */
+function parsePersistedConnectors(
+  value: unknown,
+  geometry: BridgeSessionGeometry,
+): { label: string; semiAxisMm: number; minAreaMm2: number; targetMm2: number }[] | null {
+  if (!Array.isArray(value)) return null;
+  const parsed: { label: string; semiAxisMm: number; minAreaMm2: number; targetMm2: number }[] = [];
+  for (const entry of value) {
+    if (typeof entry !== 'object' || entry === null) return null;
+    const rec = entry as Record<string, unknown>;
+    if (
+      typeof rec.label !== 'string' ||
+      typeof rec.semiAxisMm !== 'number' ||
+      !Number.isFinite(rec.semiAxisMm) ||
+      typeof rec.minAreaMm2 !== 'number' ||
+      typeof rec.targetMm2 !== 'number'
+    ) {
+      return null;
+    }
+    parsed.push({ label: rec.label, semiAxisMm: rec.semiAxisMm, minAreaMm2: rec.minAreaMm2, targetMm2: rec.targetMm2 });
+  }
+  const labels = new Set(parsed.map((p) => p.label));
+  if (labels.size !== parsed.length) return null;
+  if (geometry.connectors.length !== parsed.length) return null;
+  for (const c of geometry.connectors) if (!labels.has(c.label)) return null;
+  return parsed;
+}
+
 /** Thrown when a stage method is called before its prerequisite produced its
  * output — the order-enforcement guard. */
 export class BridgeStageOrderError extends Error {
@@ -151,6 +188,29 @@ export class BridgeStageOrderError extends Error {
     this.name = 'BridgeStageOrderError';
     this.stage = stage;
     this.reason = reason;
+  }
+}
+
+/** The i18n key the panel translates when a `BridgeSessionRestoreError`
+ * surfaces (see state/bridgeStore.ts `errorKey`) — the actionable, localized
+ * message replaces the raw error string in the banner. */
+export const BRIDGE_SESSION_RESTORE_ERROR_KEY = 'bridge.errorSessionRestore';
+
+/**
+ * Thrown when persisted bridge stages exist but the in-memory session state
+ * they imply cannot be FAITHFULLY rebuilt from what persistence actually
+ * carries (the journaled design decisions + the captured geometry asset) —
+ * e.g. a missing/drifted journal op, or a re-computed stage mesh whose content
+ * hash no longer reproduces the persisted stage hash. The P7-T1 contract: this
+ * must surface VISIBLY (banner + i18n key), never a guess and never a silent
+ * no-op; the user re-runs the design stages to re-seal the design.
+ */
+export class BridgeSessionRestoreError extends Error {
+  readonly detail: string;
+  constructor(detail: string) {
+    super(`bridgeDesign: cannot restore the saved bridge design into this session — ${detail}`);
+    this.name = 'BridgeSessionRestoreError';
+    this.detail = detail;
   }
 }
 
@@ -182,6 +242,16 @@ interface CommittedConnector {
   indices: Uint32Array;
 }
 
+/** The scalar connector design decision as journaled by `commitConnectors`
+ * (`bridge-connectors` op params) — what start() recovers from persistence so
+ * the connector MESHES can be deterministically re-computed on demand. */
+interface PersistedConnectorDecision {
+  label: string;
+  semiAxisMm: number;
+  minAreaMm2: number;
+  targetMm2: number;
+}
+
 interface Session {
   restorationId: string;
   geometry: BridgeSessionGeometry;
@@ -189,6 +259,9 @@ interface Session {
   connectors: CommittedConnector[] | null;
   frameworkMode: BridgeFrameworkMode | null;
   assembled: { positions: Float64Array; indices: Uint32Array; contentHash: string } | null;
+  /** The journaled connector decision recovered on start() from persistence
+   * (null when absent/unusable) — consumed by `ensureConnectorsMaterialized`. */
+  persistedConnectors: PersistedConnectorDecision[] | null;
 }
 
 function nowIso(): string {
@@ -263,13 +336,22 @@ class BridgeDesignEngine {
       connectors: null,
       frameworkMode: null,
       assembled: null,
+      persistedConnectors: null,
     };
+    // P7-T1 (the 19b root fix): a restoration re-opened AFTER a reload carries
+    // persisted stage hashes but this fresh session carries none of the state
+    // that produced them — recover the journaled scalar DECISIONS now (sync);
+    // the stage MESHES are re-computed on demand by the deterministic jobs and
+    // VERIFIED against the persisted hashes (`ensureSessionMaterialized`).
+    this.restorePersistedDecisions(restoration, this.session);
     caseStore.setSelectedRestorationId(restorationId);
     this.publish({
       restorationId,
       active: true,
       error: null,
       errorStage: null,
+      errorKey: null,
+      errorDetail: null,
       sharedAxis: {
         acceptable: geometry.sharedAxis.acceptable,
         direction: geometry.sharedAxis.direction,
@@ -330,6 +412,169 @@ class BridgeDesignEngine {
     return contentHash;
   }
 
+  // ---- session reconstruction from persistence (P7-T1, the 19b root fix) --
+
+  /** The LAST journal op named `opName` for this restoration whose first
+   * output hash equals the persisted stage hash — the op that sealed the stage
+   * currently on the document (an older re-run of the same stage never
+   * matches: the invalidation cascade replaced its hash). */
+  private findDecisionOp(opName: string, restorationId: string, stageHash: string): Operation | null {
+    const history = caseStore.getDocument().history;
+    for (let i = history.length - 1; i >= 0; i--) {
+      const op = history[i]!;
+      if (op.name === opName && op.params.restorationId === restorationId && op.outputHashes[0] === stageHash) {
+        return op;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * SYNC part of the reload reconstruction: recovers the journaled scalar
+   * design DECISIONS (pontic style + relief, framework mode, per-connector
+   * semi-axis) from the persisted stages + journal into the fresh session.
+   *
+   * What is honestly recoverable here, and from where:
+   * - `frameworkMode` — parsed from the persisted `bridgeFramework` stage
+   *   marker itself (`framework:<mode>`, a deterministic non-mesh marker);
+   * - `pontic` — the `bridge-pontic` op's params, CROSS-CHECKED against the
+   *   captured per-style relief measurement in the session geometry (a drifted
+   *   asset must not silently re-attach to old decisions);
+   * - connector scalars — the `bridge-connectors` op's params (label +
+   *   semi-axis + measured area + target), which let the connector MESHES be
+   *   re-computed deterministically later.
+   * Anything unrecoverable stays null; the QC/assembly actions then fail
+   * VISIBLY via `BridgeSessionRestoreError` (never a guess, never a no-op).
+   */
+  private restorePersistedDecisions(restoration: Restoration, session: Session): void {
+    const marker = restoration.stages.bridgeFramework;
+    if (marker !== undefined) {
+      session.frameworkMode =
+        marker === 'framework:framework' ? 'framework' : marker === 'framework:fullContour' ? 'fullContour' : null;
+    }
+
+    const ponticHash = restoration.stages.bridgePontic;
+    if (ponticHash !== undefined) {
+      const op = this.findDecisionOp('bridge-pontic', restoration.id, ponticHash);
+      const style = typeof op?.params.style === 'string' ? op.params.style : null;
+      const captured = style !== null ? session.geometry.ponticReliefByStyle[style] : undefined;
+      if (
+        op &&
+        style !== null &&
+        isPonticStyleName(style) &&
+        captured !== undefined &&
+        op.params.configuredReliefMm === captured.configuredReliefMm &&
+        op.params.maxAbsDeviationMm === captured.maxAbsDeviationMm
+      ) {
+        session.pontic = {
+          style,
+          configuredReliefMm: captured.configuredReliefMm,
+          maxAbsDeviationMm: captured.maxAbsDeviationMm,
+        };
+      }
+    }
+
+    const connectorsHash = restoration.stages.bridgeConnectors;
+    if (connectorsHash !== undefined) {
+      const op = this.findDecisionOp('bridge-connectors', restoration.id, connectorsHash);
+      session.persistedConnectors = op ? parsePersistedConnectors(op.params.connectors, session.geometry) : null;
+    }
+  }
+
+  /**
+   * Re-materializes the committed connector SOLIDS from the persisted design
+   * decision: re-runs the SAME deterministic `bridgeConnectors` job the
+   * original commit ran (asset profile for an unedited connector, the same
+   * equal-angular regeneration for an edited semi-axis) and VERIFIES the
+   * combined content hash reproduces the persisted `bridgeConnectors` stage
+   * hash. A mismatch means the persisted decision no longer corresponds to
+   * the current captured geometry — fail visibly, never adopt a guess.
+   * Journals NOTHING (the decision was already journaled by its commit).
+   */
+  private async ensureConnectorsMaterialized(session: Session, stage: BridgeStage): Promise<void> {
+    if (session.connectors) return;
+    const restoration = this.restoration();
+    const stageHash = restoration.stages.bridgeConnectors;
+    if (stageHash === undefined) throw new BridgeStageOrderError(stage, 'connectorsIncomplete');
+    const persisted = session.persistedConnectors;
+    if (!persisted) {
+      throw new BridgeSessionRestoreError(
+        'the journaled bridge-connectors decision for the persisted connectors stage was not found (or does not match the captured geometry)',
+      );
+    }
+    const semiAxisByLabel: Record<string, number> = {};
+    for (const c of session.geometry.connectors) {
+      const decision = persisted.find((p) => p.label === c.label)!;
+      if (decision.semiAxisMm !== c.semiAxisMm) semiAxisByLabel[c.label] = decision.semiAxisMm;
+    }
+    const result = await this.pool().run('bridgeConnectors', this.connectorPayload(semiAxisByLabel), {
+      onProgress: (f) => this.publish({ progress: f }),
+    });
+    const committed: CommittedConnector[] = session.geometry.connectors.map((c, i) => {
+      const measured = result.connectors[i]!;
+      const decision = persisted.find((p) => p.label === c.label)!;
+      return {
+        label: c.label,
+        teeth: c.teeth,
+        semiAxisMm: decision.semiAxisMm,
+        minAreaMm2: measured.minAreaMm2,
+        targetMm2: connectorTargetMm2(c.teeth),
+        positions: measured.positions,
+        indices: measured.indices,
+      };
+    });
+    const combined = combineMeshes(committed.map((c) => ({ positions: c.positions, indices: c.indices })));
+    const contentHash = await this.hashMesh(combined.positions, combined.indices);
+    if (contentHash !== stageHash) {
+      throw new BridgeSessionRestoreError(
+        're-computed connector geometry does not reproduce the persisted connectors-stage hash (the saved design decision has drifted from the captured geometry)',
+      );
+    }
+    session.connectors = committed;
+  }
+
+  /**
+   * Re-materializes EVERYTHING `buildQcPayload` needs after a reload: the
+   * pontic/framework decisions (recovered sync on start(); their absence when
+   * the stage hash exists means persistence is unreconstructable → visible
+   * failure), the connector solids, and the assembled solid — the latter two
+   * re-computed by the SAME deterministic jobs and verified against the
+   * persisted stage hashes. A session sealed in THIS session (no reload) has
+   * all fields populated and this is a no-op.
+   */
+  private async ensureSessionMaterialized(session: Session): Promise<void> {
+    const restoration = this.restoration();
+    const stages = restoration.stages;
+    if (stages.bridgePontic !== undefined && session.pontic === null) {
+      throw new BridgeSessionRestoreError(
+        'the journaled bridge-pontic decision for the persisted pontic stage was not found (or no longer matches the captured per-style relief)',
+      );
+    }
+    if (stages.bridgeFramework !== undefined && session.frameworkMode === null) {
+      throw new BridgeSessionRestoreError(
+        `the persisted framework marker "${stages.bridgeFramework}" does not name a recognizable mode`,
+      );
+    }
+    await this.ensureConnectorsMaterialized(session, 'qc');
+    if (session.assembled === null) {
+      const finalHash = stages.finalMesh;
+      if (finalHash === undefined) throw new BridgeStageOrderError('qc', 'assemblyIncomplete');
+      if (!session.connectors) throw new BridgeStageOrderError('qc', 'connectorsIncomplete');
+      const solids = [
+        ...session.geometry.units.map((u) => ({ positions: u.mesh.positions, indices: u.mesh.indices })),
+        ...session.connectors.map((c) => ({ positions: c.positions, indices: c.indices })),
+      ];
+      const result = await this.pool().run('bridgeAssembly', { solids }, { onProgress: (f) => this.publish({ progress: f }) });
+      const contentHash = await this.hashMesh(result.positions, result.indices);
+      if (contentHash !== finalHash) {
+        throw new BridgeSessionRestoreError(
+          're-computed bridge assembly does not reproduce the persisted final-mesh hash (the saved design has drifted from the captured geometry)',
+        );
+      }
+      session.assembled = { positions: result.positions, indices: result.indices, contentHash };
+    }
+  }
+
   /** Commits a completed milestone: writes its output hash into `Restoration.
    * stages[field]`, journals ONE coalesced Operation, and applies the INVALIDATION
    * CASCADE (bridgeWorkflow's `bridgeDownstreamInvalidations`) — clearing every
@@ -372,7 +617,12 @@ class BridgeDesignEngine {
         if (session) session.pontic = null;
         storePatch.pontic = null;
       } else if (field === 'bridgeConnectors') {
-        if (session) session.connectors = null;
+        if (session) {
+          session.connectors = null;
+          // The persisted decision belongs to the invalidated stage hash — a
+          // later re-materialization must never resurrect it.
+          session.persistedConnectors = null;
+        }
         storePatch.connectors = null;
       } else if (field === 'bridgeFramework') {
         if (session) session.frameworkMode = null;
@@ -398,7 +648,7 @@ class BridgeDesignEngine {
   async commitAbutmentSurfaces(): Promise<void> {
     const session = this.requireSession();
     this.assertRunnable('abutmentSurfaces');
-    this.publish({ busyStage: 'abutmentSurfaces', progress: 0, error: null, errorStage: null });
+    this.publish({ busyStage: 'abutmentSurfaces', progress: 0, error: null, errorStage: null, errorKey: null, errorDetail: null });
     try {
       const abutments = session.geometry.units.filter((u) => u.kind === 'abutment');
       const combined = combineMeshes(abutments.flatMap((u) => [u.inner, u.outer]));
@@ -440,7 +690,7 @@ class BridgeDesignEngine {
     this.assertRunnable('pontic');
     const relief = session.geometry.ponticReliefByStyle[style];
     if (!relief) throw new BridgeStageOrderError('pontic', `no captured relief for style "${style}"`);
-    this.publish({ busyStage: 'pontic', progress: 0, error: null, errorStage: null });
+    this.publish({ busyStage: 'pontic', progress: 0, error: null, errorStage: null, errorKey: null, errorDetail: null });
     try {
       const ponticUnit = session.geometry.units.find((u) => u.kind === 'pontic');
       if (!ponticUnit) throw new BridgeStageOrderError('pontic', 'no pontic unit in captured geometry');
@@ -524,7 +774,7 @@ class BridgeDesignEngine {
   async previewConnectors(semiAxisByLabel: Readonly<Record<string, number>> = {}): Promise<void> {
     this.requireSession();
     this.assertRunnable('connectors');
-    this.publish({ busyStage: 'connectors', progress: 0, error: null, errorStage: null });
+    this.publish({ busyStage: 'connectors', progress: 0, error: null, errorStage: null, errorKey: null, errorDetail: null });
     try {
       const result = await this.pool().run('bridgeConnectors', this.connectorPayload(semiAxisByLabel), {
         onProgress: (f) => this.publish({ progress: f }),
@@ -551,7 +801,7 @@ class BridgeDesignEngine {
   async commitConnectors(semiAxisByLabel: Readonly<Record<string, number>> = {}): Promise<void> {
     const session = this.requireSession();
     this.assertRunnable('connectors');
-    this.publish({ busyStage: 'connectors', progress: 0, error: null, errorStage: null });
+    this.publish({ busyStage: 'connectors', progress: 0, error: null, errorStage: null, errorKey: null, errorDetail: null });
     try {
       const result = await this.pool().run('bridgeConnectors', this.connectorPayload(semiAxisByLabel), {
         onProgress: (f) => this.publish({ progress: f }),
@@ -604,7 +854,7 @@ class BridgeDesignEngine {
   async selectFramework(mode: BridgeFrameworkMode): Promise<void> {
     const session = this.requireSession();
     this.assertRunnable('framework');
-    this.publish({ busyStage: 'framework', progress: 0, error: null, errorStage: null });
+    this.publish({ busyStage: 'framework', progress: 0, error: null, errorStage: null, errorKey: null, errorDetail: null });
     try {
       const veneeringSpaceMm = mode === 'framework' ? STANDARD_ZIRCONIA_PROFILE.veneeringSpaceMm : null;
       const taperBandMm = mode === 'framework' ? STANDARD_ZIRCONIA_PROFILE.marginExclusionMm : null;
@@ -632,10 +882,15 @@ class BridgeDesignEngine {
    */
   async runAssembly(): Promise<void> {
     const session = this.requireSession();
-    this.assertRunnable('assembly');
-    if (!session.connectors) throw new BridgeStageOrderError('assembly', 'connectorsIncomplete');
-    this.publish({ busyStage: 'assembly', progress: 0, error: null, errorStage: null });
+    this.publish({ busyStage: 'assembly', progress: 0, error: null, errorStage: null, errorKey: null, errorDetail: null });
+    // EVERY synchronous validation lives INSIDE the try (P7-T1 defense): a
+    // pre-try throw would escape the `failStage` publish and leave the click a
+    // silent no-op (the 19b shape — reachable here post-reload, when the gates
+    // allow assembly but the session holds no connector solids).
     try {
+      this.assertRunnable('assembly');
+      await this.ensureConnectorsMaterialized(session, 'assembly');
+      if (!session.connectors) throw new BridgeStageOrderError('assembly', 'connectorsIncomplete');
       const solids = [
         ...session.geometry.units.map((u) => ({ positions: u.mesh.positions, indices: u.mesh.indices })),
         ...session.connectors.map((c) => ({ positions: c.positions, indices: c.indices })),
@@ -724,10 +979,15 @@ class BridgeDesignEngine {
    */
   async runQc(): Promise<void> {
     const session = this.requireSession();
-    this.assertRunnable('qc');
-    const payload = this.buildQcPayload(session);
-    this.publish({ busyStage: 'qc', progress: 0, error: null, errorStage: null });
+    this.publish({ busyStage: 'qc', progress: 0, error: null, errorStage: null, errorKey: null, errorDetail: null });
+    // EVERY synchronous validation lives INSIDE the try (the 19b fix): the
+    // pre-try `buildQcPayload` throw was the silent no-op — order errors,
+    // session-restore failures and payload validation all surface through the
+    // SAME `failStage` path an async job failure uses.
     try {
+      this.assertRunnable('qc');
+      await this.ensureSessionMaterialized(session);
+      const payload = this.buildQcPayload(session);
       const { report } = await this.pool().run('runBridgeQc', payload, { onProgress: (f) => this.publish({ progress: f }) });
       this.commitQc(report, 'bridge-qc', { passed: report.passed, gateCount: report.gates.length });
       this.publish({ busyStage: null, progress: 1, qc: report });
@@ -746,13 +1006,17 @@ class BridgeDesignEngine {
    */
   async acknowledgeGate(gate: string): Promise<void> {
     const session = this.requireSession();
-    const restoration = this.restoration();
-    if (restoration.qc === null) throw new BridgeStageOrderError('qc', 'assemblyIncomplete');
-    const alreadyAck = restoration.qc.gates.filter((g) => g.acknowledged).map((g) => g.gate);
-    const acknowledgedGates = Array.from(new Set([...alreadyAck, gate]));
-    const payload = this.buildQcPayload(session, acknowledgedGates);
-    this.publish({ busyStage: 'qc', error: null, errorStage: null });
+    this.publish({ busyStage: 'qc', error: null, errorStage: null, errorKey: null, errorDetail: null });
+    // Same defense as runQc (the 19b NB named this second call site): the
+    // qc-presence check, the session re-materialization and the payload build
+    // all surface through `failStage` — no pre-try synchronous escape.
     try {
+      const restoration = this.restoration();
+      if (restoration.qc === null) throw new BridgeStageOrderError('qc', 'assemblyIncomplete');
+      const alreadyAck = restoration.qc.gates.filter((g) => g.acknowledged).map((g) => g.gate);
+      const acknowledgedGates = Array.from(new Set([...alreadyAck, gate]));
+      await this.ensureSessionMaterialized(session);
+      const payload = this.buildQcPayload(session, acknowledgedGates);
       const { report } = await this.pool().run('runBridgeQc', payload);
       this.commitQc(report, 'bridge-qc-ack', { acknowledgedGate: gate, acknowledgedGates });
       this.publish({ busyStage: null, qc: report });
@@ -782,11 +1046,22 @@ class BridgeDesignEngine {
 
   private failStage(stage: BridgeStage, error: unknown): void {
     const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
-    this.publish({ busyStage: null, error: message, errorStage: stage });
+    // A session-restore failure is a KNOWN, user-actionable condition — hand
+    // the panel its i18n key (+ the untranslated technical detail) so the
+    // actionable message renders localized; every other failure keeps the raw
+    // error-string path.
+    const restore = error instanceof BridgeSessionRestoreError ? error : null;
+    this.publish({
+      busyStage: null,
+      error: message,
+      errorStage: stage,
+      errorKey: restore ? BRIDGE_SESSION_RESTORE_ERROR_KEY : null,
+      errorDetail: restore ? restore.detail : null,
+    });
   }
 
   clearError(): void {
-    this.publish({ error: null, errorStage: null });
+    this.publish({ error: null, errorStage: null, errorKey: null, errorDetail: null });
   }
 }
 

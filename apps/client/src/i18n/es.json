@@ -582,6 +582,7 @@
     "reasonAssemblyIncomplete": "ensambla primero el puente",
     "statusRunning": "Procesando…",
     "errorBanner": "{{stage}} falló — {{message}}",
+    "errorSessionRestore": "El diseño de puente guardado no se pudo restaurar en esta sesión ({{detail}}). Vuelve a ejecutar las etapas de diseño (póntico → conectores → estructura → ensamblaje) y luego ejecuta el QC de nuevo.",
     "clearError": "Descartar",
     "axisPlaceholderWarning": "Eje de inserción compartido sin confirmar — diseñando según la dirección predeterminada [0,0,1]. Confirma el eje compartido en la herramienta de eje de inserción para un manejo correcto de retenciones en todos los pilares.",
     "syntheticTitle": "⚠ DATOS DE DEMOSTRACIÓN — NO el escaneo de este caso",

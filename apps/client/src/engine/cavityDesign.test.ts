@@ -374,6 +374,50 @@ describe('cavityDesign controller — UI-only actions + session lifecycle', () =
   });
 });
 
+describe('cavityDesign controller — silent-failure defense at the QC call sites (P7-T1, the 19b sibling sweep)', () => {
+  // The 19b shape: persisted stage hashes say "qc may run" (as after a page
+  // reload) but the in-memory session has no shell — `buildQcPayload` used to
+  // throw its CavityStageOrderError BEFORE the try block, so the click
+  // silently no-op'd. Both call sites must surface it VISIBLY.
+  function persistStagesWithoutSession(qcReport: import('@dqcad/shared-types').QcReport | null): void {
+    caseStore.updateRestoration(
+      { ...currentRestoration(), stages: { ...currentRestoration().stages, finalMesh: 'persisted-shell-hash' }, qc: qcReport },
+      { id: 'p', name: 'test-persist', params: {}, inputHashes: [], outputHashes: [], kernelVersion: 'test', timestamp: new Date().toISOString() },
+    );
+  }
+  const minimalReport: import('@dqcad/shared-types').QcReport = {
+    gates: [{ gate: 'seating', passed: false, acknowledged: false, value: 0.06, threshold: 1e-6, unit: 'mm3', message: 'interference' }],
+    passed: false,
+    kernelVersion: 'test',
+    profileVersion: 'test',
+    journalHash: 'persisted-shell-hash',
+  };
+
+  it('runQc: a CavityStageOrderError from the payload build lands in the visible error state', async () => {
+    cavityDesignEngine.start(restorationId);
+    persistStagesWithoutSession(null);
+
+    await expect(cavityDesignEngine.runQc()).rejects.toThrow(CavityStageOrderError);
+
+    const store = useCavityStore.getState();
+    expect(store.error).toMatch(/CavityStageOrderError/);
+    expect(store.errorStage).toBe('qc');
+    expect(store.busyStage).toBeNull();
+  });
+
+  it('acknowledgeGate: a CavityStageOrderError from the payload build lands in the visible error state', async () => {
+    cavityDesignEngine.start(restorationId);
+    persistStagesWithoutSession(minimalReport);
+
+    await expect(cavityDesignEngine.acknowledgeGate('seating')).rejects.toThrow(CavityStageOrderError);
+
+    const store = useCavityStore.getState();
+    expect(store.error).toMatch(/CavityStageOrderError/);
+    expect(store.errorStage).toBe('qc');
+    expect(store.busyStage).toBeNull();
+  });
+});
+
 describe('cavityDesign controller — HONEST failure surfacing', () => {
   it('a shell failure sets an error state and never writes finalMesh (QC stays blocked)', async () => {
     fake.failShell = true;
