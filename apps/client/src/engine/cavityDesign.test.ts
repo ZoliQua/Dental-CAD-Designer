@@ -254,6 +254,21 @@ describe('cavityDesign controller — happy path + stage hashes + coalesced jour
   });
 });
 
+describe('cavityDesign controller — finalMeshForExport (Phase 7 Task 3)', () => {
+  it('returns null without a session/shell or for the wrong restoration, and the live shell (hash-matching stages.finalMesh) once built', async () => {
+    expect(cavityDesignEngine.finalMeshForExport(restorationId)).toBeNull();
+    cavityDesignEngine.start(restorationId);
+    expect(cavityDesignEngine.finalMeshForExport(restorationId)).toBeNull();
+    await runToShell();
+    expect(cavityDesignEngine.finalMeshForExport('someone-else')).toBeNull();
+    const mesh = cavityDesignEngine.finalMeshForExport(restorationId);
+    expect(mesh).not.toBeNull();
+    expect(mesh!.contentHash).toBe(currentRestoration().stages.finalMesh);
+    expect(mesh!.positions).toBeInstanceOf(Float64Array);
+    expect(mesh!.indices).toBeInstanceOf(Uint32Array);
+  });
+});
+
 describe('cavityDesign controller — invalidation cascade (stale QC can never display)', () => {
   async function runToQc(): Promise<void> {
     await runToShell();

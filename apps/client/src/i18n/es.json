@@ -643,5 +643,17 @@
     "qcAcknowledge": "Aceptar",
     "qcAcknowledged": "aceptado",
     "qcScopeNote": "El grosor por unidad se mide en las superficies propias de cada unidad antes de la unión (conservador — una unión solo añade material); el área por conector es la cota inferior segura de la malla; el ajuste de margen por pilar se remide en el sólido ensamblado."
+  },
+  "export": {
+    "refusedNoFinalMesh": "Exportación rechazada — construya primero el sólido final de la restauración.",
+    "refusedQcMissing": "Exportación rechazada — ejecute primero el QC del diseño actual.",
+    "refusedQcStale": "Exportación rechazada — el diseño cambió después del último QC. Vuelva a ejecutar el QC.",
+    "refusedGatesFailing": "Exportación rechazada — puertas de QC fallidas sin reconocer: {{gates}}.",
+    "refusedFinalMeshUnavailable": "Exportación rechazada — el sólido final no está cargado en esta sesión. Abra el flujo de diseño y vuelva a ejecutar el QC.",
+    "statusIdle": "Sin exportar",
+    "statusExporting": "Exportando…",
+    "statusDone": "Exportado ({{format}}) — SHA-256 {{hash}}",
+    "statusStale": "Exportación obsoleta — el diseño cambió después de esta exportación.",
+    "statusError": "Error de exportación — {{message}}"
   }
 }

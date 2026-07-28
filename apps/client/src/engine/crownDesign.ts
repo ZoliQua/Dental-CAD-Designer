@@ -1027,6 +1027,30 @@ class CrownDesignEngine {
     caseStore.updateRestoration(next, operation);
   }
 
+  // ---- export access (Phase 7 Task 3) -----------------------------------
+
+  /**
+   * The session's FINAL restoration solid (the shell that wrote
+   * `stages.finalMesh`) for the export flow — `null` when no session is
+   * active for `restorationId` or the shell has not been built in THIS
+   * session (e.g. right after a reload). The caller
+   * (engine/exportFlow.ts) verifies `contentHash` against the document's
+   * `stages.finalMesh` before serializing — a mismatch is refused, never
+   * exported. Read-only access to the live session buffers (the export job
+   * copies them before transfer).
+   */
+  finalMeshForExport(
+    restorationId: string,
+  ): { positions: Float64Array; indices: Uint32Array; contentHash: string } | null {
+    const session = this.session;
+    if (!session || session.restorationId !== restorationId || !session.shell) return null;
+    return {
+      positions: session.shell.positions,
+      indices: session.shell.indices,
+      contentHash: session.shell.contentHash,
+    };
+  }
+
   // ---- failure surfacing ------------------------------------------------
 
   private failStage(stage: CrownStage, error: unknown): void {

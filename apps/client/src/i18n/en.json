@@ -643,5 +643,17 @@
     "qcAcknowledge": "Acknowledge",
     "qcAcknowledged": "acknowledged",
     "qcScopeNote": "Per-unit thickness is measured on each unit's own pre-union surfaces (conservative — a union only adds material); per-connector area is the fail-safe mesh lower bound; per-abutment margin fit is re-measured on the assembled solid."
+  },
+  "export": {
+    "refusedNoFinalMesh": "Export refused — build the final restoration solid first.",
+    "refusedQcMissing": "Export refused — run QC on the current design first.",
+    "refusedQcStale": "Export refused — the design changed after the last QC run. Re-run QC.",
+    "refusedGatesFailing": "Export refused — failing unacknowledged QC gates: {{gates}}.",
+    "refusedFinalMeshUnavailable": "Export refused — the final solid is not loaded in this session. Open the design workflow and re-run QC.",
+    "statusIdle": "Not exported",
+    "statusExporting": "Exporting…",
+    "statusDone": "Exported ({{format}}) — SHA-256 {{hash}}",
+    "statusStale": "Export outdated — the design changed after this export.",
+    "statusError": "Export failed — {{message}}"
   }
 }

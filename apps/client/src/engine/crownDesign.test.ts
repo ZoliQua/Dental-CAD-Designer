@@ -228,6 +228,24 @@ describe('crownDesign controller — happy path + stage hashes', () => {
   });
 });
 
+describe('crownDesign controller — finalMeshForExport (Phase 7 Task 3)', () => {
+  it('returns null without a session/shell or for the wrong restoration, and the live shell (hash-matching stages.finalMesh) once built', async () => {
+    expect(crownDesignEngine.finalMeshForExport(restorationId)).toBeNull();
+    crownDesignEngine.start(restorationId);
+    expect(crownDesignEngine.finalMeshForExport(restorationId)).toBeNull();
+    await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
+    await crownDesignEngine.placeAnatomy(anatomyInput());
+    await crownDesignEngine.runMorph();
+    await crownDesignEngine.constructShell();
+    expect(crownDesignEngine.finalMeshForExport('someone-else')).toBeNull();
+    const mesh = crownDesignEngine.finalMeshForExport(restorationId);
+    expect(mesh).not.toBeNull();
+    expect(mesh!.contentHash).toBe(currentRestoration().stages.finalMesh);
+    expect(mesh!.positions).toBeInstanceOf(Float64Array);
+    expect(mesh!.indices).toBeInstanceOf(Uint32Array);
+  });
+});
+
 describe('crownDesign controller — coalesced journaling', () => {
   it('journals exactly one op per completed stage', async () => {
     crownDesignEngine.start(restorationId);

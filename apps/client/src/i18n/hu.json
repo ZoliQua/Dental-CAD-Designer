@@ -643,5 +643,17 @@
     "qcAcknowledge": "Tudomásul veszem",
     "qcAcknowledged": "tudomásul véve",
     "qcScopeNote": "A tagonkénti falvastagságot minden tag saját, egyesítés előtti felszínein mérjük (konzervatív — az egyesítés csak anyagot ad hozzá); az összekötőnkénti terület a hibatűrő háló alsó korlát; a pillérenkénti határvonal-illeszkedést az összeállított testen újramérjük."
+  },
+  "export": {
+    "refusedNoFinalMesh": "Az exportálás elutasítva — előbb készítse el a végleges pótlástestet.",
+    "refusedQcMissing": "Az exportálás elutasítva — előbb futtassa a QC-t az aktuális terven.",
+    "refusedQcStale": "Az exportálás elutasítva — a terv a legutóbbi QC óta megváltozott. Futtassa újra a QC-t.",
+    "refusedGatesFailing": "Az exportálás elutasítva — el nem fogadott, hibás QC-kapuk: {{gates}}.",
+    "refusedFinalMeshUnavailable": "Az exportálás elutasítva — a végleges test nincs betöltve ebben a munkamenetben. Nyissa meg a tervezési munkafolyamatot, és futtassa újra a QC-t.",
+    "statusIdle": "Nincs exportálva",
+    "statusExporting": "Exportálás…",
+    "statusDone": "Exportálva ({{format}}) — SHA-256 {{hash}}",
+    "statusStale": "Az export elavult — a terv az export után megváltozott.",
+    "statusError": "Az exportálás sikertelen — {{message}}"
   }
 }

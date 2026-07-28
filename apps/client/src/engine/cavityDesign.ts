@@ -851,6 +851,23 @@ class CavityDesignEngine {
     caseStore.updateRestoration(next, operation);
   }
 
+  // ---- export access (Phase 7 Task 3) -----------------------------------
+
+  /** The session's FINAL inlay/onlay solid for the export flow — same
+   * contract as crownDesign.ts's `finalMeshForExport` (null without a live
+   * session/shell; hash verified by the caller before serializing). */
+  finalMeshForExport(
+    restorationId: string,
+  ): { positions: Float64Array; indices: Uint32Array; contentHash: string } | null {
+    const session = this.session;
+    if (!session || session.restorationId !== restorationId || !session.shell) return null;
+    return {
+      positions: session.shell.positions,
+      indices: session.shell.indices,
+      contentHash: session.shell.contentHash,
+    };
+  }
+
   // ---- failure surfacing + UI-only toggles ------------------------------
 
   private failStage(stage: CavityStage, error: unknown): void {

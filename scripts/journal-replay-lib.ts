@@ -43,7 +43,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { parseStl, writeStlBinary } from '@dqcad/io';
+import { exportPlyBinary, exportStlBinary, parseStl, writeStlBinary } from '@dqcad/io';
 import {
   KERNEL_VERSION,
   intake,
@@ -739,6 +739,96 @@ export function recordCrownMorphJournal(): RecordedJournal {
   return { fixtureLabel, operations: [operation], replaySteps, finalMesh: result.mesh! };
 }
 
+// ---------------------------------------------------------------------------
+// Phase 7 Task 3: manufacturing-export journal-replay extension
+//
+// The export flow journals a `restoration-export` Operation whose
+// `outputHashes[0]` is the SHA-256 of the exported FILE BYTES (not a mesh
+// content hash — the bytes ARE the operation's output; see
+// apps/client/src/engine/exportFlow.ts). The replay claim extended here:
+// same final mesh + same journaled params (format, headerText) + same
+// kernel/io version ⇒ the EXACT same bytes, hence the same hash — the
+// P4/P5/P6 record→replay discipline applied to Task 2's deterministic
+// export serialization (`exportStlBinary`/`exportPlyBinary`, byte-pinned in
+// test/golden/export-serialization.test.ts; here the same determinism is
+// proven through the RECORD→REPLAY journal mechanism). Both formats get an
+// op: STL exercises the headerText-from-journaled-params path, PLY the
+// lossless-f64 path. The mesh is the intake'd sphere-r5 fixture — a real,
+// watertight, single-component committed fixture (exportStlBinary's own
+// solid gate re-verifies all of that on every record AND every replay).
+// ---------------------------------------------------------------------------
+
+/** Mirrors apps/client/src/engine/exportFlow.ts's `exportStlHeaderText`
+ * for a crown on tooth 11 — re-derived locally (this file's "duplicate the
+ * trivial constant across the script/app boundary" convention) rather than
+ * importing across the `scripts/` <-> `apps/client/` boundary. */
+const EXPORT_JOURNAL_HEADER_TEXT = 'DQ-Dental-CAD; units=mm; crown 11';
+
+/** Records + replay-proves the `restoration-export` operation (STL + PLY)
+ * on the sphere-r5 fixture — see this section's module doc. */
+export function recordExportJournal(): RecordedJournal {
+  const fixtureLabel = 'sphere-r5-restoration-export';
+  const rawBytes = readFixtureBytes('test-fixtures/synthetic/sphere-r5.stl');
+  const { soup } = parseStl(rawBytes);
+  const mesh = intake({ kind: 'soup', soup }).mesh;
+  const meshContentHash = hashMeshContent(mesh.positions, mesh.indices);
+  const timestamp = new Date(0).toISOString(); // fixed — see recordJournal's own doc for why.
+
+  const exportable = { positions: mesh.positions, indices: mesh.indices };
+  const stlBytes = exportStlBinary(exportable, { headerText: EXPORT_JOURNAL_HEADER_TEXT });
+  const plyBytes = exportPlyBinary(exportable);
+
+  const operations: Operation[] = [
+    {
+      id: `${fixtureLabel}-stl`,
+      name: 'restoration-export',
+      params: {
+        fixture: fixtureLabel,
+        restorationType: 'crown',
+        teeth: [11],
+        format: 'stl',
+        headerText: EXPORT_JOURNAL_HEADER_TEXT,
+        byteLength: stlBytes.byteLength,
+        acknowledgedGates: [],
+        ackOperationIds: [],
+      },
+      inputHashes: [meshContentHash],
+      outputHashes: [sha256Hex(stlBytes)],
+      kernelVersion: KERNEL_VERSION,
+      timestamp,
+    },
+    {
+      id: `${fixtureLabel}-ply`,
+      name: 'restoration-export',
+      params: {
+        fixture: fixtureLabel,
+        restorationType: 'crown',
+        teeth: [11],
+        format: 'ply',
+        byteLength: plyBytes.byteLength,
+        acknowledgedGates: [],
+        ackOperationIds: [],
+      },
+      inputHashes: [meshContentHash],
+      outputHashes: [sha256Hex(plyBytes)],
+      kernelVersion: KERNEL_VERSION,
+      timestamp,
+    },
+  ];
+  const replaySteps: ReplayStep[] = [
+    {
+      operationIndex: 0,
+      recompute: () =>
+        sha256Hex(exportStlBinary(exportable, { headerText: EXPORT_JOURNAL_HEADER_TEXT })),
+    },
+    {
+      operationIndex: 1,
+      recompute: () => sha256Hex(exportPlyBinary(exportable)),
+    },
+  ];
+  return { fixtureLabel, operations, replaySteps, finalMesh: mesh };
+}
+
 /** The fixture set this harness runs — see this file's module doc: the
  * first two are small/fast enough that this IS the "fast fixture subset"
  * the task brief asks CI to run (no perf-scale fixtures are included); the
@@ -752,5 +842,6 @@ export function recordAllFixtures(): readonly RecordedJournal[] {
     recordJournal('test-fixtures/real-scans/arch-case-01/arch-case-01-upperjaw.stl', 'arch-case-01-upperjaw', false),
     recordMarginProposeJournal(),
     recordCrownMorphJournal(),
+    recordExportJournal(),
   ];
 }

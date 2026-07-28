@@ -1072,6 +1072,31 @@ class BridgeDesignEngine {
     caseStore.updateRestoration(next, operation);
   }
 
+  // ---- export access (Phase 7 Task 3) -----------------------------------
+
+  /**
+   * The session's FINAL assembled bridge solid for the export flow — same
+   * contract as crownDesign.ts's `finalMeshForExport` (null without a live
+   * session/assembly; hash verified by the caller before serializing).
+   * Post-reload note: `session.assembled` is re-materialized (and
+   * hash-verified) by `ensureSessionMaterialized` when QC runs — and the
+   * export gate requires a fresh QC anyway — so by the time an export is
+   * allowed in a reloaded session, this is populated; until then the export
+   * flow refuses with the actionable `finalMeshUnavailable` state, never a
+   * silent no-op.
+   */
+  finalMeshForExport(
+    restorationId: string,
+  ): { positions: Float64Array; indices: Uint32Array; contentHash: string } | null {
+    const session = this.session;
+    if (!session || session.restorationId !== restorationId || !session.assembled) return null;
+    return {
+      positions: session.assembled.positions,
+      indices: session.assembled.indices,
+      contentHash: session.assembled.contentHash,
+    };
+  }
+
   // ---- failure surfacing ------------------------------------------------
 
   private failStage(stage: BridgeStage, error: unknown): void {

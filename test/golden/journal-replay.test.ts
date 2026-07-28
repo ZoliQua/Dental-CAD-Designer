@@ -90,6 +90,35 @@ describe('journal replay — scripted case journals reproduce every output hash'
     // brief asks for, not a second redundant hash check.
   });
 
+  // Phase 7 Task 3: the manufacturing-export op enters this always-on harness
+  // — `restoration-export`'s outputHashes[0] is the SHA-256 of the exported
+  // FILE BYTES; replay recomputing the exact bytes is the "replay reproduces
+  // the exact bytes" acceptance (see scripts/journal-replay-lib.ts's export
+  // section for the full claim).
+  it('export fixture: restoration-export ops (stl with journaled headerText + ply) carry byte-hash outputs', () => {
+    const exportJournal = journals.find((j) => j.fixtureLabel === 'sphere-r5-restoration-export')!;
+    expect(exportJournal).toBeDefined();
+    expect(exportJournal.operations.map((op) => op.name)).toEqual([
+      'restoration-export',
+      'restoration-export',
+    ]);
+    const [stlOp, plyOp] = exportJournal.operations;
+    expect(stlOp!.params).toMatchObject({
+      restorationType: 'crown',
+      format: 'stl',
+      headerText: expect.stringContaining('units=mm'),
+      acknowledgedGates: [],
+    });
+    expect(plyOp!.params).toMatchObject({ format: 'ply' });
+    expect('headerText' in plyOp!.params).toBe(false);
+    for (const op of exportJournal.operations) {
+      expect(op.inputHashes).toHaveLength(1); // the final mesh content hash
+      expect(op.outputHashes[0]).toMatch(/^[0-9a-f]{64}$/); // the BYTES hash
+    }
+    // The byte-replay proof itself is covered by the generic it.each over
+    // recordAllFixtures() above (fresh recompute of the exact bytes → hash).
+  });
+
   // Phase 4 Task 12: the crown MORPHING stage enters this always-on harness
   // (the full 6-stage crown chain — inner/anatomy/morph/shell/freeform/qc — is
   // recorded, replayed + byte-pinned in test/golden/crown-acceptance.test.ts).

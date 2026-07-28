@@ -91,7 +91,20 @@ export {
   type AxisHeatmapAbutmentStats,
   type BlockoutPreviewPayload,
   type BlockoutPreviewJobResult,
+  type ExportRestorationMeshPayload,
+  type ExportRestorationMeshResult,
 } from './jobs/registry.js';
+// Case-journal hash (Phase 7 Task 3) — the shared client/server definition
+// of `RestorationExportRequest.caseJournalHash` (see journalHash.ts's module
+// doc). Exported from the main entry (engine → kernel-workers is the allowed
+// path for apps/client) AND via the `./journal-hash` package subpath (like
+// `./hash`) so the Task 4 server can import the exact same implementation
+// without pulling the worker-pool machinery.
+export {
+  canonicalJournalJson,
+  hashCaseJournal,
+  JournalHashUnserializableError,
+} from './journalHash.js';
 export { meshBuffers, type MeshBuffersPayload, type MeshBuffersResult } from './transfer.js';
 // MeshStats/IntakeReport/Bbox: re-exported here (rather than only living on
 // IntakeMeshResult's field types) so apps/client/src/engine — which cannot
