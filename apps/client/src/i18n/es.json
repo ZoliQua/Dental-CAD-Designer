@@ -648,12 +648,12 @@
     "refusedNoFinalMesh": "Exportación rechazada — construya primero el sólido final de la restauración.",
     "refusedQcMissing": "Exportación rechazada — ejecute primero el QC del diseño actual.",
     "refusedQcStale": "Exportación rechazada — el diseño cambió después del último QC. Vuelva a ejecutar el QC.",
-    "refusedGatesFailing": "Exportación rechazada — puertas de QC fallidas sin reconocer: {{gates}}.",
+    "refusedGatesFailing": "Exportación rechazada — puertas de QC fallidas no aceptadas: {{gates}}.",
     "refusedFinalMeshUnavailable": "Exportación rechazada — el sólido final no está cargado en esta sesión. Abra el flujo de diseño y vuelva a ejecutar el QC.",
     "statusIdle": "Sin exportar",
     "statusExporting": "Exportando…",
     "statusDone": "Exportado ({{format}}) — SHA-256 {{hash}}",
-    "statusStale": "Exportación obsoleta — el diseño cambió después de esta exportación.",
+    "statusStale": "Exportación obsoleta — el diseño o su informe de QC cambió después de esta exportación.",
     "statusError": "Error de exportación — {{message}}"
   }
 }

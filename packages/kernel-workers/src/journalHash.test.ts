@@ -98,6 +98,26 @@ describe('canonicalJournalJson — the reproducible view', () => {
     }
   });
 
+  it('F2 regression: rejects array HOLES (sparse arrays), not just explicit undefined elements', () => {
+    // [1, <hole>, 3] — built without literal sparse syntax (no-sparse-arrays
+    // lint). Array.prototype.map SKIPS holes, so a map-based serializer
+    // emits the invalid JSON `[1,,3]` and hashes differently after a
+    // save/load round-trip (the hole becomes null) — the exact instability
+    // this module exists to make impossible.
+    const holed: unknown[] = [1];
+    holed[2] = 3;
+    expect(() => canonicalJournalJson([op({ params: { bad: holed } })])).toThrow(
+      JournalHashUnserializableError,
+    );
+  });
+
+  it('-0 is deliberately normalized to 0 (pinned: stable across save/load, numerically equal — see module doc)', () => {
+    const negZero = canonicalJournalJson([op({ params: { z: -0 } })]);
+    const posZero = canonicalJournalJson([op({ params: { z: 0 } })]);
+    expect(negZero).toBe(posZero);
+    expect(negZero).toContain('"z":0');
+  });
+
   it('names the offending path in the strictness error (actionable diagnostics)', () => {
     expect(() => canonicalJournalJson([op({ params: { outer: { inner: Number.NaN } } })])).toThrow(
       /params\.outer\.inner/,

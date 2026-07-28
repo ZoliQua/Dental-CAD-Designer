@@ -248,6 +248,20 @@ describe('isExportRecordStale — the P5-T8 cascade discipline extended to expor
   it('a vanished restoration is stale', () => {
     expect(isExportRecordStale(undefined, record)).toBe(true);
   });
+
+  it('F1 regression: goes stale when the current QC report no longer AUTHORIZES the export (a plain re-run reset an acknowledgment; hashes unchanged)', () => {
+    const deauthorized = qcReport(
+      [gate({ gate: 'watertight' }), gate({ gate: 'seating', passed: false, acknowledged: false, message: 'penetration' })],
+      'final-hash',
+    );
+    expect(isExportRecordStale(restoration('onlay', { qc: deauthorized }), record)).toBe(true);
+    // …and an acknowledged failing gate stays authorized (not stale).
+    const acknowledged = qcReport(
+      [gate({ gate: 'watertight' }), gate({ gate: 'seating', passed: false, acknowledged: true, message: 'ack' })],
+      'final-hash',
+    );
+    expect(isExportRecordStale(restoration('onlay', { qc: acknowledged }), record)).toBe(false);
+  });
 });
 
 describe('EXPORT_REFUSAL_I18N_KEY — every refusal is an i18n\'d visible state (×4 locales)', () => {

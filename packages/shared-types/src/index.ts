@@ -388,7 +388,12 @@ export interface ExportAcknowledgment {
    * gate. `null` is a DEFENSIVE value only (e.g. a hand-edited/truncated
    * loaded document) — a normally-produced acknowledgment always has its op
    * (the ack action journals before the report can carry `acknowledged:
-   * true`); the Task 4 server treats a `null` ref as suspect, never as fine.
+   * true`). BINDING Task 4 semantics: the server MUST NOT accept a `null`
+   * ref as a valid acknowledgment of a failing gate — it REFUSES the export
+   * (409, unjournaled acknowledgment) so the user re-acknowledges through
+   * the real journaled path. Warn-and-accept is forbidden: an unjournaled
+   * acknowledgment the server tolerates would be exactly the
+   * hand-edited-document bypass this field exists to expose.
    */
   operationId: string | null;
 }
@@ -482,6 +487,12 @@ export interface RestorationExportRequest {
    * `QcReport.journalHash`, which by the Phase 4 convention carries the
    * `finalMesh` CONTENT hash the report ran against — hence the distinct
    * field name here.
+   *
+   * SEQUENCING (binds Task 4/7 wiring): this request carries the journal
+   * HASH, not the journal — the server recomputes over the PERSISTED case's
+   * journal, so the client must save the case (with the export op already
+   * appended) before, or atomically with, sending this request; skipping
+   * that save guarantees a hash mismatch.
    */
   caseJournalHash: string;
   /** Number of operations hashed into `caseJournalHash` — diagnostic aid

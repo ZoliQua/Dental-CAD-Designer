@@ -12,8 +12,10 @@
 // never returns without either a `refused`/`error` snapshot or a
 // `done` one — there is no silent-no-op path, and this store is where that
 // visibility lives. The `stale` state is the P5-T8 cascade discipline
-// extended to exports: a design edit after an export flips the snapshot to
-// `stale` (derived from hashes by the engine, not hand-maintained).
+// extended to exports: a design edit after an export — or a QC re-run that
+// withdraws the acknowledgment that authorized it — flips the snapshot to
+// `stale` (derived from hashes + the current report by the engine's
+// `isExportRecordStale`, not hand-maintained).
 import { create } from 'zustand';
 import type { ExportFormat } from '@dqcad/shared-types';
 

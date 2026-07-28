@@ -111,6 +111,7 @@ function exportOps(): Operation[] {
 class FakeExportPool {
   calls: Array<{ job: string; payload: Record<string, unknown> }> = [];
   failNext: Error | null = null;
+  base64Sentinel: string | null = null;
 
   readonly run: RunnablePool['run'] = (async (job: string, payload: unknown): Promise<unknown> => {
     this.calls.push({ job, payload: payload as Record<string, unknown> });
@@ -127,7 +128,11 @@ class FakeExportPool {
     bytes.set(header, 0);
     bytes.set(body, header.length);
     const bytesSha256 = createHash('sha256').update(bytes).digest('hex');
-    return { bytes, bytesSha256, byteLength: bytes.byteLength, triangleCount: p.positions.length / 9 };
+    // `base64Sentinel` (when set) proves buildExportRequest passes the
+    // WORKER's encoding through verbatim rather than re-encoding
+    // main-thread (P7-T3 review F3).
+    const bytesBase64 = this.base64Sentinel ?? Buffer.from(bytes).toString('base64');
+    return { bytes, bytesSha256, bytesBase64, byteLength: bytes.byteLength, triangleCount: p.positions.length / 9 };
   }) as RunnablePool['run'];
 }
 
@@ -364,6 +369,42 @@ describe('exportRestoration — stale-after-edit invalidation', () => {
     expect(status(id).state).toBe('done');
   });
 
+  it('F1 regression: a plain QC re-run that RESETS acknowledgments (same mesh, same journalHash) de-authorizes the export — status leaves done and buildExportRequest refuses', async () => {
+    // Export with an acknowledged failing gate → done (the legitimate path).
+    const id = seedRestoration(
+      'onlay',
+      qcReport(
+        [gate({ gate: 'watertight' }), gate({ gate: 'seating', passed: false, acknowledged: true, message: 'ack' })],
+        FINAL.contentHash,
+      ),
+    );
+    caseStore.appendOperation(ackOpFor('onlay', id, 'seating', 'ack-f1'));
+    await exportFlowEngine.exportRestoration(id, { format: 'stl' });
+    expect(status(id).state).toBe('done');
+
+    // A plain (non-ack) QC re-run on the SAME mesh: the engines pass no
+    // acknowledgedGates, so the fresh report resets `acknowledged` to false
+    // while `journalHash` stays equal (the mesh is unchanged).
+    const r = caseStore.getDocument().restorations.find((x) => x.id === id)!;
+    caseStore.updateRestoration(
+      {
+        ...r,
+        qc: qcReport(
+          [gate({ gate: 'watertight' }), gate({ gate: 'seating', passed: false, acknowledged: false, message: 'penetration' })],
+          FINAL.contentHash,
+        ),
+      },
+      { id: 'rerun-f1', name: 'inlay-qc', params: { restorationId: id }, inputHashes: [FINAL.contentHash], outputHashes: [], kernelVersion: KERNEL_VERSION, timestamp: new Date(0).toISOString() },
+    );
+
+    // The export is no longer AUTHORIZED by the current report — the status
+    // must honestly leave `done`, and the request seam must refuse.
+    expect(status(id).state).toBe('stale');
+    await expect(exportFlowEngine.buildExportRequest(id)).rejects.toBeInstanceOf(
+      ExportRequestUnavailableError,
+    );
+  });
+
   it('removing the restoration flips the export stale', async () => {
     const id = seedRestoration('crown', qcReport([gate({ gate: 'watertight' })], FINAL.contentHash));
     await exportFlowEngine.exportRestoration(id, { format: 'stl' });
@@ -371,6 +412,7 @@ describe('exportRestoration — stale-after-edit invalidation', () => {
       id: 'rm', name: 'restoration-delete', params: { restorationId: id }, inputHashes: [], outputHashes: [], kernelVersion: KERNEL_VERSION, timestamp: new Date(0).toISOString(),
     });
     expect(status(id).state).toBe('stale');
+    await expect(exportFlowEngine.buildExportRequest(id)).rejects.toThrow(/no longer exists/);
   });
 });
 
@@ -423,6 +465,15 @@ describe('buildExportRequest — the typed server-request assembly seam', () => 
     expect(request.kernelVersion).toBe(KERNEL_VERSION);
   });
 
+  it('F3: bytesBase64 is the WORKER-encoded value passed through verbatim (no main-thread re-encode)', async () => {
+    const id = seedRestoration('crown', qcReport([gate({ gate: 'watertight' })], FINAL.contentHash));
+    pool.base64Sentinel = 'WORKER-SENTINEL-NOT-A-REAL-ENCODING';
+    await exportFlowEngine.exportRestoration(id, { format: 'stl' });
+    const request = await exportFlowEngine.buildExportRequest(id);
+    // A main-thread re-encode of the bytes could never produce the sentinel.
+    expect(request.bytesBase64).toBe('WORKER-SENTINEL-NOT-A-REAL-ENCODING');
+  });
+
   it('throws a typed error when nothing was exported, and when the export went stale', async () => {
     const id = seedRestoration('crown', qcReport([gate({ gate: 'watertight' })], FINAL.contentHash));
     await expect(exportFlowEngine.buildExportRequest(id)).rejects.toBeInstanceOf(
@@ -438,6 +489,19 @@ describe('buildExportRequest — the typed server-request assembly seam', () => 
     await expect(exportFlowEngine.buildExportRequest(id)).rejects.toBeInstanceOf(
       ExportRequestUnavailableError,
     );
+  });
+
+  it('refuses when the design moved to a NEW mesh whose fresh QC passes (verdict allows, but not for THESE bytes)', async () => {
+    const id = seedRestoration('crown', qcReport([gate({ gate: 'watertight' })], FINAL.contentHash));
+    await exportFlowEngine.exportRestoration(id, { format: 'stl' });
+    const edited = caseStore.getDocument().restorations.find((r) => r.id === id)!;
+    caseStore.updateRestoration(
+      // New finalMesh WITH a fresh, passing QC for it — the gate verdict is
+      // `allowed` for the document, yet the held bytes serialize the OLD mesh.
+      { ...edited, stages: { finalMesh: 'new-mesh' }, qc: qcReport([gate({ gate: 'watertight' })], 'new-mesh') },
+      { id: 'edit3', name: 'crown-shell', params: { restorationId: id }, inputHashes: [], outputHashes: ['new-mesh'], kernelVersion: KERNEL_VERSION, timestamp: new Date(0).toISOString() },
+    );
+    await expect(exportFlowEngine.buildExportRequest(id)).rejects.toThrow(/stale/);
   });
 });
 
@@ -541,7 +605,7 @@ class FakeCavityPool {
       case 'exportRestorationMesh': {
         const p = payload as { positions: Float64Array; format: string };
         const bytes = new Uint8Array(p.positions.buffer.slice(0));
-        return { bytes, bytesSha256: createHash('sha256').update(bytes).digest('hex'), byteLength: bytes.byteLength, triangleCount: 4 };
+        return { bytes, bytesSha256: createHash('sha256').update(bytes).digest('hex'), bytesBase64: Buffer.from(bytes).toString('base64'), byteLength: bytes.byteLength, triangleCount: 4 };
       }
       default:
         throw new Error(`FakeCavityPool: unexpected job ${job}`);
@@ -606,5 +670,14 @@ describe('integration — real cavity engine, default final-mesh source', () => 
     // The ack journal ref points at the cavity engine's inlay-qc-ack op.
     const ackOp = caseStore.getDocument().history.find((o) => o.name === 'inlay-qc-ack')!;
     expect(op.params.ackOperationIds).toEqual([ackOp.id]);
+
+    // F1 regression, real engine: a plain runQc() re-run resets the
+    // acknowledgment (the engine passes no acknowledgedGates) on the SAME
+    // mesh — the completed export must de-authorize, not stay "done".
+    await cavityDesignEngine.runQc();
+    expect(status(restoration.id).state).toBe('stale');
+    await expect(exportFlowEngine.buildExportRequest(restoration.id)).rejects.toBeInstanceOf(
+      ExportRequestUnavailableError,
+    );
   });
 });

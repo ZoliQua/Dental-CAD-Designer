@@ -61,6 +61,10 @@ describe('exportRestorationMesh — determinism (the replay contract)', () => {
     expect(a.bytesSha256).toBe(sha256(a.bytes));
     expect(a.byteLength).toBe(a.bytes.byteLength);
     expect(a.triangleCount).toBe(12);
+    // F3: base64 is encoded worker-side, correct against the reference, and
+    // decodes back to the exact bytes.
+    expect(a.bytesBase64).toBe(Buffer.from(a.bytes).toString('base64'));
+    expect(Buffer.from(a.bytesBase64, 'base64').equals(Buffer.from(a.bytes))).toBe(true);
   });
 
   it('ply: same determinism + worker-side hash contract', async () => {

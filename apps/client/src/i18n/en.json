@@ -653,7 +653,7 @@
     "statusIdle": "Not exported",
     "statusExporting": "Exporting…",
     "statusDone": "Exported ({{format}}) — SHA-256 {{hash}}",
-    "statusStale": "Export outdated — the design changed after this export.",
+    "statusStale": "Export outdated — the design or its QC report changed after this export.",
     "statusError": "Export failed — {{message}}"
   }
 }

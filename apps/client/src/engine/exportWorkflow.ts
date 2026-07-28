@@ -157,8 +157,17 @@ export function exportGateVerdict(
  * CURRENT state — the P5-T8 invalidation-cascade discipline extended to
  * exports: a design edit after an export (which moves/clears
  * `stages.finalMesh` and nulls `qc` via the per-workflow cascades) marks
- * the export stale, as does any QC change that would no longer authorize
- * it. Derived from hashes, never hand-maintained.
+ * the export stale, as does any QC change that would no longer AUTHORIZE
+ * it. Derived from hashes + the current report, never hand-maintained.
+ *
+ * The authorization clause (P7-T3 review F1): a plain (non-ack) QC re-run
+ * on the SAME mesh resets every gate's `acknowledged` flag (the engines
+ * pass no `acknowledgedGates` on a plain run), leaving `qc.journalHash`
+ * unchanged — so hash checks alone would keep a withdrawn-acknowledgment
+ * export looking "done". A record is therefore stale whenever the current
+ * report carries any failing UNACKNOWLEDGED gate: the report that
+ * authorized the export is no longer in force, and re-exporting (after
+ * re-acknowledging) is the only honest path back to `done`.
  */
 export function isExportRecordStale(
   restoration: Restoration | undefined,
@@ -167,5 +176,6 @@ export function isExportRecordStale(
   if (!restoration) return true;
   if (restoration.stages.finalMesh !== record.finalMeshHash) return true;
   if (restoration.qc === null) return true;
-  return isRestorationQcStale(restoration);
+  if (isRestorationQcStale(restoration)) return true;
+  return restoration.qc.gates.some((g) => !g.passed && !g.acknowledged);
 }

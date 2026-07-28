@@ -46,7 +46,23 @@
 // values would certify something other than what the journal says.
 // `undefined` OBJECT properties are dropped (standard JSON.stringify
 // semantics — an absent property and an undefined property are the same
-// journal content).
+// journal content). Array HOLES are rejected like undefined elements (an
+// indexed loop, never `map`, which would skip them — see the array branch).
+// One deliberate NORMALIZATION (not a rejection): `-0` serializes as `0`
+// (`JSON.stringify(-0) === "0"`) — numerically equal, and STABLE across a
+// save/load round-trip (JSON has no -0), so normalizing matches the
+// persisted form; pinned by test.
+//
+// ## Embedded operation-id references (replay caveat)
+//
+// Excluding `Operation.id` from the hashed view does NOT strip op ids that
+// other ops record INSIDE their `params` — e.g. the export op's
+// `ackOperationIds` (refs to `*-qc-ack` ops). Hash stability across replay
+// therefore holds under VERBATIM-params replay (the established replay
+// discipline reproduces params exactly); a hypothetical replay that
+// re-minted the referenced ops' ids would leave such recorded refs dangling
+// — referential integrity of cross-op refs is a property of the journal
+// DOCUMENT, not something this hash certifies.
 //
 // Not in the Node worker-entry import closure (no job imports this file),
 // so relative imports use the repo's normal `.js` convention — see
@@ -95,7 +111,18 @@ function canonicalStringifyStrict(value: unknown, path: string): string {
       throw new JournalHashUnserializableError(path, 'undefined array element (JSON would coerce to null)');
     case 'object': {
       if (Array.isArray(value)) {
-        return `[${value.map((element, i) => canonicalStringifyStrict(element, `${path}[${i}]`)).join(',')}]`;
+        // Indexed loop, NOT Array.prototype.map: map SKIPS holes, so a
+        // sparse array like `[1, , 3]` would bypass the `undefined` reject
+        // branch, emit INVALID JSON (`[1,,3]`) and hash differently after a
+        // save/load round-trip (JSON turns the hole into null) — the exact
+        // instability this module exists to make impossible (P7-T3 review
+        // F2). Reading a hole yields `undefined`, which the reject branch
+        // above turns into a typed error.
+        const parts: string[] = [];
+        for (let i = 0; i < value.length; i++) {
+          parts.push(canonicalStringifyStrict(value[i], `${path}[${i}]`));
+        }
+        return `[${parts.join(',')}]`;
       }
       if (!isPlainObject(value)) {
         throw new JournalHashUnserializableError(

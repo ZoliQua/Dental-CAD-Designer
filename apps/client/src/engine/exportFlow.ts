@@ -27,10 +27,11 @@
 //     reproduces the exact bytes — proven at the job layer
 //     (exportJob.test.ts) and in the golden journal-replay harness
 //     (scripts/journal-replay-lib.ts's export fixture).
-//  4. STALE-AFTER-EDIT: a completed export's status is DERIVED from hashes
-//     (`isExportRecordStale`) on every case-document publish — a design
-//     edit after an export flips the snapshot to `stale`, exactly like the
-//     per-workflow QC invalidation cascades (P5-T8).
+//  4. STALE-AFTER-EDIT (and -AFTER-DEAUTHORIZATION): a completed export's
+//     status is DERIVED (`isExportRecordStale`) on every case-document
+//     publish — a design edit after an export, or a QC re-run that resets
+//     the acknowledgment that authorized it, flips the snapshot to `stale`,
+//     exactly like the per-workflow QC invalidation cascades (P5-T8).
 //
 // `buildExportRequest` is the thin, tested assembly seam for Task 4's
 // endpoint (the actual HTTP send lands with T4/T7 wiring): it packages the
@@ -58,7 +59,6 @@ import type {
   Restoration,
   RestorationExportRequest,
 } from '@dqcad/shared-types';
-import { bytesToBase64 } from './base64';
 import { caseStore } from './caseStore';
 import { bridgeDesignEngine } from './bridgeDesign';
 import { cavityDesignEngine } from './cavityDesign';
@@ -108,6 +108,10 @@ export class ExportRequestUnavailableError extends Error {
 interface HeldExport {
   bytes: Uint8Array;
   bytesSha256: string;
+  /** Worker-encoded base64 of `bytes` (P7-T3 review F3: the encode of a
+   * multi-MB export must not run on the UI thread) — passed through
+   * verbatim by `buildExportRequest`. */
+  bytesBase64: string;
   byteLength: number;
   format: ExportFormat;
   headerText?: string;
@@ -293,6 +297,7 @@ class ExportFlowEngine {
       this.held.set(restorationId, {
         bytes: result.bytes,
         bytesSha256: result.bytesSha256,
+        bytesBase64: result.bytesBase64,
         byteLength: result.byteLength,
         format: opts.format,
         ...(headerText === undefined ? {} : { headerText }),
@@ -333,16 +338,33 @@ class ExportFlowEngine {
     }
     const document = caseStore.getDocument();
     const restoration = document.restorations.find((r) => r.id === restorationId);
-    if (isExportRecordStale(restoration, held) || !restoration || restoration.qc === null) {
+    if (!restoration) {
+      throw new ExportRequestUnavailableError(restorationId, 'the restoration no longer exists');
+    }
+    // The verdict must AUTHORIZE the request, not just harvest acks (P7-T3
+    // review F1): assembling a request the current report does not authorize
+    // — e.g. a plain QC re-run reset the acknowledgment that allowed the
+    // export — would falsify the shared-types contract T4 builds on.
+    // Checked FIRST (the more specific diagnostic); the record-vs-document
+    // staleness check below then covers the remaining case (design moved on
+    // to a NEW mesh whose fresh QC passes — the verdict allows, but not for
+    // THESE bytes).
+    const verdict = exportGateVerdict(restoration, document.history);
+    if (!verdict.allowed) {
       throw new ExportRequestUnavailableError(
         restorationId,
-        'the design changed after this export (stale) — re-run the export first',
+        `the current QC report no longer authorizes this export (${verdict.refusalCode}${
+          verdict.failingGates.length > 0 ? `: ${verdict.failingGates.join(', ')}` : ''
+        }) — resolve or re-acknowledge, then re-export`,
       );
     }
-    const verdict = exportGateVerdict(restoration, document.history);
-    const acknowledgments: readonly ExportAcknowledgment[] = verdict.allowed
-      ? verdict.acknowledgments
-      : [];
+    if (isExportRecordStale(restoration, held) || restoration.qc === null) {
+      throw new ExportRequestUnavailableError(
+        restorationId,
+        'the design or its QC report changed after this export (stale) — re-run the export first',
+      );
+    }
+    const acknowledgments: readonly ExportAcknowledgment[] = verdict.acknowledgments;
     return {
       schemaVersion: 1,
       caseId: document.id,
@@ -353,7 +375,7 @@ class ExportFlowEngine {
       ...(held.headerText === undefined ? {} : { headerText: held.headerText }),
       meshContentHash: held.finalMeshHash,
       exportOperationId: held.exportOperationId,
-      bytesBase64: bytesToBase64(held.bytes),
+      bytesBase64: held.bytesBase64,
       bytesSha256: held.bytesSha256,
       byteLength: held.byteLength,
       qcReport: restoration.qc,

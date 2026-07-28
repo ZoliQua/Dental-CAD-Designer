@@ -1,8 +1,10 @@
-// apps/client/src/engine/base64.test.ts — the pure, environment-agnostic
-// base64 encoder behind `RestorationExportRequest.bytesBase64` (Phase 7
-// Task 3). Verified byte-for-byte against Node's reference implementation
-// (RFC 4648 standard alphabet, padded) across lengths covering every
-// padding case and a deterministic pseudo-random sweep.
+// packages/kernel-workers/src/base64.test.ts — the pure, environment-
+// agnostic base64 encoder behind `RestorationExportRequest.bytesBase64`
+// (Phase 7 Task 3; moved from the client engine into the worker package in
+// the review fix round — see base64.ts's module doc). Verified byte-for-
+// byte against Node's reference implementation (RFC 4648 standard alphabet,
+// padded) across lengths covering every padding case and a deterministic
+// pseudo-random sweep.
 import { describe, expect, it } from 'vitest';
 import { bytesToBase64 } from './base64';
 

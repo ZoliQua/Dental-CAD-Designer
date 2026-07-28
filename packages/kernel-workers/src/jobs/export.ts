@@ -28,6 +28,7 @@
 // "Import extension convention". No TS constructor parameter properties
 // (P5-T1) — no classes here at all.
 import { exportPlyBinary, exportStlBinary } from '@dqcad/io';
+import { bytesToBase64 } from '../base64.ts';
 import { sha256Hex } from '../hash.ts';
 import { JobCancelledError, type JobContext } from './context.ts';
 import { requireMeshPayload } from './shared.ts';
@@ -56,6 +57,11 @@ export interface ExportRestorationMeshResult {
    * exact serialized output — the export `Operation.outputHashes[0]` and
    * `RestorationExportRequest.bytesSha256`. */
   bytesSha256: string;
+  /** RFC 4648 base64 of `bytes`, encoded WORKER-SIDE (a main-thread encode
+   * of a multi-MB export measured ~130 ms — over the 50 ms UI budget; P7-T3
+   * review F3) — consumed verbatim as
+   * `RestorationExportRequest.bytesBase64`. */
+  bytesBase64: string;
   /** `bytes.byteLength` — returned explicitly so the caller journals the
    * value the hash was computed over, not a later re-measure. */
   byteLength: number;
@@ -88,10 +94,12 @@ export const exportRestorationMesh = async (
       ? exportStlBinary(mesh, payload.headerText === undefined ? {} : { headerText: payload.headerText })
       : exportPlyBinary(mesh);
   const bytesSha256 = await sha256Hex(bytes);
+  const bytesBase64 = bytesToBase64(bytes);
   ctx.progress(1);
   return {
     bytes,
     bytesSha256,
+    bytesBase64,
     byteLength: bytes.byteLength,
     triangleCount: payload.indices.length / 3,
   };

@@ -25,8 +25,14 @@
 //    runtime check).
 //  - Browser Web Workers have no `process` global (this repo's Vite config
 //    never polyfills one) and get the standard `crypto.subtle.digest`
-//    (async, but off the UI thread regardless — this whole module only ever
-//    runs inside a worker, never on the main thread).
+//    (async either way).
+//
+// Runtime note (Phase 7 Task 3): originally this module only ever ran
+// inside a worker. `journalHash.ts`'s `hashCaseJournal` now also calls
+// `sha256Hex` on the MAIN thread (engine/exportFlow.ts's request assembly)
+// — fine there because a case journal's canonical JSON is KB-scale and the
+// digest is native/async; multi-MB inputs (files, meshes, export bytes)
+// must still only be hashed via worker jobs.
 function isNodeRuntime(): boolean {
   return typeof process !== 'undefined' && process.versions?.node != null;
 }
