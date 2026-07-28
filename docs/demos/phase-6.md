@@ -524,6 +524,9 @@ plan).
     `buildQcPayload`'s validation inside `runQc`'s existing try/catch so a
     genuine `BridgeStageOrderError` there surfaces through the same
     `failStage`/error-banner path every other stage failure already uses.
+    NB (review finding): `acknowledgeGate()` (bridgeDesign.ts:753) shares the
+    identical pre-try-block `buildQcPayload` call pattern — a second latent
+    instance of the same root cause; any fix must treat BOTH call sites.
 20. **`connectorCrossSection` is reported as a SINGLE gate value across all
     connectors** (the worst connector's measured area / its own resolved
     target), not one row per connector pair, in the current whole-bridge QC
