@@ -15,6 +15,9 @@ import { describe, expect, it } from 'vitest';
 import { parseStl } from '../src/stl/parse.ts';
 import { parsePly } from '../src/ply/parse.ts';
 import type { PlyFormat } from '../src/ply/types.ts';
+import { exportStlBinary } from '../src/export/stl.ts';
+import { exportPlyBinary } from '../src/export/ply.ts';
+import type { ExportableMesh } from '../src/export/types.ts';
 
 const GENERATIVE_RUNS = 1500;
 
@@ -268,5 +271,69 @@ describe('generative fuzzing: STL ASCII (random facet count/values x whitespace/
       { seed, numRuns: GENERATIVE_RUNS },
     );
     expect(seed).toBe(20260717);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Export entries (Phase 7 Task 2): the manufacturing writers' output fed
+// straight through this package's own parsers — random valid watertight
+// tetrahedra (the smallest closed solids) exported and re-parsed. Extends
+// the corpus hookup in the cheapest honest way: every sample also exercises
+// the export-side solid validation (topology + outward orientation).
+// ---------------------------------------------------------------------------
+
+/** det/6 of the tetrahedron spanned by the 4 points in `p` (12 values). */
+function tetSignedVolume(p: readonly number[]): number {
+  const ux = p[3]! - p[0]!, uy = p[4]! - p[1]!, uz = p[5]! - p[2]!;
+  const vx = p[6]! - p[0]!, vy = p[7]! - p[1]!, vz = p[8]! - p[2]!;
+  const wx = p[9]! - p[0]!, wy = p[10]! - p[1]!, wz = p[11]! - p[2]!;
+  return (ux * (vy * wz - vz * wy) - uy * (vx * wz - vz * wx) + uz * (vx * wy - vy * wx)) / 6;
+}
+
+const tetPointsArb = fc
+  .array(fc.double({ noNaN: true, min: -100, max: 100 }), { minLength: 12, maxLength: 12 })
+  .filter((p) => Math.abs(tetSignedVolume(p)) > 1e-3);
+
+function outwardTetMesh(p: readonly number[]): ExportableMesh {
+  return {
+    positions: new Float64Array(p),
+    indices:
+      tetSignedVolume(p) > 0
+        ? new Uint32Array([0, 2, 1, 0, 1, 3, 1, 2, 3, 0, 3, 2])
+        : new Uint32Array([0, 1, 2, 0, 3, 1, 1, 3, 2, 0, 2, 3]),
+  };
+}
+
+describe('generative fuzzing: export writers feed cleanly back through the parsers', () => {
+  it('exportStlBinary output always parses as binary STL with zero warnings and finite values — 400 runs', () => {
+    const seed = 20260718;
+    fc.assert(
+      fc.property(tetPointsArb, (p) => {
+        const { soup, diagnostics } = parseStl(exportStlBinary(outwardTetMesh(p)));
+        expect(diagnostics.format).toBe('stl-binary');
+        expect(diagnostics.warnings).toHaveLength(0);
+        expect(soup.triangleCount).toBe(4);
+        for (let i = 0; i < soup.positions.length; i++) {
+          expect(Number.isFinite(soup.positions[i]!)).toBe(true);
+        }
+      }),
+      { seed, numRuns: 400 },
+    );
+    expect(seed).toBe(20260718);
+  });
+
+  it('exportPlyBinary output always parses as binary-LE PLY with lossless geometry — 400 runs', () => {
+    const seed = 20260718;
+    fc.assert(
+      fc.property(tetPointsArb, (p) => {
+        const mesh = outwardTetMesh(p);
+        const parsed = parsePly(exportPlyBinary(mesh));
+        expect(parsed.diagnostics.format).toBe('ply-binary-le');
+        expect(Array.from(parsed.positions)).toEqual(Array.from(mesh.positions));
+        expect(Array.from(parsed.indices)).toEqual(Array.from(mesh.indices));
+      }),
+      { seed, numRuns: 400 },
+    );
+    expect(seed).toBe(20260718);
   });
 });
