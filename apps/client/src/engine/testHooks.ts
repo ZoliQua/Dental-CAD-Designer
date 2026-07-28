@@ -138,6 +138,25 @@ export interface DqcadTestHooks {
    * shell/QC, all in `ui/CavityDesignPanel.tsx`) runs through the real
    * worker-backed UI unmodified. */
   seedCavityOutline(restorationId: string, tooth: number, points: readonly (readonly [number, number, number])[]): void;
+  /** DEV/TEST-ONLY, Phase 6 Task 10 addition. Commits a CONFIRMED margin loop
+   * for one ABUTMENT tooth of a bridge restoration — the same `MarginLine`
+   * shape (`resampledPoints`) `seedCavityOutline` above writes, exposed under
+   * its own honestly-scoped name because a bridge abutment margin is a
+   * different clinical concept (a prep finish line, not a cavity outline) even
+   * though the underlying engine call is identical (`marginEditor`/
+   * `restorations.ts` are restoration-type-agnostic outside the bridge
+   * multi-tooth path — see `engine/bridgeDesign.ts`'s own top doc). Unlike a
+   * crown/cavity margin, this hook's OUTPUT IS NOT itself geometrically
+   * consumed by the Phase 6 bridge pipeline: `hasAbutmentMargins` (engine/
+   * bridgeWorkflow.ts) only checks a dense loop is PRESENT (>=3 points) to
+   * gate the workflow open; the actual abutment fit surfaces, connectors, and
+   * pontic base are CAPTURED from the demonstration fixture
+   * (`engine/bridgeGeometry.ts#buildBridgeFixture`), not derived from this
+   * loop — see `docs/demos/phase-6.md`'s synthetic-fixture disclosure. So a
+   * simple closed-form ring (not traced from the imported mesh at all) is
+   * sufficient and honest here, unlike `seedCavityOutline`'s bit-exact
+   * snap-to-mesh requirement. */
+  seedBridgeAbutmentMargin(restorationId: string, tooth: number, points: readonly (readonly [number, number, number])[]): void;
 }
 
 declare global {
@@ -205,6 +224,31 @@ const hooks: DqcadTestHooks = {
       id: crypto.randomUUID(),
       name: 'margin-edit',
       params: { restorationId, tooth, source: 'e2e-test-hook-seedCavityOutline' },
+      inputHashes: [],
+      outputHashes: [],
+      kernelVersion: KERNEL_VERSION,
+      timestamp: new Date().toISOString(),
+    };
+    caseStore.updateRestoration(next, operation);
+  },
+  seedBridgeAbutmentMargin(restorationId, tooth, points) {
+    const restoration = caseStore
+      .getDocument()
+      .restorations.find((r) => r.id === restorationId);
+    if (!restoration) {
+      throw new Error(`seedBridgeAbutmentMargin: no restoration ${restorationId}`);
+    }
+    const next: Restoration = {
+      ...restoration,
+      marginLines: {
+        ...restoration.marginLines,
+        [tooth]: { anchors: [], closed: true, resampledPoints: points.map((p) => [...p] as Vec3) },
+      },
+    };
+    const operation: Operation = {
+      id: crypto.randomUUID(),
+      name: 'margin-edit',
+      params: { restorationId, tooth, source: 'e2e-test-hook-seedBridgeAbutmentMargin' },
       inputHashes: [],
       outputHashes: [],
       kernelVersion: KERNEL_VERSION,
