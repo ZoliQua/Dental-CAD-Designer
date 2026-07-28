@@ -336,9 +336,23 @@ describe('export-serialization: re-import equivalence property (seeded)', () => 
     return min;
   }
 
+  // The equivalence's stated conditions, ENFORCED by construction (review
+  // finding 2: a filter on f64 quantities alone provably does NOT imply
+  // them — a tuple with f64 vol +1.37e-3 and f32-narrowed vol −6.5e-6
+  // passed the old filter; it is now a dedicated regression test in
+  // packages/io/src/export/stl.export.test.ts): the f32-narrowed geometry
+  // must keep the volume sign (condition iii) and keep all vertex pairs
+  // far above the weld epsilon (condition i); for a tetrahedron a nonzero
+  // narrowed volume also implies no narrowing-degenerate face (condition
+  // ii — a collinear face forces zero volume).
   const tetArb = fc
     .array(fc.double({ noNaN: true, min: -50, max: 50 }), { minLength: 12, maxLength: 12 })
-    .filter((p) => Math.abs(tetVolume(p)) > 1e-3 && minPairwiseDistance(p) > 1e-2);
+    .filter((p) => {
+      const v64 = tetVolume(p);
+      if (Math.abs(v64) <= 1e-3 || minPairwiseDistance(p) <= 1e-2) return false;
+      const narrowed = p.map(Math.fround);
+      return Math.sign(tetVolume(narrowed)) === Math.sign(v64) && minPairwiseDistance(narrowed) > 1e-2;
+    });
 
   it('holds for random outward-oriented tetrahedra (STL + PLY)', () => {
     fc.assert(

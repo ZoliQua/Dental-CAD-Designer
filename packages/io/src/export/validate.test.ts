@@ -99,6 +99,81 @@ describe('assertExportableSolid: non-watertight / inconsistent topology is rejec
   });
 });
 
+// ---------------------------------------------------------------------------
+// Multi-component blindness regressions (Phase 7 Task 2 review, finding 1):
+// "positive TOTAL signed volume ⇒ outward" only holds for a CONNECTED closed
+// surface. Each probe below PASSED the pre-fix validator (demonstrated in the
+// review); the fix requires exactly one edge-connected component and rejects
+// exactly-zero-area triangles.
+// ---------------------------------------------------------------------------
+
+/** `mesh` uniformly scaled by `scale` and shifted by `dx` along x. */
+function transformed(mesh: ExportableMesh, dx: number, scale: number): ExportableMesh {
+  const positions = new Float64Array(mesh.positions.length);
+  for (let i = 0; i < mesh.positions.length; i += 3) {
+    positions[i] = mesh.positions[i]! * scale + dx;
+    positions[i + 1] = mesh.positions[i + 1]! * scale;
+    positions[i + 2] = mesh.positions[i + 2]! * scale;
+  }
+  return { positions, indices: mesh.indices.slice() };
+}
+
+/** Disjoint union of two meshes (b's indices offset past a's vertices). */
+function merged(a: ExportableMesh, b: ExportableMesh): ExportableMesh {
+  const positions = new Float64Array(a.positions.length + b.positions.length);
+  positions.set(a.positions, 0);
+  positions.set(b.positions, a.positions.length);
+  const offset = a.positions.length / 3;
+  const indices = new Uint32Array(a.indices.length + b.indices.length);
+  indices.set(a.indices, 0);
+  for (let i = 0; i < b.indices.length; i++) {
+    indices[a.indices.length + i] = b.indices[i]! + offset;
+  }
+  return { positions, indices };
+}
+
+describe('assertExportableSolid: multi-component meshes are rejected (review finding 1 regressions)', () => {
+  it('probe A: outward cube + free-floating INWARD cube (net volume +7) is rejected', () => {
+    // Pre-fix: PASSED with signedVolumeMm3 = 7 — the inward component hid
+    // inside the net-positive total.
+    expectReason(merged(unitCube2(), transformed(windingReversed(unitCube2()), 10, 0.5)), 'multi-component');
+  });
+
+  it('probe A2: outward cube + NESTED inward shell (a void, net volume +7) is rejected', () => {
+    expectReason(merged(unitCube2(), transformed(windingReversed(unitCube2()), 0, 0.5)), 'multi-component');
+  });
+
+  it('probe B: cube + detached zero-area flap is rejected (degenerate triangle wins the report)', () => {
+    // Pre-fix: PASSED, and exportStlBinary then wrote two facets with the
+    // writer's degenerate (0,0,0)-normal fallback.
+    const flap: ExportableMesh = {
+      positions: new Float64Array([20, 0, 0, 21, 0, 0, 22, 0, 0]), // collinear
+      indices: new Uint32Array([0, 1, 2, 0, 2, 1]),
+    };
+    expectReason(merged(unitCube2(), flap), 'degenerate-triangle');
+  });
+
+  it('probe B2: cube + detached positive-area zero-volume sandwich is rejected', () => {
+    const sandwich: ExportableMesh = {
+      positions: new Float64Array([20, 0, 0, 21, 0, 0, 20, 1, 0]),
+      indices: new Uint32Array([0, 1, 2, 0, 2, 1]),
+    };
+    expectReason(merged(unitCube2(), sandwich), 'multi-component');
+  });
+
+  it('two disjoint OUTWARD cubes are also rejected — one export is one fused solid (documented policy)', () => {
+    expectReason(merged(unitCube2(), transformed(unitCube2(), 10, 1)), 'multi-component');
+  });
+
+  it('a standalone exactly-zero-area triangle pair is rejected as degenerate, not zero-volume', () => {
+    const flap: ExportableMesh = {
+      positions: new Float64Array([0, 0, 0, 1, 0, 0, 2, 0, 0]), // collinear
+      indices: new Uint32Array([0, 1, 2, 0, 2, 1]),
+    };
+    expectReason(flap, 'degenerate-triangle');
+  });
+});
+
 describe('assertExportableSolid: malformed input is rejected with typed errors, never silently', () => {
   it('rejects an empty mesh', () => {
     expectReason({ positions: new Float64Array(0), indices: new Uint32Array(0) }, 'empty');

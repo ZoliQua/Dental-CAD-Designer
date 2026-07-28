@@ -9,11 +9,13 @@ export {
 export {
   assertExportableSolid,
   assertExportVertexCountWithinEdgeKeyRange,
+  f32NarrowedSignedVolumeMm3,
   MAX_EXPORT_VERTEX_COUNT,
   type ExportSolidCheck,
 } from './validate.ts';
 export {
   exportStlBinary,
+  assertExportableStlHeaderText,
   EXPORT_STL_HEADER_TEXT,
   F32_MAX_MAGNITUDE,
   type ExportStlBinaryOptions,

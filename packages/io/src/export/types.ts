@@ -32,20 +32,35 @@ export interface ExportableMesh {
  *    type, lengths not multiples of 3, out-of-range indices, non-finite
  *    coordinates, or coordinates outside float32's representable range for
  *    the STL path).
- *  - `'degenerate-triangle'` — a triangle repeats a vertex index (always
- *    zero-area; a canonical post-intake kernel mesh never contains one).
+ *  - `'degenerate-triangle'` — a triangle repeats a vertex index OR has an
+ *    exactly zero-area cross product (collinear vertices). Rejected so the
+ *    export path can never emit a facet whose written normal is the
+ *    writer's degenerate `(0, 0, 0)` fallback; a canonical post-intake
+ *    kernel mesh never contains either (intake drops cross-norm < 1e-12).
  *  - `'non-manifold-edge'` — an edge shared by 3+ triangles.
  *  - `'boundary-edge'` — an edge with only one incident triangle (the mesh
  *    is open, not watertight).
  *  - `'inconsistent-winding'` — an edge whose two incident triangles
  *    traverse it in the SAME direction (adjacent triangles disagree on
  *    which side is outside).
+ *  - `'multi-component'` — more than one edge-connected component. A
+ *    manufacturing export is exactly ONE fused solid (the kernel's own
+ *    shell/assembly ops guarantee a single-component result); and the
+ *    positive-total-volume ⇒ outward argument below is only valid for a
+ *    CONNECTED closed surface — a disjoint inward component (or an inward
+ *    nested void) can hide inside a net-positive sum, so multi-component
+ *    input is rejected outright rather than half-verified.
  *  - `'zero-volume'` — watertight and consistently wound, but the enclosed
  *    signed volume is exactly 0 (a degenerate "sandwich" solid).
  *  - `'inward-orientation'` — watertight and consistently wound, but the
  *    signed volume is NEGATIVE: every facet points into the solid. The
  *    export layer REJECTS this rather than silently flipping — see
  *    `assertExportableSolid`'s doc for why.
+ *  - `'inward-orientation-narrowed'` — STL only: the Float64 mesh is
+ *    outward, but the f32-NARROWED geometry (the bytes actually shipped)
+ *    has a non-positive signed volume — a near-degenerate solid whose
+ *    orientation does not survive the format's precision floor. See
+ *    stl.ts's normals section.
  */
 export type ExportMeshInvalidReason =
   | 'empty'
@@ -54,8 +69,10 @@ export type ExportMeshInvalidReason =
   | 'non-manifold-edge'
   | 'boundary-edge'
   | 'inconsistent-winding'
+  | 'multi-component'
   | 'zero-volume'
-  | 'inward-orientation';
+  | 'inward-orientation'
+  | 'inward-orientation-narrowed';
 
 /**
  * Typed rejection for the export entries (`exportStlBinary` /

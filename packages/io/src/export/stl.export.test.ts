@@ -15,8 +15,10 @@ import {
   STL_BINARY_PREAMBLE_BYTES,
   STL_BINARY_RECORD_BYTES,
 } from '../stl/binary.ts';
+import { IoWriteRangeError } from '../types.ts';
 import { ExportMeshInvalidError } from './types.ts';
 import { EXPORT_STL_HEADER_TEXT, exportStlBinary } from './stl.ts';
+import { exportPlyBinary } from './ply.ts';
 import {
   UNIT_CUBE2_FACET_NORMALS,
   cornerTetrahedron,
@@ -190,6 +192,55 @@ describe('exportStlBinary: invalid solids are rejected with typed errors (never 
     expect(() =>
       exportStlBinary({ positions: new Float64Array(0), indices: new Uint32Array(0) }),
     ).toThrowError(ExportMeshInvalidError);
+  });
+
+  it('rejects a near-degenerate solid whose f32-NARROWED volume flips inward (review finding 2 regression)', () => {
+    // Constructed adversarially (Phase 7 Task 2 review): f64 signed volume
+    // +1.295e-3 mm³ (passes the f64 outward check AND the golden property
+    // suite's own |vol| > 1e-3 / minPairwiseDistance > 1e-2 filter), but the
+    // fround-narrowed coordinates — the bytes a mill actually decodes —
+    // enclose volume −4.63e-4 mm³. Pre-fix, exportStlBinary SUCCEEDED and
+    // shipped inward-oriented bytes (re-import flippedCount 4); the outward
+    // guarantee must hold for the shipped f32 geometry, so this now throws.
+    // prettier-ignore
+    const positions = new Float64Array([
+      36.33103370666504, -38.0856990814209, 47.17011749744415,
+      -33.128559589385986, 48.22219908237457, 34.825921058654785,
+      9.392666816711426, 23.447251319885254, -15.15967845916748,
+      7.411644777834087, 6.266554732827891, 24.767919410513315,
+    ]);
+    const mesh = {
+      positions,
+      indices: new Uint32Array([0, 2, 1, 0, 1, 3, 1, 2, 3, 0, 3, 2]),
+    };
+    try {
+      exportStlBinary(mesh);
+      expect.unreachable('must throw');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ExportMeshInvalidError);
+      expect((error as ExportMeshInvalidError).reason).toBe('inward-orientation-narrowed');
+    }
+    // The same mesh IS exportable as PLY — lossless float64, no narrowing.
+    expect(() => exportPlyBinary(mesh)).not.toThrow();
+  });
+
+  it('rejects a headerText longer than the 80-byte header field instead of silently truncating', () => {
+    expect(() => exportStlBinary(unitCube2(), { headerText: 'x'.repeat(81) })).toThrowError(
+      IoWriteRangeError,
+    );
+    // Exactly 80 is representable and fine.
+    expect(() => exportStlBinary(unitCube2(), { headerText: 'x'.repeat(80) })).not.toThrow();
+  });
+
+  it("rejects a headerText starting with 'solid' (third-party binary/ASCII sniffing hazard)", () => {
+    expect(() => exportStlBinary(unitCube2(), { headerText: 'solid case-42' })).toThrowError(
+      IoWriteRangeError,
+    );
+    expect(() => exportStlBinary(unitCube2(), { headerText: '  SOLID case-42' })).toThrowError(
+      IoWriteRangeError,
+    );
+    // 'solid' appearing NON-initially is harmless.
+    expect(() => exportStlBinary(unitCube2(), { headerText: 'case-42 solid zirconia' })).not.toThrow();
   });
 
   it('rejects coordinates outside float32 range (STL cannot represent them finitely)', () => {

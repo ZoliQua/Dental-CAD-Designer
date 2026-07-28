@@ -74,6 +74,50 @@ function fail(reason: ExportMeshInvalidError['reason'], message: string): never 
   throw new ExportMeshInvalidError(reason, message);
 }
 
+const identityCoordinate = (x: number): number => x;
+
+/** Total signed volume (divergence theorem) over every triangle in index
+ * order, each coordinate first passed through `mapCoordinate` — identity
+ * for the Float64 check, `Math.fround` for the STL narrowed-bytes check.
+ * One fixed summation order for both, so the two checks are directly
+ * comparable and each is deterministic. */
+function signedVolume(
+  positions: Float64Array,
+  indices: Uint32Array,
+  mapCoordinate: (x: number) => number,
+): number {
+  const triangleCount = indices.length / 3;
+  let acc = 0;
+  for (let t = 0; t < triangleCount; t++) {
+    const a = indices[t * 3]! * 3;
+    const b = indices[t * 3 + 1]! * 3;
+    const c = indices[t * 3 + 2]! * 3;
+    const ax = mapCoordinate(positions[a]!);
+    const ay = mapCoordinate(positions[a + 1]!);
+    const az = mapCoordinate(positions[a + 2]!);
+    const bx = mapCoordinate(positions[b]!);
+    const by = mapCoordinate(positions[b + 1]!);
+    const bz = mapCoordinate(positions[b + 2]!);
+    const cx = mapCoordinate(positions[c]!);
+    const cy = mapCoordinate(positions[c + 1]!);
+    const cz = mapCoordinate(positions[c + 2]!);
+    acc += (ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx) + az * (bx * cy - by * cx)) / 6;
+  }
+  return acc;
+}
+
+/**
+ * Signed volume of the mesh's f32-NARROWED geometry — i.e. of the solid a
+ * binary STL reader will actually decode from the written bytes. Used by
+ * `exportStlBinary` to certify outward orientation ON THE SHIPPED BYTES,
+ * not just on the Float64 mesh (Phase 7 Task 2 review, finding 2: a
+ * near-degenerate solid's orientation can flip under narrowing). Same
+ * deterministic summation order as `assertExportableSolid`'s volume.
+ */
+export function f32NarrowedSignedVolumeMm3(mesh: ExportableMesh): number {
+  return signedVolume(mesh.positions, mesh.indices, Math.fround);
+}
+
 /**
  * Asserts `mesh` is a closed, consistently-wound, outward-oriented triangle
  * solid — the precondition both export entries (`exportStlBinary`,
@@ -81,21 +125,39 @@ function fail(reason: ExportMeshInvalidError['reason'], message: string): never 
  *
  * The topological criterion (checked exactly, in Float64/integer
  * arithmetic, no tolerances):
- *  - every triangle references 3 DISTINCT in-range vertex indices;
+ *  - every triangle references 3 DISTINCT in-range vertex indices and has
+ *    a not-exactly-zero area (cross product ≠ (0,0,0)) — so the writer's
+ *    degenerate (0,0,0)-normal fallback is unreachable from this path.
+ *    Deliberately EXACT-zero only, no epsilon: near-zero-area quality is
+ *    kernel QC's territory (intake already drops cross-norm < 1e-12); this
+ *    layer only excludes what would corrupt the written bytes;
  *  - every undirected edge is incident to EXACTLY 2 triangles
  *    (2-manifold + watertight: 1 incidence = open boundary, 3+ =
  *    non-manifold);
  *  - the 2 incidences traverse the edge in OPPOSITE directions
  *    (consistent winding across every edge);
+ *  - the mesh is exactly ONE edge-connected component (union-find over the
+ *    shared edges). Required both by manufacturing semantics (one
+ *    restoration = one fused solid — the kernel's shell/assembly ops
+ *    guarantee single-component output, e.g. cavity/inlayShell.ts's
+ *    watertight-single-component invariant) and by the orientation
+ *    argument below, which is ONLY valid for a connected surface: a
+ *    disjoint inward component or nested inward void hides inside a
+ *    net-positive total volume (Phase 7 Task 2 review, finding 1);
  *  - the total signed volume is STRICTLY positive (outward orientation —
- *    a consistently-wound closed surface has exactly 2 global
+ *    a CONNECTED, consistently-wound closed surface has exactly 2 global
  *    orientations; positive divergence-theorem volume selects the
  *    CCW-from-outside one, matching kernel's convention).
  *
  * Failure precedence when several defects coexist: structural malformation
  * → degenerate triangle → non-manifold edge → boundary edge → inconsistent
- * winding → zero volume / inward orientation. Deterministic (fixed scan
- * order), so the same broken mesh always reports the same reason.
+ * winding → multi-component → zero volume / inward orientation.
+ * Deterministic (fixed scan order), so the same broken mesh always reports
+ * the same reason.
+ *
+ * Note this certifies the Float64 mesh; the STL entry additionally
+ * re-checks orientation on the f32-NARROWED coordinates (the bytes
+ * actually shipped) — see stl.ts and `f32NarrowedSignedVolumeMm3`.
  *
  * Determinism: pure function of the input arrays; no randomness, no time,
  * no environment. Never mutates `mesh` (buffers are only read).
@@ -143,16 +205,51 @@ export function assertExportableSolid(mesh: ExportableMesh): ExportSolidCheck {
     if (a === b || b === c || c === a) {
       fail('degenerate-triangle', `triangle ${t} repeats a vertex index: (${a}, ${b}, ${c})`);
     }
+    // Exactly-zero-area check (see this function's doc — exact, no epsilon):
+    // cross(v1-v0, v2-v0) === (0,0,0) is precisely the condition under which
+    // stl/binary.ts's geometricFacetNormal would write a (0,0,0) normal.
+    const ax = positions[a * 3]!;
+    const ay = positions[a * 3 + 1]!;
+    const az = positions[a * 3 + 2]!;
+    const ux = positions[b * 3]! - ax;
+    const uy = positions[b * 3 + 1]! - ay;
+    const uz = positions[b * 3 + 2]! - az;
+    const vx = positions[c * 3]! - ax;
+    const vy = positions[c * 3 + 1]! - ay;
+    const vz = positions[c * 3 + 2]! - az;
+    if (uy * vz - uz * vy === 0 && uz * vx - ux * vz === 0 && ux * vy - uy * vx === 0) {
+      fail(
+        'degenerate-triangle',
+        `triangle ${t} has an exactly zero-area cross product (collinear vertices) — its written STL ` +
+          'facet normal would be the degenerate (0, 0, 0) fallback',
+      );
+    }
   }
 
-  // --- Pass 2: undirected edge incidence + winding direction -------------
+  // --- Pass 2: undirected edge incidence + winding direction + components -
   // Key: min * vertexCount + max (exact — see MAX_EXPORT_VERTEX_COUNT).
   // Value: per-edge counts of the two possible traversal directions:
   //   forwardCount  — traversed min→max by some triangle,
-  //   backwardCount — traversed max→min.
+  //   backwardCount — traversed max→min,
+  // plus the FIRST triangle that touched the edge, so triangles sharing an
+  // edge can be unioned for the single-component check (edge-connectivity,
+  // matching kernel intake's `connectedComponents` notion — two closed
+  // surfaces touching only at a vertex are 2 components, correctly).
   // Watertight + consistently wound ⇔ every edge ends at exactly
   // { forwardCount: 1, backwardCount: 1 }.
-  const edges = new Map<number, { forwardCount: number; backwardCount: number }>();
+  const edges = new Map<number, { forwardCount: number; backwardCount: number; firstTriangle: number }>();
+
+  // Union-find over triangles (path-halving find; deterministic).
+  const parent = new Uint32Array(triangleCount);
+  for (let t = 0; t < triangleCount; t++) parent[t] = t;
+  const find = (x: number): number => {
+    while (parent[x]! !== x) {
+      parent[x] = parent[parent[x]!]!;
+      x = parent[x]!;
+    }
+    return x;
+  };
+
   for (let t = 0; t < triangleCount; t++) {
     for (let corner = 0; corner < 3; corner++) {
       const from = indices[t * 3 + corner]!;
@@ -162,8 +259,12 @@ export function assertExportableSolid(mesh: ExportableMesh): ExportSolidCheck {
       const key = lo * vertexCount + hi;
       let entry = edges.get(key);
       if (!entry) {
-        entry = { forwardCount: 0, backwardCount: 0 };
+        entry = { forwardCount: 0, backwardCount: 0, firstTriangle: t };
         edges.set(key, entry);
+      } else {
+        const rootA = find(entry.firstTriangle);
+        const rootB = find(t);
+        if (rootA !== rootB) parent[rootA] = rootB;
       }
       if (from === lo) entry.forwardCount++;
       else entry.backwardCount++;
@@ -199,24 +300,23 @@ export function assertExportableSolid(mesh: ExportableMesh): ExportSolidCheck {
     );
   }
 
-  // --- Pass 3: outward orientation via total signed volume ---------------
-  let signedVolumeMm3 = 0;
+  // --- Pass 3: exactly one edge-connected component ----------------------
+  let componentCount = 0;
   for (let t = 0; t < triangleCount; t++) {
-    const a = indices[t * 3]! * 3;
-    const b = indices[t * 3 + 1]! * 3;
-    const c = indices[t * 3 + 2]! * 3;
-    const ax = positions[a]!;
-    const ay = positions[a + 1]!;
-    const az = positions[a + 2]!;
-    const bx = positions[b]!;
-    const by = positions[b + 1]!;
-    const bz = positions[b + 2]!;
-    const cx = positions[c]!;
-    const cy = positions[c + 1]!;
-    const cz = positions[c + 2]!;
-    signedVolumeMm3 +=
-      (ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx) + az * (bx * cy - by * cx)) / 6;
+    if (find(t) === t) componentCount++;
   }
+  if (componentCount !== 1) {
+    fail(
+      'multi-component',
+      `mesh has ${componentCount} edge-connected components — a manufacturing export is exactly ONE ` +
+        'fused solid, and the positive-volume ⇒ outward argument is only valid for a connected ' +
+        'surface (a disjoint inward component or nested void would hide inside the total). Fuse or ' +
+        'split upstream; this layer never picks components for the caller.',
+    );
+  }
+
+  // --- Pass 4: outward orientation via total signed volume ---------------
+  const signedVolumeMm3 = signedVolume(positions, indices, identityCoordinate);
   if (signedVolumeMm3 === 0) {
     fail('zero-volume', 'watertight but encloses zero volume — a degenerate solid cannot be milled');
   }

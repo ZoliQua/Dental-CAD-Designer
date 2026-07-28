@@ -53,10 +53,21 @@ function tetMesh(p: readonly number[]): ExportableMesh {
 const coordF64 = fc.double({ noNaN: true, min: -200, max: 200 });
 const coordF32 = fc.float({ noNaN: true, min: Math.fround(-200), max: Math.fround(200) });
 
+/** The suite's stated validity conditions, ENFORCED by construction (not
+ * left to seed luck — Task 2 review finding 2): nonzero f64 volume AND the
+ * f32-narrowed volume keeps the same sign (`exportStlBinary` itself
+ * rejects narrowing-inverted solids with `'inward-orientation-narrowed'`;
+ * that rejection path has its own dedicated regression test in
+ * stl.export.test.ts, built from the review's adversarial tetrahedron). */
+function isValidTet(p: readonly number[]): boolean {
+  const v64 = tetSignedVolume(p);
+  if (Math.abs(v64) <= 1e-3) return false;
+  const v32 = tetSignedVolume(p.map(Math.fround));
+  return Math.sign(v32) === Math.sign(v64);
+}
+
 function tetArb(coord: fc.Arbitrary<number>): fc.Arbitrary<readonly number[]> {
-  return fc
-    .array(coord, { minLength: 12, maxLength: 12 })
-    .filter((p) => Math.abs(tetSignedVolume(p)) > 1e-3);
+  return fc.array(coord, { minLength: 12, maxLength: 12 }).filter(isValidTet);
 }
 
 /** Expands an indexed mesh into per-triangle vertex order — the documented

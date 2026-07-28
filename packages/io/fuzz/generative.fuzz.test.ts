@@ -292,7 +292,14 @@ function tetSignedVolume(p: readonly number[]): number {
 
 const tetPointsArb = fc
   .array(fc.double({ noNaN: true, min: -100, max: 100 }), { minLength: 12, maxLength: 12 })
-  .filter((p) => Math.abs(tetSignedVolume(p)) > 1e-3);
+  .filter((p) => {
+    // Enforce (not sample around) the export entries' validity conditions:
+    // nonzero f64 volume AND sign-stable under f32 narrowing —
+    // exportStlBinary rejects narrowing-inverted solids by design (typed
+    // 'inward-orientation-narrowed'; unit-tested in src/export).
+    const v64 = tetSignedVolume(p);
+    return Math.abs(v64) > 1e-3 && Math.sign(tetSignedVolume(p.map(Math.fround))) === Math.sign(v64);
+  });
 
 function outwardTetMesh(p: readonly number[]): ExportableMesh {
   return {
