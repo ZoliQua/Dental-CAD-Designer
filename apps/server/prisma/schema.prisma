@@ -20,3 +20,64 @@ model Case {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }
+
+// Phase 7 Task 4 — one row per successful export RELEASE (the server's
+// independent re-validation passed on the exact exported bytes). Rows are an
+// append-only release ledger: re-exporting byte-identical content creates a
+// NEW row (a distinct release event with its own `releasedAt`) that points at
+// the SAME content-addressed stored object (`bytesSha256` — the mesh-storage
+// idempotency). `releasedAt` is a RECORD field only (audit display): it is a
+// server timestamp that never participates in any hashed content
+// (export-determinism global constraint). JSON columns are portable SQL
+// (plain TEXT), same convention as `Case.documentJson`.
+model Export {
+  id                  String   @id @default(uuid())
+  caseId              String
+  restorationId       String
+  restorationType     String
+  /// JSON array of FDI tooth numbers (e.g. "[14,15,16]").
+  teethJson           String
+  format              String
+  /// SHA-256 (lowercase hex) of the released bytes — the content address of
+  /// the stored object AND the download route's `:hash` parameter.
+  bytesSha256         String
+  byteLength          Int
+  /// Canonical content hash of the f64 source solid (`stages.finalMesh`).
+  meshContentHash     String
+  /// Canonical content hash of the RE-IMPORTED byte-derived solid the server
+  /// QC actually measured (differs from `meshContentHash` by the documented
+  /// canonical re-index + f32 narrowing — see export-route.ts).
+  reimportMeshHash    String
+  exportOperationId   String
+  caseJournalHash     String
+  kernelVersion       String
+  profileId           String
+  profileVersion      String
+  profileChecksum     String
+  /// The SERVER-recomputed QcReport (the authoritative copy), JSON.
+  qcReportJson        String
+  /// The journal-verified acknowledgments riding into this release, JSON.
+  acknowledgmentsJson String
+  releasedAt          DateTime @default(now())
+
+  @@index([bytesSha256])
+  @@index([caseId])
+}
+
+// Phase 7 Task 4 — the persisted client/server-mismatch diagnostic bundle
+// (the bug-report payload): both reports, the per-field diff, byte hashes,
+// kernel/profile versions, and parse+intake diagnostics ride in `bundleJson`.
+// Persisted server-side for support triage; the row id is returned in the
+// 409 response.
+model ExportDiagnostic {
+  id            String   @id @default(uuid())
+  caseId        String
+  restorationId String
+  /// Closed reason set — see export-route.ts (`qc-mismatch` today).
+  reason        String
+  bytesSha256   String
+  bundleJson    String
+  createdAt     DateTime @default(now())
+
+  @@index([caseId])
+}

@@ -13,7 +13,9 @@
   },
   "dependencies": {
     "@dqcad/cad-pipeline": "*",
+    "@dqcad/io": "*",
     "@dqcad/kernel": "*",
+    "@dqcad/kernel-workers": "*",
     "@dqcad/shared-types": "*",
     "@dqcad/tooth-library": "*",
     "@fastify/cors": "^11.3.0",
@@ -21,7 +23,6 @@
     "fastify": "^5.10.0"
   },
   "devDependencies": {
-    "@dqcad/kernel-workers": "*",
     "@types/node": "^22.10.0",
     "prisma": "^6.19.3",
     "tsx": "^4.23.0"
