@@ -16,6 +16,7 @@ import { hashMeshContent } from '@dqcad/kernel-workers/hash';
 import { hashMesh } from './journal-replay.js';
 import { buildShell } from './crown-qc-fixture.testutil.js';
 import { buildInlay } from './inlay-qc-fixture.testutil.js';
+import { buildBridge } from './bridge-qc-fixture.testutil.js';
 
 /** Synthetic meshes exercising the byte layout: negative/fractional/large
  * Float64 coordinates and multi-triangle Uint32 index runs. */
@@ -43,6 +44,7 @@ const SYNTHETIC: ReadonlyArray<{ name: string; mesh: IndexedMesh }> = [
 describe('mesh content hash — server hashMesh ≡ client hashMeshContent (cross-package equivalence guard)', () => {
   let crownMesh: IndexedMesh;
   let inlayShellMesh: IndexedMesh;
+  let bridgeAssembledMesh: IndexedMesh;
 
   beforeAll(async () => {
     // A REAL crown stage mesh (the exact kind whose hash lands on
@@ -51,6 +53,9 @@ describe('mesh content hash — server hashMesh ≡ client hashMeshContent (cros
     // A REAL inlay SHELL stage mesh (the cavity-path analogue — Phase 5 Task 9)
     // whose hash lands on the inlay/onlay Restoration.stages.finalMesh.
     inlayShellMesh = (await buildInlay('inlay')).shellResult.mesh;
+    // A REAL bridge ASSEMBLY stage mesh (the bridge-path analogue — Phase 6 Task
+    // 8) whose hash lands on the bridge Restoration.stages.finalMesh.
+    bridgeAssembledMesh = (await buildBridge()).assembledSolid;
   }, 600_000);
 
   afterAll(() => {
@@ -75,6 +80,12 @@ describe('mesh content hash — server hashMesh ≡ client hashMeshContent (cros
   it('agrees for a REAL inlay shell stage mesh (the cavity reproducibility-critical case)', async () => {
     const server = hashMesh(inlayShellMesh);
     const client = await hashMeshContent(inlayShellMesh.positions, inlayShellMesh.indices);
+    expect(server).toBe(client);
+  }, 60_000);
+
+  it('agrees for a REAL bridge assembly stage mesh (the bridge reproducibility-critical case)', async () => {
+    const server = hashMesh(bridgeAssembledMesh);
+    const client = await hashMeshContent(bridgeAssembledMesh.positions, bridgeAssembledMesh.indices);
     expect(server).toBe(client);
   }, 60_000);
 });

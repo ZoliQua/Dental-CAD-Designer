@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./cavity-fixtures": "./src/cavity/cavity.test-fixtures.ts"
+    "./cavity-fixtures": "./src/cavity/cavity.test-fixtures.ts",
+    "./bridge-fixtures": "./src/bridge/bridgeAssembly.test-fixtures.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

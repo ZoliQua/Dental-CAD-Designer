@@ -10,10 +10,13 @@ export type {
   InlayPipelineContext,
   OnlayPipelineContext,
   CavityPipelineContext,
+  BridgePipelineContext,
 } from './context.ts';
 export {
   RestorationTypeMismatchError,
+  BridgeContextIncompleteError,
   assertCrownContext,
   assertCavityContext,
+  assertBridgeContext,
 } from './context.ts';
 export type { RestorationStageResult, PipelineStageName } from './stageResult.ts';

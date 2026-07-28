@@ -156,6 +156,36 @@ import {
 } from './cavityInnerSurface.ts';
 export type { CavityInnerSurfacePayload, CavityInnerSurfaceResult };
 import {
+  bridgeAbutmentSurfacesJob,
+  type BridgeAbutmentSurfacesPayload,
+  type BridgeAbutmentSurfacesResult,
+} from './bridgeAbutmentSurfaces.ts';
+export type { BridgeAbutmentSurfacesPayload, BridgeAbutmentSurfacesResult };
+import {
+  bridgePonticJob,
+  type BridgePonticPayload,
+  type BridgePonticResult,
+} from './bridgePontic.ts';
+export type { BridgePonticPayload, BridgePonticResult };
+import {
+  bridgeConnectorsJob,
+  type BridgeConnectorsPayload,
+  type BridgeConnectorsResult,
+} from './bridgeConnectors.ts';
+export type { BridgeConnectorsPayload, BridgeConnectorsResult };
+import {
+  bridgeFrameworkJob,
+  type BridgeFrameworkPayload,
+  type BridgeFrameworkResult,
+} from './bridgeFramework.ts';
+export type { BridgeFrameworkPayload, BridgeFrameworkResult };
+import {
+  bridgeAssemblyJob,
+  type BridgeAssemblyPayload,
+  type BridgeAssemblyResultPayload,
+} from './bridgeAssembly.ts';
+export type { BridgeAssemblyPayload, BridgeAssemblyResultPayload };
+import {
   cavityOcclusalPatchJob,
   type CavityOcclusalPatchPayload,
   type CavityOcclusalPatchResult,
@@ -186,6 +216,9 @@ export type { RunQcPayload, RunQcResult };
 
 import { runInlayQcJob, type RunInlayQcPayload, type RunInlayQcResult } from './runInlayQc.ts';
 export type { RunInlayQcPayload, RunInlayQcResult };
+
+import { runBridgeQcJob, type RunBridgeQcPayload, type RunBridgeQcResult } from './runBridgeQc.ts';
+export type { RunBridgeQcPayload, RunBridgeQcResult };
 
 import {
   placeAnatomyJob,
@@ -413,6 +446,11 @@ export interface JobPayloadMap {
   offsetMesh: OffsetMeshPayload;
   innerSurface: InnerSurfacePayload;
   cavityInnerSurface: CavityInnerSurfacePayload;
+  bridgeAbutmentSurfaces: BridgeAbutmentSurfacesPayload;
+  bridgePontic: BridgePonticPayload;
+  bridgeConnectors: BridgeConnectorsPayload;
+  bridgeFramework: BridgeFrameworkPayload;
+  bridgeAssembly: BridgeAssemblyPayload;
   cavityOcclusalPatch: CavityOcclusalPatchPayload;
   cavityProximalContact: CavityProximalContactPayload;
   placeAnatomy: PlaceAnatomyPayload;
@@ -424,6 +462,7 @@ export interface JobPayloadMap {
   applySculptStroke: ApplySculptStrokePayload;
   runQc: RunQcPayload;
   runInlayQc: RunInlayQcPayload;
+  runBridgeQc: RunBridgeQcPayload;
   undercutScan: UndercutScanPayload;
   undercutScanBatch: UndercutScanBatchPayload;
   computeCurvature: ComputeCurvaturePayload;
@@ -465,6 +504,11 @@ export interface JobResultMap {
   offsetMesh: OffsetMeshResult;
   innerSurface: InnerSurfaceResult;
   cavityInnerSurface: CavityInnerSurfaceResult;
+  bridgeAbutmentSurfaces: BridgeAbutmentSurfacesResult;
+  bridgePontic: BridgePonticResult;
+  bridgeConnectors: BridgeConnectorsResult;
+  bridgeFramework: BridgeFrameworkResult;
+  bridgeAssembly: BridgeAssemblyResultPayload;
   cavityOcclusalPatch: CavityOcclusalPatchResult;
   cavityProximalContact: CavityProximalContactResult;
   placeAnatomy: PlaceAnatomyResult;
@@ -476,6 +520,7 @@ export interface JobResultMap {
   applySculptStroke: ApplySculptStrokeResult;
   runQc: RunQcResult;
   runInlayQc: RunInlayQcResult;
+  runBridgeQc: RunBridgeQcResult;
   undercutScan: UndercutScanResult;
   undercutScanBatch: UndercutScanBatchResult;
   computeCurvature: ComputeCurvatureResult;
@@ -524,6 +569,11 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   offsetMesh: offsetMeshJob,
   innerSurface: innerSurfaceJob,
   cavityInnerSurface: cavityInnerSurfaceJob,
+  bridgeAbutmentSurfaces: bridgeAbutmentSurfacesJob,
+  bridgePontic: bridgePonticJob,
+  bridgeConnectors: bridgeConnectorsJob,
+  bridgeFramework: bridgeFrameworkJob,
+  bridgeAssembly: bridgeAssemblyJob,
   cavityOcclusalPatch: cavityOcclusalPatchJob,
   cavityProximalContact: cavityProximalContactJob,
   placeAnatomy: placeAnatomyJob,
@@ -535,6 +585,7 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   applySculptStroke: applySculptStrokeJob,
   runQc: runQcJob,
   runInlayQc: runInlayQcJob,
+  runBridgeQc: runBridgeQcJob,
   undercutScan: undercutScanJob,
   undercutScanBatch: undercutScanBatchJob,
   computeCurvature: computeCurvatureJob,

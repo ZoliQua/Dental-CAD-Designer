@@ -59,6 +59,209 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.26.0] — Phase 6 Task 6: whole-bridge assembly — `bridge/bridgeAssembly.ts` (`assembleBridge`, units + connectors → one watertight solid)
+
+**`kernel-ops.json` gains ONE new pinned entry (`assembleBridge`) and its
+`kernelVersion` field advances `0.13.0 → 0.26.0`; EVERY existing op hash is
+byte-identical (verified via the regeneration diff).** No existing op's numerical
+output changed.
+
+Phase 6 Task 6 adds the whole-bridge ASSEMBLY op (`bridge/bridgeAssembly.ts`):
+the abutment units + pontic + connectors — independent watertight solids up to
+here — are fused into ONE watertight single-component solid via the manifold-3d
+wrapper's `union` (fold-union across all solids). A boolean UNION, NOT a P5-style
+shared-ring weld: the connectors GENUINELY OVERLAP the unit bodies (they loft into
+the proximal walls; there is no shared boundary loop to weld along), and only a
+union resolves the interior faces buried in the merged material. Repair-before-
+boolean (every input checked watertight up front), output re-validated watertight
++ manifold + single-component (a disjoint fuse → a typed `BridgeAssemblyError`,
+never a silent multi-body solid). `extractFitPatch` (a pure-Float64 helper) selects
+each abutment intaglio off the fused solid by its known cavity region, so the
+whole-bridge QC RE-MEASURES margin fit on the ASSEMBLED solid (survive-assembly:
+the WASM Float32 boundary touches the rim; the acceptance requires ≤ 10 µm — proven
+0.00016 µm on the fixture). `@errorBound`: the wrapper's shared Float64→Float32
+WASM-boundary bound (`boolean/manifold.ts`).
+
+This op EXERCISES THE WASM BOUNDARY, so — exactly like `union`/`subtract`/
+`intersect` and `constructShell` (`[0.13.0]`) — it gets a `kernel-ops.json` pinned
+entry (inline synthetic three-box fold-union) under the manifoldVersion guard, with
+a watertight + single-component self-check. The crown/cavity-acceptance QC pins
+advance MECHANICALLY (the QcReport embeds `kernelVersion`; the three `*-qc` hashes
+shift on the version string while EVERY geometry stage pin is byte-identical to
+`[0.25.0]` — verified). `cad-pipeline` gains the whole-bridge QC assembler
+`runBridgeQc` (`gates/bridgeReport.ts`) + the NEW `ponticRelief` gate (T3's ±20 µm
+measurement → a pass/fail) — no `kernel/` numerics changed by those.
+
+## [0.25.0] — Phase 6 Task 5: framework cutback — `bridge/frameworkCutback.ts` (reduced anatomy for veneering, fit + margin byte-preserved)
+
+**No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned
+fixture hash is byte-identical to `[0.24.0]`.** A brand-new op only; no existing
+op's numerical output changed.
+
+Phase 6 Task 5 adds the framework CUTBACK op (`bridge/frameworkCutback.ts`): in
+framework mode a unit's OUTER anatomic surface is offset INWARD by the veneering
+space, leaving room for hand-layered ceramic, while the FIT surfaces (abutment
+intaglio / pontic base) and the marginal SEAL survive byte-exact. Deliberately
+NOT an SDF/marching-cubes offset (the `offsetMesh` / `healOuterAnatomy`
+precedent): marching cubes re-tessellates everything, so NO input vertex would
+survive bit-for-bit — incompatible with the byte-exact fit-preservation invariant.
+Instead the cutback is a TOPOLOGY-PRESERVING per-vertex normal displacement: the
+connectivity is untouched, fit + margin vertices keep their exact Float64 coords
+(weight 0), and only outer vertices move inward, along their own area-weighted
+normal, by a smoothstep weight `w = t²(3−2t)`, `t = clamp(distToMargin/band,0,1)`
+that TAPERS to 0 at the preserved-region boundary (the P4 feather precedent — the
+seal cannot open). `@errorBound`: on planar regions the achieved surface offset is
+EXACTLY `veneeringSpace·w`; on a faceted curved surface it is `veneeringSpace·w·cos φ`
+(φ = vertex-normal ↔ face-normal angle) — the surface moves inward by at most the
+intended amount, never more (the safe direction for the thickness gate). Pure
+Float64; no manifold-3d boundary (the unit union is Task 6). Regression-pinned by
+its closed-form fit-byte-identity / margin-preservation / cutback-accuracy /
+determinism tests in `bridge/frameworkCutback.test.ts` (no `kernel-ops.json` pin
+added — same "brand-new pure-Float64 op" precedent as `[0.9.0]`–`[0.24.0]`).
+
+The crown/cavity-acceptance QC pins (`test/golden/crown-acceptance.test.ts`,
+`test/golden/cavity-acceptance.test.ts`) advance MECHANICALLY: `hashQcReport`
+= sha256 over the QcReport JSON, which embeds `kernelVersion`, so the version
+string alone shifts the three `*-qc` hashes while EVERY geometry stage pin is
+byte-identical to `[0.24.0]` (verified: `npm run test:golden` green, no geometry
+pin moved). The mode-switched thickness gate (framework vs full-contour) is an
+ADDITIVE branch on `minWallThickness.ts`; the full-contour path is byte-unchanged.
+
+## [0.24.0] — Phase 6 Task 4: bridge connectors — `bridge/connector.ts` (editable profiles, ruled loft, minimum cross-section area)
+
+**No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned
+fixture hash is byte-identical to `[0.23.0]`.** A brand-new op only; no existing
+op's numerical output changed.
+
+Phase 6 Task 4 adds the bridge CONNECTOR op (`bridge/connector.ts`): editable
+2D cross-section profiles (validated closed / simple / consistently-wound — the
+`margin/validate.ts` precedent in 2D, with typed errors `NonClosedProfileError`
+/ `DegenerateProfileError` / `SelfIntersectingProfileError` / `ProfileVertexCountMismatchError`
+/ `ProfileWindingMismatchError`); a deterministic watertight ruled LOFT between
+two index-paired profiles (`loftConnectorProfiles`, closed via
+`orientNormalsConsistently`); and the fracture-strength gate value — the minimum
+cross-section area of the connector. The ideal ruled-ring section area
+`A(t)=a·t²+b·t+c` is EXACTLY a quadratic in the axial parameter, so its
+continuous minimum is CLOSED-FORM (`analyticConnectorMinArea`, no station error);
+a secondary mesh-sectioning instrument (`sampleConnectorCrossSectionAreas`, the
+live-readout view) sections the real triangulated solid and carries a RIGOROUS
+second-difference station margin — `max_k |A_{k−1}−2A_k+A_{k+1}|/8` — so its
+`guaranteedLowerBoundMm2` provably never over-reports the actual solid's minimum
+(the gate value). Pure Float64; no manifold-3d boundary (the unit+connector union
+is Task 6). Regression-pinned by its own closed-form-instrument-validation /
+station-margin-falsifiability / loft-watertight / determinism tests in
+`bridge/connector.test.ts` (no `kernel-ops.json` pin added — same "brand-new
+pure-Float64 op" precedent as `[0.9.0]`–`[0.23.0]`).
+
+The crown/cavity-acceptance QC pins (`test/golden/crown-acceptance.test.ts`,
+`test/golden/cavity-acceptance.test.ts`) advance MECHANICALLY: `hashQcReport`
+= sha256 over the QcReport JSON, which embeds `kernelVersion`, so the version
+string alone shifts the three `*-qc` hashes while EVERY geometry stage pin is
+byte-identical to `[0.23.0]` (verified: `npm run test:golden` green, no geometry
+pin moved). The gate ordering (`connectorCrossSection` between `seating` and
+`contact`) is unchanged, and the single-crown connector gate is still the N/A
+PASS path — byte-identical (Task 4 only fills in the never-run-for-a-crown bridge
+branch).
+
+## [0.23.0] — Phase 6 Task 3: pontic gingival interface — `bridge/ponticInterface.ts` (`shapePonticBase`, `measurePonticRelief`)
+
+**No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned
+fixture hash is byte-identical to `[0.22.0]`.** A brand-new op only; no existing
+op's algorithm or output changed. In `test/golden/crown-acceptance.test.ts` and
+`test/golden/cavity-acceptance.test.ts` (byte-pinned stage hashes, not
+`test-fixtures/` files), all geometry stage pins are verified byte-identical to
+0.22.0; only the `crown-standin-qc` / `cavity-inlay-qc` / `cavity-onlay-qc` pins
+changed, MECHANICALLY and metadata-only — the `QcReport` embeds `kernelVersion`
+(cad-pipeline/gates/report.ts), so `hashQcReport` tracks every version bump even
+with every measured value and geometry hash unchanged (the same mechanical churn
+documented at 0.16.0-0.22.0; the unchanged geometry pins are the proof the qc
+diff is the version string alone, not numerical drift).
+
+Adds `packages/kernel/src/bridge/ponticInterface.ts` — the PONTIC GINGIVAL
+INTERFACE. A bridge pontic's base is shaped against the edentulous-ridge
+(gingiva) mesh per clinical STYLE at the CONFIGURED relief, with the PLAN
+acceptance that the MEASURED pontic-gingiva relation matches the configured value
+within ±20 µm per style. Two independent halves (the P5 seam-dihedral lesson: the
+instrument is validated before it judges):
+
+- **`shapePonticBase(crest, style, params, footprint, resolution)`** — the
+  deterministic CONSTRUCTION. Builds the base as an analytic OFFSET of the ridge
+  crest cylinder (`base(x,φ) = crest(x,φ) + t(φ)·n(φ)`, radial signed distance to
+  the cylinder is EXACTLY t(φ)) with a per-style target field + an honest patch
+  partition: **hygienic** — uniform clearance over the WHOLE base; **modified
+  ridge-lap** — relief over the BUCCAL contact patch, lingual RELIEVED region
+  reported separately, central transition ramp; **ovate** — −depth penetration
+  over the seat patch, outside ramps to emergence. Returns the base surface mesh
+  (open patch) + a DENSE, mesh-resolution-independent sample set (each sample
+  carrying its geometric patch + intended target) + the `errorBoundMm`.
+- **`measurePonticRelief(gingivaMesh, bvh, pseudonormals, samples, crest?)`** —
+  the blend-independent MEASUREMENT. Per sample: `signedClosestPoint` to the
+  gingiva mesh (sign + outside/clearance, − inside/penetration); buckets by the
+  sample's GEOMETRIC patch; reports the PRIMARY (acceptance) patch min/max/mean
+  deviation-from-target strictly separate from the relieved/transition/outside
+  patches (never diluted). Optional analytic-cylinder cross-check.
+
+Pure Float64, no manifold-3d boundary, no new approximation beyond the surfaced
+one-sided inscribed-chord sagitta (`errorBoundMm` = `max R·(1−cos(Δφ/2))` over
+the sampled band; the mesh under-approximates the arc so a measured relief reads
+`configured + [0, sagitta]`). The construction shapes the pontic BASE only — the
+pontic body stays library-shaped (Task 4 connects it; Task 6 assembles the
+watertight solid). Regression-pinned by its own tests
+(bridge/ponticInterface.test.ts): closed-form instrument validation FIRST, then
+per-style ±20 µm (hygienic 0.16 / ridge-lap 0.19 / ovate 0.06 µm measured maxAbs
+deviation), relieved/non-patch regions reported separately, falsifiability
+(mis-configured 1000 µm / raw-on-ridge 2000 µm ≫ 20), determinism, fc.pre
+properties. Same "brand-new op, minor bump, existing goldens byte-identical"
+precedent as 0.9.0-0.22.0's pure-Float64 ops; no `kernel-ops.json` pin added.
+The pontic stage + worker (cad-pipeline/stages/bridgePontic.ts,
+kernel-workers/jobs/bridgePontic.ts) journal the placement + style + configured
+relief params; the ±20 µm gate itself is consumed by Task 6's whole-bridge QC.
+
+## [0.22.0] — Phase 6 Task 2: bridge shared insertion axis — `bridge/sharedAxis.ts` (`assessSharedAxis`, `suggestSharedAxis`)
+
+**No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned
+fixture hash is byte-identical to `[0.21.0]`.** A brand-new op only; no existing
+op's algorithm or output changed. In `test/golden/crown-acceptance.test.ts` and
+`test/golden/cavity-acceptance.test.ts` (byte-pinned stage hashes, not
+`test-fixtures/` files), all geometry stage pins are verified byte-identical to
+0.21.0; only the `crown-standin-qc` / `cavity-inlay-qc` / `cavity-onlay-qc` pins
+changed, MECHANICALLY and metadata-only — the `QcReport` embeds `kernelVersion`
+(cad-pipeline/gates/report.ts), so `hashQcReport` tracks every version bump even
+with every measured value and geometry hash unchanged (the same mechanical churn
+documented at 0.16.0-0.21.0; the unchanged geometry pins are the proof the qc
+diff is the version string alone, not numerical drift).
+
+Adds `packages/kernel/src/bridge/sharedAxis.ts` — the bridge SHARED insertion
+axis (a bridge seats as ONE rigid piece along ONE axis, undercut-acceptable
+across BOTH abutment preps):
+
+- **`assessSharedAxis(mesh, bvh, regions, directionUnit, options?)`** — the
+  FALSIFIABLE given-axis verdict: the union-of-regions undercut + a per-abutment
+  breakdown + a `sharedAxisAcceptable` boolean (`true` iff EVERY abutment has
+  zero undercut at that axis). Pure aggregation over the P3 machinery
+  (`undercutScanIndices` / `unionRegions` / `regionTriangleAreasMm2` — REUSED
+  verbatim, occlusion always queried against the FULL bvh). New over
+  `suggestInsertionAxisForRegions` (which only reports at the axis IT chose):
+  this assesses an ARBITRARY candidate axis, so the parallel bridge's analytic
+  `[0,0,1]` is verified EXACT-ZERO on both preps and a tilted bridge is shown to
+  have NO acceptable shared axis (a whole-hemisphere sweep + the suggested axis
+  both leave a residual on at least one abutment).
+- **`suggestSharedAxis(mesh, bvh, regions, options?)`** — the bridge axis
+  suggestion: `suggestInsertionAxisForRegions` (REUSED verbatim) + a uniform
+  `assessSharedAxis` readout at the suggested common axis.
+
+Per-abutment fit surfaces are built with the SAME P4 `buildInnerSurface` (a
+bridge abutment intaglio IS a crown intaglio) against the SHARED axis — no new
+kernel op there; the bridge-specific choice (the shared axis) lives in the stage
+(`cad-pipeline/stages/bridgeAbutmentSurfaces.ts`) + worker
+(`kernel-workers/jobs/bridgeAbutmentSurfaces.ts`). Pure Float64, no manifold-3d
+boundary, no new approximation; regression-pinned by its own analytic exact-zero
+/ tilt-residual / determinism tests (bridge/sharedAxis.test.ts) + the
+shared-vs-own-axis + self-consistency + margin-fit tests
+(bridge/abutmentInnerSurface.test.ts); no `kernel-ops.json` pin added — same
+"brand-new op, minor bump, existing goldens byte-identical" precedent as
+0.9.0-0.21.0's pure-Float64 ops.
+
 ## [0.21.0] — Phase 5 Task 7: onlay cusp coverage — `cavity/cuspCoverage.ts` (`identifyCuspRegions`, `extendOutlineOverCusp`)
 
 **No `kernel-ops.json` / `*.golden.json` fixture hash changed — every pinned

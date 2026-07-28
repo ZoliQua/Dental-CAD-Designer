@@ -77,6 +77,19 @@ export interface MinWallThicknessGateInput {
   readonly marginResampledPoints?: readonly Vec3[];
   /** Margin-band exclusion distance (mm) — default 0 (include every sample). */
   readonly marginExclusionMm?: number;
+  /**
+   * Phase 6 Task 5: FRAMEWORK MODE — when `true`, the gate judges the wall
+   * against the single framework (coping/substructure) minimum
+   * `frameworkMinThicknessMm` (BOTH axial and occlusal walls; a framework has
+   * one reduced minimum, not the two full-contour minimums) instead of the
+   * standing `minWallThicknessMm` / `occlusalMinWallThicknessMm`. When absent /
+   * `false` (full-contour, the default) the gate behaves EXACTLY as before —
+   * byte-identical result/message (proven by the unchanged full-contour tests).
+   */
+  readonly frameworkMode?: boolean;
+  /** The framework minimum wall thickness (mm) — `profile.frameworkMinThicknessMm`.
+   * REQUIRED when `frameworkMode` is `true` (never defaulted). */
+  readonly frameworkMinThicknessMm?: number;
 }
 
 /** Thrown when a required threshold is missing/non-finite — the profile
@@ -141,6 +154,15 @@ export function measureMinWallThickness(input: MinWallThicknessGateInput): MinWa
   if (!Number.isFinite(input.occlusalMinWallThicknessMm)) {
     throw new MinWallThicknessInputError('occlusalMinWallThicknessMm', input.occlusalMinWallThicknessMm);
   }
+  // Phase 6 Task 5: framework mode judges BOTH wall regions against the single
+  // framework minimum. Full-contour (the default) keeps the two standing
+  // minimums, so `axialMin`/`occlusalMin` equal the original inputs and every
+  // downstream computation + message is byte-identical to the pre-Task-5 gate.
+  if (input.frameworkMode && !Number.isFinite(input.frameworkMinThicknessMm)) {
+    throw new MinWallThicknessInputError('frameworkMinThicknessMm', input.frameworkMinThicknessMm);
+  }
+  const axialMin = input.frameworkMode ? input.frameworkMinThicknessMm! : input.minWallThicknessMm;
+  const occlusalMin = input.frameworkMode ? input.frameworkMinThicknessMm! : input.occlusalMinWallThicknessMm;
   const m = measureWallThickness(input.innerSurfaceMesh, input.outerSurfaceMesh, {
     insertionAxis: input.insertionAxis,
     marginLoop: input.marginResampledPoints,
@@ -154,19 +176,19 @@ export function measureMinWallThickness(input: MinWallThicknessGateInput): MinWa
   const consOcclusal = m.minOcclusalThicknessMm - margin;
   const consAxial = m.minAxialThicknessMm - margin;
   // A region with no samples (Infinity) trivially satisfies its threshold.
-  const occlusalOk = !Number.isFinite(m.minOcclusalThicknessMm) || consOcclusal >= input.occlusalMinWallThicknessMm;
-  const axialOk = !Number.isFinite(m.minAxialThicknessMm) || consAxial >= input.minWallThicknessMm;
+  const occlusalOk = !Number.isFinite(m.minOcclusalThicknessMm) || consOcclusal >= occlusalMin;
+  const axialOk = !Number.isFinite(m.minAxialThicknessMm) || consAxial >= axialMin;
   const passed = m.sampleCount > 0 && occlusalOk && axialOk;
   const conservativeMinThicknessMm = m.minThicknessMm - margin;
 
   // Governing threshold: whichever region's deficit is worst (for the reported
   // `value <= threshold` framing). Default to the axial minimum.
-  const axialDeficit = input.minWallThicknessMm - consAxial;
-  const occlusalDeficit = input.occlusalMinWallThicknessMm - consOcclusal;
+  const axialDeficit = axialMin - consAxial;
+  const occlusalDeficit = occlusalMin - consOcclusal;
   const governingThresholdMm =
     Number.isFinite(m.minOcclusalThicknessMm) && occlusalDeficit > axialDeficit
-      ? input.occlusalMinWallThicknessMm
-      : input.minWallThicknessMm;
+      ? occlusalMin
+      : axialMin;
 
   // Max EXCLUDED thinness: the thinnest inner→outer distance among the inner
   // vertices the margin band excluded. `perInnerVertexMm` carries the raw,
@@ -207,6 +229,11 @@ export function measureMinWallThickness(input: MinWallThicknessGateInput): MinWa
 export function minWallThicknessGate(input: MinWallThicknessGateInput): QcGateResult {
   const m = measureMinWallThickness(input);
   const value = Number.isFinite(m.minThicknessMm) ? m.minThicknessMm : null;
+  // Effective per-region minimums for the message — equal to the standing
+  // minimums in full-contour (byte-identical message), the single framework
+  // minimum in framework mode.
+  const axialMin = input.frameworkMode ? input.frameworkMinThicknessMm! : input.minWallThicknessMm;
+  const occlusalMin = input.frameworkMode ? input.frameworkMinThicknessMm! : input.occlusalMinWallThicknessMm;
   const um = (mm: number): string => (Number.isFinite(mm) ? `${(mm * 1000).toFixed(0)} µm` : '—');
   // The EXCLUDED-band disclosure (T6-review gate hardening) — appended ONLY when
   // the margin band actually removed samples, so a run with nothing excluded is
@@ -229,7 +256,7 @@ export function minWallThicknessGate(input: MinWallThicknessGateInput): QcGateRe
           `(axial ${um(m.minAxialThicknessMm)}, occlusal ${um(m.minOcclusalThicknessMm)}; ${m.excludedCount} margin sample(s) excluded)` +
           excludedDetail
         : `min wall thickness ${um(m.minThicknessMm)} (conservative ${um(m.conservativeMinThicknessMm)} after −${um(m.sampleSpacingMm)} sampling margin) BELOW minimum ` +
-          `(axial ${um(m.minAxialThicknessMm)} vs ${um(input.minWallThicknessMm)}, occlusal ${um(m.minOcclusalThicknessMm)} vs ${um(input.occlusalMinWallThicknessMm)}) ` +
+          `(axial ${um(m.minAxialThicknessMm)} vs ${um(axialMin)}, occlusal ${um(m.minOcclusalThicknessMm)} vs ${um(occlusalMin)}) ` +
           `— thin wall; thicken (autoThicken) or acknowledge` +
           excludedDetail;
   return {

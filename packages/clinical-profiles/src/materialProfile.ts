@@ -159,6 +159,111 @@ export interface MaterialProfile {
    * Task 8.
    */
   marginExclusionMm: number;
+  /**
+   * Phase 6 Task 1 (P5 carry-in): the INLAY marginal-transition band width (mm)
+   * the cavity min-wall gate EXCLUDES — the inlay analogue of the crown
+   * `marginExclusionMm` feather, but sized for the cavity's much larger
+   * cavosurface CONVERGENCE WEDGE (an inlay closes along its ENTIRE cavity
+   * outline, not a single cervical margin, so the fit-surface ↔ occlusal-patch
+   * convergence wedge wraps the whole perimeter and is ~one restoration
+   * thickness wide, NOT the crown's 0.2 mm finish-line feather).
+   *
+   * Source: NOT a clinical-material IFU value — a GEOMETRY-DERIVED QC-measurement
+   * band, promoted here (1.3 mm) from the Phase 5 Task 8 engine constant
+   * (`cavityMarginExclusionMm`) per the Phase 5 carry-in. Phase 5 Task 6
+   * derivation (measured on the MOD fixture): the fit↔patch global minimum is
+   * always the convergence wedge (≈0.88 µm/µm from the outline), so the band must
+   * clear it — below ~1.2 mm the wedge leaks in and confounds the structural
+   * measurement; above ~1.5 mm the shallow-cavity variant over-excludes to 0
+   * samples. 1.3 is the measured separator, pinned by the inlay-shell-acceptance
+   * golden. Material-INDEPENDENT (a geometry band, not a material property) — both
+   * profiles carry the same value; carried on the profile so it is
+   * versioned/checksummed rather than hardcoded at the call site (invariant 7).
+   */
+  inlayMarginExclusionMm: number;
+  /**
+   * Phase 6 Task 1 (P5 carry-in): the ONLAY marginal-transition band width (mm)
+   * the cavity min-wall gate excludes — wider than the inlay band because the
+   * broad covered cusp's convergence wedge is wider.
+   *
+   * Source: geometry-derived, promoted (1.8 mm) from the Phase 5 Task 8 engine
+   * constant. Phase 5 Task 7 derivation: below ~1.6 mm the wedge leaks into the
+   * region-scoped coverage minimum and confounds the healthy/thin cusp-coverage
+   * separation. 1.8 is the measured separator, pinned by the onlay-acceptance
+   * golden. Material-independent (both profiles carry the same value).
+   */
+  onlayMarginExclusionMm: number;
+  /**
+   * Phase 6 Task 1: minimum framework (coping/substructure) wall thickness (mm)
+   * for a bridge/crown FRAMEWORK (cutback for veneering) — the thickness gate
+   * switches to this in framework mode (Phase 6 Task 5); consumed starting
+   * Phase 6.
+   *
+   * Source (zirconia): PLAN.md §3 "Min wall thickness — zirconia | 0.5 mm |
+   * ≥ 0.4 mm | Monolithic; framework 0.5" — the framework minimum coincides with
+   * zirconia's monolithic minimum at 0.5 mm. Source (e.max / lithium disilicate):
+   * e.max is predominantly a MONOLITHIC / full-contour (or pressed-and-layered)
+   * material; a veneering-framework minimum is not an IFU-standard the way it is
+   * for a zirconia framework. Documented placeholder = the e.max occlusal minimum
+   * (1.0 mm, Ivoclar IPS e.max IFU) pending a genuine framework figure — the
+   * gate binds the CONFIGURED value, and e.max long-span frameworks are a
+   * reviewer/clinical-caveat item, not a silently-invented number.
+   */
+  frameworkMinThicknessMm: number;
+  /**
+   * Phase 6 Task 1: HYGIENIC (sanitary) pontic gingival clearance (mm) — the
+   * cleansable air gap a hygienic pontic holds above the edentulous ridge
+   * (Phase 6 Task 3's hygienic interface; the ±20 µm acceptance binds the
+   * geometry to THIS configured value).
+   *
+   * Source: documented clinical PLACEHOLDER (per the P4 e.max-honesty precedent —
+   * PLAN.md §3 has no pontic-interface row). A hygienic/sanitary pontic leaves a
+   * readily cleansable space under the pontic; ~2.0 mm is a common clinical
+   * teaching guideline. Not an IFU/PLAN value — a configured default the
+   * acceptance measures against; revisit with a cited source if one becomes
+   * available.
+   */
+  ponticHygienicClearanceMm: number;
+  /**
+   * Phase 6 Task 1: MODIFIED RIDGE-LAP pontic lingual relief (mm) — the light
+   * lingual/undersurface relief a modified ridge-lap pontic holds off the ridge
+   * (buccal contact, lingual relief for cleansability; Phase 6 Task 3).
+   *
+   * Source: documented clinical PLACEHOLDER. A modified ridge-lap pontic contacts
+   * the ridge only on the buccal for esthetics and relieves the lingual to stay
+   * cleansable; ~0.05 mm (light relief) is a configured default. Not an IFU/PLAN
+   * value — the acceptance binds the configured value.
+   */
+  ponticRidgeLapReliefMm: number;
+  /**
+   * Phase 6 Task 1: OVATE pontic penetration depth (mm) — the controlled depth an
+   * ovate pontic seats into a surgically/prosthetically prepared ridge concavity
+   * (socket) (Phase 6 Task 3).
+   *
+   * Source: documented clinical PLACEHOLDER. An ovate pontic seats into a shallow
+   * ridge concavity for an emergence-profile esthetic; ~1.0 mm is a configured
+   * default depth. Not an IFU/PLAN value — the acceptance binds the configured
+   * value.
+   */
+  ponticOvateDepthMm: number;
+  /**
+   * Phase 6 Task 5: the VENEERING SPACE (mm) — the depth the unit's OUTER
+   * (anatomic) surface is offset inward in FRAMEWORK mode to leave room for
+   * hand-layered veneering ceramic (the "cutback"). Consumed by the Phase 6
+   * Task 5 framework-cutback op + stage; irrelevant in full-contour mode.
+   *
+   * Source: documented clinical PLACEHOLDER (the P4 e.max-honesty precedent —
+   * PLAN.md §3 has no veneering-space row). Classic hand-layering leaves
+   * ~0.8–1.5 mm of space for the veneering porcelain over a coping/framework;
+   * 1.0 mm is a common mid-range teaching default (both materials carry the
+   * same placeholder — the cutback op binds the CONFIGURED value, so a
+   * documented default is acceptable; revisit with a cited source). NOTE the
+   * design tension surfaced in Task 5: this is the FULL cutback depth reached
+   * on the free anatomic surface only — the cutback TAPERS to zero across a
+   * thin band approaching the margin (to preserve the marginal seal), so the
+   * veneering space is by definition NOT uniform in that near-margin band.
+   */
+  veneeringSpaceMm: number;
   /** SHA-256 hex of `canonicalStringify` over every OTHER field of this
    * object — see this module's top doc. */
   checksum: string;
@@ -386,6 +491,74 @@ export function validateMaterialProfileShape(raw: unknown): MaterialProfile {
     'docs/demos/phase-4.md feather-band carry-in',
   );
 
+  // Phase 6 Task 1 (P5 carry-in): the cavity marginal-transition bands, promoted
+  // from the engine constant (`cavityMarginExclusionMm`). Geometry-derived
+  // QC-measurement bands (~one restoration thickness wide), NOT the crown feather
+  // — so a higher ceiling (3.0 mm) than `marginExclusionMm`'s 1.0 mm; floored at 0
+  // (no exclusion is a valid choice). Source: Phase 5 Task 6/7 derivations (see
+  // each field's TSDoc).
+  const inlayMarginExclusionMm = requireRange(
+    requireFiniteNumber(root['inlayMarginExclusionMm'], 'profile.inlayMarginExclusionMm'),
+    'profile.inlayMarginExclusionMm',
+    0,
+    3.0,
+    'P5 T6 convergence-wedge derivation',
+  );
+  const onlayMarginExclusionMm = requireRange(
+    requireFiniteNumber(root['onlayMarginExclusionMm'], 'profile.onlayMarginExclusionMm'),
+    'profile.onlayMarginExclusionMm',
+    0,
+    3.0,
+    'P5 T7 convergence-wedge derivation',
+  );
+
+  // Phase 6 Task 1: bridge/pontic/framework fields (see each field's TSDoc).
+  // frameworkMinThicknessMm floored/ceilinged like the other thickness minimums
+  // (PLAN.md §3's lowest 0.3 mm / the 5 mm sanity ceiling).
+  const frameworkMinThicknessMm = requireRange(
+    requireFiniteNumber(root['frameworkMinThicknessMm'], 'profile.frameworkMinThicknessMm'),
+    'profile.frameworkMinThicknessMm',
+    0.3,
+    5,
+    'PLAN.md §3 zirconia framework 0.5 / e.max IFU 1.0 placeholder',
+  );
+  // Pontic interface params — documented clinical placeholders (the ±20 µm
+  // acceptance binds the CONFIGURED value). Generous sanity ranges guard against
+  // an obviously-corrupt value without inventing a cited clinical limit.
+  const ponticHygienicClearanceMm = requireRange(
+    requireFiniteNumber(root['ponticHygienicClearanceMm'], 'profile.ponticHygienicClearanceMm'),
+    'profile.ponticHygienicClearanceMm',
+    0,
+    5,
+    'documented clinical placeholder (hygienic clearance)',
+  );
+  const ponticRidgeLapReliefMm = requireRange(
+    requireFiniteNumber(root['ponticRidgeLapReliefMm'], 'profile.ponticRidgeLapReliefMm'),
+    'profile.ponticRidgeLapReliefMm',
+    0,
+    1,
+    'documented clinical placeholder (ridge-lap relief)',
+  );
+  const ponticOvateDepthMm = requireRange(
+    requireFiniteNumber(root['ponticOvateDepthMm'], 'profile.ponticOvateDepthMm'),
+    'profile.ponticOvateDepthMm',
+    0,
+    5,
+    'documented clinical placeholder (ovate depth)',
+  );
+  // Phase 6 Task 5: the veneering-space cutback depth (mm). Floored at 0 (no
+  // cutback is a valid, if degenerate, choice), ceilinged at 2.0 mm — a
+  // veneering space above ~1.5 mm is already atypical, 2.0 is a generous
+  // corruption guard rather than an invented clinical limit. Documented
+  // placeholder (see the field's TSDoc).
+  const veneeringSpaceMm = requireRange(
+    requireFiniteNumber(root['veneeringSpaceMm'], 'profile.veneeringSpaceMm'),
+    'profile.veneeringSpaceMm',
+    0,
+    2.0,
+    'documented clinical placeholder (hand-layering veneering space 0.8–1.5 mm)',
+  );
+
   const allowedKeys = new Set([
     'id',
     'version',
@@ -399,6 +572,13 @@ export function validateMaterialProfileShape(raw: unknown): MaterialProfile {
     'onlayMinThicknessMm',
     'cuspCoverageMinThicknessMm',
     'marginExclusionMm',
+    'inlayMarginExclusionMm',
+    'onlayMarginExclusionMm',
+    'frameworkMinThicknessMm',
+    'ponticHygienicClearanceMm',
+    'ponticRidgeLapReliefMm',
+    'ponticOvateDepthMm',
+    'veneeringSpaceMm',
     'checksum',
   ]);
   for (const key of Object.keys(root)) {
@@ -420,6 +600,13 @@ export function validateMaterialProfileShape(raw: unknown): MaterialProfile {
     onlayMinThicknessMm,
     cuspCoverageMinThicknessMm,
     marginExclusionMm,
+    inlayMarginExclusionMm,
+    onlayMarginExclusionMm,
+    frameworkMinThicknessMm,
+    ponticHygienicClearanceMm,
+    ponticRidgeLapReliefMm,
+    ponticOvateDepthMm,
+    veneeringSpaceMm,
     checksum,
   };
 }

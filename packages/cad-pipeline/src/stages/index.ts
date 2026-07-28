@@ -80,3 +80,40 @@ export {
   EmptySculptGestureError,
   type SculptStageOptions,
 } from './sculpt.ts';
+
+export {
+  runBridgeAbutmentSurfacesStage,
+  NoAbutmentMarginsError,
+  MissingClinicalParamError as BridgeAbutmentSurfacesMissingClinicalParamError,
+  type BridgeAbutmentSurfacesStageOptions,
+  type BridgeAbutmentSurface,
+  type BridgeAbutmentSurfacesStageResult,
+} from './bridgeAbutmentSurfaces.ts';
+
+export {
+  runBridgeConnectorsStage,
+  NoConnectorsError,
+  MissingUnitMeshError,
+  type BridgeConnectorsStageOptions,
+  type BridgeConnectorResult,
+  type BridgeConnectorsStageResult,
+  type EditableConnectorProfiles,
+} from './bridgeConnectors.ts';
+
+export {
+  runBridgeFrameworkStage,
+  MissingVeneeringSpaceError,
+  NoFrameworkUnitsError,
+  type FrameworkMode,
+  type FrameworkUnitInput,
+  type BridgeFrameworkStageOptions,
+  type FrameworkUnitResult,
+  type BridgeFrameworkStageResult,
+} from './bridgeFramework.ts';
+
+export {
+  runBridgeAssemblyStage,
+  NoAssemblySolidsError,
+  type BridgeAssemblyStageOptions,
+  type BridgeAssemblyStageResult,
+} from './bridgeAssembly.ts';

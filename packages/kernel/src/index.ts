@@ -236,8 +236,83 @@
  * goldens byte-identical" precedent as 0.9.0-0.20.0's pure-Float64 ops
  * (regression-pinned by its own analytic closed-form / determinism /
  * committed-sha256 tests in cavity/cuspCoverage.test.ts; no `kernel-ops.json`
- * pin added). See docs/CHANGELOG-kernel.md's `[0.21.0]` entry. */
-export const KERNEL_VERSION = '0.21.0';
+ * pin added). See docs/CHANGELOG-kernel.md's `[0.21.0]` entry.
+ * 0.22.0 (Phase 6 Task 2): NEW op — `bridge/sharedAxis.ts`'s `assessSharedAxis`
+ * (the FALSIFIABLE given-axis union+per-abutment undercut verdict for a bridge's
+ * shared insertion axis) and `suggestSharedAxis` (the bridge axis suggestion =
+ * `suggestInsertionAxisForRegions` + a uniform assessment readout). Pure
+ * aggregation over the P3 `undercutScanIndices`/`unionRegions`/
+ * `regionTriangleAreasMm2`/`suggestInsertionAxisForRegions` machinery (REUSED
+ * verbatim — see sharedAxis.ts's reuse map); no manifold-3d boundary, no new
+ * approximation. Same "brand-new op, minor bump, existing goldens byte-identical"
+ * precedent as 0.9.0-0.21.0's pure-Float64 ops (regression-pinned by its own
+ * analytic exact-zero / tilt-residual / determinism tests in
+ * bridge/sharedAxis.test.ts; no `kernel-ops.json` pin added). The
+ * crown-acceptance QC pin advances MECHANICALLY (the version string is embedded
+ * in the QcReport JSON — metadata-only churn, all five geometry stage pins
+ * byte-identical). See docs/CHANGELOG-kernel.md's `[0.22.0]` entry.
+ * 0.23.0 (Phase 6 Task 3): NEW op — `bridge/ponticInterface.ts`'s
+ * `shapePonticBase` (the deterministic per-style pontic-base CONSTRUCTION: the
+ * base as an analytic offset of the ridge crest cylinder, `base = crest + t(φ)·n`,
+ * with hygienic/ridgeLap/ovate target fields + honest patch partition) and
+ * `measurePonticRelief` (the blend-independent MEASUREMENT: `signedClosestPoint`
+ * per dense base sample, per-patch deviation-from-configured with the PRIMARY
+ * acceptance patch strictly separate from the relieved/transition/outside
+ * regions — validated closed-form against the analytic cylinder BEFORE it judges
+ * any construction). Pure Float64; the base vertices are exact on the analytic
+ * offset cylinder, the measurement inherits `signedClosestPoint`'s exact bound,
+ * the mesh-vs-analytic gap is a one-sided inscribed-chord sagitta (surfaced as
+ * `errorBoundMm`). No manifold-3d boundary; same "brand-new op, minor bump,
+ * existing goldens byte-identical" precedent as 0.9.0-0.22.0's pure-Float64 ops
+ * (regression-pinned by its own closed-form instrument-validation / per-style
+ * ±20 µm / falsifiability / determinism tests in bridge/ponticInterface.test.ts;
+ * no `kernel-ops.json` pin added). The crown/cavity-acceptance QC pins advance
+ * MECHANICALLY (version string embedded in the QcReport JSON — metadata-only
+ * churn, every geometry pin byte-identical). See docs/CHANGELOG-kernel.md's
+ * `[0.23.0]` entry.
+ * 0.24.0 (Phase 6 Task 4): NEW op — `bridge/connector.ts` (the bridge CONNECTOR:
+ * editable/validated 2D cross-section profiles, a deterministic watertight ruled
+ * LOFT via `orientNormalsConsistently`, and the fracture-strength gate value —
+ * the EXACT closed-form minimum cross-section area of the ruled loft, since the
+ * section area `A(t)=a·t²+b·t+c` is a quadratic in the axial parameter, so its
+ * continuous minimum is closed-form with NO station-sampling error). A secondary
+ * mesh-sectioning instrument (live readout) is validated to agree and carries an
+ * honest station-spacing fail-safe (`guaranteedLowerBoundMm2`). Pure Float64; no
+ * manifold-3d boundary (the unit+connector union is Task 6). Same "brand-new op,
+ * minor bump, existing goldens byte-identical" precedent as 0.9.0-0.23.0's
+ * pure-Float64 ops (regression-pinned by its own closed-form instrument-validation
+ * / fail-safe-falsifiability / loft-watertight / determinism tests in
+ * bridge/connector.test.ts; no `kernel-ops.json` pin added). The crown/cavity-
+ * acceptance QC pins advance MECHANICALLY (version string embedded in the QcReport
+ * JSON — metadata-only churn, every geometry pin byte-identical). See
+ * docs/CHANGELOG-kernel.md's `[0.24.0]` entry.
+ * 0.25.0 (Phase 6 Task 5): NEW op — `bridge/frameworkCutback.ts` (the FRAMEWORK
+ * cutback: reduced anatomy for veneering — the outer surface offset inward by the
+ * veneering space via a TOPOLOGY-PRESERVING tapered per-vertex normal displacement,
+ * deliberately NOT an SDF/marching-cubes remesh so the fit surfaces + margin rim
+ * survive BYTE-EXACT; the cutback tapers to 0 at the preserved-region boundary so
+ * the marginal seal cannot open — `@errorBound` = the facet term `d·(1−cos φ)`,
+ * always the safe direction). Pure Float64; no manifold-3d boundary (the unit union
+ * is Task 6). Same "brand-new op, minor bump, existing goldens byte-identical"
+ * precedent as 0.9.0-0.24.0's pure-Float64 ops (regression-pinned by its fit-byte-
+ * identity / margin-preservation / cutback-accuracy / determinism tests in
+ * bridge/frameworkCutback.test.ts; no `kernel-ops.json` pin added). The crown/cavity-
+ * acceptance QC pins advance MECHANICALLY (version string embedded in the QcReport
+ * JSON — metadata-only churn, every geometry pin byte-identical). See
+ * docs/CHANGELOG-kernel.md's `[0.25.0]` entry.
+ *
+ * 0.26.0 (Phase 6 Task 6): NEW op — `bridge/bridgeAssembly.ts`'s `assembleBridge`
+ * (the whole-bridge UNION: abutment units + pontic + connectors → ONE watertight
+ * single-component solid, through the manifold-3d wrapper's `union`; repair-before-
+ * boolean, output re-validated watertight + manifold + single-component, a disjoint
+ * result surfaced as a typed `BridgeAssemblyError`). This op EXERCISES THE WASM
+ * BOUNDARY, so — exactly like `union`/`subtract`/`intersect`/`constructShell` (0.13.0)
+ * — it gets a `kernel-ops.json` pinned entry under the manifoldVersion guard (a
+ * watertight + single-component self-check guards the pin). The crown/cavity-
+ * acceptance QC pins advance MECHANICALLY (kernelVersion embedded in the QcReport
+ * JSON — metadata-only churn, every geometry pin byte-identical). See
+ * docs/CHANGELOG-kernel.md's `[0.26.0]` entry. */
+export const KERNEL_VERSION = '0.26.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -716,6 +791,70 @@ export {
   type SuggestInsertionAxisResult,
   type SuggestInsertionAxisForRegionsResult,
 } from './axis/index.ts';
+
+export {
+  assessSharedAxis,
+  suggestSharedAxis,
+  shapePonticBase,
+  synthPonticSeatRing,
+  measurePonticRelief,
+  analyticCylinderSignedDistanceMm,
+  crestSagittaBoundMm,
+  PonticInterfaceParamError,
+  type SharedAxisRegionReport,
+  type SharedAxisAssessment,
+  type AssessSharedAxisOptions,
+  type SharedAxisSuggestion,
+  type PonticInterfaceStyle,
+  type RidgeCrestCylinder,
+  type PonticPatch,
+  type PonticInterfaceParams,
+  type PonticBaseFootprint,
+  type PonticBaseResolution,
+  type PonticBaseSample,
+  type ShapePonticBaseResult,
+  type PonticReliefPatchStats,
+  type PonticReliefMeasurement,
+  CONNECTOR_PROFILE_MIN_AREA_MM2,
+  makeEllipseConnectorProfile,
+  ellipseConnectorProfileAreaMm2,
+  connectorProfileSignedArea,
+  validateConnectorProfile,
+  buildConnectorFrame,
+  loftConnectorProfiles,
+  connectorAreaQuadratic,
+  analyticConnectorMinArea,
+  sampleConnectorCrossSectionAreas,
+  measureConnectorMinArea,
+  connectorAxialLengthMm,
+  NonClosedProfileError,
+  DegenerateProfileError,
+  SelfIntersectingProfileError,
+  ProfileVertexCountMismatchError,
+  ProfileWindingMismatchError,
+  NonSimpleConnectorSectionError,
+  type Vec2,
+  type ConnectorProfile2D,
+  type ConnectorFrame,
+  type ConnectorProfileInfo,
+  type LoftConnectorResult,
+  type ConnectorAreaQuadratic,
+  type ConnectorAnalyticMinArea,
+  type SampledConnectorAreas,
+  type SampleConnectorAreasOptions,
+  type MeasureConnectorMinAreaResult,
+  frameworkCutback,
+  FrameworkCutbackParamError,
+  type FrameworkCutbackOptions,
+  type FrameworkCutbackResult,
+  type FrameworkCutbackValidation,
+  assembleBridge,
+  extractFitPatch,
+  BridgeAssemblyError,
+  type BridgeAssemblyResult,
+  type BridgeAssemblyFailureReason,
+  type FitRegionDescriptor,
+} from './bridge/index.ts';
 
 export {
   classifyCavityRegions,

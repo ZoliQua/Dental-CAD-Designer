@@ -139,6 +139,50 @@ describe('validateMaterialProfileShape', () => {
     // Checksum is recomputed by callers; shape validation alone must accept it.
     expect(() => validateMaterialProfileShape(raw)).not.toThrow();
   });
+
+  // Phase 6 Task 1: bridge/pontic/framework fields + the P5 marginExclusion promotion.
+  it("accepts the shipped standard-zirconia profile's Phase 6 fields", () => {
+    const profile = validateMaterialProfileShape(validRawProfile());
+    expect(profile.inlayMarginExclusionMm).toBe(1.3);
+    expect(profile.onlayMarginExclusionMm).toBe(1.8);
+    expect(profile.frameworkMinThicknessMm).toBe(0.5); // PLAN.md §3 zirconia framework 0.5
+    expect(profile.ponticHygienicClearanceMm).toBe(2.0);
+    expect(profile.ponticRidgeLapReliefMm).toBe(0.05);
+    expect(profile.ponticOvateDepthMm).toBe(1.0);
+    // Phase 6 Task 5: the framework veneering-space cutback depth.
+    expect(profile.veneeringSpaceMm).toBe(1.0);
+  });
+
+  it.each([
+    'inlayMarginExclusionMm',
+    'onlayMarginExclusionMm',
+    'frameworkMinThicknessMm',
+    'ponticHygienicClearanceMm',
+    'ponticRidgeLapReliefMm',
+    'ponticOvateDepthMm',
+    'veneeringSpaceMm',
+  ])('rejects a missing %s', (field) => {
+    const raw = validRawProfile();
+    delete raw[field];
+    expect(() => validateMaterialProfileShape(raw)).toThrow(new RegExp(field));
+  });
+
+  it.each([
+    ['inlayMarginExclusionMm', 3.5], // above the 3.0 mm band ceiling
+    ['inlayMarginExclusionMm', -0.1], // below 0
+    ['onlayMarginExclusionMm', 3.5],
+    ['frameworkMinThicknessMm', 0.1], // below the 0.3 mm floor
+    ['frameworkMinThicknessMm', 6], // above the 5 mm ceiling
+    ['ponticHygienicClearanceMm', 6], // above the 5 mm sanity ceiling
+    ['ponticRidgeLapReliefMm', 1.5], // above the 1 mm ceiling
+    ['ponticOvateDepthMm', -0.1], // below 0
+    ['veneeringSpaceMm', 2.5], // above the 2.0 mm ceiling
+    ['veneeringSpaceMm', -0.1], // below 0
+  ])('rejects %s = %s (outside its documented range)', (field, badValue) => {
+    const raw = validRawProfile();
+    raw[field] = badValue;
+    expect(() => validateMaterialProfileShape(raw)).toThrow(MaterialProfileValidationError);
+  });
 });
 
 describe('EMAX_LITHIUM_DISILICATE_PROFILE — Phase 5 inlay/onlay IFU values', () => {
@@ -155,6 +199,21 @@ describe('EMAX_LITHIUM_DISILICATE_PROFILE — Phase 5 inlay/onlay IFU values', (
     expect(EMAX_LITHIUM_DISILICATE_PROFILE.cuspCoverageMinThicknessMm).toBeGreaterThan(
       STANDARD_ZIRCONIA_PROFILE.cuspCoverageMinThicknessMm,
     );
+  });
+
+  it('carries the Phase 6 bridge/pontic/framework fields with the honest e.max framework placeholder', async () => {
+    const { EMAX_LITHIUM_DISILICATE_PROFILE, STANDARD_ZIRCONIA_PROFILE } = await import('./profiles.ts');
+    // The margin-exclusion bands are geometry-derived → material-independent (same values).
+    expect(EMAX_LITHIUM_DISILICATE_PROFILE.inlayMarginExclusionMm).toBe(1.3);
+    expect(EMAX_LITHIUM_DISILICATE_PROFILE.onlayMarginExclusionMm).toBe(1.8);
+    expect(EMAX_LITHIUM_DISILICATE_PROFILE.inlayMarginExclusionMm).toBe(STANDARD_ZIRCONIA_PROFILE.inlayMarginExclusionMm);
+    // e.max framework is the documented occlusal-min placeholder (1.0), distinct from zirconia's 0.5.
+    expect(EMAX_LITHIUM_DISILICATE_PROFILE.frameworkMinThicknessMm).toBe(1.0);
+    expect(STANDARD_ZIRCONIA_PROFILE.frameworkMinThicknessMm).toBe(0.5);
+    // Phase 6 Task 5: veneering space is the same documented hand-layering
+    // placeholder on both profiles.
+    expect(EMAX_LITHIUM_DISILICATE_PROFILE.veneeringSpaceMm).toBe(1.0);
+    expect(STANDARD_ZIRCONIA_PROFILE.veneeringSpaceMm).toBe(1.0);
   });
 });
 

@@ -29,7 +29,16 @@ import { loadMaterialProfile, type MaterialProfile } from './materialProfile.ts'
  * (`inlayMinThicknessMm`/`onlayMinThicknessMm` = 0.5, `cuspCoverageMinThicknessMm`
  * = 0.7 — monolithic-zirconia norms) and `marginExclusionMm` (0.2, the Phase 4
  * feather-band carry-in); see each field's `materialProfile.ts` TSDoc for the
- * source note; checksum bumped accordingly.
+ * source note; checksum bumped accordingly. Version 1.3.0 (Phase 6 Task 1):
+ * gained the bridge/pontic/framework fields (`frameworkMinThicknessMm` = 0.5 per
+ * PLAN.md §3's "framework 0.5"; the pontic-interface placeholders
+ * `ponticHygienicClearanceMm`/`ponticRidgeLapReliefMm`/`ponticOvateDepthMm`) and
+ * the P5 marginExclusion promotion (`inlayMarginExclusionMm` = 1.3 /
+ * `onlayMarginExclusionMm` = 1.8, geometry-derived bands moved off the engine
+ * constant); checksum bumped accordingly. Version 1.4.0 (Phase 6 Task 5): gained
+ * `veneeringSpaceMm` (1.0 — the framework-cutback depth, a documented
+ * hand-layering placeholder; see materialProfile.ts's TSDoc); checksum bumped
+ * accordingly.
  */
 export const STANDARD_ZIRCONIA_PROFILE: MaterialProfile = loadMaterialProfile(standardZirconiaJson);
 
@@ -52,7 +61,17 @@ export const STANDARD_ZIRCONIA_PROFILE: MaterialProfile = loadMaterialProfile(st
  * = 1.0, `cuspCoverageMinThicknessMm` = 1.5 — Ivoclar IPS e.max IFU values,
  * the first genuinely e.max-specific numbers this profile carries beyond the
  * occlusal/axial split) and `marginExclusionMm` (0.2, the Phase 4 feather-band
- * carry-in); checksum bumped accordingly.
+ * carry-in); checksum bumped accordingly. Version 1.2.0 (Phase 6 Task 1): gained
+ * the bridge/pontic/framework fields (`frameworkMinThicknessMm` = 1.0 — e.max is
+ * predominantly monolithic/full-contour, so this is the documented occlusal-min
+ * PLACEHOLDER pending a real framework figure, see materialProfile.ts's TSDoc;
+ * the pontic-interface placeholders) and the P5 marginExclusion promotion
+ * (`inlayMarginExclusionMm` = 1.3 / `onlayMarginExclusionMm` = 1.8 — the bands
+ * are geometry-derived, hence material-independent = the same values as
+ * zirconia); checksum bumped accordingly. Version 1.3.0 (Phase 6 Task 5): gained
+ * `veneeringSpaceMm` (1.0 — same documented hand-layering placeholder as
+ * zirconia; e.max is predominantly monolithic so this is a placeholder pending a
+ * genuine layered-e.max figure); checksum bumped accordingly.
  */
 export const EMAX_LITHIUM_DISILICATE_PROFILE: MaterialProfile = loadMaterialProfile(
   emaxLithiumDisilicateJson,

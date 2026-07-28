@@ -171,6 +171,15 @@ export const INLAY_PROFILE: PipelineMaterialProfile = {
   onlayMinThicknessMm: ONLAY_MIN,
   cuspCoverageMinThicknessMm: CUSP_COVERAGE_MIN,
   marginExclusionMm: INLAY_MARGIN_EXCL,
+  // Phase 6 Task 1: the promoted cavity marginal-transition bands live on the
+  // profile now (bit-identical to the former engine constants — the caller below
+  // reads these instead of the INLAY_MARGIN_EXCL/ONLAY_MARGIN_EXCL locals).
+  inlayMarginExclusionMm: INLAY_MARGIN_EXCL,
+  onlayMarginExclusionMm: ONLAY_MARGIN_EXCL,
+  frameworkMinThicknessMm: 0.5,
+  ponticHygienicClearanceMm: 2.0,
+  ponticRidgeLapReliefMm: 0.05,
+  ponticOvateDepthMm: 1.0, veneeringSpaceMm: 1.0,
 };
 
 /** The onlay material profile (wider gaps for the convex covered cusp). */
@@ -343,7 +352,10 @@ function contextFor(
 export async function assembleCavity(variant: CavityVariant): Promise<AssembledCavity> {
   const restorationType: 'inlay' | 'onlay' = variant === 'inlay' || variant === 'inlay-shallow' ? 'inlay' : 'onlay';
   const profile = restorationType === 'inlay' ? INLAY_PROFILE : ONLAY_PROFILE;
-  const marginExclusionMm = restorationType === 'inlay' ? INLAY_MARGIN_EXCL : ONLAY_MARGIN_EXCL;
+  // Phase 6 Task 1 caller-switch: the cavity band is read from the PROFILE's
+  // promoted field (was INLAY_MARGIN_EXCL / ONLAY_MARGIN_EXCL engine constants —
+  // bit-identical values, so the acceptance goldens do not move).
+  const marginExclusionMm = restorationType === 'inlay' ? profile.inlayMarginExclusionMm : profile.onlayMarginExclusionMm;
 
   const fx = buildFixture(variant);
   const neighbors = neighborHandles(fx.halfLen, fx.yHalf);

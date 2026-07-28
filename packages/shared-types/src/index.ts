@@ -263,6 +263,22 @@ export interface Restoration {
     /** Onlay covered-cusp coverage selection marker (the coverage divider) —
      * onlay only; feeds the region-scoped cusp-coverage thickness gate in QC. */
     cuspCoverage?: string;
+    /** Bridge per-abutment fit (inner/outer) surfaces milestone (Phase 6 Task
+     * 7) — the shared-axis abutment intaglios + outer anatomy (`bridgeAbutmentSurfaces`
+     * job output). Bridge only. */
+    bridgeAbutmentSurfaces?: string;
+    /** Bridge pontic body + gingival-interface base milestone (`bridgePontic`
+     * job output; the style + configured relief is a journaled design decision).
+     * Bridge only. */
+    bridgePontic?: string;
+    /** Bridge connectors milestone — the per-adjacent-pair connector lofts
+     * (`bridgeConnectors` job output; editable cross-section profiles are a
+     * journaled design decision). Bridge only. */
+    bridgeConnectors?: string;
+    /** Bridge framework-mode selection marker (fullContour vs framework — a
+     * journaled design decision that switches the whole-bridge thickness gate to
+     * `frameworkMinThicknessMm`). Bridge only. */
+    bridgeFramework?: string;
   };
   qc: QcReport | null;
 }

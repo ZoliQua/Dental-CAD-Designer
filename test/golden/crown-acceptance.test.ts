@@ -105,7 +105,7 @@ const µm = (mm: number): string => `${(mm * 1000).toFixed(3)} µm`;
 // proof this qc diff is the version string alone, not numerical drift (the same
 // mechanical churn documented at 0.16.0-0.19.0). See docs/CHANGELOG-kernel.md's
 // [0.20.0] entry.
-const EXPECTED_KERNEL_VERSION = '0.21.0';
+const EXPECTED_KERNEL_VERSION = '0.26.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 function installedManifoldVersion(): string {
   const pkg = JSON.parse(readFileSync(join(repoRoot, 'node_modules', 'manifold-3d', 'package.json'), 'utf8')) as {
@@ -148,7 +148,21 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // rationale; see the p5-task-8 report. (selfIntersection keeps "the crown"
   // wording for the crown path — byte-identical — so ONLY the min-wall
   // disclosure moved this hash.)
-  'crown-standin-qc': '7f8046b8023b367d3bff37f0331a1a467cf63c187294df178a17fd616ff5335b',
+  // Advanced 0.21.0 → 0.22.0 (Phase 6 Task 2): MECHANICAL, metadata-only churn.
+  // The QcReport embeds kernelVersion (cad-pipeline/gates/report.ts), so
+  // hashQcReport tracks the version-string bump even though every measured value
+  // and every geometry stage pin above is BYTE-IDENTICAL to 0.21.0 (verified:
+  // the five geometry pins did not move this run). The new bridge op does not
+  // touch the crown chain. See docs/CHANGELOG-kernel.md's [0.22.0] entry.
+  // Advanced 0.24.0 → 0.25.0 (Phase 6 Task 5): MECHANICAL, metadata-only — the new
+  // bridge/frameworkCutback op does not touch the crown chain; hashQcReport tracks
+  // the embedded kernelVersion string, every geometry pin above BYTE-IDENTICAL to
+  // 0.24.0 (verified). See docs/CHANGELOG-kernel.md's [0.25.0] entry.
+  // Advanced 0.25.0 → 0.26.0 (Phase 6 Task 6): MECHANICAL, metadata-only — the new
+  // bridge/bridgeAssembly (whole-bridge union) op does not touch the crown chain;
+  // hashQcReport tracks the embedded kernelVersion, every geometry pin BYTE-IDENTICAL
+  // to 0.25.0 (verified). See docs/CHANGELOG-kernel.md's [0.26.0] entry.
+  'crown-standin-qc': '26136cdfd5a5674d2074939c8d580c2886000a2cb7b48550e0716531ff77ec11',
 };
 
 const GATE_ORDER = ['watertight', 'manifold', 'selfIntersection', 'minWallThickness', 'marginFit', 'seating', 'connectorCrossSection', 'contact'];

@@ -6,15 +6,18 @@ import { PrismaClient } from '@prisma/client';
 import type { Case } from '@prisma/client';
 import Fastify from 'fastify';
 import type { FastifyInstance } from 'fastify';
-import { KERNEL_VERSION, type IndexedMesh, type SeamEdge, type Vec3 } from '@dqcad/kernel';
-import type { CaseDocument, QcGateResult, QcReport, RestorationType } from '@dqcad/shared-types';
+import { KERNEL_VERSION, type FitRegionDescriptor, type IndexedMesh, type SeamEdge, type Vec3 } from '@dqcad/kernel';
+import type { CaseDocument, FdiTooth, QcGateResult, QcReport, RestorationType } from '@dqcad/shared-types';
 import {
+  runBridgeQc,
   runCrownQc,
   runInlayQc,
+  type BridgeUnitQcInput,
   type CavityThicknessMinimums,
   type ConnectorCrossSection,
   type ContactResidualInput,
   type CoverageDivider,
+  type RunBridgeQcInput,
   type RunCrownQcInput,
   type RunInlayQcInput,
 } from '@dqcad/cad-pipeline';
@@ -118,8 +121,8 @@ interface MeshDataInput {
 
 interface CrownValidateQcBody {
   /** Optional (absent for the legacy crown client); the route treats absent /
-   * 'crown' / 'bridge' as the crown path. */
-  restorationType?: 'crown' | 'bridge';
+   * 'crown' as the crown path. Bridges have their own branch (Phase 6 Task 8). */
+  restorationType?: 'crown';
   crownSolid: MeshDataInput;
   innerSurfaceMesh: MeshDataInput;
   outerSurfaceMesh: MeshDataInput;
@@ -184,14 +187,74 @@ interface InlayValidateQcBody {
   clientReport?: QcReport;
 }
 
-/** The route's discriminated body: crown OR cavity (schemas.ts's `oneOf`). */
-type ValidateQcBody = CrownValidateQcBody | InlayValidateQcBody;
+// Phase 6 Task 8 — the bridge validate-qc body. Mirrors cad-pipeline's
+// `RunBridgeQcInput` over JSON (see schemas.ts's bridge branch). `restorationType`
+// is REQUIRED and pinned to 'bridge' — the discriminator the route dispatches on.
+// The largest input surface yet: the fused solid, every per-unit surface, the
+// abutment dies, the measured connectors, the profile-resolved thresholds, the
+// framework mode, the pontic-relief measurement scalars, and every geometry-scoped
+// parameter — all riding WITH the request so the server recomputes independently.
+interface FitRegionInput {
+  axisPointMm: number[];
+  axis: number[];
+  maxRadialMm: number;
+  minAxialMm: number;
+  maxAxialMm: number;
+}
 
-/** Narrows the union to the cavity branch. Absent `restorationType` (the legacy
- * crown client) or 'crown'/'bridge' → the crown path. */
+interface BridgeUnitInput {
+  label: string;
+  kind: 'abutment' | 'pontic';
+  innerSurfaceMesh: MeshDataInput;
+  outerSurfaceMesh: MeshDataInput;
+  insertionAxis: number[];
+  marginLoop: number[][];
+  marginExclusionMm?: number;
+  fitRegion?: FitRegionInput;
+}
+
+interface BridgeConnectorInput {
+  label: string;
+  minAreaMm2: number;
+  teeth?: number[];
+  targetMm2?: number;
+}
+
+interface BridgeValidateQcBody {
+  restorationType: 'bridge';
+  assembledSolid: MeshDataInput;
+  units: BridgeUnitInput[];
+  dieSolids: MeshDataInput[];
+  connectors: BridgeConnectorInput[];
+  minWallThicknessMm: number;
+  occlusalMinWallThicknessMm: number;
+  connectorAreaTargetMm2: number;
+  frameworkMode?: boolean;
+  frameworkMinThicknessMm?: number;
+  ponticRelief: { maxAbsDeviationMm: number; style: string; configuredReliefMm: number; thresholdMm?: number };
+  marginFitThresholdMm?: number;
+  seatingInterferenceVolumeToleranceMm3?: number;
+  kernelVersion: string;
+  profileVersion: string;
+  journalHash: string;
+  acknowledgedGates?: string[];
+  /** OPTIONAL cross-check — see the route + schemas.ts. Never trusted. */
+  clientReport?: QcReport;
+}
+
+/** The route's discriminated body: crown OR cavity OR bridge (schemas.ts's `oneOf`). */
+type ValidateQcBody = CrownValidateQcBody | InlayValidateQcBody | BridgeValidateQcBody;
+
+/** Narrows the union to the cavity branch (`restorationType: 'inlay'|'onlay'`). */
 function isInlayBody(body: ValidateQcBody): body is InlayValidateQcBody {
   const t = (body as { restorationType?: RestorationType }).restorationType;
   return t === 'inlay' || t === 'onlay';
+}
+
+/** Narrows the union to the bridge branch (`restorationType: 'bridge'`). Absent
+ * `restorationType` (the legacy crown client) or 'crown' → the crown path. */
+function isBridgeBody(body: ValidateQcBody): body is BridgeValidateQcBody {
+  return (body as { restorationType?: RestorationType }).restorationType === 'bridge';
 }
 
 interface UploadToothLibraryBody {
@@ -331,6 +394,79 @@ function reconstructInlayQcInput(b: InlayValidateQcBody): RunInlayQcInput {
     seamDihedralThresholdDeg: b.seamDihedralThresholdDeg,
     seatingInterferenceVolumeToleranceMm3: b.seatingInterferenceVolumeToleranceMm3,
     contactToleranceMm: b.contactToleranceMm,
+    kernelVersion: b.kernelVersion,
+    profileVersion: b.profileVersion,
+    journalHash: b.journalHash,
+    acknowledgedGates: b.acknowledgedGates,
+  };
+}
+
+/** Rebuilds a kernel `FitRegionDescriptor` (the abutment intaglio region — the
+ * marginFit gate extracts its patch off the assembled solid with it) from the
+ * JSON representation. */
+function toFitRegion(r: FitRegionInput): FitRegionDescriptor {
+  return {
+    axisPointMm: toVec3(r.axisPointMm),
+    axis: toVec3(r.axis),
+    maxRadialMm: r.maxRadialMm,
+    minAxialMm: r.minAxialMm,
+    maxAxialMm: r.maxAxialMm,
+  };
+}
+
+/** Rebuilds one bridge unit's QC input (per-unit surfaces + margin loop + axis +,
+ * for an abutment, the fit-region descriptor) from the JSON representation. */
+function toBridgeUnit(u: BridgeUnitInput): BridgeUnitQcInput {
+  return {
+    label: u.label,
+    kind: u.kind,
+    innerSurfaceMesh: toIndexedMesh(u.innerSurfaceMesh),
+    outerSurfaceMesh: toIndexedMesh(u.outerSurfaceMesh),
+    insertionAxis: toVec3(u.insertionAxis),
+    marginLoop: toLoop(u.marginLoop),
+    marginExclusionMm: u.marginExclusionMm,
+    fitRegion: u.fitRegion ? toFitRegion(u.fitRegion) : undefined,
+  };
+}
+
+/** Rebuilds one measured connector (its kernel-measured min cross-section area +
+ * the two teeth it spans + its pre-resolved positional target) from JSON. */
+function toBridgeConnector(c: BridgeConnectorInput): ConnectorCrossSection {
+  const teeth = c.teeth;
+  return {
+    label: c.label,
+    minAreaMm2: c.minAreaMm2,
+    teeth: teeth && teeth.length === 2 ? [teeth[0] as FdiTooth, teeth[1] as FdiTooth] : undefined,
+    targetMm2: c.targetMm2,
+  };
+}
+
+/** Rebuilds a `RunBridgeQcInput` from the bridge validate-qc body (Phase 6 Task
+ * 8) — the whole-bridge context reconstruction (the largest input surface).
+ * EVERY value comes from the request: the fused solid, every per-unit surface,
+ * the abutment dies, the measured connectors, the profile-resolved thresholds,
+ * the framework mode, AND the geometry-scoped pontic-relief scalars + tolerance
+ * overrides that ride with the request. The server then runs `runBridgeQc`
+ * INDEPENDENTLY (invariant 6). */
+function reconstructBridgeQcInput(b: BridgeValidateQcBody): RunBridgeQcInput {
+  return {
+    assembledSolid: toIndexedMesh(b.assembledSolid),
+    units: b.units.map(toBridgeUnit),
+    dieSolids: b.dieSolids.map(toIndexedMesh),
+    connectors: b.connectors.map(toBridgeConnector),
+    minWallThicknessMm: b.minWallThicknessMm,
+    occlusalMinWallThicknessMm: b.occlusalMinWallThicknessMm,
+    connectorAreaTargetMm2: b.connectorAreaTargetMm2,
+    frameworkMode: b.frameworkMode,
+    frameworkMinThicknessMm: b.frameworkMinThicknessMm,
+    ponticRelief: {
+      maxAbsDeviationMm: b.ponticRelief.maxAbsDeviationMm,
+      style: b.ponticRelief.style,
+      configuredReliefMm: b.ponticRelief.configuredReliefMm,
+      thresholdMm: b.ponticRelief.thresholdMm,
+    },
+    marginFitThresholdMm: b.marginFitThresholdMm,
+    seatingInterferenceVolumeToleranceMm3: b.seatingInterferenceVolumeToleranceMm3,
     kernelVersion: b.kernelVersion,
     profileVersion: b.profileVersion,
     journalHash: b.journalHash,
@@ -648,16 +784,17 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     },
   );
 
-  // Phase 4 Task 11 / Phase 5 Task 9: THE dual-validation route (CLAUDE.md
-  // invariant 6). Re-runs the restoration-type-aware QC gate suite INDEPENDENTLY
-  // in the Node server from the mesh set + the exact QC context the client used,
-  // and returns the server-side `QcReport` — bit-identical to the client's
-  // (deterministic, DOM/Three-free gates). The body is a discriminated union
-  // (schemas.ts's `oneOf`): a crown body → `runCrownQc`; an inlay/onlay body
-  // (`restorationType: 'inlay'|'onlay'`) → `runInlayQc`. The server NEVER trusts
-  // a client-sent report: `clientReport`, if present, is a cross-check only — a
-  // disagreement is a 409 hard error with a per-field diagnostic bundle (the
-  // "client/server QC mismatch = hard error" convention).
+  // Phase 4 Task 11 / Phase 5 Task 9 / Phase 6 Task 8: THE dual-validation route
+  // (CLAUDE.md invariant 6). Re-runs the restoration-type-aware QC gate suite
+  // INDEPENDENTLY in the Node server from the mesh set + the exact QC context the
+  // client used, and returns the server-side `QcReport` — bit-identical to the
+  // client's (deterministic, DOM/Three-free gates). The body is a discriminated
+  // union (schemas.ts's `oneOf`): a crown body → `runCrownQc`; an inlay/onlay
+  // body (`restorationType: 'inlay'|'onlay'`) → `runInlayQc`; a bridge body
+  // (`restorationType: 'bridge'`) → `runBridgeQc` (the whole-bridge 11-gate set).
+  // The server NEVER trusts a client-sent report: `clientReport`, if present, is a
+  // cross-check only — a disagreement is a 409 hard error with a per-field
+  // diagnostic bundle (the "client/server QC mismatch = hard error" convention).
   //
   // `bodyLimit` is raised to `meshMaxBytes` (the mesh-upload ceiling) because a
   // cavity fit surface (marching-cubes at ~20 µm pitch) serializes to well past
@@ -672,8 +809,14 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     async (request, reply) => {
       const b = request.body;
 
-      // Independent recompute — the source of truth (invariant 6).
-      const report = isInlayBody(b) ? await runInlayQc(reconstructInlayQcInput(b)) : await runCrownQc(reconstructCrownQcInput(b));
+      // Independent recompute — the source of truth (invariant 6). Dispatch on
+      // the discriminator: bridge → runBridgeQc; inlay/onlay → runInlayQc; else
+      // (absent/'crown') → runCrownQc.
+      const report = isBridgeBody(b)
+        ? await runBridgeQc(reconstructBridgeQcInput(b))
+        : isInlayBody(b)
+          ? await runInlayQc(reconstructInlayQcInput(b))
+          : await runCrownQc(reconstructCrownQcInput(b));
 
       if (b.clientReport) {
         const differences = diffQcReports(report, b.clientReport);

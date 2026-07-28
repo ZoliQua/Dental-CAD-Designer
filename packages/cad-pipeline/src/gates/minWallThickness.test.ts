@@ -272,3 +272,93 @@ describe('minWallThicknessGate', () => {
     ).toThrow(MinWallThicknessInputError);
   }, 120000);
 });
+
+// Phase 6 Task 5 — the mode-switched thickness gate (framework vs full-contour).
+describe('minWallThicknessGate — framework mode (Phase 6 Task 5)', () => {
+  const FRAMEWORK_MIN_MM = 0.5; // zirconia frameworkMinThicknessMm
+  // e.max-style full-contour minimums (axial 0.8 / occlusal 1.0) — used to show
+  // the SAME geometry flips verdict on the mode switch.
+  const FC_AXIAL = 0.8;
+  const FC_OCCLUSAL = 1.0;
+
+  it('PASSES a healthy framework unit (wall ≥ frameworkMin) and BLOCKS a thin one — the falsifiable pair', async () => {
+    const inner = await intaglio();
+    const healthy = minWallThicknessGate({
+      innerSurfaceMesh: inner,
+      outerSurfaceMesh: outerDome(0.7), // ~0.7 mm walls ≥ 0.5
+      minWallThicknessMm: MIN_WALL_MM,
+      occlusalMinWallThicknessMm: OCCLUSAL_MIN_MM,
+      insertionAxis: AXIS,
+      frameworkMode: true,
+      frameworkMinThicknessMm: FRAMEWORK_MIN_MM,
+    });
+    const thin = minWallThicknessGate({
+      innerSurfaceMesh: inner,
+      outerSurfaceMesh: outerDome(0.4), // ~0.4 mm walls < 0.5
+      minWallThicknessMm: MIN_WALL_MM,
+      occlusalMinWallThicknessMm: OCCLUSAL_MIN_MM,
+      insertionAxis: AXIS,
+      frameworkMode: true,
+      frameworkMinThicknessMm: FRAMEWORK_MIN_MM,
+    });
+    expect(healthy.passed).toBe(true);
+    expect(healthy.threshold).toBe(FRAMEWORK_MIN_MM);
+    expect(thin.passed).toBe(false); // <-- the framework gate BLOCKS the thin cutback
+    expect(thin.threshold).toBe(FRAMEWORK_MIN_MM);
+    expect(thin.message).toMatch(/BELOW minimum/);
+    console.log(`[gate] framework healthy=${healthy.value?.toFixed(4)}mm PASS / thin=${thin.value?.toFixed(4)}mm BLOCK (min ${FRAMEWORK_MIN_MM}mm)`);
+  }, 120000);
+
+  it('the mode switch FLIPS the verdict on identical geometry (full-contour blocks, framework passes)', async () => {
+    const inner = await intaglio();
+    const outer = outerDome(0.7); // ~0.7 mm walls
+    const fullContour = minWallThicknessGate({
+      innerSurfaceMesh: inner,
+      outerSurfaceMesh: outer,
+      minWallThicknessMm: FC_AXIAL,
+      occlusalMinWallThicknessMm: FC_OCCLUSAL,
+      insertionAxis: AXIS,
+    });
+    const framework = minWallThicknessGate({
+      innerSurfaceMesh: inner,
+      outerSurfaceMesh: outer,
+      minWallThicknessMm: FC_AXIAL,
+      occlusalMinWallThicknessMm: FC_OCCLUSAL,
+      insertionAxis: AXIS,
+      frameworkMode: true,
+      frameworkMinThicknessMm: FRAMEWORK_MIN_MM,
+    });
+    expect(fullContour.passed).toBe(false); // 0.7 < 0.8 axial full-contour min
+    expect(framework.passed).toBe(true); // 0.7 ≥ 0.5 framework min
+    expect(framework.threshold).toBe(FRAMEWORK_MIN_MM);
+  }, 120000);
+
+  it('full-contour path is BYTE-UNCHANGED (frameworkMode omitted vs explicit false)', async () => {
+    const inner = await intaglio();
+    const outer = outerDome(1.0);
+    const base = {
+      innerSurfaceMesh: inner,
+      outerSurfaceMesh: outer,
+      minWallThicknessMm: MIN_WALL_MM,
+      occlusalMinWallThicknessMm: OCCLUSAL_MIN_MM,
+      insertionAxis: AXIS,
+    };
+    const omitted = minWallThicknessGate(base);
+    const explicitFalse = minWallThicknessGate({ ...base, frameworkMode: false });
+    expect(explicitFalse).toEqual(omitted); // identical result object (message, passed, threshold, value)
+  }, 120000);
+
+  it('throws when frameworkMode is set but frameworkMinThicknessMm is missing (never defaults)', async () => {
+    const inner = await intaglio();
+    expect(() =>
+      minWallThicknessGate({
+        innerSurfaceMesh: inner,
+        outerSurfaceMesh: outerDome(0.7),
+        minWallThicknessMm: MIN_WALL_MM,
+        occlusalMinWallThicknessMm: OCCLUSAL_MIN_MM,
+        insertionAxis: AXIS,
+        frameworkMode: true,
+      }),
+    ).toThrow(MinWallThicknessInputError);
+  }, 120000);
+});
