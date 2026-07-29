@@ -678,6 +678,7 @@
     "exportButton": "Export & validate on server",
     "statusReleasing": "Server re-validating the exported bytes…",
     "releasedTitle": "Released — the server re-validated the exact exported bytes.",
+    "releasedStale": "SUPERSEDED — the design changed after this release. The links below point at the EARLIER released bytes, not the current design. Re-export before handing off.",
     "downloadLink": "Download released file",
     "traceabilityHtmlLink": "View traceability document (HTML)",
     "traceabilityJsonLink": "Download traceability JSON",

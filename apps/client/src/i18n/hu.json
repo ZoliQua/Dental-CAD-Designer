@@ -678,6 +678,7 @@
     "exportButton": "Export és szerveroldali ellenőrzés",
     "statusReleasing": "A szerver újraellenőrzi az exportált bájtokat…",
     "releasedTitle": "Kiadva — a szerver újraellenőrizte a pontos exportált bájtokat.",
+    "releasedStale": "ELAVULT — a terv a kiadás után megváltozott. Az alábbi linkek a KORÁBBI kiadott bájtokra mutatnak, nem a jelenlegi tervre. Átadás előtt exportáljon újra.",
     "downloadLink": "Kiadott fájl letöltése",
     "traceabilityHtmlLink": "Nyomonkövethetőségi dokumentum megtekintése (HTML)",
     "traceabilityJsonLink": "Nyomonkövethetőségi JSON letöltése",

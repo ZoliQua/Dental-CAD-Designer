@@ -678,6 +678,7 @@
     "exportButton": "Exportieren & auf dem Server validieren",
     "statusReleasing": "Der Server validiert die exportierten Bytes erneut…",
     "releasedTitle": "Freigegeben — der Server hat die exakten exportierten Bytes erneut validiert.",
+    "releasedStale": "ÜBERHOLT — das Design wurde nach dieser Freigabe geändert. Die Links unten verweisen auf die FRÜHEREN freigegebenen Bytes, nicht auf das aktuelle Design. Vor der Übergabe erneut exportieren.",
     "downloadLink": "Freigegebene Datei herunterladen",
     "traceabilityHtmlLink": "Rückverfolgbarkeitsdokument ansehen (HTML)",
     "traceabilityJsonLink": "Rückverfolgbarkeits-JSON herunterladen",

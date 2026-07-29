@@ -221,6 +221,10 @@ function ClientStatus({ restorationId }: { restorationId: string }) {
 function ReleaseStatus({ restorationId }: { restorationId: string }) {
   const { t, i18n } = useTranslation();
   const release = useHandoffStore((state) => selectRelease(state, restorationId));
+  // The T3 stale cascade (state/exportStore.ts flips done → stale when the
+  // design moves out from under the export) is the authoritative "this release
+  // is superseded" signal — surfaced ON the release card, not just adjacently.
+  const clientStale = useExportStore((state) => selectExportStatus(state, restorationId).state === 'stale');
   const lang = TRACEABILITY_LOCALES.has(i18n.language) ? i18n.language : 'en';
 
   if (release.state === 'releasing') {
@@ -234,7 +238,16 @@ function ReleaseStatus({ restorationId }: { restorationId: string }) {
   if (release.state === 'released' && release.released) {
     const r = release.released;
     return (
-      <div className="export-release__released" data-testid="export-released">
+      <div
+        className={`export-release__released${clientStale ? ' export-release__released--stale' : ''}`}
+        data-testid="export-released"
+        data-stale={clientStale ? 'true' : 'false'}
+      >
+        {clientStale && (
+          <p className="export-release__superseded" role="alert" data-testid="export-released-stale">
+            {t('exportServer.releasedStale')}
+          </p>
+        )}
         <p className="export-release__ok">{t('exportServer.releasedTitle')}</p>
         <ul className="export-release__links">
           <li>

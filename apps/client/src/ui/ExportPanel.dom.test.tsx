@@ -29,6 +29,7 @@ import { exportFlowEngine } from '../engine/exportFlow';
 import { type RunnablePool } from '../engine/crownDesign';
 import { handoffController } from '../engine/handoff';
 import type { CrownExportQcContext } from '../engine/exportContext';
+import { selectRelease, useHandoffStore } from '../state/handoffStore';
 import { ExportPanel } from './ExportPanel';
 
 // --- fixtures --------------------------------------------------------------
@@ -67,8 +68,13 @@ const CROWN_CTX: CrownExportQcContext = {
   marginExclusionMm: 0.2,
 };
 
-function seedCrown(qc: QcReport | null): string {
-  const restoration = createRestoration({ type: 'crown' as RestorationType, teeth: [16], targetNodeId: null });
+function seedRestoration(type: RestorationType, qc: QcReport | null): string {
+  const restoration = createRestoration({
+    type,
+    teeth: type === 'bridge' ? [14, 15, 16] : [16],
+    ...(type === 'bridge' ? { pontics: [15] } : {}),
+    targetNodeId: null,
+  });
   caseStore.updateRestoration(
     { ...restoration, stages: { finalMesh: FINAL.contentHash }, qc } as Restoration,
     {
@@ -84,11 +90,21 @@ function seedCrown(qc: QcReport | null): string {
   return restoration.id;
 }
 
+function seedCrown(qc: QcReport | null): string {
+  return seedRestoration('crown', qc);
+}
+
 /** Deterministic fake export pool (bytes from the payload) — the SAME shape as
  * exportFlow.test.ts's, so `exportRestoration` reaches `done` with held bytes. */
 class FakeExportPool {
+  failNext: Error | null = null;
   readonly run: RunnablePool['run'] = (async (job: string, payload: unknown): Promise<unknown> => {
     if (job !== 'exportRestorationMesh') throw new Error(`FakeExportPool: unexpected job ${job}`);
+    if (this.failNext) {
+      const err = this.failNext;
+      this.failNext = null;
+      throw err;
+    }
     const p = payload as { positions: Float64Array; format: string; headerText?: string };
     const bytes = new Uint8Array(p.positions.buffer.slice(0));
     // A stable 64-hex sha is all buildExportRequest needs downstream.
@@ -112,6 +128,7 @@ interface StubResponse {
 }
 let route: (url: string, init: RequestInit | undefined) => StubResponse;
 const fetchCalls: Array<{ url: string; init: RequestInit | undefined }> = [];
+let pool: FakeExportPool;
 
 function installFetchStub(): void {
   vi.stubGlobal('fetch', async (input: unknown, init?: RequestInit) => {
@@ -132,7 +149,8 @@ beforeEach(() => {
   caseStore.resetForTests();
   exportFlowEngine.resetForTests();
   handoffController.resetForTests();
-  exportFlowEngine.__setPoolForTests(new FakeExportPool());
+  pool = new FakeExportPool();
+  exportFlowEngine.__setPoolForTests(pool);
   exportFlowEngine.__setFinalMeshSourceForTests(() => FINAL);
   handoffController.__setQcContextSourceForTests(() => CROWN_CTX);
   handoffController.__setPersistForTests(async () => {});
@@ -308,5 +326,406 @@ describe('ExportPanel — case archive export/import', () => {
     const provenance = screen.getByTestId('archive-imported-provenance');
     expect(provenance.textContent).toContain('2');
     expect(provenance.textContent?.toLowerCase()).toContain('unverified');
+  });
+
+  it('an archive-export server error surfaces a visible archive-error state', async () => {
+    seedCrown(qcReport([gate({ gate: 'watertight' })]));
+    route = (url) => (url.includes('/archive') ? { status: 500, json: { message: 'scan mesh missing' } } : { status: 500, json: {} });
+    render(<ExportPanel />);
+    await userEvent.setup().click(screen.getByTestId('archive-export-button'));
+    await waitFor(() => expect(screen.getByTestId('archive-error')).toBeTruthy());
+    expect(screen.getByTestId('archive-error').textContent).toContain('scan mesh missing');
+  });
+
+  it('an archive-import server error (non-conflict) surfaces a visible archive-error state', async () => {
+    seedCrown(qcReport([gate({ gate: 'watertight' })]));
+    route = (url) =>
+      url.includes('/archives/import') ? { status: 400, json: { error: 'archive-invalid', message: 'bad manifest' } } : { status: 500, json: {} };
+    render(<ExportPanel />);
+    const file = new File([Uint8Array.from([1])], 'bad.dqca');
+    await userEvent.setup().upload(screen.getByTestId('archive-import-input'), file);
+    await waitFor(() => expect(screen.getByTestId('archive-error')).toBeTruthy());
+    expect(screen.getByTestId('archive-error').textContent).toContain('bad manifest');
+  });
+});
+
+// The local pre-flight ladder — every refusal a VISIBLE, i18n'd, BUTTONLESS
+// state (no retry-to-green), matching the tested server-mismatch discipline.
+describe('ExportPanel — the local honest-failure ladder', () => {
+  function passingCrown(): string {
+    return seedCrown(qcReport([gate({ gate: 'watertight' }), gate({ gate: 'minWallThickness' })]));
+  }
+
+  it('no live qcContext (post-reload) → a visible, buttonless no-live-context error, nothing released', async () => {
+    const id = passingCrown();
+    handoffController.__setQcContextSourceForTests(() => null);
+    route = (url) => (url.includes('/export') ? { status: 200, json: { released: true } } : { status: 500, json: {} });
+    render(<ExportPanel />);
+    await selectRestoration(id);
+    await userEvent.setup().click(screen.getByTestId('export-run-button'));
+
+    await waitFor(() => expect(screen.getByTestId('export-release-error')).toBeTruthy());
+    const err = screen.getByTestId('export-release-error');
+    expect(within(err).getByTestId('export-release-error-message').textContent?.toLowerCase()).toContain('design session');
+    expect(err.querySelector('button')).toBeNull(); // no retry affordance
+    expect(screen.queryByTestId('export-released')).toBeNull();
+    expect(fetchCalls.some((c) => c.url.includes('/export'))).toBe(false); // never reached the server
+  });
+
+  it('a fetch failure reaching the server → a visible, buttonless network error', async () => {
+    const id = passingCrown();
+    render(<ExportPanel />);
+    await selectRestoration(id);
+    // Re-stub fetch to throw ONLY for the export POST (the client export used
+    // the fake pool, not fetch, so it still reaches `done`).
+    vi.stubGlobal('fetch', async (input: unknown) => {
+      if (String(input).includes('/export')) throw new Error('connection refused');
+      return new Response('{}', { status: 200 });
+    });
+    await userEvent.setup().click(screen.getByTestId('export-run-button'));
+
+    await waitFor(() => expect(screen.getByTestId('export-release-error')).toBeTruthy());
+    const err = screen.getByTestId('export-release-error');
+    expect(within(err).getByTestId('export-release-error-message').textContent).toContain('connection refused');
+    expect(err.querySelector('button')).toBeNull();
+  });
+
+  it('releasing with no fresh held export → a visible request-unavailable error', async () => {
+    const id = passingCrown();
+    render(<ExportPanel />);
+    await selectRestoration(id);
+    // Drive the SERVER step alone with nothing exported → buildExportRequest
+    // refuses (ExportRequestUnavailableError) → request-unavailable.
+    await handoffController.releaseToServer(id);
+
+    await waitFor(() => expect(screen.getByTestId('export-release-error')).toBeTruthy());
+    expect(screen.getByTestId('export-release-error-message').textContent?.toLowerCase()).toContain('re-export');
+  });
+
+  it('a client-side finalMeshUnavailable refusal is visible (buttonless) and leaves nothing released', async () => {
+    const id = passingCrown();
+    exportFlowEngine.__setFinalMeshSourceForTests(() => null); // no live buffers (post-reload)
+    render(<ExportPanel />);
+    await selectRestoration(id);
+    await userEvent.setup().click(screen.getByTestId('export-run-button'));
+
+    await waitFor(() => expect(screen.getByTestId('export-client-refused')).toBeTruthy());
+    expect(screen.getByTestId('export-client-refused').querySelector('button')).toBeNull();
+    expect(screen.queryByTestId('export-released')).toBeNull();
+  });
+
+  it('a client-side export worker failure is a visible client error', async () => {
+    const id = passingCrown();
+    pool.failNext = new Error('worker boom');
+    render(<ExportPanel />);
+    await selectRestoration(id);
+    await userEvent.setup().click(screen.getByTestId('export-run-button'));
+
+    await waitFor(() => expect(screen.getByTestId('export-client-error')).toBeTruthy());
+    expect(screen.getByTestId('export-client-error').textContent).toContain('worker boom');
+  });
+});
+
+// SHOULD-FIX-2: the released-file card itself is marked SUPERSEDED after a
+// design edit — not just adjacently — so a user cannot mistake a stale
+// download for the current design.
+describe('ExportPanel — stale released-file card', () => {
+  const releasedRoute = (url: string): StubResponse =>
+    url.includes('/export')
+      ? {
+          status: 200,
+          json: {
+            released: true,
+            exportId: 'exp-1',
+            format: 'stl',
+            bytesSha256: 'b'.repeat(64),
+            reimportMeshHash: 'c'.repeat(64),
+            byteLength: 84,
+            downloadPath: '/api/exports/bbb/download',
+            traceabilityJsonPath: '/api/exports/exp-1/traceability.json',
+            traceabilityHtmlPath: '/api/exports/exp-1/traceability.html',
+            releasedAt: '2026-07-20T00:00:00.000Z',
+            alreadyStored: true,
+          },
+        }
+      : { status: 500, json: {} };
+
+  it('a fresh release card has live links and NO stale marker; a design edit flips it to superseded', async () => {
+    const id = seedCrown(qcReport([gate({ gate: 'watertight' }), gate({ gate: 'minWallThickness' })]));
+    route = releasedRoute;
+    render(<ExportPanel />);
+    await selectRestoration(id);
+    await userEvent.setup().click(screen.getByTestId('export-run-button'));
+
+    // Fresh: released card, live links, alreadyStored note, no stale marker.
+    await waitFor(() => expect(screen.getByTestId('export-released')).toBeTruthy());
+    expect(screen.getByTestId('export-released').getAttribute('data-stale')).toBe('false');
+    expect(screen.queryByTestId('export-released-stale')).toBeNull();
+    expect(screen.getByTestId('export-download-link')).toBeTruthy();
+
+    // Edit the design out from under the export → the T3 cascade flips the
+    // client export to `stale`, and the release card must reflect it.
+    const current = caseStore.getDocument().restorations.find((r) => r.id === id)!;
+    caseStore.updateRestoration(
+      { ...current, stages: { finalMesh: 'edited-hash' } },
+      {
+        id: 'edit-op',
+        name: 'margin-edit',
+        params: { restorationId: id },
+        inputHashes: [],
+        outputHashes: [],
+        kernelVersion: '0.26.0',
+        timestamp: new Date(0).toISOString(),
+      },
+    );
+
+    await waitFor(() => expect(screen.getByTestId('export-released-stale')).toBeTruthy());
+    expect(screen.getByTestId('export-released').getAttribute('data-stale')).toBe('true');
+    expect(screen.getByTestId('export-released-stale').textContent?.toUpperCase()).toContain('SUPERSEDED');
+    // The links are still present (they point at real historical bytes) but the
+    // card now loudly flags them as superseded.
+    expect(screen.getByTestId('export-download-link')).toBeTruthy();
+  });
+});
+
+// QC-recap render branches (the report is rendered, never re-derived).
+describe('ExportPanel — QC recap rendering branches', () => {
+  it('a restoration with no QC report shows the no-report note and a disabled export button', async () => {
+    const id = seedRestoration('crown', null);
+    render(<ExportPanel />);
+    await selectRestoration(id);
+    expect(screen.getByTestId('export-qc-noreport')).toBeTruthy();
+    expect((screen.getByTestId('export-run-button') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByTestId('export-qc-recap')).toBeNull();
+  });
+
+  it('renders acknowledged + measured gate rows (pass/ack/fail labels + value·unit)', async () => {
+    const id = seedRestoration(
+      'crown',
+      qcReport([
+        gate({ gate: 'watertight' }),
+        gate({ gate: 'minWallThickness', passed: false, acknowledged: true, value: 0.42, unit: 'mm' }),
+      ]),
+    );
+    render(<ExportPanel />);
+    await selectRestoration(id);
+    const ack = screen.getByTestId('export-qc-gate-minWallThickness');
+    expect(ack.getAttribute('data-acknowledged')).toBe('true');
+    expect(ack.textContent).toContain('mm'); // the measured value·unit rendered
+    // An all-acknowledged report authorizes export (verdict allowed).
+    expect((screen.getByTestId('export-run-button') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('a stale QC report (journalHash ≠ finalMesh) shows the stale note and blocks the button', async () => {
+    const staleQc: QcReport = { ...qcReport([gate({ gate: 'watertight' })]), journalHash: 'a-different-hash' };
+    const id = seedRestoration('crown', staleQc);
+    render(<ExportPanel />);
+    await selectRestoration(id);
+    expect(screen.getByTestId('export-qc-stale')).toBeTruthy();
+    expect((screen.getByTestId('export-run-button') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('selecting PLY hides the STL-only header-policy note', async () => {
+    const id = seedRestoration('crown', qcReport([gate({ gate: 'watertight' })]));
+    render(<ExportPanel />);
+    const user = userEvent.setup();
+    await selectRestoration(id);
+    expect(screen.getByTestId('export-header-policy')).toBeTruthy();
+    await user.selectOptions(screen.getByTestId('export-format-select'), 'ply');
+    expect(screen.queryByTestId('export-header-policy')).toBeNull();
+  });
+
+  it('a 409 export-gates-failing renders the failing-gate list (no diff table) — honest, buttonless', async () => {
+    const id = seedRestoration('crown', qcReport([gate({ gate: 'watertight' }), gate({ gate: 'minWallThickness' })]));
+    route = (url) =>
+      url.includes('/export')
+        ? { status: 409, json: { error: 'export-gates-failing', message: 'server gates failed', failingGates: ['minWallThickness'] } }
+        : { status: 500, json: {} };
+    render(<ExportPanel />);
+    await selectRestoration(id);
+    await userEvent.setup().click(screen.getByTestId('export-run-button'));
+    await waitFor(() => expect(screen.getByTestId('export-mismatch')).toBeTruthy());
+    expect(screen.getByTestId('export-mismatch-gates').textContent).toContain('minWallThickness');
+    expect(screen.queryByTestId('export-mismatch-diff')).toBeNull();
+    expect(screen.getByTestId('export-mismatch').querySelector('button')).toBeNull();
+  });
+});
+
+// Engine-seam paths not reachable through the normal happy/refusal clicks
+// (the qcContext dispatch, the no-restoration guard, the real download sink,
+// the fetch-throw catches, clearArchive) — every one a visible store state.
+describe('ExportPanel — handoff controller edge paths', () => {
+  function status(id: string) {
+    return selectRelease(useHandoffStore.getState(), id);
+  }
+
+  it('the real qcContext dispatch returns null with no live session for every restoration type → no-live-context', async () => {
+    handoffController.__setQcContextSourceForTests(null); // use the REAL engine dispatch
+    for (const type of ['crown', 'inlay', 'onlay', 'bridge'] as RestorationType[]) {
+      const id = seedRestoration(type, qcReport([gate({ gate: 'watertight' })]));
+      await handoffController.releaseToServer(id);
+      expect(status(id).state).toBe('error');
+      expect(status(id).failure?.code).toBe('no-live-context');
+    }
+  });
+
+  it('releasing a restoration that no longer exists → a visible no-restoration error', async () => {
+    await handoffController.releaseToServer('ghost-id');
+    expect(status('ghost-id')).toMatchObject({ state: 'error', failure: { code: 'no-restoration' } });
+  });
+
+  it('the default download sink runs the real browser download path (no injected sink)', async () => {
+    seedCrown(qcReport([gate({ gate: 'watertight' })]));
+    // Do NOT inject a sink — exercise defaultDownloadSink against the real
+    // browser URL/anchor machinery (headless, harmless).
+    route = (url) => (url.includes('/archive') ? { status: 200, bytes: Uint8Array.from([5, 6]) } : { status: 500, json: {} });
+    render(<ExportPanel />);
+    await userEvent.setup().click(screen.getByTestId('archive-export-button'));
+    await waitFor(() => expect(useHandoffStore.getState().archive.state).toBe('idle'));
+    expect(useHandoffStore.getState().archive.error).toBeNull();
+  });
+
+  it('an archive-export fetch throw is caught into a visible archive-error', async () => {
+    seedCrown(qcReport([gate({ gate: 'watertight' })]));
+    vi.stubGlobal('fetch', async (input: unknown) => {
+      if (String(input).includes('/archive')) throw new Error('socket hang up');
+      return new Response('{}', { status: 200 });
+    });
+    render(<ExportPanel />);
+    await userEvent.setup().click(screen.getByTestId('archive-export-button'));
+    await waitFor(() => expect(screen.getByTestId('archive-error')).toBeTruthy());
+    expect(screen.getByTestId('archive-error').textContent).toContain('socket hang up');
+  });
+
+  it('an archive-import fetch throw is caught into a visible archive-error, dismissible', async () => {
+    seedCrown(qcReport([gate({ gate: 'watertight' })]));
+    vi.stubGlobal('fetch', async (input: unknown) => {
+      if (String(input).includes('/archives/import')) throw new Error('import socket error');
+      return new Response('{}', { status: 200 });
+    });
+    render(<ExportPanel />);
+    const user = userEvent.setup();
+    await user.upload(screen.getByTestId('archive-import-input'), new File([Uint8Array.from([1])], 'x.dqca'));
+    await waitFor(() => expect(screen.getByTestId('archive-error')).toBeTruthy());
+    // Dismiss clears the snapshot back to idle (clearArchive).
+    await user.click(within(screen.getByTestId('archive-error')).getByTestId('archive-dismiss'));
+    await waitFor(() => expect(screen.queryByTestId('archive-error')).toBeNull());
+  });
+
+  it('a malformed/empty non-OK export response still surfaces an honest (buttonless) mismatch with an http-status code', async () => {
+    const id = seedRestoration('crown', qcReport([gate({ gate: 'watertight' }), gate({ gate: 'minWallThickness' })]));
+    route = (url) => (url.includes('/export') ? { status: 500, json: {} } : { status: 500, json: {} });
+    render(<ExportPanel />);
+    await selectRestoration(id);
+    await userEvent.setup().click(screen.getByTestId('export-run-button'));
+    await waitFor(() => expect(screen.getByTestId('export-mismatch')).toBeTruthy());
+    expect(screen.getByTestId('export-mismatch').querySelector('button')).toBeNull();
+    expect(screen.queryByTestId('export-released')).toBeNull();
+  });
+});
+
+// Remaining response-mapping branches (defensive JSON coercions on untrusted
+// server payloads) — each still a visible, honest state.
+describe('ExportPanel — response-mapping branches', () => {
+  it('an archive-export 500 with an empty body falls back to an HTTP-status message', async () => {
+    seedCrown(qcReport([gate({ gate: 'watertight' })]));
+    route = (url) => (url.includes('/archive') ? { status: 500, json: {} } : { status: 500, json: {} });
+    render(<ExportPanel />);
+    await userEvent.setup().click(screen.getByTestId('archive-export-button'));
+    await waitFor(() => expect(screen.getByTestId('archive-error')).toBeTruthy());
+    expect(screen.getByTestId('archive-error').textContent).toContain('500');
+  });
+
+  it('a new-case import (no overwrite) shows the imported result with no provenance line when it carries no releases', async () => {
+    seedCrown(qcReport([gate({ gate: 'watertight' })]));
+    route = (url) => {
+      if (url.includes('/archives/import')) {
+        return {
+          status: 201,
+          json: { imported: true, caseId: 'fresh-case', overwritten: false, counts: { scans: 1, finalMeshes: 0, exportRows: 0, exportBytes: 0 } },
+        };
+      }
+      if (url.endsWith('/cases')) return { status: 200, json: [] };
+      return { status: 500, json: {} };
+    };
+    render(<ExportPanel />);
+    await userEvent.setup().upload(screen.getByTestId('archive-import-input'), new File([Uint8Array.from([1])], 'fresh.dqca'));
+    await waitFor(() => expect(screen.getByTestId('archive-imported')).toBeTruthy());
+    expect(screen.getByTestId('archive-imported').textContent).toContain('fresh-case');
+    expect(screen.queryByTestId('archive-imported-provenance')).toBeNull(); // exportRows === 0
+    expect(screen.queryByText(/overwritten/i)).toBeNull(); // overwritten === false
+  });
+
+  it('a 200 import whose body is not imported:true is treated as an error, not a success', async () => {
+    seedCrown(qcReport([gate({ gate: 'watertight' })]));
+    route = (url) => (url.includes('/archives/import') ? { status: 200, json: { imported: false, message: 'nothing imported' } } : { status: 500, json: {} });
+    render(<ExportPanel />);
+    await userEvent.setup().upload(screen.getByTestId('archive-import-input'), new File([Uint8Array.from([1])], 'x.dqca'));
+    await waitFor(() => expect(screen.getByTestId('archive-error')).toBeTruthy());
+    expect(screen.getByTestId('archive-error').textContent).toContain('nothing imported');
+  });
+
+  it('an import conflict without a caseId still surfaces the confirm (no silent overwrite)', async () => {
+    seedCrown(qcReport([gate({ gate: 'watertight' })]));
+    route = (url) => (url.includes('/archives/import') ? { status: 409, json: { error: 'archive-import-conflict', message: 'exists' } } : { status: 500, json: {} });
+    render(<ExportPanel />);
+    await userEvent.setup().upload(screen.getByTestId('archive-import-input'), new File([Uint8Array.from([1])], 'x.dqca'));
+    await waitFor(() => expect(screen.getByTestId('archive-conflict')).toBeTruthy());
+    expect(screen.getByTestId('archive-conflict-confirm')).toBeTruthy();
+  });
+
+  it('a non-Error thrown while reaching the server still surfaces a visible network error (String coercion)', async () => {
+    const id = seedRestoration('crown', qcReport([gate({ gate: 'watertight' }), gate({ gate: 'minWallThickness' })]));
+    render(<ExportPanel />);
+    await selectRestoration(id);
+    vi.stubGlobal('fetch', async (input: unknown) => {
+      if (String(input).includes('/export')) throw 'plain-string-failure';
+      return new Response('{}', { status: 200 });
+    });
+    await userEvent.setup().click(screen.getByTestId('export-run-button'));
+    await waitFor(() => expect(screen.getByTestId('export-release-error')).toBeTruthy());
+    expect(screen.getByTestId('export-release-error-message').textContent).toContain('plain-string-failure');
+  });
+});
+
+// The remaining catch/coercion branches — non-Error throws in the archive
+// paths, and an import success payload missing its caseId — all still visible.
+describe('ExportPanel — archive coercion branches', () => {
+  it('a non-Error thrown during archive export surfaces a visible archive-error (String coercion)', async () => {
+    seedCrown(qcReport([gate({ gate: 'watertight' })]));
+    vi.stubGlobal('fetch', async (input: unknown) => {
+      if (String(input).includes('/archive')) throw 'archive-plain-failure';
+      return new Response('{}', { status: 200 });
+    });
+    render(<ExportPanel />);
+    await userEvent.setup().click(screen.getByTestId('archive-export-button'));
+    await waitFor(() => expect(screen.getByTestId('archive-error')).toBeTruthy());
+    expect(screen.getByTestId('archive-error').textContent).toContain('archive-plain-failure');
+  });
+
+  it('a non-Error thrown during archive import surfaces a visible archive-error (String coercion)', async () => {
+    seedCrown(qcReport([gate({ gate: 'watertight' })]));
+    vi.stubGlobal('fetch', async (input: unknown) => {
+      if (String(input).includes('/archives/import')) throw 'import-plain-failure';
+      return new Response('{}', { status: 200 });
+    });
+    render(<ExportPanel />);
+    await userEvent.setup().upload(screen.getByTestId('archive-import-input'), new File([Uint8Array.from([1])], 'x.dqca'));
+    await waitFor(() => expect(screen.getByTestId('archive-error')).toBeTruthy());
+    expect(screen.getByTestId('archive-error').textContent).toContain('import-plain-failure');
+  });
+
+  it('an import success missing its caseId still renders the imported result (null-caseId coercion)', async () => {
+    seedCrown(qcReport([gate({ gate: 'watertight' })]));
+    route = (url) => {
+      if (url.includes('/archives/import')) {
+        return { status: 201, json: { imported: true, overwritten: false, counts: { scans: 0, finalMeshes: 0, exportRows: 0, exportBytes: 0 } } };
+      }
+      if (url.endsWith('/cases')) return { status: 200, json: [] };
+      return { status: 500, json: {} };
+    };
+    render(<ExportPanel />);
+    await userEvent.setup().upload(screen.getByTestId('archive-import-input'), new File([Uint8Array.from([1])], 'x.dqca'));
+    await waitFor(() => expect(screen.getByTestId('archive-imported')).toBeTruthy());
   });
 });

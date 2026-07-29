@@ -678,6 +678,7 @@
     "exportButton": "Exportar y validar en el servidor",
     "statusReleasing": "El servidor está revalidando los bytes exportados…",
     "releasedTitle": "Liberado — el servidor revalidó los bytes exportados exactos.",
+    "releasedStale": "OBSOLETO — el diseño cambió después de esta liberación. Los enlaces siguientes apuntan a los bytes liberados ANTERIORES, no al diseño actual. Vuelva a exportar antes de la entrega.",
     "downloadLink": "Descargar archivo liberado",
     "traceabilityHtmlLink": "Ver documento de trazabilidad (HTML)",
     "traceabilityJsonLink": "Descargar JSON de trazabilidad",
