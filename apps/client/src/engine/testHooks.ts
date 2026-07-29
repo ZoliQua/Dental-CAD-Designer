@@ -157,6 +157,20 @@ export interface DqcadTestHooks {
    * sufficient and honest here, unlike `seedCavityOutline`'s bit-exact
    * snap-to-mesh requirement. */
   seedBridgeAbutmentMargin(restorationId: string, tooth: number, points: readonly (readonly [number, number, number])[]): void;
+  /** DEV/TEST-ONLY, Phase 7 Task 9 addition. Sets the case's material-profile
+   * identity (`settings.materialProfileId`/`profileVersion`) — the write the
+   * LIVE MATERIAL PICKER will own once it lands (tracked, not this phase). The
+   * Phase 7 export e2e surfaced a real gap the T8 fixture harness had masked: a
+   * freshly created case has EMPTY settings, so the client design engines stamp
+   * `QcReport.profileVersion: 'unversioned'` (crownDesign.ts:923 et al.), while
+   * the export request/server resolve the profile to standard-zirconia 1.4.0 —
+   * so the server's dual re-validation 409s `export-qc-mismatch` on the
+   * `profileVersion` field for EVERY real-UI export until a picker sets these.
+   * This hook selects the same standard-zirconia profile the design engines'
+   * thresholds already come from, so the client QC and the server agree (a
+   * clean release) — see docs/demos/phase-7.md's open items. A pure settings
+   * write, journaling nothing (settings are config, not geometry). */
+  seedMaterialProfile(materialProfileId: string, profileVersion: string): void;
 }
 
 declare global {
@@ -255,6 +269,9 @@ const hooks: DqcadTestHooks = {
       timestamp: new Date().toISOString(),
     };
     caseStore.updateRestoration(next, operation);
+  },
+  seedMaterialProfile(materialProfileId, profileVersion) {
+    caseStore.setMaterialProfile(materialProfileId, profileVersion);
   },
 };
 

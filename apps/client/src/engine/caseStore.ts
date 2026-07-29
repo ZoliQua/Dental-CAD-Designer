@@ -588,6 +588,33 @@ class CaseStoreEngine {
   }
 
   /**
+   * Sets the case's material-profile identity (`settings.materialProfileId` +
+   * `settings.profileVersion`) in one publish — a NON-journaled settings edit
+   * (settings are placeholder/config, not geometry — see
+   * apps/server/src/case-document.ts's doc; scene ops aren't journaled either,
+   * ADR-002). This is the write the LIVE MATERIAL PICKER will own once it lands
+   * (tracked, not this phase); until then the only caller is the DEV/e2e test
+   * hook `seedMaterialProfile`, which selects the same standard-zirconia profile
+   * whose thresholds the design engines already use — so the client-computed
+   * `QcReport.profileVersion` matches the profile the export request resolves,
+   * and the server's dual re-validation agrees instead of 409-ing on the
+   * `profileVersion` field (the real gap the Phase 7 e2e surfaced — see
+   * docs/demos/phase-7.md's open items). No-ops if unchanged. */
+  setMaterialProfile(materialProfileId: string, profileVersion: string): void {
+    if (
+      this.document.settings.materialProfileId === materialProfileId &&
+      this.document.settings.profileVersion === profileVersion
+    ) {
+      return;
+    }
+    this.document = {
+      ...this.document,
+      settings: { ...this.document.settings, materialProfileId, profileVersion },
+    };
+    this.publish();
+  }
+
+  /**
    * LOAD-ONLY: installs `document` (freshly fetched from the server — see
    * engine/persistence.ts's `openCase()`) as the CURRENT case document in
    * ONE atomic publish, bypassing the incremental per-node mutation methods
