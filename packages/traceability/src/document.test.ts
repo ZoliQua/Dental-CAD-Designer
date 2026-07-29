@@ -22,7 +22,7 @@ function sha256Hex(text: string): string {
 describe('buildReleaseTraceabilityDocument', () => {
   it('assembles the release document from the server-side inputs', () => {
     const doc = buildReleaseTraceabilityDocument(releaseInputFixture());
-    expect(doc.schemaVersion).toBe(1);
+    expect(doc.schemaVersion).toBe(2);
     expect(doc.documentKind).toBe('release');
     expect(doc.identity).toEqual({
       caseId: 'case-fixture-1',
@@ -65,9 +65,11 @@ describe('buildReleaseTraceabilityDocument', () => {
       },
       gateBoundsCarriedInGateResults: true,
     });
-    // The honest non-certification disclosure (T4 known limitation).
-    expect(doc.certification.outerEnvelopeCertified).toBe(false);
-    expect(doc.certification.limitations).toEqual([OUTER_ENVELOPE_LIMITATION]);
+    // schemaVersion 2 (T4-F2 closure): a release CERTIFIES the outer envelope
+    // (mandatory finalMesh persistence + the step-10.5 assertion), so it no
+    // longer carries the outer-envelope-not-certified disclosure.
+    expect(doc.certification.outerEnvelopeCertified).toBe(true);
+    expect(doc.certification.limitations).toEqual([]);
   });
 
   it('derives the PLY lossless relation and requires null narrowing/headerText for PLY', () => {
@@ -123,7 +125,11 @@ describe('buildPreviewTraceabilityDocument', () => {
     expect(doc.errorBounds).toBeNull();
     expect(doc.versions.manifoldVersion).toBeNull();
     expect(doc.qc.gates).toEqual(previewInputFixture().report.gates);
+    // A preview certifies nothing (nothing was released) — it keeps the
+    // outer-envelope disclosure even at schemaVersion 2.
+    expect(doc.schemaVersion).toBe(2);
     expect(doc.certification.outerEnvelopeCertified).toBe(false);
+    expect(doc.certification.limitations).toEqual([OUTER_ENVELOPE_LIMITATION]);
   });
 });
 
@@ -161,12 +167,21 @@ describe('serializeTraceabilityDocument — the deterministic core', () => {
   it('byte pin: the synthetic release document serializes to pinned bytes', () => {
     // The package-level determinism pin (kernel-independent: every input is
     // analytic). Moves ONLY with a deliberate TRACEABILITY_SCHEMA_VERSION
-    // bump / documented builder change. Filled from the first green run.
+    // bump / documented builder change.
+    //
+    // MOVED at TRACEABILITY_SCHEMA_VERSION 1 → 2 (Phase 7 Task 8, the SOLE
+    // sanctioned traceability golden re-pin): the release document now carries
+    // `schemaVersion: 2` and `certification: { outerEnvelopeCertified: true,
+    // limitations: [] }` instead of v1's `{ false, [outer-envelope-not-
+    // certified] }` — the deliberate T4-F2 outer-envelope certification flip
+    // (mandatory finalMesh persistence + the step-10.5 byte-provenance
+    // assertion). This is a documented schema evolution, not numerical drift.
+    // Previous (v1): 7140f6d70a92821fcb0490e65d3ce5cdfc0ad1e511f08fe4d91a16d94d800d24.
     const json = serializeTraceabilityDocument(
       buildReleaseTraceabilityDocument(releaseInputFixture()),
     );
     expect(sha256Hex(json)).toBe(
-      '7140f6d70a92821fcb0490e65d3ce5cdfc0ad1e511f08fe4d91a16d94d800d24',
+      'a200d10ecaee7c6e95dc39baa16abaed704497d6876a980c90bfeca21e0b9fcc',
     );
   });
 });

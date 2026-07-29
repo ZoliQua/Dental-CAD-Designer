@@ -65,6 +65,7 @@ describe('QC traceability document — server generation, storage, routes', () =
   let meshDataDir: string;
   let toothLibraryDataDir: string;
   let exportsDataDir: string;
+  let finalMeshDataDir: string;
 
   let standinInput: RunCrownQcInput;
   let standinReport: QcReport;
@@ -78,8 +79,9 @@ describe('QC traceability document — server generation, storage, routes', () =
     meshDataDir = mkdtempSync(join(tmpdir(), 'dqcad-trace-mesh-'));
     toothLibraryDataDir = mkdtempSync(join(tmpdir(), 'dqcad-trace-tooth-'));
     exportsDataDir = mkdtempSync(join(tmpdir(), 'dqcad-trace-store-'));
+    finalMeshDataDir = mkdtempSync(join(tmpdir(), 'dqcad-trace-final-'));
     prisma = new PrismaClient();
-    app = await buildApp({ prisma, meshDataDir, toothLibraryDataDir, exportsDataDir });
+    app = await buildApp({ prisma, meshDataDir, toothLibraryDataDir, exportsDataDir, finalMeshDataDir });
 
     const base = await buildCrownQcInput('standin');
     standinInput = {
@@ -119,6 +121,7 @@ describe('QC traceability document — server generation, storage, routes', () =
     rmSync(meshDataDir, { recursive: true, force: true });
     rmSync(toothLibraryDataDir, { recursive: true, force: true });
     rmSync(exportsDataDir, { recursive: true, force: true });
+    rmSync(finalMeshDataDir, { recursive: true, force: true });
   });
 
   async function storedRow(exportId: string) {
@@ -181,11 +184,12 @@ describe('QC traceability document — server generation, storage, routes', () =
     // ~5 orders below the 1 µm display resolution (the T2 measurement class).
     expect(document.errorBounds?.f32Narrowing?.halfUlpBoundMm).toBeLessThan(1e-3);
 
-    // The honest non-certification disclosure (T4 known limitation).
-    expect(document.certification.outerEnvelopeCertified).toBe(false);
-    expect(document.certification.limitations.map((l) => l.code)).toContain(
-      'outer-envelope-not-certified',
-    );
+    // schemaVersion 2 (T4-F2 closure): the release CERTIFIES the outer
+    // envelope (mandatory finalMesh persistence + the step-10.5 assertion), so
+    // it no longer carries the outer-envelope-not-certified disclosure.
+    expect(document.schemaVersion).toBe(2);
+    expect(document.certification.outerEnvelopeCertified).toBe(true);
+    expect(document.certification.limitations).toEqual([]);
 
     // The stored string IS the canonical serialization (byte-stable core).
     expect(row.traceabilityJson).toBe(serializeTraceabilityDocument(document));
@@ -573,10 +577,19 @@ describe('QC traceability document — server generation, storage, routes', () =
     });
     assertValidTraceabilityDocument(pinned);
     const json = serializeTraceabilityDocument(pinned);
-    // Filled from the first green run (the repo's pin convention); moves only
-    // with a deliberate kernel/manifold/schema bump.
+    // Moves only with a deliberate kernel/manifold/schema bump.
+    //
+    // MOVED at TRACEABILITY_SCHEMA_VERSION 1 → 2 (Phase 7 Task 8, the SOLE
+    // sanctioned traceability golden re-pin): the release document now carries
+    // `schemaVersion: 2` + `certification.outerEnvelopeCertified: true` with
+    // empty `limitations` (the T4-F2 outer-envelope certification flip —
+    // mandatory finalMesh persistence + the step-10.5 byte-provenance
+    // assertion). Kernel/manifold pins unchanged (0.26.0 / 3.5.1) — the gate
+    // results + hashes are byte-identical; only the schema/certification
+    // fields moved. Documented schema evolution, not numerical drift.
+    // Previous (v1): 13f5262f68fa1c2995e6dfef47a879f228d15262bde81e287193e898cdb363e8.
     expect(sha256Hex(json)).toBe(
-      '13f5262f68fa1c2995e6dfef47a879f228d15262bde81e287193e898cdb363e8',
+      '4e8afb2aabc44202e5a0154b1648b148ab38c9180f645bdd6b4c6278f6ecc6dc',
     );
   });
 });

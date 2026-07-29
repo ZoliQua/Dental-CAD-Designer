@@ -1282,6 +1282,9 @@ export const exportResponseSchema = {
        * reference (persisted design) vs delivered re-import content hashes. */
       referenceHash: sha256HexSchema,
       reimportMeshHash: sha256HexSchema,
+      /** `export-final-mesh-not-persisted` only (Phase 7 Task 8): the
+       * unresolved final-design mesh content hash (stages.finalMesh). */
+      meshContentHash: sha256HexSchema,
     },
   },
 } as const;

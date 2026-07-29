@@ -28,13 +28,15 @@ import { TRACEABILITY_SCHEMA_VERSION } from '@dqcad/shared-types';
 import { canonicalStringify } from '@dqcad/clinical-profiles';
 
 /**
- * The T4 KNOWN RELEASE-GATE LIMITATION (apps/server/src/export-route.ts's
- * module doc), stated as the fixed English record text every release
- * document carries until the finalMesh byte-provenance check or a geometric
- * outer-deviation gate closes it. The `statement` is deliberately a FIXED
- * constant (deterministic bytes), never rendered from locale state — the
- * renderer translates the `code` for display and quotes this as the record
- * text.
+ * The outer-envelope non-certification disclosure. As of schemaVersion 2 the
+ * T4-F2 gap is CLOSED for releases (mandatory finalMesh persistence + the
+ * step-10.5 byte-provenance assertion — export-route.ts), so a RELEASE
+ * document no longer carries this. It remains on a PREVIEW document, which
+ * certifies nothing (nothing was released): the client preview honestly
+ * discloses that a preview is not a certified release record. The `statement`
+ * is a FIXED constant (deterministic bytes), never rendered from locale state
+ * — the renderer translates the `code` for display and quotes this as the
+ * record text.
  */
 export const OUTER_ENVELOPE_LIMITATION: TraceabilityLimitation = {
   code: 'outer-envelope-not-certified',
@@ -160,7 +162,13 @@ export function buildReleaseTraceabilityDocument(
             },
       gateBoundsCarriedInGateResults: true,
     },
-    certification: { outerEnvelopeCertified: false, limitations: [OUTER_ENVELOPE_LIMITATION] },
+    // schemaVersion 2 (the T4-F2 closure): a release document exists ONLY
+    // after the endpoint resolved the persisted final-design mesh and asserted
+    // the delivered geometry IS that solid up to the format narrowing
+    // (export-route.ts step 10.5 — mandatory since Task 8). So the outer
+    // envelope IS certified, and the `outer-envelope-not-certified` disclosure
+    // no longer applies to a release (limitations empty).
+    certification: { outerEnvelopeCertified: true, limitations: [] },
   };
 }
 

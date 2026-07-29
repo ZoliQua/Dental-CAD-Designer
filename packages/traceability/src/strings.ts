@@ -104,6 +104,8 @@ const en = {
     'Algorithmic approximation bounds of individual QC measurements are carried verbatim in the gate results above.',
 
   certHeading: 'Certification scope',
+  certOuterEnvelopeCertified:
+    'CERTIFIED: the delivered solid’s outer envelope. The release resolved the persisted final-design mesh and confirmed the delivered export geometry is that exact solid (up to the documented format narrowing); a moved or tampered vertex that no QC gate could see is caught by this byte-provenance check.',
   'limitation.outer-envelope-not-certified':
     'NOT CERTIFIED: the delivered solid’s outer envelope. The release certifies the QC gate results measured on the re-imported export bytes and their agreement with the client report; no gate compares the delivered outer shape against the designed source mesh.',
   certRecordText: 'Record text',
@@ -204,6 +206,8 @@ const hu: Record<TraceabilityStringKey, string> = {
     'Az egyes QC-mérések algoritmikus közelítési korlátait a fenti kapueredmények változatlanul hordozzák.',
 
   certHeading: 'Tanúsítási hatókör',
+  certOuterEnvelopeCertified:
+    'TANÚSÍTOTT: a kiadott test külső burkolata. A kiadás feloldotta a szerveren tárolt végleges tervhálót, és igazolta, hogy a kiadott export-geometria pontosan ez a test (a dokumentált formátumszűkítés erejéig); egy elmozdított vagy meghamisított csúcsot, amelyet egyetlen QC-kapu sem látna, ez a bájt-eredetiség ellenőrzés kiszűr.',
   'limitation.outer-envelope-not-certified':
     'NEM TANÚSÍTOTT: a kiadott test külső burkolata. A kiadás az újraimportált export-bájtokon mért QC-kapueredményeket és azok kliens-jelentéssel való egyezését tanúsítja; egyetlen kapu sem veti össze a kiadott külső formát a tervezett forráshálóval.',
   certRecordText: 'Jegyzőkönyvi szöveg',
@@ -296,6 +300,8 @@ const de: Record<TraceabilityStringKey, string> = {
     'Algorithmische Näherungsschranken einzelner QK-Messungen werden unverändert in den obigen Gate-Ergebnissen mitgeführt.',
 
   certHeading: 'Zertifizierungsumfang',
+  certOuterEnvelopeCertified:
+    'ZERTIFIZIERT: die Außenhülle des gelieferten Körpers. Die Freigabe hat das serverseitig gespeicherte finale Designnetz aufgelöst und bestätigt, dass die gelieferte Export-Geometrie exakt dieser Körper ist (bis auf die dokumentierte Format-Verengung); ein verschobener oder manipulierter Vertex, den kein QK-Gate sehen könnte, wird von dieser Byte-Herkunftsprüfung erkannt.',
   'limitation.outer-envelope-not-certified':
     'NICHT ZERTIFIZIERT: die Außenhülle des gelieferten Körpers. Die Freigabe zertifiziert die auf den reimportierten Export-Bytes gemessenen QK-Gate-Ergebnisse und deren Übereinstimmung mit dem Client-Bericht; kein Gate vergleicht die gelieferte Außenform mit dem entworfenen Quellnetz.',
   certRecordText: 'Protokolltext',
@@ -387,6 +393,8 @@ const es: Record<TraceabilityStringKey, string> = {
     'Las cotas de aproximación algorítmica de las mediciones QC individuales se transportan sin cambios en los resultados de puerta anteriores.',
 
   certHeading: 'Alcance de la certificación',
+  certOuterEnvelopeCertified:
+    'CERTIFICADO: la envolvente exterior del sólido entregado. La liberación resolvió la malla de diseño final almacenada en el servidor y confirmó que la geometría de exportación entregada es ese sólido exacto (hasta el estrechamiento de formato documentado); un vértice movido o manipulado que ninguna puerta QC podría ver es detectado por esta verificación de procedencia de bytes.',
   'limitation.outer-envelope-not-certified':
     'NO CERTIFICADO: la envolvente exterior del sólido entregado. La liberación certifica los resultados de las puertas QC medidos sobre los bytes de exportación reimportados y su concordancia con el informe del cliente; ninguna puerta compara la forma exterior entregada con la malla fuente diseñada.',
   certRecordText: 'Texto del registro',

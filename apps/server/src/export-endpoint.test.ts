@@ -72,6 +72,7 @@ describe('POST /api/restorations/:id/export — crown fixture (pass loop + falsi
   let meshDataDir: string;
   let toothLibraryDataDir: string;
   let exportsDataDir: string;
+  let finalMeshDataDir: string;
 
   let standinInput: RunCrownQcInput;
   let standinReport: QcReport;
@@ -82,8 +83,9 @@ describe('POST /api/restorations/:id/export — crown fixture (pass loop + falsi
     meshDataDir = mkdtempSync(join(tmpdir(), 'dqcad-export-mesh-'));
     toothLibraryDataDir = mkdtempSync(join(tmpdir(), 'dqcad-export-tooth-'));
     exportsDataDir = mkdtempSync(join(tmpdir(), 'dqcad-export-store-'));
+    finalMeshDataDir = mkdtempSync(join(tmpdir(), 'dqcad-export-final-'));
     prisma = new PrismaClient();
-    app = await buildApp({ prisma, meshDataDir, toothLibraryDataDir, exportsDataDir });
+    app = await buildApp({ prisma, meshDataDir, toothLibraryDataDir, exportsDataDir, finalMeshDataDir });
 
     // The "client" side, freshness + profile identity included: the report's
     // journalHash IS the finalMesh content hash (the P4 convention the real
@@ -112,6 +114,7 @@ describe('POST /api/restorations/:id/export — crown fixture (pass loop + falsi
     rmSync(meshDataDir, { recursive: true, force: true });
     rmSync(toothLibraryDataDir, { recursive: true, force: true });
     rmSync(exportsDataDir, { recursive: true, force: true });
+    rmSync(finalMeshDataDir, { recursive: true, force: true });
   });
 
   const standinHarness = (overrides?: Partial<Parameters<typeof buildExportHarness>[0]>): Promise<ExportHarness> =>
@@ -242,17 +245,20 @@ describe('POST /api/restorations/:id/export — crown fixture (pass loop + falsi
     expect(dl.statusCode).toBe(404);
   }, 120_000);
 
-  it('(a2) COORDINATED geometry tamper (welds cleanly, penetrates the die) → 409 export-qc-mismatch + persisted bundle', async () => {
+  it('(a2) COORDINATED geometry tamper (welds cleanly, penetrates the die) → 409 export-outer-envelope-mismatch + persisted bundle', async () => {
     // The strongest byte adversary the QC gate set can see: ONE welded
     // vertex is moved IDENTICALLY across every per-triangle occurrence
     // (byte-identical 12-byte triple match), so the re-import welds cleanly
     // and stays watertight/manifold/single-component — the cleanliness gate
-    // passes. The vertex is moved INTO the prep die (die frustum: margin
-    // radius 1.2 mm at z 0.5 → (0, 0, 1.2) is deep inside), so the crown
-    // wall now stabs through die material → the server's seating boolean
-    // measures nonzero interference where the client report (computed on
-    // the untampered solid) certified a clean seat → per-field QC mismatch,
-    // 409, diagnostic bundle persisted, nothing released.
+    // passes. As of Task 8 (mandatory finalMesh persistence), the delivered
+    // geometry is FIRST checked against the persisted design solid at step
+    // 10.5: the tampered re-import hash no longer matches the reference, so
+    // this is caught as an OUTER-ENVELOPE mismatch (a stronger, earlier gate
+    // than the QC-value diff — it catches ANY delivered-geometry deviation,
+    // die-penetrating or not, before the QC recompute even runs). The
+    // qc-mismatch path is still exercised by the "tampered clientReport" test
+    // below (clean bytes, tampered report field). Diagnostic persisted,
+    // nothing released.
     const harness = await standinHarness({
       mutateBytes: (bytes) => {
         const tampered = bytes.slice();
@@ -289,21 +295,20 @@ describe('POST /api/restorations/:id/export — crown fixture (pass loop + falsi
     const body = res.json() as {
       error: string;
       diagnosticId: string;
-      differences: { path: string }[];
+      referenceHash: string;
+      reimportMeshHash: string;
     };
-    expect(body.error).toBe('export-qc-mismatch');
-    // The seating measurement moved — the diff names measured-value paths.
-    expect(body.differences.length).toBeGreaterThan(0);
+    expect(body.error).toBe('export-outer-envelope-mismatch');
+    // The delivered geometry deviates from the persisted design solid.
+    expect(body.referenceHash).not.toBe(body.reimportMeshHash);
 
     // The bundle is PERSISTED (the bug-report payload).
     const diagnostic = await prisma.exportDiagnostic.findUniqueOrThrow({ where: { id: body.diagnosticId } });
-    expect(diagnostic.reason).toBe('qc-mismatch');
+    expect(diagnostic.reason).toBe('outer-envelope-mismatch');
     expect(diagnostic.bytesSha256).toBe(harness.request.bytesSha256);
     const bundle = JSON.parse(diagnostic.bundleJson) as Record<string, unknown>;
-    expect(bundle['serverReport']).toBeDefined();
-    expect(bundle['clientReport']).toBeDefined();
-    expect(bundle['intakeSteps']).toBeDefined();
-    expect((bundle['differences'] as unknown[]).length).toBe(body.differences.length);
+    expect(bundle['reimportMeshHash']).toBeDefined();
+    expect(bundle['referenceHash']).toBeDefined();
 
     // Nothing released.
     expect(await prisma.export.findFirst({ where: { bytesSha256: harness.request.bytesSha256 } })).toBeNull();

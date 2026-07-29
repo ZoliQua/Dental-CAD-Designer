@@ -61,6 +61,7 @@ describe('export dual-validation — P5 inlay/onlay fixtures', () => {
       meshDataDir: mk('mesh'),
       toothLibraryDataDir: mk('tooth'),
       exportsDataDir: mk('store'),
+      finalMeshDataDir: mk('final'),
     });
   }, 60_000);
 

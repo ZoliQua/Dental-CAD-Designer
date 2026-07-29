@@ -51,8 +51,8 @@ describe('validateTraceabilityDocument — falsifiable negatives', () => {
 
   it('rejects a wrong schemaVersion', () => {
     const doc = mutable(releaseDoc());
-    doc['schemaVersion'] = 2;
-    expectInvalid(doc, 'schemaVersion 2 is not this schema');
+    doc['schemaVersion'] = 3;
+    expectInvalid(doc, 'schemaVersion 3 is not this schema (current is 2)');
   });
 
   it('rejects an unknown extra field (a regulatory record carries no unaudited fields)', () => {
@@ -87,32 +87,46 @@ describe('validateTraceabilityDocument — falsifiable negatives', () => {
     expectInvalid(release, 'preview must not carry release evidence');
   });
 
-  it('rejects a flipped outer-envelope certification (schema-pinned false)', () => {
+  it('schemaVersion 2: a RELEASE must certify the outer envelope (const true) — false is schema-invalid', () => {
+    // The T4-F2 closure: a release document can only exist after the step-10.5
+    // assertion passes, so the schema pins `outerEnvelopeCertified: const true`
+    // for a release. Un-certifying it (back to false) is now schema-invalid —
+    // the mirror of the old schemaVersion-1 `const false` discipline.
     const doc = mutable(releaseDoc());
-    (doc['certification'] as Record<string, unknown>)['outerEnvelopeCertified'] = true;
-    expectInvalid(doc, 'outerEnvelopeCertified cannot flip to true within schemaVersion 1');
+    (doc['certification'] as Record<string, unknown>)['outerEnvelopeCertified'] = false;
+    expectInvalid(doc, 'a release cannot be uncertified within schemaVersion 2');
   });
 
-  it('S2: rejects a document whose limitations DROP the outer-envelope disclosure (schema-guaranteed, not builder-guaranteed)', () => {
-    // Empty list — the disclosure removed entirely.
-    const empty = mutable(releaseDoc());
-    (empty['certification'] as Record<string, unknown>)['limitations'] = [];
-    expectInvalid(empty, 'limitations: [] must not schema-validate in schemaVersion 1');
-    // Non-empty list that swaps the required disclosure for something else.
-    const swapped = mutable(releaseDoc());
-    (swapped['certification'] as Record<string, unknown>)['limitations'] = [
-      { code: 'some-other-limitation', statement: 'anything but the outer-envelope disclosure' },
-    ];
-    expectInvalid(
-      swapped,
-      'the outer-envelope-not-certified code is schema-required in schemaVersion 1',
-    );
-    // The same holds for previews (the builder injects the disclosure for both kinds).
+  it('schemaVersion 2: a PREVIEW must NOT certify the outer envelope (const false) — true is schema-invalid', () => {
     const preview = mutable(
       buildPreviewTraceabilityDocument(previewInputFixture()) as QcTraceabilityDocument,
     );
-    (preview['certification'] as Record<string, unknown>)['limitations'] = [];
-    expectInvalid(preview, 'a preview without the disclosure is equally invalid');
+    (preview['certification'] as Record<string, unknown>)['outerEnvelopeCertified'] = true;
+    expectInvalid(preview, 'a preview certifies nothing — it cannot claim the outer envelope');
+  });
+
+  it('S2 (preview): a preview whose limitations DROP the outer-envelope disclosure is schema-invalid', () => {
+    // The S2 discipline moves to the PREVIEW branch at schemaVersion 2: a
+    // preview must carry the disclosure (it certifies nothing). A RELEASE,
+    // which certifies the envelope, legitimately carries an EMPTY limitations
+    // list — asserted valid alongside.
+    const releaseEmpty = mutable(releaseDoc());
+    (releaseEmpty['certification'] as Record<string, unknown>)['limitations'] = [];
+    expect(validateTraceabilityDocument(releaseEmpty)).toEqual({ valid: true });
+
+    const previewEmpty = mutable(
+      buildPreviewTraceabilityDocument(previewInputFixture()) as QcTraceabilityDocument,
+    );
+    (previewEmpty['certification'] as Record<string, unknown>)['limitations'] = [];
+    expectInvalid(previewEmpty, 'a preview without the disclosure is invalid');
+    // A preview that SWAPS the disclosure for something else is equally invalid.
+    const previewSwapped = mutable(
+      buildPreviewTraceabilityDocument(previewInputFixture()) as QcTraceabilityDocument,
+    );
+    (previewSwapped['certification'] as Record<string, unknown>)['limitations'] = [
+      { code: 'some-other-limitation', statement: 'anything but the outer-envelope disclosure' },
+    ];
+    expectInvalid(previewSwapped, 'the outer-envelope-not-certified code is required on a preview');
   });
 
   it('rejects malformed hashes, empty gate lists, and non-FDI teeth', () => {

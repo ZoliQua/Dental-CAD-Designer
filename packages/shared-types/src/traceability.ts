@@ -47,13 +47,32 @@
 // authoritative constant for the installed manifold-3d build; the server
 // does, and a release document must carry it.
 //
-// schemaVersion history: 1 (Phase 7 Task 5, initial shape).
+// schemaVersion history:
+//   1 (Phase 7 Task 5) — initial shape; `outerEnvelopeCertified` typed
+//     `const false` (no gate/provenance certified the delivered outer
+//     envelope) with a mandatory `outer-envelope-not-certified` disclosure.
+//   2 (Phase 7 Task 8, ADR-005-style evolution) — the T4-F2 closure landed:
+//     the export endpoint now REFUSES a release whose final-design mesh bytes
+//     are not persisted server-side (`export-final-mesh-not-persisted`), and
+//     asserts the delivered geometry IS that persisted solid up to the format
+//     narrowing (step 10.5). Because a release can now ONLY be produced after
+//     that assertion passes, a RELEASE document's outer envelope IS certified:
+//     `certification.outerEnvelopeCertified` becomes `true` for releases (and
+//     the `outer-envelope-not-certified` disclosure is dropped from them). A
+//     PREVIEW is not a release and certifies nothing, so it keeps
+//     `outerEnvelopeCertified: false` + the disclosure. The type widens from
+//     `const false` to `boolean`; the release/preview split is enforced in the
+//     schema's `allOf` conditional (release pins `const true`, preview pins
+//     `const false` + the disclosure). This byte change to the serialized
+//     document is the SOLE sanctioned traceability golden re-pin for the flip.
 import type { ExportAcknowledgment, ExportFormat, ExportRequestMaterialProfile } from './index.ts';
 import type { FdiTooth, QcGateResult, RestorationType } from './index.ts';
 
 /** Version of the `QcTraceabilityDocument` shape (bumped on breaking
- * change, with a migration note — the ADR-005 discipline). */
-export const TRACEABILITY_SCHEMA_VERSION = 1;
+ * change, with a migration note — the ADR-005 discipline). See this
+ * module's schemaVersion-history doc for the 1→2 evolution (the T4-F2
+ * outer-envelope certification). */
+export const TRACEABILITY_SCHEMA_VERSION = 2;
 
 export type TraceabilityDocumentKind = 'release' | 'preview';
 
@@ -176,16 +195,20 @@ export interface TraceabilityLimitation {
   statement: string;
 }
 
-/** What this release did and did NOT certify. `outerEnvelopeCertified` is
- * the T4 KNOWN RELEASE-GATE LIMITATION (export-route.ts): no current gate
- * measures the delivered solid's OUTER envelope against the designed source
- * mesh, so the release certifies the re-imported geometry's gate results —
- * not scan-to-bytes outer-shape provenance. Typed `false` (not `boolean`)
- * so this field CANNOT silently flip to `true` without a schema-version
- * bump carrying the closure evidence (the planned finalMesh byte-provenance
- * or outer-deviation gate). */
+/** What this document did and did NOT certify. As of schemaVersion 2 (the
+ * T4-F2 closure), `outerEnvelopeCertified` is `true` on a RELEASE document:
+ * the release endpoint refuses unless the final-design mesh bytes are
+ * persisted server-side and asserts the delivered geometry IS that solid up
+ * to the format narrowing (export-route.ts step 10.5), so a release document
+ * — which can only exist after that assertion passes — certifies the outer
+ * envelope, and carries no `outer-envelope-not-certified` limitation. A
+ * PREVIEW is not a release and certifies nothing, so it stays
+ * `outerEnvelopeCertified: false` and keeps the disclosure. The type is
+ * `boolean` (was `const false` at schemaVersion 1); the const per document
+ * kind is pinned in the JSON schema's release/preview `allOf` conditional, so
+ * the field still cannot flip freely within a kind without a schema change. */
 export interface TraceabilityCertification {
-  outerEnvelopeCertified: false;
+  outerEnvelopeCertified: boolean;
   limitations: readonly TraceabilityLimitation[];
 }
 
@@ -334,40 +357,69 @@ const errorBoundsJsonSchema = {
   },
 } as const;
 
+const limitationItemsJsonSchema = {
+  type: 'object',
+  required: ['code', 'statement'],
+  additionalProperties: false,
+  properties: {
+    code: { type: 'string', minLength: 1 },
+    statement: { type: 'string', minLength: 1 },
+  },
+} as const;
+
+// The `outer-envelope-not-certified` disclosure a PREVIEW document must carry
+// (schemaVersion 2 — reused in the release/preview `allOf` conditional below).
+const outerEnvelopeDisclosureContains = {
+  type: 'object',
+  required: ['code'],
+  properties: { code: { type: 'string', const: 'outer-envelope-not-certified' } },
+} as const;
+
+// Base certification shape (schemaVersion 2). `outerEnvelopeCertified` is a
+// plain boolean here; the release/preview `allOf` conditional pins it to the
+// correct const per document kind (release: true; preview: false + the
+// disclosure). A schemaVersion-1 document pinned it `const false` with a
+// mandatory disclosure for BOTH kinds; the T4-F2 closure (mandatory finalMesh
+// persistence + the step-10.5 outer-envelope assertion) makes a release's
+// outer envelope certified, so the const now branches on documentKind.
 const certificationJsonSchema = {
   type: 'object',
   required: ['outerEnvelopeCertified', 'limitations'],
   additionalProperties: false,
   properties: {
+    outerEnvelopeCertified: { type: 'boolean' },
+    limitations: { type: 'array', items: limitationItemsJsonSchema },
+  },
+} as const;
+
+// Release: the outer envelope IS certified (the step-10.5 assertion passed —
+// a release document cannot exist otherwise). Pinned `const true`; no
+// disclosure required (limitations may be empty).
+const releaseCertificationJsonSchema = {
+  type: 'object',
+  required: ['outerEnvelopeCertified', 'limitations'],
+  additionalProperties: false,
+  properties: {
+    outerEnvelopeCertified: { type: 'boolean', const: true },
+    limitations: { type: 'array', items: limitationItemsJsonSchema },
+  },
+} as const;
+
+// Preview: certifies nothing (nothing was released). Pinned `const false`, and
+// the `outer-envelope-not-certified` disclosure is SCHEMA-required (minItems 1
+// + contains) — a preview cannot schema-validly drop it (the S2 discipline,
+// preserved for previews).
+const previewCertificationJsonSchema = {
+  type: 'object',
+  required: ['outerEnvelopeCertified', 'limitations'],
+  additionalProperties: false,
+  properties: {
     outerEnvelopeCertified: { type: 'boolean', const: false },
-    // Review S2: the outer-envelope disclosure is SCHEMA-guaranteed, not
-    // merely builder-guaranteed — a schemaVersion-1 document (release AND
-    // preview: both builders inject it) cannot validly drop the
-    // `outer-envelope-not-certified` limitation. `minItems: 1` forbids the
-    // empty list; `contains` pins the specific disclosure code, so swapping
-    // it for a different limitation is equally schema-invalid. Removing
-    // this constraint requires a schema-version bump carrying the closure
-    // evidence (the same discipline as `outerEnvelopeCertified: const
-    // false`).
     limitations: {
       type: 'array',
       minItems: 1,
-      contains: {
-        type: 'object',
-        required: ['code'],
-        properties: {
-          code: { type: 'string', const: 'outer-envelope-not-certified' },
-        },
-      },
-      items: {
-        type: 'object',
-        required: ['code', 'statement'],
-        additionalProperties: false,
-        properties: {
-          code: { type: 'string', minLength: 1 },
-          statement: { type: 'string', minLength: 1 },
-        },
-      },
+      contains: outerEnvelopeDisclosureContains,
+      items: limitationItemsJsonSchema,
     },
   },
 } as const;
@@ -467,6 +519,8 @@ export const QC_TRACEABILITY_DOCUMENT_JSON_SCHEMA = {
               manifoldVersion: { type: 'string', minLength: 1 },
             },
           },
+          // schemaVersion 2: a release's outer envelope IS certified.
+          certification: releaseCertificationJsonSchema,
         },
       },
       else: {
@@ -475,6 +529,8 @@ export const QC_TRACEABILITY_DOCUMENT_JSON_SCHEMA = {
           journal: { type: 'null' },
           reimportVerification: { type: 'null' },
           errorBounds: { type: 'null' },
+          // A preview certifies nothing and must carry the disclosure.
+          certification: previewCertificationJsonSchema,
         },
       },
     },

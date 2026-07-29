@@ -111,14 +111,17 @@ export interface ExportHarnessOptions {
    * still hashes the full journal — the N5 "case not saved before export"
    * scenario (journal-hash mismatch). */
   skipPersistExportOp?: boolean;
-  /** Phase 7 Task 6 (Part A): persist the CLEAN `finalMesh` container
-   * server-side (POST /api/final-meshes) so the export endpoint's
-   * outer-envelope certification (step 10.5) can resolve `stages.finalMesh` to
-   * the design solid. Default false — most suites exercise the "finalMesh not
-   * persisted" path (certification skipped, F2 open, releases). The
-   * certification + moved-vertex F2 suites set it true. Note: the CLEAN mesh is
-   * always what is persisted; `mutateBytes` tampers only the DELIVERED bytes,
-   * which is exactly the F2 construction. */
+  /** Persist the CLEAN `finalMesh` container server-side (POST
+   * /api/final-meshes) so the export endpoint's MANDATORY outer-envelope
+   * certification (step 10.5) can resolve `stages.finalMesh` to the design
+   * solid. **Default true** as of Phase 7 Task 8: finalMesh persistence is now
+   * MANDATORY at the release gate (the normal client flow always uploads
+   * before exporting), so a harness that omits it is refused
+   * `export-final-mesh-not-persisted`. Suites proving the not-persisted refusal
+   * set it explicitly false. Note: the CLEAN mesh is always what is persisted;
+   * `mutateBytes` tampers only the DELIVERED bytes — exactly the F2
+   * construction (persisted clean solid vs tampered delivered bytes → the
+   * step-10.5 outer-envelope check catches it). */
   persistFinalMesh?: boolean;
 }
 
@@ -284,7 +287,7 @@ export async function buildExportHarness(options: ExportHarnessOptions): Promise
   // returned content hash MUST equal `finalMeshHash` (the container reconstructs
   // the exact Float64 solid) — asserted, the "impossible by construction,
   // assert anyway" discipline.
-  if (options.persistFinalMesh) {
+  if (options.persistFinalMesh ?? true) {
     const container = encodeFinalMeshContainer({
       positions: finalMesh.positions,
       indices: finalMesh.indices,

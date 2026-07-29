@@ -552,9 +552,12 @@ async function uploadMissingMeshes(): Promise<void> {
  * content-addressed and immutable, so a finalMesh persisted at the save when
  * its design WAS live remains resolvable forever after; a later reload cannot
  * re-upload it but never needs to. The only genuinely-unrecoverable case is a
- * restoration whose finalMesh was NEVER saved with a live session — its export
- * simply stays F2-open (the endpoint discloses `outerEnvelopeCertified:false`),
- * never silently certified.
+ * restoration whose finalMesh was NEVER saved with a live session — as of
+ * Phase 7 Task 8 the export endpoint REFUSES that export
+ * (`export-final-mesh-not-persisted`, 409) rather than releasing uncertified:
+ * finalMesh persistence is mandatory at the release gate, and this pre-release
+ * `save()` step (which runs `uploadMissingFinalMeshes`) is how the normal flow
+ * satisfies it before the POST.
  *
  * HEAD-checked first (skips the upload when the server already holds those exact
  * bytes — content-addressed immutability), same discipline as

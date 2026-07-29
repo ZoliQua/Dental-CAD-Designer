@@ -83,6 +83,10 @@
 //  9. delivered STL header vs journaled
 //     headerText (N1)                             → 400 export-header-mismatch
 // 10. parse + intake + cleanliness                → 400 (two codes)
+// 10.5 MANDATORY finalMesh byte provenance +
+//     outer-envelope certification (Task 8):
+//     absent → 409 export-final-mesh-not-persisted;
+//     mismatch → 409 export-outer-envelope-mismatch
 // 11. QC recompute on the re-imported solid;
 //     typed pipeline input errors                 → 400 qc-invalid-input
 // 12. exact diff vs request.qcReport              → 409 export-qc-mismatch
@@ -116,15 +120,15 @@
 // storedFinalMesh)))`. A mismatch is a typed 409 with a persisted diagnostic —
 // the moved-vertex construction is rejected post-fix.
 //
-// SCOPE of the defense (honest): the certification is CONDITIONAL on the
-// finalMesh bytes being present. When present, it runs (real defense). When
-// absent (a legacy case, or a restoration whose live session was gone at save
-// time so its finalMesh was never persisted), the release proceeds with F2
-// OPEN for THAT release — which is exactly what the T5 disclosure
-// `outerEnvelopeCertified: false` states. That const is DELIBERATELY not
-// flipped here (ADR-015): flipping it to `true` is a traceability schema bump
-// that belongs with T8 making persistence mandatory on every release path. The
-// defense is real regardless of the conservative disclosure.
+// SCOPE of the defense (Task 8 — HARDENED to mandatory): the certification is
+// no longer conditional. The endpoint REFUSES a release whose finalMesh bytes
+// are not persisted (`export-final-mesh-not-persisted`, 409), so there is no
+// F2-open release path left: every release either certifies the outer envelope
+// (byte-provenance asserted) or is refused. With the defense now unconditional,
+// the T5 disclosure flips — a release document records
+// `outerEnvelopeCertified: true` (traceability schemaVersion 2; see
+// shared-types traceability.ts's schemaVersion history + the T8 report's
+// ADR-005-style note). Previews still certify nothing and keep the disclosure.
 //
 // ## Facet normals (review N1c — position stated)
 //
@@ -538,62 +542,83 @@ export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps
         const reimport = reimportExportedBytes(bytes, exportRequest.format);
         const reimportMeshHash = hashMesh(reimport.mesh);
 
-        // 10.5. OUTER-ENVELOPE CERTIFICATION (Phase 7 Task 6 Part A — the T4-F2
-        // closure). Resolve `stages.finalMesh` (journal-verified at step 6 to
-        // equal request.meshContentHash) to the EXACT Float64 design solid and
-        // assert the delivered geometry IS that solid, up to the T2 narrowing:
+        // 10.5. OUTER-ENVELOPE CERTIFICATION — MANDATORY (Phase 7 Task 8; the
+        // T4-F2 closure, hardened from the Task-6 opt-in). Resolve
+        // `stages.finalMesh` (journal-verified at step 6 to equal
+        // request.meshContentHash) to the EXACT Float64 design solid and assert
+        // the delivered geometry IS that solid, up to the T2 narrowing:
         // `reimportMeshHash === hashMesh(narrow32(canon(storedFinalMesh)))`.
         // This is the reference-envelope check the solid-consuming gates cannot
         // provide (they are insensitive to an outward vertex move — the F2
-        // limitation). A mismatch → 409, nothing released, diagnostic
-        // persisted. When the finalMesh bytes were never persisted (a legacy
-        // case, or a design whose live session was gone at save time), the
-        // provenance is unavailable and F2 stays open for THAT release —
-        // honestly disclosed by `outerEnvelopeCertified: false`, which stays
-        // false until every flow guarantees persistence (the const flip is
-        // deferred to T8; the defense here is real regardless, per the brief).
+        // limitation).
+        //
+        // Task 8 makes the byte provenance MANDATORY: when `stages.finalMesh`
+        // is not resolvable server-side (never uploaded), the release is
+        // REFUSED (`export-final-mesh-not-persisted`, 409) — no release without
+        // the provenance the certification needs. This closes the Task-6
+        // opt-in gap where a client that skipped the finalMesh upload reached
+        // the F2-open path and released uncertified. The normal client flow
+        // uploads the finalMesh container before exporting
+        // (persistence.uploadMissingFinalMeshes → POST /api/final-meshes), so a
+        // legitimate export always resolves here; a request whose finalMesh was
+        // never persisted is refused, not released. Because a release can now
+        // only be produced after this assertion passes, every released
+        // document's outer envelope IS certified — the T5
+        // `outerEnvelopeCertified` disclosure flips to `true` (traceability
+        // schemaVersion 2; see shared-types traceability.ts).
         const storedFinalMesh = await readFinalMesh(finalMeshDataDir, exportRequest.meshContentHash);
-        let outerEnvelopeCertified = false;
-        if (storedFinalMesh) {
-          const referenceHash = referenceReimportHash(storedFinalMesh, exportRequest.format);
-          if (referenceHash !== reimportMeshHash) {
-            const bundle = {
-              reason: 'outer-envelope-mismatch',
+        if (!storedFinalMesh) {
+          reply.code(409);
+          return {
+            error: 'export-final-mesh-not-persisted',
+            message:
+              'the final-design mesh bytes (stages.finalMesh = ' +
+              `${exportRequest.meshContentHash}) are not persisted server-side, so the delivered outer ` +
+              'envelope cannot be certified against the design solid — the release is REFUSED (Task 8: ' +
+              'finalMesh persistence is mandatory; upload it via POST /api/final-meshes before exporting). ' +
+              'Nothing was released (invariant 6).',
+            meshContentHash: exportRequest.meshContentHash,
+          };
+        }
+        const referenceHash = referenceReimportHash(storedFinalMesh, exportRequest.format);
+        if (referenceHash !== reimportMeshHash) {
+          const bundle = {
+            reason: 'outer-envelope-mismatch',
+            caseId: exportRequest.caseId,
+            restorationId: exportRequest.restorationId,
+            restorationType: exportRequest.restorationType,
+            format: exportRequest.format,
+            bytesSha256: exportRequest.bytesSha256,
+            meshContentHash: exportRequest.meshContentHash,
+            reimportMeshHash,
+            referenceHash,
+            parseDiagnostics: reimport.parseDiagnostics,
+          };
+          const diagnostic = await prisma.exportDiagnostic.create({
+            data: {
               caseId: exportRequest.caseId,
               restorationId: exportRequest.restorationId,
-              restorationType: exportRequest.restorationType,
-              format: exportRequest.format,
+              reason: 'outer-envelope-mismatch',
               bytesSha256: exportRequest.bytesSha256,
-              meshContentHash: exportRequest.meshContentHash,
-              reimportMeshHash,
-              referenceHash,
-              parseDiagnostics: reimport.parseDiagnostics,
-            };
-            const diagnostic = await prisma.exportDiagnostic.create({
-              data: {
-                caseId: exportRequest.caseId,
-                restorationId: exportRequest.restorationId,
-                reason: 'outer-envelope-mismatch',
-                bytesSha256: exportRequest.bytesSha256,
-                bundleJson: JSON.stringify(bundle),
-              },
-            });
-            reply.code(409);
-            return {
-              error: 'export-outer-envelope-mismatch',
-              message:
-                'the re-imported export geometry does not match the persisted design solid ' +
-                `(stages.finalMesh) up to the format narrowing — the delivered OUTER ENVELOPE is not the ` +
-                'certified design (a moved/tampered vertex the solid-consuming gates cannot see); nothing ' +
-                `was released (invariant 6). Diagnostic bundle persisted as ${diagnostic.id}.`,
-              diagnosticId: diagnostic.id,
-              referenceHash,
-              reimportMeshHash,
-            };
-          }
-          outerEnvelopeCertified = true;
+              bundleJson: JSON.stringify(bundle),
+            },
+          });
+          reply.code(409);
+          return {
+            error: 'export-outer-envelope-mismatch',
+            message:
+              'the re-imported export geometry does not match the persisted design solid ' +
+              `(stages.finalMesh) up to the format narrowing — the delivered OUTER ENVELOPE is not the ` +
+              'certified design (a moved/tampered vertex the solid-consuming gates cannot see); nothing ' +
+              `was released (invariant 6). Diagnostic bundle persisted as ${diagnostic.id}.`,
+            diagnosticId: diagnostic.id,
+            referenceHash,
+            reimportMeshHash,
+          };
         }
-        void outerEnvelopeCertified; // asserted above; disclosure stays v1 false (deferred const flip)
+        // Reaching here: the outer envelope is certified (byte-provenance
+        // asserted). The release document records `outerEnvelopeCertified:
+        // true` by construction (schemaVersion 2) — see step 14.
 
         // 11. Independent QC recompute (typed pipeline input errors → 400,
         // the validate-qc parity; anything else is a genuine server bug and

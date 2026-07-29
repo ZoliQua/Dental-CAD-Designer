@@ -75,6 +75,8 @@ const STYLE = `
   .ack-section h2 { border-bottom: none; margin-top: 0; }
   .cert-section { border: 2px solid #a11212; background: #fdf2f2; padding: 0.6rem 0.8rem; margin: 1rem 0; }
   .cert-section h2 { border-bottom: none; margin-top: 0; }
+  .cert-section.cert-ok-section { border-color: #1b6e1b; background: #f2faf2; }
+  .cert-ok { color: #1b6e1b; font-weight: 600; }
   .record-text { color: #555; font-size: 0.8rem; font-style: italic; }
   .released-at { margin-top: 1.2rem; padding-top: 0.4rem; border-top: 1px dashed #999; color: #444; font-size: 0.85rem; }
   .preview-banner { border: 3px solid #b30000; color: #b30000; font-weight: 800; text-align: center; padding: 0.5rem; margin: 0 0 1rem; letter-spacing: 0.06em; }
@@ -210,16 +212,25 @@ export function renderTraceabilityHtml(
             )}</p>`) +
         `<p>${escapeHtml(t('boundsGateNote'))}</p></section>`;
 
-  const limitationList = document.certification.limitations
-    .map((limitation) => {
-      const table = TRACEABILITY_STRINGS[options.locale] as Record<string, string>;
-      const translated = table[`limitation.${limitation.code}`] ?? limitation.statement;
-      return (
-        `<p>${escapeHtml(translated)}</p>` +
-        `<p class="record-text">${escapeHtml(t('certRecordText'))}: ${escapeHtml(limitation.statement)}</p>`
-      );
-    })
-    .join('');
+  // schemaVersion 2: a certified release states the positive certification;
+  // a preview (or any document that did not certify the envelope) renders the
+  // limitation disclosure(s). Both may co-exist if a future release carries
+  // other limitations while still certifying the outer envelope.
+  const certifiedLine = document.certification.outerEnvelopeCertified
+    ? `<p class="cert-ok">${escapeHtml(t('certOuterEnvelopeCertified'))}</p>`
+    : '';
+  const limitationList =
+    certifiedLine +
+    document.certification.limitations
+      .map((limitation) => {
+        const table = TRACEABILITY_STRINGS[options.locale] as Record<string, string>;
+        const translated = table[`limitation.${limitation.code}`] ?? limitation.statement;
+        return (
+          `<p>${escapeHtml(translated)}</p>` +
+          `<p class="record-text">${escapeHtml(t('certRecordText'))}: ${escapeHtml(limitation.statement)}</p>`
+        );
+      })
+      .join('');
 
   const releasedAtLine =
     options.releasedAt === undefined
@@ -269,7 +280,9 @@ export function renderTraceabilityHtml(
     row(t('kernelVersionLabel'), document.versions.kernelVersion) +
     row(t('manifoldVersionLabel'), document.versions.manifoldVersion ?? notAvailable) +
     `</dl></section>` +
-    `<section class="cert-section"><h2>${escapeHtml(t('certHeading'))}</h2>${limitationList}</section>` +
+    `<section class="cert-section${
+      document.certification.outerEnvelopeCertified ? ' cert-ok-section' : ''
+    }"><h2>${escapeHtml(t('certHeading'))}</h2>${limitationList}</section>` +
     releasedAtLine +
     `</body></html>`
   );

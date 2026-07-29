@@ -95,9 +95,19 @@ describe('renderTraceabilityHtml — release content', () => {
     expect(h).toMatch(/class="[^"]*ack-section/);
   });
 
-  it('states the honest non-certification disclosure', () => {
-    expect(html()).toContain('outer'); // the disclosure text names the outer envelope
-    expect(html()).toMatch(/not\s+certif/i);
+  it('states the outer-envelope CERTIFICATION (schemaVersion 2 — the T4-F2 closure)', () => {
+    // A release document now certifies the outer envelope; the renderer shows
+    // the positive certification (green section), not the old disclosure.
+    expect(html()).toContain('outer'); // the certification text names the outer envelope
+    expect(html()).toMatch(/CERTIFIED/);
+    expect(html()).toMatch(/class="[^"]*cert-ok-section/);
+    expect(html()).not.toMatch(/NOT\s+CERTIFIED/i);
+  });
+
+  it('a PREVIEW still renders the honest non-certification disclosure', () => {
+    const h = renderTraceabilityHtml(previewDoc(), { locale: 'en' });
+    expect(h).toContain('outer');
+    expect(h).toMatch(/not\s+certif/i);
   });
 
   it('has NO watermark and NO releasedAt line unless the envelope is passed', () => {

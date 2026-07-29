@@ -174,12 +174,53 @@ describe('POST /api/restorations/:id/export — outer-envelope certification (T4
     expect(released).toBeNull();
   });
 
-  it('WITHOUT persisted finalMesh, the same case releases (F2 open, honestly disclosed)', async () => {
-    // The certification is conditional on byte provenance being present; a
-    // legacy/unpersisted finalMesh releases with outerEnvelopeCertified:false.
-    const harness = await harnessFor({ persistFinalMesh: false });
-    const res = await post(harness);
-    expect(res.statusCode).toBe(200);
-    expect((res.json() as { released: boolean }).released).toBe(true);
+  it('WITHOUT persisted finalMesh, the release is REFUSED 409 export-final-mesh-not-persisted (Task 8: mandatory)', async () => {
+    // The falsifiable proof of the Task-8 hardening: finalMesh persistence is
+    // now MANDATORY at the release gate. Pre-Task-8 this exact case RELEASED
+    // with outerEnvelopeCertified:false (the F2-open path); now the endpoint
+    // REFUSES it — there is no uncertified release path left. Nothing released.
+    //
+    // ISOLATION: the content-addressed finalMesh store is shared across this
+    // file's tests (same finalMeshDataDir), and the CLEAN-release test above
+    // already persisted this exact standin finalMesh — so "not persisted" must
+    // be proven on a FRESH, EMPTY store. A dedicated app with its own empty
+    // finalMeshDataDir gives a genuine never-persisted state.
+    const isolatedExports = mkdtempSync(join(tmpdir(), 'dqcad-oe-iso-store-'));
+    const isolatedFinal = mkdtempSync(join(tmpdir(), 'dqcad-oe-iso-final-'));
+    const isoApp = await buildApp({
+      prisma,
+      meshDataDir,
+      toothLibraryDataDir,
+      exportsDataDir: isolatedExports,
+      finalMeshDataDir: isolatedFinal,
+    });
+    try {
+      const harness = await buildExportHarness({
+        app: isoApp,
+        restorationType: 'crown',
+        teeth: [TOOTH],
+        finalMesh: standinInput.crownSolid,
+        clientReport: standinReport,
+        qcContext: standinContext,
+        format: 'stl',
+        persistFinalMesh: false,
+      });
+      const res = await isoApp.inject({
+        method: 'POST',
+        url: `/api/restorations/${harness.restorationId}/export`,
+        payload: harness.body,
+      });
+      expect(res.statusCode).toBe(409);
+      const body = res.json() as { error: string; meshContentHash?: string };
+      expect(body.error).toBe('export-final-mesh-not-persisted');
+      expect(body.meshContentHash).toBe(harness.finalMeshHash);
+      // Nothing released (scoped by the harness's fresh caseId).
+      const released = await prisma.export.findFirst({ where: { caseId: harness.caseId } });
+      expect(released).toBeNull();
+    } finally {
+      await isoApp.close();
+      rmSync(isolatedExports, { recursive: true, force: true });
+      rmSync(isolatedFinal, { recursive: true, force: true });
+    }
   });
 });

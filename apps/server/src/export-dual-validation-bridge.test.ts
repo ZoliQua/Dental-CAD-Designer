@@ -62,6 +62,7 @@ describe('export dual-validation — P6 bridge fixture', () => {
       meshDataDir: mk('mesh'),
       toothLibraryDataDir: mk('tooth'),
       exportsDataDir: mk('store'),
+      finalMeshDataDir: mk('final'),
     });
     const built = await buildBridge();
     input = { ...built.qcInput, journalHash: hashMesh(built.assembledSolid), profileVersion: STANDARD_ZIRCONIA_PROFILE.version };
