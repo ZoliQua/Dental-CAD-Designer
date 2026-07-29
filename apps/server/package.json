@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@dqcad/cad-pipeline": "*",
+    "@dqcad/clinical-profiles": "*",
     "@dqcad/io": "*",
     "@dqcad/kernel": "*",
     "@dqcad/kernel-workers": "*",

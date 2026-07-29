@@ -982,20 +982,64 @@ const EXPORT_CONTEXT_REQUEST_DERIVED = [
   'clientReport',
 ] as const;
 
+// F1 fix round: FREE gate-tolerance knobs are FORBIDDEN in the export
+// contexts entirely (removed from the schema → `additionalProperties: false`
+// makes their presence a 400). The design engines never send them
+// (crownDesign/cavityDesign/bridgeDesign build their QC payloads without any
+// override — verified against the client sources), they have NO
+// profile-authoritative value to verify against (their authority is the gate
+// DEFAULT constants in cad-pipeline, which both sides then use identically),
+// and each one is an unbounded knob that could silently loosen a release
+// gate (the F1 exploit class). Validate-qc keeps accepting them — it is
+// advisory; the export route RELEASES a manufacturing file. The
+// profile-derived thresholds that remain in the contexts are pinned by the
+// route against the server-resolved material profile (export-profile.ts).
+const EXPORT_CONTEXT_FORBIDDEN_KNOBS = {
+  crown: ['marginFitThresholdMm', 'seatingInterferenceVolumeToleranceMm3', 'contactToleranceMm', 'connectors'],
+  inlay: [
+    'marginFitThresholdMm',
+    'seamDihedralThresholdDeg',
+    'seatingInterferenceVolumeToleranceMm3',
+    'contactToleranceMm',
+  ],
+  bridge: ['marginFitThresholdMm', 'seatingInterferenceVolumeToleranceMm3'],
+} as const;
+
 export const crownExportQcContextSchema = omitBodySchemaProperties(crownValidateQcBodySchema, [
   'crownSolid',
   ...EXPORT_CONTEXT_REQUEST_DERIVED,
+  ...EXPORT_CONTEXT_FORBIDDEN_KNOBS.crown,
 ]);
 
 export const inlayExportQcContextSchema = omitBodySchemaProperties(inlayValidateQcBodySchema, [
   'inlaySolid',
   ...EXPORT_CONTEXT_REQUEST_DERIVED,
+  ...EXPORT_CONTEXT_FORBIDDEN_KNOBS.inlay,
 ]);
 
-export const bridgeExportQcContextSchema = omitBodySchemaProperties(bridgeValidateQcBodySchema, [
+// The bridge context additionally derives knob-free NESTED schemas: the
+// per-unit `marginExclusionMm` band (never sent by bridgeDesign; its crown
+// analogue is profile-pinned) and `ponticRelief.thresholdMm` (the ±20 µm
+// gate default is the only value the client ever uses) are forbidden the
+// same way as the top-level knobs.
+const bridgeExportBase = omitBodySchemaProperties(bridgeValidateQcBodySchema, [
   'assembledSolid',
   ...EXPORT_CONTEXT_REQUEST_DERIVED,
+  ...EXPORT_CONTEXT_FORBIDDEN_KNOBS.bridge,
 ]);
+
+export const bridgeExportQcContextSchema = {
+  ...bridgeExportBase,
+  properties: {
+    ...bridgeExportBase.properties,
+    units: {
+      type: 'array',
+      items: omitBodySchemaProperties(bridgeUnitInputSchema, ['marginExclusionMm']),
+      minItems: 1,
+    },
+    ponticRelief: omitBodySchemaProperties(ponticReliefInputSchema, ['thresholdMm']),
+  },
+};
 
 const sha256HexSchema = { type: 'string', pattern: '^[0-9a-f]{64}$' } as const;
 

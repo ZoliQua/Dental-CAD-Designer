@@ -26,7 +26,12 @@ model Case {
 // append-only release ledger: re-exporting byte-identical content creates a
 // NEW row (a distinct release event with its own `releasedAt`) that points at
 // the SAME content-addressed stored object (`bytesSha256` — the mesh-storage
-// idempotency). `releasedAt` is a RECORD field only (audit display): it is a
+// idempotency). Row growth is deliberately UNBOUNDED (review N3,
+// documented-by-design): every release event — including byte-identical
+// replays — is an auditable row; no dedup/rate bound is applied here. If
+// support ever doesn't need every replay event, a retention policy belongs in
+// an ops job, not in the release path. `releasedAt` is a RECORD field only
+// (audit display): it is a
 // server timestamp that never participates in any hashed content
 // (export-determinism global constraint). JSON columns are portable SQL
 // (plain TEXT), same convention as `Case.documentJson`.

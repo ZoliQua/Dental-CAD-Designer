@@ -19,6 +19,7 @@
 // catches consistent adversarial tampering. NOT a `.test.ts` — imported by
 // the export suites, never run as a suite itself.
 import type { FastifyInstance } from 'fastify';
+import { STANDARD_ZIRCONIA_PROFILE, type MaterialProfile } from '@dqcad/clinical-profiles';
 import { exportPlyBinary, exportStlBinary } from '@dqcad/io';
 import { KERNEL_VERSION, type IndexedMesh } from '@dqcad/kernel';
 import { hashCaseJournal } from '@dqcad/kernel-workers/journal-hash';
@@ -85,13 +86,17 @@ export interface ExportHarnessOptions {
   /** The f64 final restoration solid the bytes serialize. */
   finalMesh: IndexedMesh;
   /** The client QC report — `journalHash` MUST equal `hashMesh(finalMesh)`
-   * (the freshness identity the real flow guarantees; asserted here). */
+   * and `profileVersion` MUST equal the REAL registry profile's version
+   * (the identities the real flow guarantees; asserted here). */
   clientReport: QcReport;
   /** The riding context (`toExportQcContext` output). */
   qcContext: Record<string, unknown>;
   format: 'stl' | 'ply';
-  /** Must match `clientReport.profileVersion`. */
-  profileVersion: string;
+  /** The REGISTRY profile whose thresholds the fixture was designed against
+   * (F1: the server resolves + pins it). Defaults to standard zirconia; the
+   * inlay/onlay fixtures use the e.max profile (their 1.0/1.5 mm minimums
+   * are the e.max IFU values). */
+  profile?: MaterialProfile;
   restorationId?: string;
   /** Tamper knob: transforms the serialized bytes BEFORE any hashing/op
    * construction, so every derived field stays consistent with the
@@ -146,16 +151,7 @@ function acknowledgmentsFromReport(report: QcReport, ackOpIdByGate: ReadonlyMap<
  * confusing endpoint rejection.
  */
 export async function buildExportHarness(options: ExportHarnessOptions): Promise<ExportHarness> {
-  const {
-    app,
-    restorationType,
-    teeth,
-    finalMesh,
-    clientReport,
-    qcContext,
-    format,
-    profileVersion,
-  } = options;
+  const { app, restorationType, teeth, finalMesh, clientReport, qcContext, format } = options;
   const finalMeshHash = hashMesh(finalMesh);
   if (clientReport.journalHash !== finalMeshHash) {
     throw new Error(
@@ -163,8 +159,16 @@ export async function buildExportHarness(options: ExportHarnessOptions): Promise
         `hashMesh(finalMesh) (${finalMeshHash}) — run the client QC with the freshness identity`,
     );
   }
-  if (clientReport.profileVersion !== profileVersion) {
-    throw new Error('buildExportHarness: clientReport.profileVersion must equal options.profileVersion');
+  // The REAL registry profile identity (F1 fix round): the server resolves +
+  // checksum-verifies the profile from @dqcad/clinical-profiles, so the
+  // harness ships the genuine id/version/checksum (a fabricated checksum is
+  // now a 409 — proven by its own negative test via cloneBody tampering).
+  const profile = options.profile ?? STANDARD_ZIRCONIA_PROFILE;
+  if (clientReport.profileVersion !== profile.version) {
+    throw new Error(
+      `buildExportHarness: clientReport.profileVersion (${clientReport.profileVersion}) must equal the ` +
+        `registry profile version (${profile.version}) — run the client QC with profileVersion overridden`,
+    );
   }
   const restorationId = options.restorationId ?? `resto-${restorationType}-${nextOpId('h')}`;
 
@@ -259,7 +263,7 @@ export async function buildExportHarness(options: ExportHarnessOptions): Promise
     restorations: [restoration],
     measurements: [],
     history: persistedHistory,
-    settings: { materialProfileId: 'standard-zirconia', profileVersion },
+    settings: { materialProfileId: profile.id, profileVersion: profile.version },
   };
   const put = await app.inject({ method: 'PUT', url: `/api/cases/${caseId}`, payload: persistedDocument });
   if (put.statusCode !== 200) {
@@ -289,11 +293,7 @@ export async function buildExportHarness(options: ExportHarnessOptions): Promise
     acknowledgments,
     caseJournalHash: await hashCaseJournal(hashedHistory),
     journalOperationCount: hashedHistory.length,
-    materialProfile: {
-      id: 'standard-zirconia',
-      version: profileVersion,
-      checksum: sha256HexOf(Buffer.from(`standard-zirconia@${profileVersion}`)),
-    },
+    materialProfile: { id: profile.id, version: profile.version, checksum: profile.checksum },
     kernelVersion: KERNEL_VERSION,
   };
 

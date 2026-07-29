@@ -28,10 +28,26 @@
 // writers and is rejected typed (`export-reimport-integrity`) instead of
 // silently "fixed" (invariant 5: no silent data mutation — on the server
 // either).
+//
+// ## The journal-verification floor (review N2 — what it proves, honestly)
+//
+// The journal `verifyExportJournal` checks against is CLIENT-AUTHORED: it
+// arrives via `PUT /api/cases/:id`, whose body is the fully client-supplied
+// `CaseDocument`. Verification therefore proves the request is CONSISTENT
+// with the saved case — not that the saved case is true. A client can
+// fabricate an internally-consistent `*-qc-ack` op + acknowledgment to pass
+// a genuinely failing gate; that path is acceptable BY DESIGN because the
+// acknowledgment is journaled AND recorded into the release
+// (`Export.acknowledgmentsJson` + the T5 traceability doc) — invariant 4's
+// visible acknowledge-with-warning, a human decision, not a security
+// boundary against the operator. What is NOT acceptable is the SILENT
+// variant of the same floor — an invisible gate loosening — which is why
+// profile thresholds are pinned server-side (export-profile.ts, review F1)
+// rather than trusted from the request.
 import { createHash } from 'node:crypto';
 import { intake, type IndexedMesh, type IntakeReport } from '@dqcad/kernel';
-import { parsePly, parseStl, IoParseError } from '@dqcad/io';
-import type { CaseDocument, Operation, RestorationExportRequest } from '@dqcad/shared-types';
+import { parsePly, parseStl, writeStlBinary, EXPORT_STL_HEADER_TEXT, IoParseError } from '@dqcad/io';
+import type { CaseDocument, Operation, Restoration, RestorationExportRequest } from '@dqcad/shared-types';
 
 /** Closed rejection code set — the `error` field of every non-200 export
  * response (schemas.ts `exportErrorSchema`; the mismatch/gates 409s carry
@@ -48,6 +64,10 @@ export type ExportRejectionCode =
   | 'export-acknowledgment-invalid'
   | 'export-bytes-parse-failed'
   | 'export-reimport-integrity'
+  | 'export-header-mismatch'
+  | 'export-material-profile-unknown'
+  | 'export-material-profile-checksum-mismatch'
+  | 'export-profile-threshold-mismatch'
   | 'export-qc-mismatch'
   | 'export-gates-failing'
   | 'export-not-found'
@@ -204,6 +224,45 @@ export function reimportExportedBytes(bytes: Uint8Array, format: 'stl' | 'ply'):
   }
 }
 
+/** The STL binary header region length (bytes 0..79 — comment text,
+ * zero-padded; the 4-byte triangle count follows at offset 80). */
+const STL_HEADER_BYTES = 80;
+
+/**
+ * Verifies the DELIVERED STL header region against the writer's rendering of
+ * the journaled `headerText` (review N1: with every hash consistently
+ * recomputed, a header tamper used to release — the header is a comment
+ * intake ignores, but the journaled export op RECORDS the exact headerText,
+ * so delivered bytes disagreeing with it are provably not the journaled
+ * export). The expected 80 bytes are produced by `writeStlBinary` itself on
+ * an empty soup — the exact sanitize/truncate/zero-pad the export writer
+ * applied, with zero io-layer duplication. STL only; PLY carries no
+ * `headerText` (its deterministic comment is part of the parsed, hashed body
+ * — a tampered comment changes `bytesSha256` bookkeeping like any other
+ * byte, and the re-imported GEOMETRY is what QC certifies).
+ *
+ * @throws {ExportRejectionError} `export-header-mismatch` (400).
+ */
+export function verifyStlHeaderBytes(bytes: Uint8Array, headerText: string | undefined): void {
+  const expected = writeStlBinary(
+    { positions: new Float64Array(0), normals: null, triangleCount: 0 },
+    { headerText: headerText ?? EXPORT_STL_HEADER_TEXT },
+  ).subarray(0, STL_HEADER_BYTES);
+  const actual = bytes.subarray(0, STL_HEADER_BYTES);
+  if (actual.length !== STL_HEADER_BYTES || !Buffer.from(actual).equals(Buffer.from(expected))) {
+    throw new ExportRejectionError(
+      'export-header-mismatch',
+      400,
+      'the delivered STL header does not match the journaled headerText — the bytes are not the ' +
+        'journaled export (tampered/corrupted header)',
+      {
+        expectedHeaderText: headerText ?? EXPORT_STL_HEADER_TEXT,
+        deliveredHeaderAscii: Buffer.from(actual).toString('latin1').replace(/\0+$/, ''),
+      },
+    );
+  }
+}
+
 /** An ack journal op for `restorationId`+`gate`: `*-qc-ack` name suffix +
  * matching restoration + the gate either as `acknowledgedGate` or in the
  * `acknowledgedGates` list. Mirrors the client's `isAckOpFor`
@@ -231,7 +290,7 @@ function verificationFailure(reason: string, message: string, details: Record<st
  *     journal mismatch is instantly visible as a count delta);
  *  2. the journaled `restoration-export` Operation exists and binds this
  *     exact request: `outputHashes[0] === bytesSha256`, `inputHashes[0] ===
- *     meshContentHash`, matching restoration id + format;
+ *     meshContentHash`, matching restoration id + format + headerText;
  *  3. the restoration exists, its `type` matches, and its persisted
  *     `stages.finalMesh` IS `meshContentHash` (the bytes serialize the
  *     persisted final design, not some other mesh);
@@ -247,11 +306,13 @@ function verificationFailure(reason: string, message: string, details: Record<st
  * `hashCaseJournal`) lives in the route (it is async); this function is the
  * synchronous remainder.
  *
+ * @returns the verified restoration (the caller's threshold verification
+ *   reads its saved, schema-bounded `params` — export-profile.ts).
  * @throws {ExportRejectionError} `export-journal-verification-failed` /
  *   `export-unjournaled-acknowledgment` / `export-acknowledgment-invalid`
  *   (all 409).
  */
-export function verifyExportJournal(document: CaseDocument, request: RestorationExportRequest): void {
+export function verifyExportJournal(document: CaseDocument, request: RestorationExportRequest): Restoration {
   const history = document.history;
   if (request.journalOperationCount !== history.length) {
     throw verificationFailure(
@@ -290,15 +351,21 @@ export function verifyExportJournal(document: CaseDocument, request: Restoration
       { journaled: exportOp.inputHashes[0] ?? null, request: request.meshContentHash },
     );
   }
-  if (exportOp.params['restorationId'] !== request.restorationId || exportOp.params['format'] !== request.format) {
+  if (
+    exportOp.params['restorationId'] !== request.restorationId ||
+    exportOp.params['format'] !== request.format ||
+    exportOp.params['headerText'] !== request.headerText
+  ) {
     throw verificationFailure(
       'export-operation-params-mismatch',
-      'the journaled restoration-export params do not match the request restorationId/format',
+      'the journaled restoration-export params do not match the request restorationId/format/headerText',
       {
         journaledRestorationId: exportOp.params['restorationId'] ?? null,
         journaledFormat: exportOp.params['format'] ?? null,
+        journaledHeaderText: exportOp.params['headerText'] ?? null,
         requestRestorationId: request.restorationId,
         requestFormat: request.format,
+        requestHeaderText: request.headerText ?? null,
       },
     );
   }
@@ -348,4 +415,6 @@ export function verifyExportJournal(document: CaseDocument, request: Restoration
       );
     }
   }
+
+  return restoration;
 }

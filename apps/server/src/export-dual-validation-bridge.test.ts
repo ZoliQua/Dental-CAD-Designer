@@ -15,6 +15,7 @@ import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { runBridgeQc, type RunBridgeQcInput } from '@dqcad/cad-pipeline';
 import type { QcReport } from '@dqcad/shared-types';
+import { STANDARD_ZIRCONIA_PROFILE } from '@dqcad/clinical-profiles';
 import { buildApp } from './app.js';
 import { buildBridge, toValidateBridgeQcBody, BRIDGE_TEETH, BRIDGE_PONTICS } from './bridge-qc-fixture.testutil.js';
 import { buildExportHarness, toExportQcContext, type ExportHarness } from './export-request.testutil.js';
@@ -63,7 +64,7 @@ describe('export dual-validation — P6 bridge fixture', () => {
       exportsDataDir: mk('store'),
     });
     const built = await buildBridge();
-    input = { ...built.qcInput, journalHash: hashMesh(built.assembledSolid) };
+    input = { ...built.qcInput, journalHash: hashMesh(built.assembledSolid), profileVersion: STANDARD_ZIRCONIA_PROFILE.version };
     clientReport = await runBridgeQc(input);
     expect(clientReport.passed).toBe(true);
     qcContext = toExportQcContext(toValidateBridgeQcBody(input), 'assembledSolid');
@@ -84,7 +85,6 @@ describe('export dual-validation — P6 bridge fixture', () => {
       clientReport,
       qcContext,
       format,
-      profileVersion: clientReport.profileVersion,
     });
 
   it('STL: full loop — release, ledger row, byte-identical download, bit-identical server report', async () => {

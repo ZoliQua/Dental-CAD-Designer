@@ -17,6 +17,7 @@ import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { runInlayQc, type RunInlayQcInput } from '@dqcad/cad-pipeline';
 import type { QcReport } from '@dqcad/shared-types';
+import { EMAX_LITHIUM_DISILICATE_PROFILE } from '@dqcad/clinical-profiles';
 import { buildApp } from './app.js';
 import { buildInlay, buildOnlay, toValidateInlayQcBody, CAVITY_TOOTH } from './inlay-qc-fixture.testutil.js';
 import { buildExportHarness, toExportQcContext } from './export-request.testutil.js';
@@ -70,7 +71,7 @@ describe('export dual-validation — P5 inlay/onlay fixtures', () => {
 
   it('INLAY (STL): full loop — release, ledger, byte-identical download, bit-identical server report', async () => {
     const built = await buildInlay();
-    const input: RunInlayQcInput = { ...built.qcInput, journalHash: hashMesh(built.qcInput.inlaySolid) };
+    const input: RunInlayQcInput = { ...built.qcInput, journalHash: hashMesh(built.qcInput.inlaySolid), profileVersion: EMAX_LITHIUM_DISILICATE_PROFILE.version };
     const clientReport = await runInlayQc(input);
     expect(clientReport.passed).toBe(true);
 
@@ -82,7 +83,10 @@ describe('export dual-validation — P5 inlay/onlay fixtures', () => {
       clientReport,
       qcContext: toExportQcContext(toValidateInlayQcBody(input), 'inlaySolid'),
       format: 'stl',
-      profileVersion: clientReport.profileVersion,
+      // The cavity fixtures' 1.0/1.5 mm minimums + 1.3/1.8 mm bands ARE the
+      // e.max registry profile's values — the honest identity under F1's
+      // server-side profile pinning.
+      profile: EMAX_LITHIUM_DISILICATE_PROFILE,
     });
     const res = await app.inject({
       method: 'POST',
@@ -111,7 +115,7 @@ describe('export dual-validation — P5 inlay/onlay fixtures', () => {
 
   it('ONLAY (STL, acknowledged seating): the acknowledgment rides journal-verified into the release', async () => {
     const built = await buildOnlay();
-    const input: RunInlayQcInput = { ...built.qcInput, journalHash: hashMesh(built.qcInput.inlaySolid) };
+    const input: RunInlayQcInput = { ...built.qcInput, journalHash: hashMesh(built.qcInput.inlaySolid), profileVersion: EMAX_LITHIUM_DISILICATE_PROFILE.version };
     const clientReport = await runInlayQc(input);
     const seating = clientReport.gates.find((g) => g.gate === 'seating');
     expect(seating?.passed).toBe(false);
@@ -126,7 +130,10 @@ describe('export dual-validation — P5 inlay/onlay fixtures', () => {
       clientReport,
       qcContext: toExportQcContext(toValidateInlayQcBody(input), 'inlaySolid'),
       format: 'stl',
-      profileVersion: clientReport.profileVersion,
+      // The cavity fixtures' 1.0/1.5 mm minimums + 1.3/1.8 mm bands ARE the
+      // e.max registry profile's values — the honest identity under F1's
+      // server-side profile pinning.
+      profile: EMAX_LITHIUM_DISILICATE_PROFILE,
     });
     expect(harness.request.acknowledgments).toEqual([
       expect.objectContaining({ gate: 'seating', operationId: harness.ackOps[0]!.id }),

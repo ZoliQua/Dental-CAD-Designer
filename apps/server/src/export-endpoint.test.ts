@@ -29,6 +29,7 @@ import { PrismaClient } from '@prisma/client';
 import { KERNEL_VERSION } from '@dqcad/kernel';
 import { runCrownQc, type RunCrownQcInput } from '@dqcad/cad-pipeline';
 import type { QcReport } from '@dqcad/shared-types';
+import { STANDARD_ZIRCONIA_PROFILE } from '@dqcad/clinical-profiles';
 import { buildApp } from './app.js';
 import { buildCrownQcInput, toValidateQcBody, TOOTH } from './crown-qc-fixture.testutil.js';
 import {
@@ -84,15 +85,26 @@ describe('POST /api/restorations/:id/export — crown fixture (pass loop + falsi
     prisma = new PrismaClient();
     app = await buildApp({ prisma, meshDataDir, toothLibraryDataDir, exportsDataDir });
 
-    // The "client" side, freshness identity included: the report's
-    // journalHash IS the finalMesh content hash (the P4 convention the
-    // real export flow guarantees before a request can exist).
+    // The "client" side, freshness + profile identity included: the report's
+    // journalHash IS the finalMesh content hash (the P4 convention the real
+    // export flow guarantees before a request can exist) and its
+    // profileVersion IS the registry profile's real version (the F1 fix
+    // round: the server resolves the profile by id+version and stamps its
+    // recomputed report from the verified identity).
     const base = await buildCrownQcInput('standin');
-    standinInput = { ...base, journalHash: hashMesh(base.crownSolid) };
+    standinInput = {
+      ...base,
+      journalHash: hashMesh(base.crownSolid),
+      profileVersion: STANDARD_ZIRCONIA_PROFILE.version,
+    };
     standinReport = await runCrownQc(standinInput);
     standinContext = toExportQcContext(toValidateQcBody(standinInput), 'crownSolid');
     const thinBase = await buildCrownQcInput('thin');
-    thinInput = { ...thinBase, journalHash: hashMesh(thinBase.crownSolid) };
+    thinInput = {
+      ...thinBase,
+      journalHash: hashMesh(thinBase.crownSolid),
+      profileVersion: STANDARD_ZIRCONIA_PROFILE.version,
+    };
   }, 300_000);
 
   afterAll(async () => {
@@ -111,7 +123,6 @@ describe('POST /api/restorations/:id/export — crown fixture (pass loop + falsi
       clientReport: standinReport,
       qcContext: standinContext,
       format: 'stl',
-      profileVersion: standinReport.profileVersion,
       ...overrides,
     });
 
@@ -407,6 +418,113 @@ describe('POST /api/restorations/:id/export — crown fixture (pass loop + falsi
     expect(res.statusCode).toBe(400);
   }, 120_000);
 
+  // --- F1 fix round: server-side material-profile pinning ------------------
+
+  describe('material-profile pinning (F1 — the reviewer-demonstrated exploit)', () => {
+    it('EXPLOIT regression: a loosened riding threshold (295 µm wall vs qcContext 0.05 mm minimum) is REFUSED, never released', async () => {
+      // The reviewer's exact exploit, red pre-fix (it RELEASED with 200 and
+      // recorded threshold 0.05/passed:true in the "authoritative" ledger
+      // report): the thin crown's real wall is 295 µm — clinically BELOW the
+      // profile's 500 µm minimum — but the attacker ships
+      // qcContext.minWallThicknessMm = 0.05 (+ occlusal) and a matching
+      // client report, so the gate "passes" unacknowledged on both sides and
+      // the diff is empty. The fix pins thresholds to the server-resolved
+      // profile (and, for the crown wall minimum, the saved schema-bounded
+      // restoration parameter): any divergence is a typed 409 naming the
+      // field and both values — the client LEARNS its thresholds were wrong.
+      const attackInput: RunCrownQcInput = {
+        ...thinInput,
+        minWallThicknessMm: 0.05,
+        occlusalMinWallThicknessMm: 0.05,
+      };
+      const attackReport = await runCrownQc(attackInput);
+      expect(attackReport.passed).toBe(true); // the loosened gate "passes"
+      expect(attackReport.gates.find((g) => g.gate === 'minWallThickness')?.acknowledged).toBe(false);
+
+      const harness = await buildExportHarness({
+        app,
+        restorationType: 'crown',
+        teeth: [TOOTH],
+        finalMesh: thinInput.crownSolid,
+        clientReport: attackReport,
+        qcContext: toExportQcContext(toValidateQcBody(attackInput), 'crownSolid'),
+        format: 'stl',
+      });
+      const res = await post(harness);
+      expect(res.statusCode).toBe(409);
+      const body = res.json() as {
+        error: string;
+        details: { mismatches: { field: string; riding: unknown; resolved: unknown }[] };
+      };
+      expect(body.error).toBe('export-profile-threshold-mismatch');
+      const fields = body.details.mismatches.map((m) => m.field);
+      expect(fields).toContain('minWallThicknessMm');
+      expect(fields).toContain('occlusalMinWallThicknessMm');
+      const wall = body.details.mismatches.find((m) => m.field === 'minWallThicknessMm')!;
+      expect(wall.riding).toBe(0.05);
+      expect(wall.resolved).toBe(0.5);
+      // Nothing released.
+      expect(await prisma.export.findFirst({ where: { bytesSha256: harness.request.bytesSha256 } })).toBeNull();
+    }, 300_000);
+
+    it('a FABRICATED materialProfile.checksum → 409 export-material-profile-checksum-mismatch (the checksum is no longer inert)', async () => {
+      const harness = await standinHarness();
+      const body = cloneBody(harness.body);
+      body.request.materialProfile = { ...body.request.materialProfile, checksum: 'a'.repeat(64) };
+      const res = await post(harness, body);
+      expect(res.statusCode).toBe(409);
+      const parsed = res.json() as { error: string; details: Record<string, unknown> };
+      expect(parsed.error).toBe('export-material-profile-checksum-mismatch');
+      expect(parsed.details['resolvedChecksum']).toBe(STANDARD_ZIRCONIA_PROFILE.checksum);
+    }, 120_000);
+
+    it('an UNKNOWN profile version → 409 export-material-profile-unknown', async () => {
+      const harness = await standinHarness();
+      const body = cloneBody(harness.body);
+      body.request.materialProfile = { ...body.request.materialProfile, version: '9.9.9' };
+      const res = await post(harness, body);
+      expect(res.statusCode).toBe(409);
+      expect((res.json() as { error: string }).error).toBe('export-material-profile-unknown');
+    }, 120_000);
+
+    it('an UNKNOWN profile id → 409 export-material-profile-unknown', async () => {
+      const harness = await standinHarness();
+      const body = cloneBody(harness.body);
+      body.request.materialProfile = { ...body.request.materialProfile, id: 'nonexistent-material' };
+      const res = await post(harness, body);
+      expect(res.statusCode).toBe(409);
+      expect((res.json() as { error: string }).error).toBe('export-material-profile-unknown');
+    }, 120_000);
+
+    it('a free tolerance knob in qcContext (seatingInterferenceVolumeToleranceMm3) is schema-FORBIDDEN → 400', async () => {
+      const harness = await standinHarness();
+      const body = cloneBody(harness.body);
+      (body.qcContext as Record<string, unknown>)['seatingInterferenceVolumeToleranceMm3'] = 1e9;
+      const res = await post(harness, body);
+      expect(res.statusCode).toBe(400);
+    }, 120_000);
+  });
+
+  // --- N1: delivered header verified against the journaled headerText ------
+
+  it('N1: a consistent-adversary HEADER tamper is refused (delivered header must equal the journaled headerText)', async () => {
+    // Pre-fix this RELEASED (the STL header is a comment intake ignores; the
+    // adversary recomputed every hash so the bookkeeping gates all passed).
+    // Now the delivered 80-byte header region must be byte-identical to the
+    // writer's rendering of the JOURNALED headerText.
+    const harness = await standinHarness({
+      mutateBytes: (bytes) => {
+        const tampered = bytes.slice();
+        tampered[10] = tampered[10]! ^ 0xff; // inside the 80-byte header
+        return tampered;
+      },
+    });
+    const res = await post(harness);
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toBe('export-header-mismatch');
+    expect(await prisma.export.findFirst({ where: { bytesSha256: harness.request.bytesSha256 } })).toBeNull();
+  }, 120_000);
+
   // --- acknowledged-gate enforcement (thin crown: thickness fails) ---------
 
   describe('acknowledgment enforcement (thin crown)', () => {
@@ -429,7 +547,6 @@ describe('POST /api/restorations/:id/export — crown fixture (pass loop + falsi
         clientReport: report,
         qcContext: thinContext,
         format: 'stl',
-        profileVersion: report.profileVersion,
       });
 
     it('an acknowledged-with-warning export RELEASES, the acknowledgment journal-verified + recorded', async () => {

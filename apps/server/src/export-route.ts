@@ -8,27 +8,41 @@
 // Node io parsers and run through the kernel intake pipeline — never a
 // client-shipped number array.
 //
-// ## The byte-derived vs riding-context boundary (decided Task 4)
+// ## The byte-derived vs riding vs server-pinned boundary (decided Task 4;
+// ## corrected by the F1 fix round)
 //
-// The RE-IMPORTED mesh replaces the restoration SOLID everywhere it appears
-// in the gate inputs — `RunCrownQcInput.crownSolid`,
-// `RunInlayQcInput.inlaySolid`, `RunBridgeQcInput.assembledSolid` (the
-// watertight/manifold stats, the self-intersection measurement, the seating
-// boolean, and the bridge marginFit's fit-patch extraction all measure IT).
-// Everything else RIDES with the request (`qcContext`, schemas.ts — derived
-// programmatically from the validate-qc branch schemas minus the solid):
-// the prep die(s), inner/outer/fit/patch/unit surfaces, the tooth-with-cavity
-// solid, margin/outline polylines, seam edges, cavity triangle indices,
-// insertion axes, measured contact residuals, and the profile-resolved
-// thresholds — none of which is recoverable from the mill bytes (they are
-// design-time context, not the deliverable). Report metadata + acknowledged
-// gates are NOT free-riding context: they are derived from VERIFIED request
-// identity fields (`kernelVersion` checked against the server's own
-// KERNEL_VERSION; `profileVersion` from `materialProfile.version`;
-// `journalHash` stamped as `meshContentHash` — the P4 convention that
-// `QcReport.journalHash` carries the finalMesh content hash; acknowledged
-// gates from the journal-verified `acknowledgments`), so a context/request
-// disagreement cannot be smuggled past the diff.
+// THREE input classes, not two:
+//  - BYTE-DERIVED: the restoration SOLID. The re-imported mesh replaces it
+//    everywhere it appears in the gate inputs — `RunCrownQcInput.crownSolid`,
+//    `RunInlayQcInput.inlaySolid`, `RunBridgeQcInput.assembledSolid` (the
+//    watertight/manifold stats, the self-intersection measurement, the
+//    seating boolean, and the bridge marginFit's fit-patch extraction all
+//    measure IT).
+//  - RIDING (geometry-scoped, genuinely unrecoverable from mill bytes): the
+//    prep die(s), inner/outer/fit/patch/unit surfaces, the tooth-with-cavity
+//    solid, margin/outline polylines, seam edges, cavity triangle indices,
+//    insertion axes, and MEASURED values (contact residuals, connector
+//    minimum areas, the pontic-relief deviation scalar). Design-time
+//    context, not the deliverable — the validate-qc precedent holds for
+//    THIS class.
+//  - SERVER-PINNED (the F1 correction): clinical gate THRESHOLDS. They have
+//    an authoritative server-side source (`@dqcad/clinical-profiles`), so
+//    riding them unverified let a request loosen a gate invisibly at the
+//    release boundary (the review's demonstrated 295 µm-wall exploit). The
+//    route resolves the profile by id+version, verifies its checksum, and
+//    verifies every profile-derived constant in `qcContext` equals the
+//    resolved value under the client engines' own resolution rules
+//    (export-profile.ts; divergence → 409, never silent substitution). The
+//    free tolerance knobs with no profile source are schema-FORBIDDEN in
+//    the export contexts entirely (schemas.ts EXPORT_CONTEXT_FORBIDDEN_KNOBS
+//    — both sides use the cad-pipeline gate defaults). Report metadata +
+//    acknowledged gates are likewise derived from VERIFIED request identity
+//    fields (`kernelVersion` checked against the server's own
+//    KERNEL_VERSION; `profileVersion` from the resolved profile's version;
+//    `journalHash` stamped as `meshContentHash` — the P4 convention that
+//    `QcReport.journalHash` carries the finalMesh content hash; acknowledged
+//    gates from the journal-verified `acknowledgments`), so a
+//    context/request disagreement cannot be smuggled past the diff.
 //
 // ## Why exact-equality report comparison is legitimate (the f32 question)
 //
@@ -59,19 +73,61 @@
 //  4. case lookup                                 → 404 export-case-not-found
 //  5. caseJournalHash recompute (shared
 //     hashCaseJournal over the SAVED journal)     → 409 export-journal-hash-mismatch
-//  6. journal verification (export op binding,
-//     restoration/finalMesh, ack refs; N4:
-//     operationId null → refuse)                  → 409 (three codes)
+//  6. journal verification (export op binding
+//     incl. headerText, restoration/finalMesh,
+//     ack refs; N4: operationId null → refuse)    → 409 (three codes)
 //  7. kernel version                              → 409 export-kernel-version-mismatch
-//  8. parse + intake + cleanliness                → 400 (two codes)
-//  9. QC recompute on the re-imported solid;
+//  8. material-profile pinning (F1): resolve by
+//     id+version, verify checksum, verify every
+//     riding profile-derived threshold            → 409 (three codes)
+//  9. delivered STL header vs journaled
+//     headerText (N1)                             → 400 export-header-mismatch
+// 10. parse + intake + cleanliness                → 400 (two codes)
+// 11. QC recompute on the re-imported solid;
 //     typed pipeline input errors                 → 400 qc-invalid-input
-// 10. exact diff vs request.qcReport              → 409 export-qc-mismatch
+// 12. exact diff vs request.qcReport              → 409 export-qc-mismatch
 //     (+ PERSISTED ExportDiagnostic bundle)
-// 11. authorization: server report must pass
+// 13. authorization: server report must pass
 //     (failing gates all acknowledged)            → 409 export-gates-failing
-// 12. release: content-addressed immutable store
+// 14. release: content-addressed immutable store
 //     + Export ledger row                         → 200
+//
+// ## KNOWN RELEASE-GATE LIMITATION (review F2 — documented, NOT closed here)
+//
+// A coordinated byte tamper that moves a welded vertex IDENTICALLY across
+// all its per-triangle soup occurrences, outward and away from the die(s),
+// welds cleanly, stays watertight/manifold/single-component, and RELEASES:
+// no current gate measures the delivered solid's OUTER envelope against a
+// reference (thickness/marginFit measure the RIDING inner/outer surfaces;
+// the solid-consuming gates are insensitive to an outward move), so the
+// server report matches the client report while the delivered bytes carry
+// moved geometry. Requires an insider at request-build time with fully
+// consistent bookkeeping (every hash + the journaled export op recomputed) —
+// beyond the phase acceptance's tamper model (which this route provably
+// rejects) — but it means the delivered part's outer shape is NOT certified.
+// Closure needs byte provenance the current persistence cannot give the
+// server: restoration STAGE meshes are never uploaded (`document.meshes`
+// carries scan/scene MeshAssets only; `stages.finalMesh` is a content hash
+// with no server-side bytes behind it — exactly why the client's
+// `finalMeshUnavailable` refusal exists post-reload). CARRY (T5/T8): persist
+// the finalMesh bytes server-side (content-addressed, keyed so
+// `stages.finalMesh` resolves to bytes) and assert here that
+// `hashMesh(reimport) === hashMesh(narrow32(canon(storedFinalMesh)))` — full
+// delivered-geometry provenance; a geometric outer-deviation gate is the
+// measurement-side alternative. Do NOT treat this route as certifying the
+// outer envelope until one of those lands.
+//
+// ## Facet normals (review N1c — position stated)
+//
+// STL per-facet normal fields are NOT verified: intake recomputes normals
+// from vertex winding and discards stored ones, so re-validation certifies
+// the GEOMETRY regardless of what the normal fields claim, and the T2 writer
+// guarantees winding-outward orientation of the shipped bytes. A mill that
+// recomputes from winding (the norm, and what this repo's own parsers do) is
+// unaffected; a mill that TRUSTS stored normals could see tampered normal
+// fields on a consistent-adversary tamper. A "stored normal agrees with
+// winding" check is a possible cheap follow-up; today the position is
+// documented, not enforced.
 //
 // ## Release + idempotency semantics
 //
@@ -105,9 +161,11 @@ import {
   decodeExportBytes,
   reimportExportedBytes,
   verifyExportJournal,
+  verifyStlHeaderBytes,
   ExportRejectionError,
   type ReimportResult,
 } from './export-validation.js';
+import { resolveExportMaterialProfile, verifyProfileThresholds } from './export-profile.js';
 import { hashMesh } from './journal-replay.js';
 import { readMeshBytes, sha256HexOf, storeMeshBytes } from './mesh-storage.js';
 import {
@@ -134,6 +192,11 @@ import {
 // --- qcContext body typing (the validate-qc bodies minus the byte-derived
 // solid and the request-derived metadata — see schemas.ts's export section) ---
 
+// The free tolerance knobs (marginFit/seamDihedral/seating/contact overrides,
+// crown `connectors`, per-unit `marginExclusionMm`, `ponticRelief.thresholdMm`)
+// are deliberately ABSENT from these types — schema-forbidden (schemas.ts
+// EXPORT_CONTEXT_FORBIDDEN_KNOBS, the F1 fix round).
+
 export interface CrownExportQcContext {
   innerSurfaceMesh: MeshDataInput;
   outerSurfaceMesh: MeshDataInput;
@@ -146,10 +209,6 @@ export interface CrownExportQcContext {
   contacts: ContactResidualInput[];
   contactClampWarning: boolean;
   marginExclusionMm?: number;
-  marginFitThresholdMm?: number;
-  seatingInterferenceVolumeToleranceMm3?: number;
-  contactToleranceMm?: number;
-  connectors?: { label: string; minAreaMm2: number }[];
 }
 
 export interface InlayExportQcContext {
@@ -165,14 +224,10 @@ export interface InlayExportQcContext {
   cavityTriangleIndices: number[];
   contacts: ContactResidualInput[];
   contactClampWarning: boolean;
-  marginFitThresholdMm?: number;
-  seamDihedralThresholdDeg?: number;
-  seatingInterferenceVolumeToleranceMm3?: number;
-  contactToleranceMm?: number;
 }
 
 export interface BridgeExportQcContext {
-  units: BridgeUnitInput[];
+  units: Omit<BridgeUnitInput, 'marginExclusionMm'>[];
   dieSolids: MeshDataInput[];
   connectors: BridgeConnectorInput[];
   minWallThicknessMm: number;
@@ -180,9 +235,7 @@ export interface BridgeExportQcContext {
   connectorAreaTargetMm2: number;
   frameworkMode?: boolean;
   frameworkMinThicknessMm?: number;
-  ponticRelief: { maxAbsDeviationMm: number; style: string; configuredReliefMm: number; thresholdMm?: number };
-  marginFitThresholdMm?: number;
-  seatingInterferenceVolumeToleranceMm3?: number;
+  ponticRelief: { maxAbsDeviationMm: number; style: string; configuredReliefMm: number };
 }
 
 export type ExportQcContext = CrownExportQcContext | InlayExportQcContext | BridgeExportQcContext;
@@ -224,6 +277,11 @@ async function runExportQc(
 ): Promise<QcReport> {
   const meta = reportMetadata(request);
   const branch = contextBranch(ctx);
+  // NOTE (F1): every threshold read from `ctx` below has already been
+  // verified EQUAL to its server-resolved authority (verifyProfileThresholds
+  // — called before this function), so feeding the riding values IS running
+  // with server-resolved thresholds; the free tolerance knobs no longer
+  // exist in the export contexts at all (both sides use gate defaults).
   if (branch === 'bridge') {
     const b = ctx as BridgeExportQcContext;
     const input: RunBridgeQcInput = {
@@ -240,10 +298,7 @@ async function runExportQc(
         maxAbsDeviationMm: b.ponticRelief.maxAbsDeviationMm,
         style: b.ponticRelief.style,
         configuredReliefMm: b.ponticRelief.configuredReliefMm,
-        thresholdMm: b.ponticRelief.thresholdMm,
       },
-      marginFitThresholdMm: b.marginFitThresholdMm,
-      seatingInterferenceVolumeToleranceMm3: b.seatingInterferenceVolumeToleranceMm3,
       ...meta,
     };
     return runBridgeQc(input);
@@ -273,10 +328,6 @@ async function runExportQc(
       cavityTriangleIndices: Uint32Array.from(c.cavityTriangleIndices),
       contacts: c.contacts,
       contactClampWarning: c.contactClampWarning,
-      marginFitThresholdMm: c.marginFitThresholdMm,
-      seamDihedralThresholdDeg: c.seamDihedralThresholdDeg,
-      seatingInterferenceVolumeToleranceMm3: c.seatingInterferenceVolumeToleranceMm3,
-      contactToleranceMm: c.contactToleranceMm,
       ...meta,
     };
     return runInlayQc(input);
@@ -295,10 +346,6 @@ async function runExportQc(
     contacts: k.contacts,
     contactClampWarning: k.contactClampWarning,
     marginExclusionMm: k.marginExclusionMm,
-    marginFitThresholdMm: k.marginFitThresholdMm,
-    seatingInterferenceVolumeToleranceMm3: k.seatingInterferenceVolumeToleranceMm3,
-    contactToleranceMm: k.contactToleranceMm,
-    connectors: k.connectors,
     ...meta,
   };
   return runCrownQc(input);
@@ -399,9 +446,11 @@ export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps
           );
         }
 
-        // 6. Journal verification: export-op binding, restoration/finalMesh,
-        // acknowledgment refs (N4: null → refuse; P6-T8: tampering → refuse).
-        verifyExportJournal(document, exportRequest);
+        // 6. Journal verification: export-op binding (headerText included),
+        // restoration/finalMesh, acknowledgment refs (N4: null → refuse;
+        // P6-T8: tampering → refuse). Returns the verified restoration (its
+        // saved, schema-bounded params feed the crown threshold authority).
+        const restoration = verifyExportJournal(document, exportRequest);
 
         // 7. Kernel version: a report recomputed on a different kernel is not
         // comparable (determinism is per kernel version) — refuse rather than
@@ -415,12 +464,27 @@ export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps
           );
         }
 
-        // 8. Parse + intake the EXACT bytes — the re-imported solid is the
+        // 8. Material-profile pinning (review F1): resolve the profile
+        // server-side by id+version, verify its checksum, and verify every
+        // riding profile-derived threshold equals the resolved authority —
+        // a loosened threshold is a typed 409, never a silent release-gate
+        // weakening (invariant 4).
+        const profile = resolveExportMaterialProfile(exportRequest.materialProfile);
+        verifyProfileThresholds(exportRequest, qcContext, profile, restoration);
+
+        // 9. Delivered STL header must be the journaled headerText's exact
+        // writer rendering (review N1) — a header tamper is refused even
+        // with fully consistent hash bookkeeping.
+        if (exportRequest.format === 'stl') {
+          verifyStlHeaderBytes(bytes, exportRequest.headerText);
+        }
+
+        // 10. Parse + intake the EXACT bytes — the re-imported solid is the
         // only restoration geometry the QC below ever sees.
         const reimport = reimportExportedBytes(bytes, exportRequest.format);
         const reimportMeshHash = hashMesh(reimport.mesh);
 
-        // 9. Independent QC recompute (typed pipeline input errors → 400,
+        // 11. Independent QC recompute (typed pipeline input errors → 400,
         // the validate-qc parity; anything else is a genuine server bug and
         // escapes to 500 — never blanket-caught).
         let serverReport: QcReport;
@@ -438,7 +502,7 @@ export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps
           throw error;
         }
 
-        // 10. Exact-equality diff against the client report (compare-only —
+        // 12. Exact-equality diff against the client report (compare-only —
         // nothing from it ever fed a gate input). Any delta → 409 + the
         // PERSISTED diagnostic bundle (the bug-report payload).
         const differences = diffQcReports(serverReport, exportRequest.qcReport);
@@ -485,7 +549,7 @@ export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps
           };
         }
 
-        // 11. Authorization: the SERVER's report must pass — every failing
+        // 13. Authorization: the SERVER's report must pass — every failing
         // gate covered by a journal-verified acknowledgment (`runQcGates`
         // semantics: `passed` is true iff every gate passed or is an
         // acknowledged failure). Reaching here with a failing report means
@@ -503,7 +567,7 @@ export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps
           };
         }
 
-        // 12. Release: content-addressed immutable storage + ledger row.
+        // 14. Release: content-addressed immutable storage + ledger row.
         const stored = await storeMeshBytes(exportsDataDir, bytes);
         if (stored.hash !== exportRequest.bytesSha256) {
           // Unreachable (step 1 verified the hash over the same bytes) —
