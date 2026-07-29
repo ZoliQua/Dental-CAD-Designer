@@ -40,6 +40,7 @@ import {
   cavityWorkflowGates,
 } from './cavityWorkflow';
 import { flattenLoop, boxMesh } from './crownGeometry';
+import { indicesJson, loopJson, meshJson, type InlayExportQcContext } from './exportContext';
 import { getPool } from './workers';
 import { useCavityStore, type CavityStageGateSnapshot } from '../state/cavityStore';
 import { useCaseStore } from '../state/caseStore';
@@ -865,6 +866,54 @@ class CavityDesignEngine {
       positions: session.shell.positions,
       indices: session.shell.indices,
       contentHash: session.shell.contentHash,
+    };
+  }
+
+  /**
+   * The RIDING QC context for the server export re-validation (Phase 7 Task 7)
+   * — the fit/patch surfaces, tooth-with-cavity solid, outline, seam edges,
+   * measured contacts + profile thresholds this engine's `runQc` fed the
+   * worker, so the server recompute over the re-imported inlay/onlay solid +
+   * this context reproduces the client `QcReport`. `null` under the same
+   * no-live-session conditions as `finalMeshForExport`. Every threshold is
+   * profile-sourced (invariant 7); the export schema's forbidden free knobs are
+   * never present.
+   */
+  exportQcContext(restorationId: string): InlayExportQcContext | null {
+    const session = this.session;
+    if (
+      !session ||
+      session.restorationId !== restorationId ||
+      !session.shell ||
+      !session.fit ||
+      !session.contacts ||
+      !session.patch
+    ) {
+      return null;
+    }
+    const coverage =
+      session.restorationType === 'onlay' && session.coverage
+        ? {
+            coverageDivider: {
+              pointMm: [...session.coverage.pointMm],
+              normalMm: [...session.coverage.normalMm],
+            },
+            cuspCoverageMinThicknessMm: STANDARD_ZIRCONIA_PROFILE.cuspCoverageMinThicknessMm,
+          }
+        : undefined;
+    return {
+      fitSurfaceMesh: meshJson(session.fit.positions, session.fit.indices),
+      patchMesh: meshJson(session.contacts.positions, session.contacts.indices),
+      toothWithCavitySolid: meshJson(session.toothPositions, session.toothIndices),
+      cavityOutlineResampledPoints: loopJson(session.outlineFlat),
+      insertionAxis: [...session.insertionAxis],
+      thicknessMinimums: this.cavityMinimums(),
+      marginExclusionMm: cavityMarginExclusionMm(session.restorationType),
+      ...(coverage ? { coverage } : {}),
+      seamEdges: session.patch.seamEdges.map((e) => ({ a: [...e.a], b: [...e.b], segment: e.segment })),
+      cavityTriangleIndices: indicesJson(session.patch.cavityTriangleIndices),
+      contacts: [...session.contacts.contactInputs],
+      contactClampWarning: session.contacts.clampWarning,
     };
   }
 

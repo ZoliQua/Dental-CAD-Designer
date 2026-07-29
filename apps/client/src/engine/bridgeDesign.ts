@@ -54,6 +54,7 @@ import {
   bridgeWorkflowGates,
 } from './bridgeWorkflow';
 import { getPool } from './workers';
+import { meshJson, type BridgeExportQcContext } from './exportContext';
 import {
   useBridgeStore,
   type BridgeConnectorReadout,
@@ -1094,6 +1095,70 @@ class BridgeDesignEngine {
       positions: session.assembled.positions,
       indices: session.assembled.indices,
       contentHash: session.assembled.contentHash,
+    };
+  }
+
+  /**
+   * The RIDING QC context for the server export re-validation (Phase 7 Task 7)
+   * — per-unit inner/outer surfaces + margin loops + fit regions, the dies,
+   * the measured connectors, and the pontic-relief measurement this engine's
+   * `runQc` fed the worker, so the server recompute over the re-imported
+   * assembled solid + this context reproduces the client `QcReport`. `null`
+   * under the same no-live-session conditions as `finalMeshForExport`. Every
+   * threshold is profile-sourced (invariant 7); the export schema's forbidden
+   * free knobs (per-unit `marginExclusionMm`, `ponticRelief.thresholdMm`) are
+   * never present.
+   */
+  exportQcContext(restorationId: string): BridgeExportQcContext | null {
+    const session = this.session;
+    if (
+      !session ||
+      session.restorationId !== restorationId ||
+      !session.assembled ||
+      !session.connectors ||
+      !session.pontic
+    ) {
+      return null;
+    }
+    return {
+      units: session.geometry.units.map((u) => ({
+        label: u.label,
+        kind: u.kind,
+        innerSurfaceMesh: meshJson(u.inner.positions, u.inner.indices),
+        outerSurfaceMesh: meshJson(u.outer.positions, u.outer.indices),
+        insertionAxis: [...u.insertionAxis],
+        marginLoop: u.marginLoop.map((p) => [...p]),
+        ...(u.fitRegion
+          ? {
+              fitRegion: {
+                axisPointMm: [...u.fitRegion.axisPointMm],
+                axis: [...u.fitRegion.axis],
+                maxRadialMm: u.fitRegion.maxRadialMm,
+                minAxialMm: u.fitRegion.minAxialMm,
+                maxAxialMm: u.fitRegion.maxAxialMm,
+              },
+            }
+          : {}),
+      })),
+      dieSolids: session.geometry.units
+        .filter((u) => u.die)
+        .map((u) => meshJson(u.die!.positions, u.die!.indices)),
+      connectors: session.connectors.map((c) => ({
+        label: c.label,
+        minAreaMm2: c.minAreaMm2,
+        ...(c.teeth ? { teeth: [...c.teeth] } : {}),
+        ...(c.targetMm2 === undefined ? {} : { targetMm2: c.targetMm2 }),
+      })),
+      minWallThicknessMm: STANDARD_ZIRCONIA_PROFILE.restorationParams.minWallThicknessMm,
+      occlusalMinWallThicknessMm: STANDARD_ZIRCONIA_PROFILE.occlusalMinWallThicknessMm,
+      connectorAreaTargetMm2: STANDARD_ZIRCONIA_PROFILE.connectorAreaMm2.posteriorMm2,
+      frameworkMode: session.frameworkMode === 'framework',
+      frameworkMinThicknessMm: STANDARD_ZIRCONIA_PROFILE.frameworkMinThicknessMm,
+      ponticRelief: {
+        maxAbsDeviationMm: session.pontic.maxAbsDeviationMm,
+        style: session.pontic.style,
+        configuredReliefMm: session.pontic.configuredReliefMm,
+      },
     };
   }
 
