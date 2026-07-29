@@ -20,7 +20,7 @@
 // the export suites, never run as a suite itself.
 import type { FastifyInstance } from 'fastify';
 import { STANDARD_ZIRCONIA_PROFILE, type MaterialProfile } from '@dqcad/clinical-profiles';
-import { exportPlyBinary, exportStlBinary } from '@dqcad/io';
+import { encodeFinalMeshContainer, exportPlyBinary, exportStlBinary } from '@dqcad/io';
 import { KERNEL_VERSION, type IndexedMesh } from '@dqcad/kernel';
 import { hashCaseJournal } from '@dqcad/kernel-workers/journal-hash';
 import type {
@@ -111,6 +111,15 @@ export interface ExportHarnessOptions {
    * still hashes the full journal — the N5 "case not saved before export"
    * scenario (journal-hash mismatch). */
   skipPersistExportOp?: boolean;
+  /** Phase 7 Task 6 (Part A): persist the CLEAN `finalMesh` container
+   * server-side (POST /api/final-meshes) so the export endpoint's
+   * outer-envelope certification (step 10.5) can resolve `stages.finalMesh` to
+   * the design solid. Default false — most suites exercise the "finalMesh not
+   * persisted" path (certification skipped, F2 open, releases). The
+   * certification + moved-vertex F2 suites set it true. Note: the CLEAN mesh is
+   * always what is persisted; `mutateBytes` tampers only the DELIVERED bytes,
+   * which is exactly the F2 construction. */
+  persistFinalMesh?: boolean;
 }
 
 export interface ExportHarness {
@@ -268,6 +277,33 @@ export async function buildExportHarness(options: ExportHarnessOptions): Promise
   const put = await app.inject({ method: 'PUT', url: `/api/cases/${caseId}`, payload: persistedDocument });
   if (put.statusCode !== 200) {
     throw new Error(`buildExportHarness: case save failed (${put.statusCode}): ${put.body}`);
+  }
+
+  // 3b. Phase 7 Task 6 (Part A): persist the CLEAN finalMesh container so the
+  // export endpoint can certify the delivered outer envelope against it. The
+  // returned content hash MUST equal `finalMeshHash` (the container reconstructs
+  // the exact Float64 solid) — asserted, the "impossible by construction,
+  // assert anyway" discipline.
+  if (options.persistFinalMesh) {
+    const container = encodeFinalMeshContainer({
+      positions: finalMesh.positions,
+      indices: finalMesh.indices,
+    });
+    const posted = await app.inject({
+      method: 'POST',
+      url: '/api/final-meshes',
+      headers: { 'content-type': 'application/octet-stream' },
+      payload: Buffer.from(container),
+    });
+    if (posted.statusCode !== 200) {
+      throw new Error(`buildExportHarness: finalMesh persist failed (${posted.statusCode}): ${posted.body}`);
+    }
+    const postedHash = (posted.json() as { contentHash: string }).contentHash;
+    if (postedHash !== finalMeshHash) {
+      throw new Error(
+        `buildExportHarness: persisted finalMesh contentHash (${postedHash}) != hashMesh(finalMesh) (${finalMeshHash})`,
+      );
+    }
   }
 
   // 4. The request. `caseJournalHash` covers the journal the CLIENT believes

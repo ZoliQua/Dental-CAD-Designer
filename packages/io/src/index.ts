@@ -47,6 +47,15 @@ export {
 } from './export/index.ts';
 
 export {
+  encodeFinalMeshContainer,
+  decodeFinalMeshContainer,
+  FinalMeshContainerError,
+  FINAL_MESH_MAGIC,
+  FINAL_MESH_CONTAINER_VERSION,
+  type FinalMeshContainerMesh,
+} from './finalmesh/container.ts';
+
+export {
   parsePly,
   parsePlyStream,
   writePlyBinaryLE,

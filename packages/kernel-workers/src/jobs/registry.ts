@@ -405,6 +405,7 @@ import {
   manifoldSmoke,
   rescaleMesh,
   serializeMeshStl,
+  serializeFinalMeshContent,
   hashMesh,
   type EchoMeshPayload,
   type EchoMeshResult,
@@ -416,6 +417,8 @@ import {
   type RescaleMeshResult,
   type SerializeMeshStlPayload,
   type SerializeMeshStlResult,
+  type SerializeFinalMeshContentPayload,
+  type SerializeFinalMeshContentResult,
   type HashMeshPayload,
   type HashMeshResult,
 } from './misc.ts';
@@ -430,6 +433,8 @@ export {
   type RescaleMeshResult,
   type SerializeMeshStlPayload,
   type SerializeMeshStlResult,
+  type SerializeFinalMeshContentPayload,
+  type SerializeFinalMeshContentResult,
   type HashMeshPayload,
   type HashMeshResult,
 };
@@ -441,6 +446,7 @@ export interface JobPayloadMap {
   parseMeshFile: ParseMeshFilePayload;
   intakeMesh: IntakeMeshPayload;
   serializeMeshStl: SerializeMeshStlPayload;
+  serializeFinalMeshContent: SerializeFinalMeshContentPayload;
   weldMeshSoup: WeldMeshSoupPayload;
   rescaleMesh: RescaleMeshPayload;
   buildBvh: BuildBvhPayload;
@@ -500,6 +506,7 @@ export interface JobResultMap {
   parseMeshFile: ParseMeshFileResult;
   intakeMesh: IntakeMeshResult;
   serializeMeshStl: SerializeMeshStlResult;
+  serializeFinalMeshContent: SerializeFinalMeshContentResult;
   weldMeshSoup: WeldMeshSoupResult;
   rescaleMesh: RescaleMeshResult;
   buildBvh: BuildBvhResult;
@@ -566,6 +573,7 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   parseMeshFile,
   intakeMesh,
   serializeMeshStl,
+  serializeFinalMeshContent,
   weldMeshSoup,
   rescaleMesh,
   buildBvh: buildBvhJob,

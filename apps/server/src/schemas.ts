@@ -453,6 +453,31 @@ export const postMeshResponseSchema = {
   },
 } as const;
 
+// Phase 7 Task 6 (Part A — the T4-F2 closure): POST /api/final-meshes stores a
+// lossless final-mesh container content-addressed by the DECODED mesh's hash
+// (server-computed, never trusted), returning that hash. The body is raw
+// octet-stream bytes (no `schema.body` — same reason as POST /api/meshes).
+export const postFinalMeshResponseSchema = {
+  200: {
+    type: 'object',
+    required: ['contentHash', 'byteLength'],
+    additionalProperties: false,
+    properties: {
+      contentHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+      byteLength: { type: 'integer', minimum: 0 },
+    },
+  },
+  400: {
+    type: 'object',
+    required: ['error', 'message'],
+    additionalProperties: false,
+    properties: {
+      error: { type: 'string' },
+      message: { type: 'string' },
+    },
+  },
+} as const;
+
 // ---------------------------------------------------------------------------
 // Tooth library (Phase 4 Task 2): GET /api/tooth-library[/:fdi]. Mesh BYTES
 // are deliberately NOT part of either response — they're already reachable
@@ -1253,6 +1278,10 @@ export const exportResponseSchema = {
       bundle: { type: 'object', additionalProperties: true },
       /** `export-gates-failing` only: failing unacknowledged gate ids. */
       failingGates: { type: 'array', items: { type: 'string' } },
+      /** `export-outer-envelope-mismatch` only (Phase 7 Task 6 Part A): the
+       * reference (persisted design) vs delivered re-import content hashes. */
+      referenceHash: sha256HexSchema,
+      reimportMeshHash: sha256HexSchema,
     },
   },
 } as const;
@@ -1297,6 +1326,85 @@ export const exportTraceabilityQuerySchema = {
 export const exportTraceabilityResponseSchema = {
   404: exportErrorSchema,
   500: exportErrorSchema,
+} as const;
+
+// Phase 7 Task 6 (Part B): case archive export/import.
+const archiveErrorSchema = {
+  type: 'object',
+  required: ['error', 'message'],
+  additionalProperties: false,
+  properties: {
+    error: { type: 'string' },
+    message: { type: 'string' },
+    caseId: { type: 'string' },
+    entryName: { type: ['string', 'null'] },
+  },
+} as const;
+
+// POST /api/cases/:id/archive — the 200 body is the raw archive bytes (no JSON
+// schema; sent as a Buffer with explicit content-type/disposition), so only the
+// error statuses carry response schemas.
+export const archiveExportResponseSchema = {
+  404: archiveErrorSchema,
+  409: archiveErrorSchema,
+} as const;
+
+export const archiveImportQuerySchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    /** Confirms overwriting an existing case id (invariant 5: no silent
+     * mutation — an unconfirmed collision is a typed 409). */
+    overwrite: { type: 'boolean', default: false },
+  },
+} as const;
+
+export const archiveImportResponseSchema = {
+  200: {
+    type: 'object',
+    required: ['imported', 'caseId', 'overwritten', 'counts'],
+    additionalProperties: false,
+    properties: {
+      imported: { type: 'boolean', const: true },
+      caseId: { type: 'string' },
+      overwritten: { type: 'boolean' },
+      counts: {
+        type: 'object',
+        required: ['scans', 'finalMeshes', 'exportRows', 'exportBytes'],
+        additionalProperties: false,
+        properties: {
+          scans: { type: 'integer', minimum: 0 },
+          finalMeshes: { type: 'integer', minimum: 0 },
+          exportRows: { type: 'integer', minimum: 0 },
+          exportBytes: { type: 'integer', minimum: 0 },
+        },
+      },
+    },
+  },
+  201: {
+    type: 'object',
+    required: ['imported', 'caseId', 'overwritten', 'counts'],
+    additionalProperties: false,
+    properties: {
+      imported: { type: 'boolean', const: true },
+      caseId: { type: 'string' },
+      overwritten: { type: 'boolean' },
+      counts: {
+        type: 'object',
+        required: ['scans', 'finalMeshes', 'exportRows', 'exportBytes'],
+        additionalProperties: false,
+        properties: {
+          scans: { type: 'integer', minimum: 0 },
+          finalMeshes: { type: 'integer', minimum: 0 },
+          exportRows: { type: 'integer', minimum: 0 },
+          exportBytes: { type: 'integer', minimum: 0 },
+        },
+      },
+    },
+  },
+  400: archiveErrorSchema,
+  409: archiveErrorSchema,
+  415: archiveErrorSchema,
 } as const;
 
 export const validateQcResponseSchema = {

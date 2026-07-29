@@ -80,6 +80,7 @@ export type ExportRejectionCode =
   | 'export-material-profile-checksum-mismatch'
   | 'export-profile-threshold-mismatch'
   | 'export-qc-mismatch'
+  | 'export-outer-envelope-mismatch'
   | 'export-gates-failing'
   | 'export-not-found'
   | 'export-storage-integrity'

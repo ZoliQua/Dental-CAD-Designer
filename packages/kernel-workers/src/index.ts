@@ -29,6 +29,8 @@ export {
   type IntakeMeshResult,
   type SerializeMeshStlPayload,
   type SerializeMeshStlResult,
+  type SerializeFinalMeshContentPayload,
+  type SerializeFinalMeshContentResult,
   type WeldMeshSoupPayload,
   type WeldMeshSoupResult,
   type RescaleMeshPayload,

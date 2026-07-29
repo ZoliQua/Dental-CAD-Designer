@@ -33,7 +33,15 @@ import {
 } from '@dqcad/tooth-library';
 import { createEmptyCaseDocument } from './case-document.js';
 import { registerExportRoutes } from './export-route.js';
+import { registerArchiveRoutes } from './archive-route.js';
 import { MeshStorageIntegrityError, readMeshBytes, statMeshBytes, storeMeshBytes } from './mesh-storage.js';
+import { FinalMeshContainerError } from '@dqcad/io';
+import {
+  FinalMeshContentMismatchError,
+  readFinalMeshBytes,
+  statFinalMesh,
+  storeFinalMeshContainer,
+} from './final-mesh-storage.js';
 import {
   diffQcReports,
   toBridgeConnector,
@@ -65,6 +73,7 @@ import {
   patchCaseBodySchema,
   patchCaseResponseSchema,
   postMeshResponseSchema,
+  postFinalMeshResponseSchema,
   putCaseBodySchema,
   putCaseResponseSchema,
   toothFdiParamsSchema,
@@ -107,6 +116,13 @@ const DEFAULT_TOOTH_LIBRARY_DATA_DIR = fileURLToPath(new URL('../data/tooth-libr
 // bytes (Phase 7 Task 4; see export-route.ts's module doc). Git-ignored, same
 // parent as DEFAULT_MESH_DATA_DIR; immutable/write-once like scan files.
 const DEFAULT_EXPORTS_DATA_DIR = fileURLToPath(new URL('../data/exports', import.meta.url));
+
+// apps/server/data/final-meshes — the content-addressed store of restoration
+// FINAL-MESH container bytes (Phase 7 Task 6; see final-mesh-storage.ts).
+// Keyed by the mesh CONTENT hash (`Restoration.stages.finalMesh`) so the export
+// endpoint can certify the delivered outer envelope. Git-ignored, same parent
+// as DEFAULT_MESH_DATA_DIR; immutable/write-once.
+const DEFAULT_FINAL_MESH_DATA_DIR = fileURLToPath(new URL('../data/final-meshes', import.meta.url));
 
 interface CaseSummary {
   id: string;
@@ -367,6 +383,9 @@ export interface BuildAppOptions {
   /** Injectable for tests (an isolated temp dir) — defaults to
    * apps/server/data/exports. See export-route.ts. */
   exportsDataDir?: string;
+  /** Injectable for tests (an isolated temp dir) — defaults to
+   * apps/server/data/final-meshes. See final-mesh-storage.ts. */
+  finalMeshDataDir?: string;
 }
 
 /** App factory: builds and configures a Fastify instance without
@@ -393,6 +412,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   const meshMaxBytes = options.meshMaxBytes ?? resolveMeshMaxBytes();
   const toothLibraryDataDir = options.toothLibraryDataDir ?? DEFAULT_TOOTH_LIBRARY_DATA_DIR;
   const exportsDataDir = options.exportsDataDir ?? DEFAULT_EXPORTS_DATA_DIR;
+  const finalMeshDataDir = options.finalMeshDataDir ?? DEFAULT_FINAL_MESH_DATA_DIR;
 
   await seedStarterToothLibrary(toothLibraryDataDir, meshDataDir);
 
@@ -593,6 +613,66 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     },
   );
 
+  // Phase 7 Task 6 (Part A — the T4-F2 closure): content-addressed final-mesh
+  // container storage. POST stores a lossless container keyed by the DECODED
+  // mesh's content hash (server-computed, never trusted); the client HEAD-checks
+  // first (idempotent skip) and asserts the returned hash equals its own
+  // `stages.finalMesh`. `bodyLimit` shares the mesh ceiling (a final solid is
+  // the same size class as a scan mesh).
+  app.post<{ Body: Buffer }>(
+    '/api/final-meshes',
+    { bodyLimit: meshMaxBytes, schema: { response: postFinalMeshResponseSchema } },
+    async (request, reply) => {
+      const body = request.body;
+      if (!Buffer.isBuffer(body)) {
+        reply.code(415);
+        throw new Error(
+          `POST /api/final-meshes requires Content-Type: application/octet-stream with a raw body, got ${JSON.stringify(request.headers['content-type'] ?? null)}`,
+        );
+      }
+      try {
+        const { contentHash, byteLength } = await storeFinalMeshContainer(finalMeshDataDir, body);
+        return { contentHash, byteLength };
+      } catch (error) {
+        if (error instanceof FinalMeshContainerError || error instanceof FinalMeshContentMismatchError) {
+          reply.code(400);
+          return { error: error.name, message: error.message };
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.head<{ Params: { hash: string } }>(
+    '/api/final-meshes/:hash',
+    { schema: { params: meshHashParamsSchema } },
+    async (request, reply) => {
+      const size = await statFinalMesh(finalMeshDataDir, request.params.hash);
+      if (size === null) {
+        reply.code(404);
+        return reply.send();
+      }
+      reply.header('content-length', String(size));
+      reply.type('application/octet-stream');
+      reply.code(200);
+      return reply.send();
+    },
+  );
+
+  app.get<{ Params: { hash: string } }>(
+    '/api/final-meshes/:hash',
+    { schema: { params: meshHashParamsSchema } },
+    async (request, reply) => {
+      const bytes = await readFinalMeshBytes(finalMeshDataDir, request.params.hash);
+      if (!bytes) {
+        reply.code(404);
+        throw new Error(`no final mesh stored for content hash ${request.params.hash}`);
+      }
+      reply.type('application/octet-stream');
+      return bytes;
+    },
+  );
+
   // Phase 4 Task 2: tooth-library asset metadata. Mesh bytes are fetched
   // via the mesh route directly above, using the returned metadata's own
   // `meshChecksum` — see tooth-library-storage.ts's module doc and
@@ -745,7 +825,18 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   // Phase 7 Task 4: POST /api/restorations/:id/export (independent
   // re-validation on the exact exported bytes) + GET /api/exports/:hash/
   // download — see export-route.ts's module doc for the full design.
-  registerExportRoutes(app, { prisma, exportsDataDir, meshMaxBytes });
+  registerExportRoutes(app, { prisma, exportsDataDir, finalMeshDataDir, meshMaxBytes });
+
+  // Phase 7 Task 6 (Part B): case archive export/import — POST
+  // /api/cases/:id/archive (streamed archive bytes) + POST /api/archives/import
+  // (reconstruct into a new/overwritten case). See archive-route.ts.
+  registerArchiveRoutes(app, {
+    prisma,
+    meshDataDir,
+    finalMeshDataDir,
+    exportsDataDir,
+    archiveMaxBytes: meshMaxBytes,
+  });
 
   return app;
 }

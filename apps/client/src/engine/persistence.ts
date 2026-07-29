@@ -55,11 +55,12 @@
 // manual Cmd/Ctrl+S racing) only sets `pendingSaveRequested`, coalescing into
 // ONE follow-up save after the in-flight one finishes rather than firing two
 // overlapping PUTs.
-import type { CaseDocument, MeshAsset } from '@dqcad/shared-types';
+import type { CaseDocument, MeshAsset, Restoration } from '@dqcad/shared-types';
 import { createEmptyCaseDocument, useCaseStore } from '../state/caseStore';
 import { type CaseSummary, usePersistenceStore } from '../state/persistenceStore';
 import { caseStore } from './caseStore';
 import { migrateCaseDocumentIfNeeded } from './caseDocumentMigration';
+import { liveFinalMeshForRestoration, type LiveFinalMeshBuffers } from './finalMeshSource';
 import { getPool, releaseBvhForMesh } from './workers';
 
 const API_BASE = '/api';
@@ -100,6 +101,34 @@ async function fetchMeshBytes(fileHash: string): Promise<Uint8Array> {
 async function headMeshExists(fileHash: string): Promise<boolean> {
   const response = await fetch(`${API_BASE}/meshes/${fileHash}`, { method: 'HEAD' });
   return response.ok;
+}
+
+async function headFinalMeshExists(contentHash: string): Promise<boolean> {
+  const response = await fetch(`${API_BASE}/final-meshes/${contentHash}`, { method: 'HEAD' });
+  return response.ok;
+}
+
+/** Uploads a final-mesh container (content-addressed by the DECODED mesh's
+ * content hash, computed server-side). Asserts the server-returned hash equals
+ * the expected `stages.finalMesh` — the "assert anyway" discipline (mirrors
+ * `uploadMeshBytes`). */
+async function uploadFinalMeshContainer(expectedContentHash: string, bytes: Uint8Array): Promise<void> {
+  const response = await fetch(`${API_BASE}/final-meshes`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/octet-stream' },
+    body: bytes as unknown as BodyInit,
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new PersistenceHttpError('POST', '/final-meshes', response.status, text);
+  }
+  const result = (await response.json()) as { contentHash: string; byteLength: number };
+  if (result.contentHash !== expectedContentHash) {
+    throw new Error(
+      `persistence: server-computed final-mesh content hash (${result.contentHash}) does not match the ` +
+        `document's stages.finalMesh (${expectedContentHash}) — the container serialized a different mesh`,
+    );
+  }
 }
 
 async function uploadMeshBytes(expectedHash: string, bytes: Uint8Array): Promise<void> {
@@ -506,6 +535,75 @@ async function uploadMissingMeshes(): Promise<void> {
 }
 
 /**
+ * Phase 7 Task 6 (Part A — the T4-F2 closure): persists each restoration's
+ * FINAL-MESH bytes content-addressed (the lossless `serializeFinalMeshContent`
+ * container, keyed server-side by the mesh content hash = `stages.finalMesh`),
+ * so the export endpoint can resolve `stages.finalMesh` to the exact Float64
+ * design solid and certify the delivered OUTER envelope against it.
+ *
+ * ## What this can materialize (honest boundary)
+ *
+ * Only a restoration whose LIVE design session still holds its final-mesh
+ * buffers (`liveFinalMeshForRestoration`, backed by the T3
+ * `finalMeshForExport` getters) can be (re)serialized here. After a reload the
+ * session buffers are gone (that is exactly why the export flow's
+ * `finalMeshUnavailable` refusal exists) — such a restoration is SKIPPED with a
+ * documented warning. This is NOT a gap in coverage: the store is
+ * content-addressed and immutable, so a finalMesh persisted at the save when
+ * its design WAS live remains resolvable forever after; a later reload cannot
+ * re-upload it but never needs to. The only genuinely-unrecoverable case is a
+ * restoration whose finalMesh was NEVER saved with a live session — its export
+ * simply stays F2-open (the endpoint discloses `outerEnvelopeCertified:false`),
+ * never silently certified.
+ *
+ * HEAD-checked first (skips the upload when the server already holds those exact
+ * bytes — content-addressed immutability), same discipline as
+ * `uploadMissingMeshes`.
+ */
+/** Injectable final-mesh source (TEST-ONLY seam; mirrors exportFlow's
+ * `__setFinalMeshSourceForTests`). `null` restores the default design-engine
+ * resolver. Lets persistence tests exercise `uploadMissingFinalMeshes` without
+ * standing up a full crown/inlay/bridge design session. */
+let finalMeshSourceOverride: ((restoration: Restoration) => LiveFinalMeshBuffers | null) | null = null;
+
+/** TEST-ONLY: override the live final-mesh source (see `finalMeshSourceOverride`). */
+export function __setFinalMeshSourceForTests(
+  source: ((restoration: Restoration) => LiveFinalMeshBuffers | null) | null,
+): void {
+  finalMeshSourceOverride = source;
+}
+
+async function uploadMissingFinalMeshes(): Promise<void> {
+  const document = useCaseStore.getState().document;
+  const resolve = finalMeshSourceOverride ?? liveFinalMeshForRestoration;
+  for (const restoration of document.restorations) {
+    const finalMeshHash = restoration.stages.finalMesh;
+    if (!finalMeshHash) {
+      continue; // no final solid yet — nothing to persist.
+    }
+    const live = resolve(restoration);
+    if (!live || live.contentHash !== finalMeshHash) {
+      // No live session holds THIS final mesh (post-reload, or a session/
+      // document drift) — see this function's doc. Cannot re-materialize; if it
+      // was persisted at an earlier live save it is already resolvable, so this
+      // is a no-op either way. Never silently fabricates bytes.
+      continue;
+    }
+    if (await headFinalMeshExists(finalMeshHash)) {
+      continue; // content-addressed & immutable — already persisted.
+    }
+    const positionsCopy = live.positions.slice();
+    const indicesCopy = live.indices.slice();
+    const { bytes, contentHash } = await getPool().run(
+      'serializeFinalMeshContent',
+      { positions: positionsCopy, indices: indicesCopy },
+      { transfer: [positionsCopy.buffer, indicesCopy.buffer] },
+    );
+    await uploadFinalMeshContainer(contentHash, bytes);
+  }
+}
+
+/**
  * Saves the active case: uploads any not-yet-persisted mesh bytes, then
  * `PUT`s the full document. A no-op if there's no active case, the document
  * hasn't changed since the last confirmed save, or a save is already in
@@ -528,6 +626,7 @@ export async function save(): Promise<void> {
   usePersistenceStore.getState().setStatus('saving');
   try {
     await uploadMissingMeshes();
+    await uploadMissingFinalMeshes();
     const documentToSave = useCaseStore.getState().document;
     const summary = await requestJson<CaseSummary>('PUT', `/cases/${activeCaseId}`, documentToSave);
     if (usePersistenceStore.getState().activeCaseId !== activeCaseId) {
@@ -593,5 +692,6 @@ export function resetPersistenceForTests(): void {
   lastPersistedDocument = null;
   saveInFlight = false;
   pendingSaveRequested = false;
+  finalMeshSourceOverride = null;
   clearAutosaveTimer();
 }

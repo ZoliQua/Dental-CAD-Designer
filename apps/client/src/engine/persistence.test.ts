@@ -11,11 +11,12 @@
 import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IntakeReport, MeshStats } from '@dqcad/kernel-workers';
-import type { CaseDocument, Measurement, Operation } from '@dqcad/shared-types';
+import type { CaseDocument, Measurement, Operation, Restoration } from '@dqcad/shared-types';
 import { useCaseStore } from '../state/caseStore';
 import { usePersistenceStore } from '../state/persistenceStore';
 import { caseStore } from './caseStore';
 import {
+  __setFinalMeshSourceForTests,
   createCase,
   listCases,
   openCase,
@@ -25,6 +26,25 @@ import {
 } from './persistence';
 
 const EMPTY_REPORT: IntakeReport = { weldEpsilonMm: 1e-6, steps: [] };
+
+// Local minimal DQFM (final-mesh container) decode — avoids an engine→io lint
+// boundary import in this test. Layout: magic(4) version(4) V(4) T(4), then
+// V*3 float64 LE positions, then T*3 uint32 LE indices. The mesh content hash
+// (what the server keys the container by) is sha256 over the positions ‖
+// indices region, which is exactly `container.subarray(16)` (contiguous).
+function decodeDqfm(bytes: Uint8Array): { positions: Float64Array; indices: Uint32Array } {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const v = view.getUint32(8, true);
+  const t = view.getUint32(12, true);
+  const positions = new Float64Array(v * 3);
+  new Uint8Array(positions.buffer).set(bytes.subarray(16, 16 + v * 24));
+  const indices = new Uint32Array(t * 3);
+  new Uint8Array(indices.buffer).set(bytes.subarray(16 + v * 24, 16 + v * 24 + t * 12));
+  return { positions, indices };
+}
+function dqfmContentHash(bytes: Uint8Array): string {
+  return createHash('sha256').update(bytes.subarray(16)).digest('hex');
+}
 
 // Outward-wound unit tetrahedron — small, cheap to weld/serialize, and
 // non-degenerate (real bbox/volume) so weldMeshSoup's post-round-trip
@@ -71,6 +91,10 @@ interface FakeCaseRow {
 function createFakeServer() {
   const cases = new Map<string, FakeCaseRow>();
   const meshes = new Map<string, Uint8Array>();
+  // Phase 7 Task 6 (Part A): content-addressed final-mesh container store —
+  // keyed by the DECODED mesh's content hash (server-computed), mirroring the
+  // real /api/final-meshes route.
+  const finalMeshes = new Map<string, Uint8Array>();
   let counter = 0;
 
   function summaryOf(row: FakeCaseRow) {
@@ -89,6 +113,7 @@ function createFakeServer() {
 
     const caseIdMatch = /^\/api\/cases\/([^/]+)$/.exec(path);
     const meshHashMatch = /^\/api\/meshes\/([^/]+)$/.exec(path);
+    const finalMeshHashMatch = /^\/api\/final-meshes\/([^/]+)$/.exec(path);
 
     if (path === '/api/cases' && method === 'GET') {
       return Response.json([...cases.values()].map(summaryOf));
@@ -131,6 +156,25 @@ function createFakeServer() {
       meshes.set(hash, new Uint8Array(buffer));
       return Response.json({ hash, byteLength: buffer.byteLength });
     }
+    if (path === '/api/final-meshes' && method === 'POST') {
+      const buffer = new Uint8Array(init?.body as Uint8Array);
+      // Server computes the content hash from the DECODED mesh (sha256 over
+      // positions ‖ indices), never trusts the client — mirror that here.
+      const contentHash = dqfmContentHash(buffer);
+      finalMeshes.set(contentHash, buffer);
+      return Response.json({ contentHash, byteLength: buffer.byteLength });
+    }
+    if (finalMeshHashMatch && method === 'HEAD') {
+      return new Response(null, { status: finalMeshes.has(finalMeshHashMatch[1]!) ? 200 : 404 });
+    }
+    if (finalMeshHashMatch && method === 'GET') {
+      const bytes = finalMeshes.get(finalMeshHashMatch[1]!);
+      if (!bytes) return new Response(null, { status: 404 });
+      return new Response(bytes as unknown as BodyInit, {
+        status: 200,
+        headers: { 'content-type': 'application/octet-stream' },
+      });
+    }
     if (meshHashMatch && method === 'HEAD') {
       return new Response(null, { status: meshes.has(meshHashMatch[1]!) ? 200 : 404 });
     }
@@ -148,7 +192,7 @@ function createFakeServer() {
     throw new Error(`fake server: unhandled ${method} ${path}`);
   }
 
-  return { fetchImpl, cases, meshes };
+  return { fetchImpl, cases, meshes, finalMeshes };
 }
 
 let server: ReturnType<typeof createFakeServer>;
@@ -885,6 +929,115 @@ describe('autosave debounce', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('save — final-mesh persistence (Phase 7 Task 6 Part A)', () => {
+  /** sha256(positions ‖ indices) — the canonical mesh content hash the server
+   * addresses a final-mesh container by (mirrors kernel-workers' hashMeshContent
+   * and the server's hashMesh). */
+  function contentHashOf(positions: Float64Array, indices: Uint32Array): string {
+    return createHash('sha256')
+      .update(Buffer.from(positions.buffer, positions.byteOffset, positions.byteLength))
+      .update(Buffer.from(indices.buffer, indices.byteOffset, indices.byteLength))
+      .digest('hex');
+  }
+
+  function crownRestoration(finalMeshHash: string): Restoration {
+    return {
+      id: 'resto-crown-1',
+      type: 'crown',
+      teeth: [11],
+      pontics: [],
+      targetNodeId: null,
+      marginLines: {},
+      insertionAxis: [0, 0, 1],
+      params: {
+        cementGapMm: 0.05,
+        marginalGapMm: 0.02,
+        spacerStartMm: 0.8,
+        minWallThicknessMm: 0.5,
+        proximalContactPenetrationMm: 0.02,
+        occlusalContactMm: 0,
+      },
+      stages: { finalMesh: finalMeshHash },
+      qc: null,
+    };
+  }
+
+  function createOp(): Operation {
+    return {
+      id: 'op-resto-1',
+      name: 'restoration-create',
+      params: { restorationId: 'resto-crown-1' },
+      inputHashes: [],
+      outputHashes: [],
+      kernelVersion: '0.0.0',
+      timestamp: '2026-01-01T00:00:00.000Z',
+    };
+  }
+
+  it('persists a restoration final mesh content-addressed on save (lossless round-trip)', async () => {
+    await createCase('final-mesh case');
+    const positions = TET_POSITIONS.slice();
+    const indices = TET_INDICES.slice();
+    const finalMeshHash = contentHashOf(positions, indices);
+    __setFinalMeshSourceForTests((r) =>
+      r.id === 'resto-crown-1' ? { positions, indices, contentHash: finalMeshHash } : null,
+    );
+    caseStore.addRestoration(crownRestoration(finalMeshHash), createOp());
+
+    await save();
+
+    // The container is now stored server-side keyed by the content hash.
+    expect(server.finalMeshes.has(finalMeshHash)).toBe(true);
+    const stored = server.finalMeshes.get(finalMeshHash)!;
+    const back = decodeDqfm(stored);
+    expect(Array.from(back.positions)).toEqual(Array.from(positions));
+    expect(Array.from(back.indices)).toEqual(Array.from(indices));
+  });
+
+  it('skips (never fabricates) when no live session holds the final mesh', async () => {
+    await createCase('final-mesh case 2');
+    __setFinalMeshSourceForTests(() => null); // post-reload: buffers gone
+    caseStore.addRestoration(crownRestoration('a'.repeat(64)), createOp());
+
+    await save();
+
+    expect(server.finalMeshes.size).toBe(0);
+    // The save itself still succeeds (the document is persisted).
+    expect(usePersistenceStore.getState().status).toBe('saved');
+  });
+
+  it('is idempotent: a second save with the mesh already stored does not re-upload', async () => {
+    await createCase('final-mesh case 3');
+    const positions = TET_POSITIONS.slice();
+    const indices = TET_INDICES.slice();
+    const finalMeshHash = contentHashOf(positions, indices);
+    __setFinalMeshSourceForTests(() => ({ positions, indices, contentHash: finalMeshHash }));
+    caseStore.addRestoration(crownRestoration(finalMeshHash), createOp());
+    await save();
+    const postCalls = (fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls.filter(
+      (c) => String(c[0]).endsWith('/api/final-meshes') && (c[1] as RequestInit)?.method === 'POST',
+    ).length;
+
+    // Force another save by mutating the document, then save again.
+    caseStore.setSelectedRestorationId('resto-crown-1');
+    caseStore.addMeasurement({
+      id: 'm-1',
+      kind: 'pointToPoint',
+      points: [
+        { nodeId: 'x', position: [0, 0, 0] },
+        { nodeId: 'x', position: [1, 0, 0] },
+      ],
+      value: 1,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    await save();
+    const postCallsAfter = (fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls.filter(
+      (c) => String(c[0]).endsWith('/api/final-meshes') && (c[1] as RequestInit)?.method === 'POST',
+    ).length;
+    expect(postCallsAfter).toBe(postCalls); // HEAD-checked; no second POST
   });
 });
 

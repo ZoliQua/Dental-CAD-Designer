@@ -92,30 +92,36 @@
 // 14. release: content-addressed immutable store
 //     + Export ledger row                         → 200
 //
-// ## KNOWN RELEASE-GATE LIMITATION (review F2 — documented, NOT closed here)
+// ## OUTER-ENVELOPE CERTIFICATION (review F2 — CLOSED Phase 7 Task 6 Part A;
+// ## see ADR-015 + step 10.5 below)
 //
-// A coordinated byte tamper that moves a welded vertex IDENTICALLY across
-// all its per-triangle soup occurrences, outward and away from the die(s),
-// welds cleanly, stays watertight/manifold/single-component, and RELEASES:
-// no current gate measures the delivered solid's OUTER envelope against a
-// reference (thickness/marginFit measure the RIDING inner/outer surfaces;
-// the solid-consuming gates are insensitive to an outward move), so the
-// server report matches the client report while the delivered bytes carry
-// moved geometry. Requires an insider at request-build time with fully
-// consistent bookkeeping (every hash + the journaled export op recomputed) —
-// beyond the phase acceptance's tamper model (which this route provably
-// rejects) — but it means the delivered part's outer shape is NOT certified.
-// Closure needs byte provenance the current persistence cannot give the
-// server: restoration STAGE meshes are never uploaded (`document.meshes`
-// carries scan/scene MeshAssets only; `stages.finalMesh` is a content hash
-// with no server-side bytes behind it — exactly why the client's
-// `finalMeshUnavailable` refusal exists post-reload). CARRY (T5/T8): persist
-// the finalMesh bytes server-side (content-addressed, keyed so
-// `stages.finalMesh` resolves to bytes) and assert here that
-// `hashMesh(reimport) === hashMesh(narrow32(canon(storedFinalMesh)))` — full
-// delivered-geometry provenance; a geometric outer-deviation gate is the
-// measurement-side alternative. Do NOT treat this route as certifying the
-// outer envelope until one of those lands.
+// The F2 gap: a coordinated byte tamper that moves a welded vertex IDENTICALLY
+// across all its per-triangle soup occurrences, outward and away from the
+// die(s), welds cleanly, stays watertight/manifold/single-component, and left
+// EVERY gate value unchanged (thickness/marginFit measure the RIDING
+// inner/outer surfaces; the solid-consuming gates are insensitive to an outward
+// move) — so the server report matched the client report while the delivered
+// bytes carried moved geometry. It RELEASED (proven red pre-fix under
+// `DQ_RED_PROOF=1` in export-outer-envelope.test.ts: the moved-apex crown
+// returns 200).
+//
+// The closure: the client now persists the finalMesh bytes content-addressed
+// (the lossless `@dqcad/io` DQFM container → `POST /api/final-meshes`, keyed by
+// `stages.finalMesh`), and step 10.5 resolves `stages.finalMesh`
+// (journal-verified to equal `meshContentHash`) to the exact Float64 design
+// solid and asserts `hashMesh(reimport) === hashMesh(narrow32(canon(
+// storedFinalMesh)))`. A mismatch is a typed 409 with a persisted diagnostic —
+// the moved-vertex construction is rejected post-fix.
+//
+// SCOPE of the defense (honest): the certification is CONDITIONAL on the
+// finalMesh bytes being present. When present, it runs (real defense). When
+// absent (a legacy case, or a restoration whose live session was gone at save
+// time so its finalMesh was never persisted), the release proceeds with F2
+// OPEN for THAT release — which is exactly what the T5 disclosure
+// `outerEnvelopeCertified: false` states. That const is DELIBERATELY not
+// flipped here (ADR-015): flipping it to `true` is a traceability schema bump
+// that belongs with T8 making persistence mandatory on every release path. The
+// defense is real regardless of the conservative disclosure.
 //
 // ## Facet normals (review N1c — position stated)
 //
@@ -162,7 +168,8 @@ import {
   type RunInlayQcInput,
 } from '@dqcad/cad-pipeline';
 import { hashCaseJournal } from '@dqcad/kernel-workers/journal-hash';
-import { EXPORT_STL_HEADER_TEXT } from '@dqcad/io';
+import { EXPORT_STL_HEADER_TEXT, exportPlyBinary, exportStlBinary } from '@dqcad/io';
+import type { IndexedMesh } from '@dqcad/kernel';
 import {
   decodeExportBytes,
   reimportExportedBytes,
@@ -171,6 +178,7 @@ import {
   ExportRejectionError,
   type ReimportResult,
 } from './export-validation.js';
+import { readFinalMesh } from './final-mesh-storage.js';
 import { renderTraceabilityHtml, type TraceabilityLocale } from '@dqcad/traceability';
 import { validateTraceabilityDocument } from '@dqcad/traceability/validate';
 import { resolveExportMaterialProfile, verifyProfileThresholds } from './export-profile.js';
@@ -378,11 +386,27 @@ function downloadFilename(row: {
   return `${row.restorationType}-${teeth}-${row.bytesSha256.slice(0, 12)}.${row.format}`;
 }
 
+/** The canonical, format-narrowed re-index of a Float64 solid — exactly what
+ * a CLEAN export of `mesh` re-imports to (the T2 equivalence: STL =
+ * `narrow32(canon(mesh))`, PLY = `canon(mesh)`). Computed by serializing with
+ * the SAME certified export writers and re-importing with the SAME intake path
+ * the delivered bytes go through, so `hashMesh` of this reference is directly
+ * comparable to `reimportMeshHash` with no bespoke canon/narrow32
+ * re-implementation. */
+function referenceReimportHash(mesh: IndexedMesh, format: 'stl' | 'ply'): string {
+  const bytes = format === 'stl' ? exportStlBinary(mesh) : exportPlyBinary(mesh);
+  return hashMesh(reimportExportedBytes(bytes, format).mesh);
+}
+
 export interface ExportRouteDeps {
   prisma: PrismaClient;
   /** Content-addressed released-bytes store directory (mesh-storage
    * machinery; immutable, write-once). */
   exportsDataDir: string;
+  /** Content-addressed final-mesh container store (final-mesh-storage.ts) —
+   * keyed by `stages.finalMesh`; the outer-envelope certification's byte
+   * provenance (Phase 7 Task 6 Part A, the F2 closure). */
+  finalMeshDataDir: string;
   /** Body-size ceiling for the export POST. The body carries the base64
    * bytes (4/3 × raw + padding — the largest fixture solid is ~2.7 MB STL ≈
    * 3.6 MB base64) PLUS the riding qcContext meshes as JSON number arrays,
@@ -393,7 +417,7 @@ export interface ExportRouteDeps {
 }
 
 export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps): void {
-  const { prisma, exportsDataDir, meshMaxBytes } = deps;
+  const { prisma, exportsDataDir, finalMeshDataDir, meshMaxBytes } = deps;
 
   app.post<{ Params: { id: string }; Body: ExportRequestBody }>(
     '/api/restorations/:id/export',
@@ -510,6 +534,63 @@ export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps
         // only restoration geometry the QC below ever sees.
         const reimport = reimportExportedBytes(bytes, exportRequest.format);
         const reimportMeshHash = hashMesh(reimport.mesh);
+
+        // 10.5. OUTER-ENVELOPE CERTIFICATION (Phase 7 Task 6 Part A — the T4-F2
+        // closure). Resolve `stages.finalMesh` (journal-verified at step 6 to
+        // equal request.meshContentHash) to the EXACT Float64 design solid and
+        // assert the delivered geometry IS that solid, up to the T2 narrowing:
+        // `reimportMeshHash === hashMesh(narrow32(canon(storedFinalMesh)))`.
+        // This is the reference-envelope check the solid-consuming gates cannot
+        // provide (they are insensitive to an outward vertex move — the F2
+        // limitation). A mismatch → 409, nothing released, diagnostic
+        // persisted. When the finalMesh bytes were never persisted (a legacy
+        // case, or a design whose live session was gone at save time), the
+        // provenance is unavailable and F2 stays open for THAT release —
+        // honestly disclosed by `outerEnvelopeCertified: false`, which stays
+        // false until every flow guarantees persistence (the const flip is
+        // deferred to T8; the defense here is real regardless, per the brief).
+        const storedFinalMesh = await readFinalMesh(finalMeshDataDir, exportRequest.meshContentHash);
+        let outerEnvelopeCertified = false;
+        if (storedFinalMesh) {
+          const referenceHash = referenceReimportHash(storedFinalMesh, exportRequest.format);
+          if (referenceHash !== reimportMeshHash) {
+            const bundle = {
+              reason: 'outer-envelope-mismatch',
+              caseId: exportRequest.caseId,
+              restorationId: exportRequest.restorationId,
+              restorationType: exportRequest.restorationType,
+              format: exportRequest.format,
+              bytesSha256: exportRequest.bytesSha256,
+              meshContentHash: exportRequest.meshContentHash,
+              reimportMeshHash,
+              referenceHash,
+              parseDiagnostics: reimport.parseDiagnostics,
+            };
+            const diagnostic = await prisma.exportDiagnostic.create({
+              data: {
+                caseId: exportRequest.caseId,
+                restorationId: exportRequest.restorationId,
+                reason: 'outer-envelope-mismatch',
+                bytesSha256: exportRequest.bytesSha256,
+                bundleJson: JSON.stringify(bundle),
+              },
+            });
+            reply.code(409);
+            return {
+              error: 'export-outer-envelope-mismatch',
+              message:
+                'the re-imported export geometry does not match the persisted design solid ' +
+                `(stages.finalMesh) up to the format narrowing — the delivered OUTER ENVELOPE is not the ` +
+                'certified design (a moved/tampered vertex the solid-consuming gates cannot see); nothing ' +
+                `was released (invariant 6). Diagnostic bundle persisted as ${diagnostic.id}.`,
+              diagnosticId: diagnostic.id,
+              referenceHash,
+              reimportMeshHash,
+            };
+          }
+          outerEnvelopeCertified = true;
+        }
+        void outerEnvelopeCertified; // asserted above; disclosure stays v1 false (deferred const flip)
 
         // 11. Independent QC recompute (typed pipeline input errors → 400,
         // the validate-qc parity; anything else is a genuine server bug and
