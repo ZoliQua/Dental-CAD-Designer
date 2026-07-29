@@ -254,6 +254,21 @@ describe('cavityDesign controller — happy path + stage hashes + coalesced jour
   });
 });
 
+describe('cavityDesign controller — finalMeshForExport (Phase 7 Task 3)', () => {
+  it('returns null without a session/shell or for the wrong restoration, and the live shell (hash-matching stages.finalMesh) once built', async () => {
+    expect(cavityDesignEngine.finalMeshForExport(restorationId)).toBeNull();
+    cavityDesignEngine.start(restorationId);
+    expect(cavityDesignEngine.finalMeshForExport(restorationId)).toBeNull();
+    await runToShell();
+    expect(cavityDesignEngine.finalMeshForExport('someone-else')).toBeNull();
+    const mesh = cavityDesignEngine.finalMeshForExport(restorationId);
+    expect(mesh).not.toBeNull();
+    expect(mesh!.contentHash).toBe(currentRestoration().stages.finalMesh);
+    expect(mesh!.positions).toBeInstanceOf(Float64Array);
+    expect(mesh!.indices).toBeInstanceOf(Uint32Array);
+  });
+});
+
 describe('cavityDesign controller — invalidation cascade (stale QC can never display)', () => {
   async function runToQc(): Promise<void> {
     await runToShell();
@@ -371,6 +386,84 @@ describe('cavityDesign controller — UI-only actions + session lifecycle', () =
     const d = cavityDesignEngine.defaultCoverageDivider();
     expect(d.normalMm).toEqual([0, -1, 0]);
     expect(Number.isFinite(d.pointMm[1])).toBe(true);
+  });
+});
+
+describe('cavityDesign controller — silent-failure defense at the QC call sites (P7-T1, the 19b sibling sweep)', () => {
+  // The 19b shape: persisted stage hashes say "qc may run" (as after a page
+  // reload) but the in-memory session has no shell — `buildQcPayload` used to
+  // throw its CavityStageOrderError BEFORE the try block, so the click
+  // silently no-op'd. Both call sites must surface it VISIBLY.
+  function persistStagesWithoutSession(qcReport: import('@dqcad/shared-types').QcReport | null): void {
+    caseStore.updateRestoration(
+      { ...currentRestoration(), stages: { ...currentRestoration().stages, finalMesh: 'persisted-shell-hash' }, qc: qcReport },
+      { id: 'p', name: 'test-persist', params: {}, inputHashes: [], outputHashes: [], kernelVersion: 'test', timestamp: new Date().toISOString() },
+    );
+  }
+  const minimalReport: import('@dqcad/shared-types').QcReport = {
+    gates: [{ gate: 'seating', passed: false, acknowledged: false, value: 0.06, threshold: 1e-6, unit: 'mm3', message: 'interference' }],
+    passed: false,
+    kernelVersion: 'test',
+    profileVersion: 'test',
+    journalHash: 'persisted-shell-hash',
+  };
+
+  it('runQc: a CavityStageOrderError from the payload build lands in the visible error state', async () => {
+    cavityDesignEngine.start(restorationId);
+    persistStagesWithoutSession(null);
+
+    await expect(cavityDesignEngine.runQc()).rejects.toThrow(CavityStageOrderError);
+
+    const store = useCavityStore.getState();
+    expect(store.error).toMatch(/CavityStageOrderError/);
+    expect(store.errorStage).toBe('qc');
+    expect(store.busyStage).toBeNull();
+  });
+
+  it('acknowledgeGate: a CavityStageOrderError from the payload build lands in the visible error state', async () => {
+    cavityDesignEngine.start(restorationId);
+    persistStagesWithoutSession(minimalReport);
+
+    await expect(cavityDesignEngine.acknowledgeGate('seating')).rejects.toThrow(CavityStageOrderError);
+
+    const store = useCavityStore.getState();
+    expect(store.error).toMatch(/CavityStageOrderError/);
+    expect(store.errorStage).toBe('qc');
+    expect(store.busyStage).toBeNull();
+  });
+
+  // P7-T1 fix round (review finding 1): the same class at the MID-WORKFLOW
+  // actions — post-reload the stage gates pass from persisted hashes while the
+  // session fields are null; the panel's fire-and-forget run() wrapper swallows
+  // the rejection, so a pre-try throw is a silent no-op.
+  it('runContacts: a CavityStageOrderError from the session-shape check lands in the visible error state', async () => {
+    cavityDesignEngine.start(restorationId);
+    caseStore.updateRestoration(
+      { ...currentRestoration(), stages: { ...currentRestoration().stages, occlusalPatch: 'persisted-patch-hash' } },
+      { id: 'p2', name: 'test-persist', params: {}, inputHashes: [], outputHashes: [], kernelVersion: 'test', timestamp: new Date().toISOString() },
+    );
+
+    await expect(cavityDesignEngine.runContacts()).rejects.toThrow(CavityStageOrderError);
+
+    const store = useCavityStore.getState();
+    expect(store.error).toMatch(/CavityStageOrderError/);
+    expect(store.errorStage).toBe('contacts');
+    expect(store.busyStage).toBeNull();
+  });
+
+  it('constructShell: a CavityStageOrderError from the session-shape check lands in the visible error state', async () => {
+    cavityDesignEngine.start(restorationId);
+    caseStore.updateRestoration(
+      { ...currentRestoration(), stages: { ...currentRestoration().stages, proximalContacts: 'persisted-contacts-hash' } },
+      { id: 'p3', name: 'test-persist', params: {}, inputHashes: [], outputHashes: [], kernelVersion: 'test', timestamp: new Date().toISOString() },
+    );
+
+    await expect(cavityDesignEngine.constructShell()).rejects.toThrow(CavityStageOrderError);
+
+    const store = useCavityStore.getState();
+    expect(store.error).toMatch(/CavityStageOrderError/);
+    expect(store.errorStage).toBe('shell');
+    expect(store.busyStage).toBeNull();
   });
 });
 

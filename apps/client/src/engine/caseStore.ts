@@ -544,6 +544,24 @@ class CaseStoreEngine {
   }
 
   /**
+   * Appends a journal `Operation` that mutates NO document state beyond the
+   * journal itself (Phase 7 Task 3: the `restoration-export` op — export
+   * serializes the ALREADY-COMMITTED `stages.finalMesh` geometry to bytes,
+   * so there is no restoration/scene/mesh field to update alongside it; the
+   * op's `outputHashes[0]` is the exported BYTES hash, a value that lives in
+   * the journal + export record, not in `Restoration`). Journaling a
+   * destructive-output-producing action is CLAUDE.md invariant 3; the
+   * export flow calls this exactly once per completed export.
+   */
+  appendOperation(operation: Operation): void {
+    this.document = {
+      ...this.document,
+      history: [...this.document.history, operation],
+    };
+    this.publish();
+  }
+
+  /**
    * Records the server-assigned `fileHash` (SHA-256 of the uploaded binary
    * STL bytes — see `MeshAsset.fileHash`'s doc in @dqcad/shared-types) for
    * an already-registered `MeshAsset`. Called by engine/persistence.ts's

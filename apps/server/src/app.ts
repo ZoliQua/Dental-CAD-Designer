@@ -6,13 +6,16 @@ import { PrismaClient } from '@prisma/client';
 import type { Case } from '@prisma/client';
 import Fastify from 'fastify';
 import type { FastifyInstance } from 'fastify';
-import { KERNEL_VERSION, type FitRegionDescriptor, type IndexedMesh, type SeamEdge, type Vec3 } from '@dqcad/kernel';
-import type { CaseDocument, FdiTooth, QcGateResult, QcReport, RestorationType } from '@dqcad/shared-types';
+import { KERNEL_VERSION } from '@dqcad/kernel';
+import type { CaseDocument, QcReport, RestorationType } from '@dqcad/shared-types';
 import {
   runBridgeQc,
   runCrownQc,
   runInlayQc,
-  type BridgeUnitQcInput,
+  BridgeQcInputError,
+  MarginFitInputError,
+  MinWallThicknessInputError,
+  NonCavityRestorationTypeError,
   type CavityThicknessMinimums,
   type ConnectorCrossSection,
   type ContactResidualInput,
@@ -29,7 +32,29 @@ import {
   ToothMeshNotWatertightError,
 } from '@dqcad/tooth-library';
 import { createEmptyCaseDocument } from './case-document.js';
+import { registerExportRoutes } from './export-route.js';
+import { registerArchiveRoutes } from './archive-route.js';
 import { MeshStorageIntegrityError, readMeshBytes, statMeshBytes, storeMeshBytes } from './mesh-storage.js';
+import { FinalMeshContainerError } from '@dqcad/io';
+import {
+  FinalMeshContentMismatchError,
+  readFinalMeshBytes,
+  statFinalMesh,
+  storeFinalMeshContainer,
+} from './final-mesh-storage.js';
+import {
+  diffQcReports,
+  toBridgeConnector,
+  toBridgeUnit,
+  toIndexedMesh,
+  toLoop,
+  toSeamEdges,
+  toVec3,
+  type BridgeConnectorInput,
+  type BridgeUnitInput,
+  type MeshDataInput,
+  type SeamEdgeInput,
+} from './qc-input-json.js';
 import {
   listToothLibraryAssets,
   readLatestToothLibraryMetadata,
@@ -48,6 +73,7 @@ import {
   patchCaseBodySchema,
   patchCaseResponseSchema,
   postMeshResponseSchema,
+  postFinalMeshResponseSchema,
   putCaseBodySchema,
   putCaseResponseSchema,
   toothFdiParamsSchema,
@@ -77,6 +103,18 @@ function resolveMeshMaxBytes(): number {
   return Number.isFinite(fromEnv) && fromEnv > 0 ? fromEnv : DEFAULT_MESH_MAX_BYTES;
 }
 
+// Phase 7 Task 6 (Part B, review bodyLimit NOTE): a case archive bundles MANY
+// scans + final meshes + released exports, so it is a LARGER size class than a
+// single mesh — a dedicated ceiling (default 2 GB) rather than sharing the
+// per-mesh limit, overridable via `ARCHIVE_MAX_BYTES` (deployment) or
+// `BuildAppOptions.archiveMaxBytes` (tests).
+const DEFAULT_ARCHIVE_MAX_BYTES = 2 * 1024 * 1024 * 1024;
+
+function resolveArchiveMaxBytes(): number {
+  const fromEnv = process.env.ARCHIVE_MAX_BYTES ? Number(process.env.ARCHIVE_MAX_BYTES) : NaN;
+  return Number.isFinite(fromEnv) && fromEnv > 0 ? fromEnv : DEFAULT_ARCHIVE_MAX_BYTES;
+}
+
 // apps/server/data/meshes — see mesh-storage.ts's module doc. Git-ignored
 // (see .gitignore's `apps/server/data/` entry); created on first upload.
 const DEFAULT_MESH_DATA_DIR = fileURLToPath(new URL('../data/meshes', import.meta.url));
@@ -85,6 +123,18 @@ const DEFAULT_MESH_DATA_DIR = fileURLToPath(new URL('../data/meshes', import.met
 // doc. Git-ignored, same as DEFAULT_MESH_DATA_DIR; seeded with the
 // @dqcad/tooth-library starter set at every `buildApp` call (idempotent).
 const DEFAULT_TOOTH_LIBRARY_DATA_DIR = fileURLToPath(new URL('../data/tooth-library', import.meta.url));
+
+// apps/server/data/exports — the content-addressed store of RELEASED export
+// bytes (Phase 7 Task 4; see export-route.ts's module doc). Git-ignored, same
+// parent as DEFAULT_MESH_DATA_DIR; immutable/write-once like scan files.
+const DEFAULT_EXPORTS_DATA_DIR = fileURLToPath(new URL('../data/exports', import.meta.url));
+
+// apps/server/data/final-meshes — the content-addressed store of restoration
+// FINAL-MESH container bytes (Phase 7 Task 6; see final-mesh-storage.ts).
+// Keyed by the mesh CONTENT hash (`Restoration.stages.finalMesh`) so the export
+// endpoint can certify the delivered outer envelope. Git-ignored, same parent
+// as DEFAULT_MESH_DATA_DIR; immutable/write-once.
+const DEFAULT_FINAL_MESH_DATA_DIR = fileURLToPath(new URL('../data/final-meshes', import.meta.url));
 
 interface CaseSummary {
   id: string;
@@ -113,11 +163,8 @@ function toCaseSummary(row: Case): CaseSummary {
 }
 
 // --- Task 11: validate-qc request body typing + context reconstruction ---
-
-interface MeshDataInput {
-  positions: number[];
-  indices: number[];
-}
+// (The JSON → kernel reconstruction helpers + the report differ live in
+// qc-input-json.ts, shared with the Phase 7 export route.)
 
 interface CrownValidateQcBody {
   /** Optional (absent for the legacy crown client); the route treats absent /
@@ -145,12 +192,6 @@ interface CrownValidateQcBody {
   acknowledgedGates?: string[];
   /** OPTIONAL cross-check — see the route + schemas.ts. Never trusted. */
   clientReport?: QcReport;
-}
-
-interface SeamEdgeInput {
-  a: number[];
-  b: number[];
-  segment: string;
 }
 
 // Phase 5 Task 9 — the inlay/onlay validate-qc body. Mirrors cad-pipeline's
@@ -194,32 +235,6 @@ interface InlayValidateQcBody {
 // abutment dies, the measured connectors, the profile-resolved thresholds, the
 // framework mode, the pontic-relief measurement scalars, and every geometry-scoped
 // parameter — all riding WITH the request so the server recomputes independently.
-interface FitRegionInput {
-  axisPointMm: number[];
-  axis: number[];
-  maxRadialMm: number;
-  minAxialMm: number;
-  maxAxialMm: number;
-}
-
-interface BridgeUnitInput {
-  label: string;
-  kind: 'abutment' | 'pontic';
-  innerSurfaceMesh: MeshDataInput;
-  outerSurfaceMesh: MeshDataInput;
-  insertionAxis: number[];
-  marginLoop: number[][];
-  marginExclusionMm?: number;
-  fitRegion?: FitRegionInput;
-}
-
-interface BridgeConnectorInput {
-  label: string;
-  minAreaMm2: number;
-  teeth?: number[];
-  targetMm2?: number;
-}
-
 interface BridgeValidateQcBody {
   restorationType: 'bridge';
   assembledSolid: MeshDataInput;
@@ -260,74 +275,6 @@ function isBridgeBody(body: ValidateQcBody): body is BridgeValidateQcBody {
 interface UploadToothLibraryBody {
   metadata: unknown;
   meshBase64: string;
-}
-
-interface QcReportDifference {
-  path: string;
-  server: unknown;
-  client: unknown;
-}
-
-/** Rebuilds a kernel `IndexedMesh` (Float64 positions, Uint32 indices — the
- * Float64 invariant holds; no Float32 anywhere) from the JSON number arrays.
- * JSON round-trips a Float64 exactly, so this is bit-identical to the mesh the
- * client hashed/measured. */
-function toIndexedMesh(data: MeshDataInput): IndexedMesh {
-  return { positions: new Float64Array(data.positions), indices: Uint32Array.from(data.indices) };
-}
-
-function toVec3(a: readonly number[]): Vec3 {
-  const [x, y, z] = a;
-  if (x === undefined || y === undefined || z === undefined) {
-    // Unreachable — the JSON schema pins these arrays to exactly 3 numbers.
-    throw new Error('expected a 3-component vector');
-  }
-  return [x, y, z];
-}
-
-/** Rebuilds the cavity outline / margin polyline (Float64 Vec3 tuples) from the
- * JSON number arrays — bit-identical to the client's (JSON round-trips Float64
- * exactly). */
-function toLoop(points: readonly number[][]): Vec3[] {
-  return points.map(toVec3);
-}
-
-/** Rebuilds the seam edge set (Task 4/5 `seamEdges`) — the G1-gate currency —
- * from the JSON representation. */
-function toSeamEdges(edges: readonly SeamEdgeInput[]): SeamEdge[] {
-  return edges.map((e) => ({ a: toVec3(e.a), b: toVec3(e.b), segment: e.segment }));
-}
-
-/** Independent (never client-trusting) diff of the server-computed report
- * against an optional client-supplied one — every scalar that differs becomes
- * one `{ path, server, client }` diagnostic entry. Exact equality (`!==`), so a
- * single-ULP float divergence surfaces rather than being smoothed over. */
-function diffQcReports(server: QcReport, client: QcReport): QcReportDifference[] {
-  const diffs: QcReportDifference[] = [];
-  const scalar = (path: string, s: unknown, c: unknown): void => {
-    if (s !== c) diffs.push({ path, server: s, client: c });
-  };
-  scalar('passed', server.passed, client.passed);
-  scalar('kernelVersion', server.kernelVersion, client.kernelVersion);
-  scalar('profileVersion', server.profileVersion, client.profileVersion);
-  scalar('journalHash', server.journalHash, client.journalHash);
-  scalar('gates.length', server.gates.length, client.gates.length);
-  const n = Math.min(server.gates.length, client.gates.length);
-  const fields: readonly (keyof QcGateResult)[] = [
-    'gate',
-    'passed',
-    'acknowledged',
-    'value',
-    'threshold',
-    'unit',
-    'message',
-  ];
-  for (let i = 0; i < n; i++) {
-    const s = server.gates[i]!;
-    const c = client.gates[i]!;
-    for (const f of fields) scalar(`gates[${i}].${f}`, s[f], c[f]);
-  }
-  return diffs;
 }
 
 /** Rebuilds a `RunCrownQcInput` from the crown validate-qc body (Phase 4 Task
@@ -401,46 +348,6 @@ function reconstructInlayQcInput(b: InlayValidateQcBody): RunInlayQcInput {
   };
 }
 
-/** Rebuilds a kernel `FitRegionDescriptor` (the abutment intaglio region — the
- * marginFit gate extracts its patch off the assembled solid with it) from the
- * JSON representation. */
-function toFitRegion(r: FitRegionInput): FitRegionDescriptor {
-  return {
-    axisPointMm: toVec3(r.axisPointMm),
-    axis: toVec3(r.axis),
-    maxRadialMm: r.maxRadialMm,
-    minAxialMm: r.minAxialMm,
-    maxAxialMm: r.maxAxialMm,
-  };
-}
-
-/** Rebuilds one bridge unit's QC input (per-unit surfaces + margin loop + axis +,
- * for an abutment, the fit-region descriptor) from the JSON representation. */
-function toBridgeUnit(u: BridgeUnitInput): BridgeUnitQcInput {
-  return {
-    label: u.label,
-    kind: u.kind,
-    innerSurfaceMesh: toIndexedMesh(u.innerSurfaceMesh),
-    outerSurfaceMesh: toIndexedMesh(u.outerSurfaceMesh),
-    insertionAxis: toVec3(u.insertionAxis),
-    marginLoop: toLoop(u.marginLoop),
-    marginExclusionMm: u.marginExclusionMm,
-    fitRegion: u.fitRegion ? toFitRegion(u.fitRegion) : undefined,
-  };
-}
-
-/** Rebuilds one measured connector (its kernel-measured min cross-section area +
- * the two teeth it spans + its pre-resolved positional target) from JSON. */
-function toBridgeConnector(c: BridgeConnectorInput): ConnectorCrossSection {
-  const teeth = c.teeth;
-  return {
-    label: c.label,
-    minAreaMm2: c.minAreaMm2,
-    teeth: teeth && teeth.length === 2 ? [teeth[0] as FdiTooth, teeth[1] as FdiTooth] : undefined,
-    targetMm2: c.targetMm2,
-  };
-}
-
 /** Rebuilds a `RunBridgeQcInput` from the bridge validate-qc body (Phase 6 Task
  * 8) — the whole-bridge context reconstruction (the largest input surface).
  * EVERY value comes from the request: the fused solid, every per-unit surface,
@@ -485,6 +392,14 @@ export interface BuildAppOptions {
   /** Injectable for tests (an isolated temp dir) — defaults to
    * apps/server/data/tooth-library. See tooth-library-storage.ts. */
   toothLibraryDataDir?: string;
+  /** Injectable for tests (an isolated temp dir) — defaults to
+   * apps/server/data/exports. See export-route.ts. */
+  exportsDataDir?: string;
+  /** Injectable for tests (an isolated temp dir) — defaults to
+   * apps/server/data/final-meshes. See final-mesh-storage.ts. */
+  finalMeshDataDir?: string;
+  /** Injectable for tests — defaults to `ARCHIVE_MAX_BYTES` env var or 2 GB. */
+  archiveMaxBytes?: number;
 }
 
 /** App factory: builds and configures a Fastify instance without
@@ -510,6 +425,9 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   const meshDataDir = options.meshDataDir ?? DEFAULT_MESH_DATA_DIR;
   const meshMaxBytes = options.meshMaxBytes ?? resolveMeshMaxBytes();
   const toothLibraryDataDir = options.toothLibraryDataDir ?? DEFAULT_TOOTH_LIBRARY_DATA_DIR;
+  const exportsDataDir = options.exportsDataDir ?? DEFAULT_EXPORTS_DATA_DIR;
+  const finalMeshDataDir = options.finalMeshDataDir ?? DEFAULT_FINAL_MESH_DATA_DIR;
+  const archiveMaxBytes = options.archiveMaxBytes ?? resolveArchiveMaxBytes();
 
   await seedStarterToothLibrary(toothLibraryDataDir, meshDataDir);
 
@@ -710,6 +628,66 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     },
   );
 
+  // Phase 7 Task 6 (Part A — the T4-F2 closure): content-addressed final-mesh
+  // container storage. POST stores a lossless container keyed by the DECODED
+  // mesh's content hash (server-computed, never trusted); the client HEAD-checks
+  // first (idempotent skip) and asserts the returned hash equals its own
+  // `stages.finalMesh`. `bodyLimit` shares the mesh ceiling (a final solid is
+  // the same size class as a scan mesh).
+  app.post<{ Body: Buffer }>(
+    '/api/final-meshes',
+    { bodyLimit: meshMaxBytes, schema: { response: postFinalMeshResponseSchema } },
+    async (request, reply) => {
+      const body = request.body;
+      if (!Buffer.isBuffer(body)) {
+        reply.code(415);
+        throw new Error(
+          `POST /api/final-meshes requires Content-Type: application/octet-stream with a raw body, got ${JSON.stringify(request.headers['content-type'] ?? null)}`,
+        );
+      }
+      try {
+        const { contentHash, byteLength } = await storeFinalMeshContainer(finalMeshDataDir, body);
+        return { contentHash, byteLength };
+      } catch (error) {
+        if (error instanceof FinalMeshContainerError || error instanceof FinalMeshContentMismatchError) {
+          reply.code(400);
+          return { error: error.name, message: error.message };
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.head<{ Params: { hash: string } }>(
+    '/api/final-meshes/:hash',
+    { schema: { params: meshHashParamsSchema } },
+    async (request, reply) => {
+      const size = await statFinalMesh(finalMeshDataDir, request.params.hash);
+      if (size === null) {
+        reply.code(404);
+        return reply.send();
+      }
+      reply.header('content-length', String(size));
+      reply.type('application/octet-stream');
+      reply.code(200);
+      return reply.send();
+    },
+  );
+
+  app.get<{ Params: { hash: string } }>(
+    '/api/final-meshes/:hash',
+    { schema: { params: meshHashParamsSchema } },
+    async (request, reply) => {
+      const bytes = await readFinalMeshBytes(finalMeshDataDir, request.params.hash);
+      if (!bytes) {
+        reply.code(404);
+        throw new Error(`no final mesh stored for content hash ${request.params.hash}`);
+      }
+      reply.type('application/octet-stream');
+      return bytes;
+    },
+  );
+
   // Phase 4 Task 2: tooth-library asset metadata. Mesh bytes are fetched
   // via the mesh route directly above, using the returned metadata's own
   // `meshChecksum` — see tooth-library-storage.ts's module doc and
@@ -812,11 +790,34 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       // Independent recompute — the source of truth (invariant 6). Dispatch on
       // the discriminator: bridge → runBridgeQc; inlay/onlay → runInlayQc; else
       // (absent/'crown') → runCrownQc.
-      const report = isBridgeBody(b)
-        ? await runBridgeQc(reconstructBridgeQcInput(b))
-        : isInlayBody(b)
-          ? await runInlayQc(reconstructInlayQcInput(b))
-          : await runCrownQc(reconstructCrownQcInput(b));
+      //
+      // P7-T1 (the P6-T8 carry-in): a body can be SCHEMA-valid (passes the AJV
+      // oneOf) yet semantically invalid for the QC pipeline — e.g. an abutment
+      // unit without `fitRegion` (schema-optional; the AJV schema cannot
+      // express "required iff kind==='abutment'"), or an empty margin/outline
+      // polyline. Those surface as TYPED input errors from the reconstruction/
+      // gate pipeline and are the CLIENT's fault → 400 with the diagnostic
+      // message, on all three branches uniformly. Anything else is a genuine
+      // server bug and still escapes to 500 — never blanket-caught.
+      let report: QcReport;
+      try {
+        report = isBridgeBody(b)
+          ? await runBridgeQc(reconstructBridgeQcInput(b))
+          : isInlayBody(b)
+            ? await runInlayQc(reconstructInlayQcInput(b))
+            : await runCrownQc(reconstructCrownQcInput(b));
+      } catch (error) {
+        if (
+          error instanceof BridgeQcInputError ||
+          error instanceof MarginFitInputError ||
+          error instanceof MinWallThicknessInputError ||
+          error instanceof NonCavityRestorationTypeError
+        ) {
+          reply.code(400);
+          return { error: 'qc-invalid-input' as const, errorName: error.name, message: error.message };
+        }
+        throw error;
+      }
 
       if (b.clientReport) {
         const differences = diffQcReports(report, b.clientReport);
@@ -835,6 +836,22 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       return report;
     },
   );
+
+  // Phase 7 Task 4: POST /api/restorations/:id/export (independent
+  // re-validation on the exact exported bytes) + GET /api/exports/:hash/
+  // download — see export-route.ts's module doc for the full design.
+  registerExportRoutes(app, { prisma, exportsDataDir, finalMeshDataDir, meshMaxBytes });
+
+  // Phase 7 Task 6 (Part B): case archive export/import — POST
+  // /api/cases/:id/archive (streamed archive bytes) + POST /api/archives/import
+  // (reconstruct into a new/overwritten case). See archive-route.ts.
+  registerArchiveRoutes(app, {
+    prisma,
+    meshDataDir,
+    finalMeshDataDir,
+    exportsDataDir,
+    archiveMaxBytes,
+  });
 
   return app;
 }

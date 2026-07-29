@@ -13,6 +13,7 @@ import { CavityDesignPanel } from './CavityDesignPanel';
 import { BridgeDesignPanel } from './BridgeDesignPanel';
 import { CrownDesignPanel } from './CrownDesignPanel';
 import { CurvaturePanel } from './CurvaturePanel';
+import { ExportPanel } from './ExportPanel';
 import { ImportPanel } from './ImportPanel';
 import { MarginPanel } from './MarginPanel';
 import { MeasurementPanel } from './MeasurementPanel';
@@ -54,6 +55,7 @@ export function Sidebar() {
       <SurfaceDistancePanel />
       <CurvaturePanel />
       <SectionPanel />
+      <ExportPanel />
     </aside>
   );
 }

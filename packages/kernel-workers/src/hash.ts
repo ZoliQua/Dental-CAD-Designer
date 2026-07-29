@@ -25,8 +25,14 @@
 //    runtime check).
 //  - Browser Web Workers have no `process` global (this repo's Vite config
 //    never polyfills one) and get the standard `crypto.subtle.digest`
-//    (async, but off the UI thread regardless — this whole module only ever
-//    runs inside a worker, never on the main thread).
+//    (async either way).
+//
+// Runtime note (Phase 7 Task 3): originally this module only ever ran
+// inside a worker. `journalHash.ts`'s `hashCaseJournal` now also calls
+// `sha256Hex` on the MAIN thread (engine/exportFlow.ts's request assembly)
+// — fine there because a case journal's canonical JSON is KB-scale and the
+// digest is native/async; multi-MB inputs (files, meshes, export bytes)
+// must still only be hashed via worker jobs.
 function isNodeRuntime(): boolean {
   return typeof process !== 'undefined' && process.versions?.node != null;
 }
@@ -44,8 +50,12 @@ export async function sha256HexSubtle(bytes: Uint8Array): Promise<string> {
   // Same TS 5.7+ `ArrayBufferView<ArrayBuffer>`-vs-`ArrayBufferLike`
   // generic-typing gap the old engine/hash.ts documented — every buffer
   // here is a real, non-shared ArrayBuffer at runtime, so this cast is
-  // safe, not a correctness workaround.
-  const digest = await crypto.subtle.digest('SHA-256', bytes as unknown as BufferSource);
+  // safe, not a correctness workaround. Cast target is the concrete
+  // `Uint8Array<ArrayBuffer>` (not the DOM-lib alias `BufferSource`) so this
+  // file also typechecks in DOM-free programs — the server (deliberately no
+  // "DOM" lib, see apps/server/tsconfig.json) compiles it since Phase 7
+  // Task 4 via the `@dqcad/kernel-workers/journal-hash` subpath.
+  const digest = await crypto.subtle.digest('SHA-256', bytes as Uint8Array<ArrayBuffer>);
   return Array.from(new Uint8Array(digest))
     .map((byte) => byte.toString(16).padStart(2, '0'))
     .join('');

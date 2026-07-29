@@ -31,6 +31,7 @@ import { KERNEL_VERSION, type JobName, type JobPayloadMap, type JobResultMap, ty
 import { DEFAULT_OFFSET_VOXEL_PITCH_MM, STANDARD_ZIRCONIA_PROFILE } from '@dqcad/clinical-profiles';
 import type { FdiTooth, Operation, QcReport, Restoration, RestorationParams, Vec3 } from '@dqcad/shared-types';
 import { caseStore } from './caseStore';
+import { resolveProfileVersion } from './materialProfile';
 import {
   type CavityStage,
   canRunCavityStage,
@@ -40,6 +41,7 @@ import {
   cavityWorkflowGates,
 } from './cavityWorkflow';
 import { flattenLoop, boxMesh } from './crownGeometry';
+import { indicesJson, loopJson, meshJson, type InlayExportQcContext } from './exportContext';
 import { getPool } from './workers';
 import { useCavityStore, type CavityStageGateSnapshot } from '../state/cavityStore';
 import { useCaseStore } from '../state/caseStore';
@@ -545,11 +547,14 @@ class CavityDesignEngine {
    */
   async runContacts(): Promise<void> {
     const session = this.requireSession();
-    this.assertRunnable('contacts');
-    if (!session.patch) throw new CavityStageOrderError('contacts', 'patchIncomplete');
-    const adaptations = this.buildAdaptations(session);
     this.publish({ busyStage: 'contacts', progress: 0, error: null, errorStage: null });
+    // P7-T1 fix round (19b class): sync validation inside the try — post-reload
+    // the gate passes from the persisted occlusalPatch hash while the session
+    // fields are null; a pre-try throw would be a silent no-op.
     try {
+      this.assertRunnable('contacts');
+      if (!session.patch) throw new CavityStageOrderError('contacts', 'patchIncomplete');
+      const adaptations = this.buildAdaptations(session);
       const result = await this.pool().run(
         'cavityProximalContact',
         {
@@ -682,10 +687,13 @@ class CavityDesignEngine {
    */
   async constructShell(): Promise<void> {
     const session = this.requireSession();
-    this.assertRunnable('shell');
-    if (!session.fit || !session.contacts) throw new CavityStageOrderError('shell', 'contactsIncomplete');
     this.publish({ busyStage: 'shell', progress: 0, error: null, errorStage: null });
+    // P7-T1 fix round (19b class): sync validation inside the try — post-reload
+    // the gate passes from the persisted proximalContacts hash while the
+    // session fields are null; a pre-try throw would be a silent no-op.
     try {
+      this.assertRunnable('shell');
+      if (!session.fit || !session.contacts) throw new CavityStageOrderError('shell', 'contactsIncomplete');
       const result = await this.pool().run(
         'cavityShell',
         {
@@ -742,7 +750,7 @@ class CavityDesignEngine {
       throw new CavityStageOrderError('qc', 'shellIncomplete');
     }
     const document = caseStore.getDocument();
-    const profileVersion = document.settings.profileVersion || 'unversioned';
+    const profileVersion = resolveProfileVersion(document);
     const coverage =
       session.restorationType === 'onlay' && session.coverage
         ? {
@@ -785,10 +793,14 @@ class CavityDesignEngine {
    */
   async runQc(): Promise<void> {
     const session = this.requireSession();
-    this.assertRunnable('qc');
-    const payload = this.buildQcPayload(session);
     this.publish({ busyStage: 'qc', progress: 0, error: null, errorStage: null });
+    // P7-T1 (the 19b sibling sweep): the synchronous order check + payload
+    // build live INSIDE the try — a pre-try throw (e.g. persisted stage hashes
+    // without session state, after a reload) would escape `failStage` and
+    // leave the click a silent no-op.
     try {
+      this.assertRunnable('qc');
+      const payload = this.buildQcPayload(session);
       const { report } = await this.pool().run('runInlayQc', payload, { onProgress: (f) => this.publish({ progress: f }) });
       this.commitQc(report, 'inlay-qc', { passed: report.passed, gateCount: report.gates.length });
       this.publish({ busyStage: null, progress: 1, qc: report });
@@ -808,13 +820,14 @@ class CavityDesignEngine {
    */
   async acknowledgeGate(gate: string): Promise<void> {
     const session = this.requireSession();
-    const restoration = this.restoration();
-    if (restoration.qc === null) throw new CavityStageOrderError('qc', 'shellIncomplete');
-    const alreadyAck = restoration.qc.gates.filter((g) => g.acknowledged).map((g) => g.gate);
-    const acknowledgedGates = Array.from(new Set([...alreadyAck, gate]));
-    const payload = this.buildQcPayload(session, acknowledgedGates);
     this.publish({ busyStage: 'qc', error: null, errorStage: null });
+    // Same defense as runQc (P7-T1): no pre-try synchronous escape.
     try {
+      const restoration = this.restoration();
+      if (restoration.qc === null) throw new CavityStageOrderError('qc', 'shellIncomplete');
+      const alreadyAck = restoration.qc.gates.filter((g) => g.acknowledged).map((g) => g.gate);
+      const acknowledgedGates = Array.from(new Set([...alreadyAck, gate]));
+      const payload = this.buildQcPayload(session, acknowledgedGates);
       const { report } = await this.pool().run('runInlayQc', payload);
       this.commitQc(report, 'inlay-qc-ack', { acknowledgedGate: gate, acknowledgedGates });
       this.publish({ busyStage: null, qc: report });
@@ -838,6 +851,71 @@ class CavityDesignEngine {
       timestamp: nowIso(),
     };
     caseStore.updateRestoration(next, operation);
+  }
+
+  // ---- export access (Phase 7 Task 3) -----------------------------------
+
+  /** The session's FINAL inlay/onlay solid for the export flow — same
+   * contract as crownDesign.ts's `finalMeshForExport` (null without a live
+   * session/shell; hash verified by the caller before serializing). */
+  finalMeshForExport(
+    restorationId: string,
+  ): { positions: Float64Array; indices: Uint32Array; contentHash: string } | null {
+    const session = this.session;
+    if (!session || session.restorationId !== restorationId || !session.shell) return null;
+    return {
+      positions: session.shell.positions,
+      indices: session.shell.indices,
+      contentHash: session.shell.contentHash,
+    };
+  }
+
+  /**
+   * The RIDING QC context for the server export re-validation (Phase 7 Task 7)
+   * — the fit/patch surfaces, tooth-with-cavity solid, outline, seam edges,
+   * measured contacts + profile thresholds this engine's `runQc` fed the
+   * worker, so the server recompute over the re-imported inlay/onlay solid +
+   * this context reproduces the client `QcReport`. `null` under the same
+   * no-live-session conditions as `finalMeshForExport`. Every threshold is
+   * profile-sourced (invariant 7); the export schema's forbidden free knobs are
+   * never present.
+   */
+  exportQcContext(restorationId: string): InlayExportQcContext | null {
+    const session = this.session;
+    if (
+      !session ||
+      session.restorationId !== restorationId ||
+      !session.shell ||
+      !session.fit ||
+      !session.contacts ||
+      !session.patch
+    ) {
+      return null;
+    }
+    const coverage =
+      session.restorationType === 'onlay' && session.coverage
+        ? {
+            coverageDivider: {
+              pointMm: [...session.coverage.pointMm],
+              normalMm: [...session.coverage.normalMm],
+            },
+            cuspCoverageMinThicknessMm: STANDARD_ZIRCONIA_PROFILE.cuspCoverageMinThicknessMm,
+          }
+        : undefined;
+    return {
+      fitSurfaceMesh: meshJson(session.fit.positions, session.fit.indices),
+      patchMesh: meshJson(session.contacts.positions, session.contacts.indices),
+      toothWithCavitySolid: meshJson(session.toothPositions, session.toothIndices),
+      cavityOutlineResampledPoints: loopJson(session.outlineFlat),
+      insertionAxis: [...session.insertionAxis],
+      thicknessMinimums: this.cavityMinimums(),
+      marginExclusionMm: cavityMarginExclusionMm(session.restorationType),
+      ...(coverage ? { coverage } : {}),
+      seamEdges: session.patch.seamEdges.map((e) => ({ a: [...e.a], b: [...e.b], segment: e.segment })),
+      cavityTriangleIndices: indicesJson(session.patch.cavityTriangleIndices),
+      contacts: [...session.contacts.contactInputs],
+      contactClampWarning: session.contacts.clampWarning,
+    };
   }
 
   // ---- failure surfacing + UI-only toggles ------------------------------

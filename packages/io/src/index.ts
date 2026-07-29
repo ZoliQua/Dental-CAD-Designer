@@ -28,6 +28,34 @@ export {
 } from './stl/index.ts';
 
 export {
+  exportStlBinary,
+  exportPlyBinary,
+  assertExportableSolid,
+  measureF32NarrowingError,
+  f32UlpAt,
+  ExportMeshInvalidError,
+  EXPORT_STL_HEADER_TEXT,
+  EXPORT_PLY_COMMENT,
+  F32_MAX_MAGNITUDE,
+  MAX_EXPORT_VERTEX_COUNT,
+  type ExportableMesh,
+  type ExportMeshInvalidReason,
+  type ExportSolidCheck,
+  type ExportStlBinaryOptions,
+  type ExportPlyBinaryOptions,
+  type F32NarrowingReport,
+} from './export/index.ts';
+
+export {
+  encodeFinalMeshContainer,
+  decodeFinalMeshContainer,
+  FinalMeshContainerError,
+  FINAL_MESH_MAGIC,
+  FINAL_MESH_CONTAINER_VERSION,
+  type FinalMeshContainerMesh,
+} from './finalmesh/container.ts';
+
+export {
   parsePly,
   parsePlyStream,
   writePlyBinaryLE,

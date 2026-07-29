@@ -15,7 +15,7 @@
 // `.ts` extension: reachable from the Node worker entry's import closure —
 // see CLAUDE.md's "Import extension convention".
 import { union, volume, type IndexedMesh } from '@dqcad/kernel';
-import { writeStlBinary } from '@dqcad/io';
+import { encodeFinalMeshContainer, writeStlBinary } from '@dqcad/io';
 import { hashFloat64, hashMeshContent, sha256Hex } from '../hash.ts';
 import { JobCancelledError, type JobContext } from './context.ts';
 import { requireMeshPayload } from './shared.ts';
@@ -353,6 +353,45 @@ export const serializeMeshStl = async (
   });
   const fileHash = await sha256Hex(bytes);
   return { bytes, fileHash };
+};
+
+// ---------------------------------------------------------------------------
+// serializeFinalMeshContent (Phase 7 Task 6 — the T4-F2 closure WRITE half).
+// Serializes a restoration's FINAL MESH into the LOSSLESS self-describing
+// container (`@dqcad/io`'s `encodeFinalMeshContainer`) whose reconstructed
+// mesh hashes to the SAME `Restoration.stages.finalMesh` content hash — unlike
+// `serializeMeshStl`, which narrows to f32 and cannot reproduce that hash.
+// Persisted content-addressed by the client so the export endpoint can resolve
+// `stages.finalMesh` to the exact Float64 design solid and certify the
+// delivered outer envelope. Returns the container bytes + the content hash
+// (recomputed here, worker-side, over the SAME layout the container stores —
+// `apps/client/src/engine/persistence.ts` asserts it equals the document's
+// `stages.finalMesh`).
+// ---------------------------------------------------------------------------
+
+export interface SerializeFinalMeshContentPayload {
+  /** Float64 master mesh buffers (kernel Float64 rule) — caller passes PRIVATE
+   * copies in the transfer list (`.slice()`), never a session's live master
+   * buffer, same convention as `SerializeMeshStlPayload`. */
+  positions: Float64Array;
+  indices: Uint32Array;
+}
+
+export interface SerializeFinalMeshContentResult {
+  /** The lossless final-mesh container bytes (see `encodeFinalMeshContainer`). */
+  bytes: Uint8Array;
+  /** `hashMeshContent(positions, indices)` — the canonical content hash the
+   * reconstructed container mesh reproduces; equals `stages.finalMesh`. */
+  contentHash: string;
+}
+
+export const serializeFinalMeshContent = async (
+  payload: SerializeFinalMeshContentPayload,
+): Promise<SerializeFinalMeshContentResult> => {
+  requireMeshPayload(payload.positions, payload.indices, 'serializeFinalMeshContent');
+  const bytes = encodeFinalMeshContainer({ positions: payload.positions, indices: payload.indices });
+  const contentHash = await hashMeshContent(payload.positions, payload.indices);
+  return { bytes, contentHash };
 };
 
 // ---------------------------------------------------------------------------

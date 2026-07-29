@@ -12,6 +12,7 @@ const boundaryElements = [
   { type: 'cad-pipeline', pattern: 'packages/cad-pipeline/**' },
   { type: 'clinical-profiles', pattern: 'packages/clinical-profiles/**' },
   { type: 'tooth-library', pattern: 'packages/tooth-library/**' },
+  { type: 'traceability', pattern: 'packages/traceability/**' },
   { type: 'shared-types', pattern: 'packages/shared-types/**' },
 ];
 
@@ -59,8 +60,31 @@ export default tseslint.config(
               from: { element: { types: 'engine' } },
               allow: {
                 to: {
-                  element: { types: { anyOf: ['kernel-workers', 'state', 'shared-types', 'clinical-profiles'] } },
+                  element: {
+                    types: {
+                      anyOf: [
+                        'kernel-workers',
+                        'state',
+                        'shared-types',
+                        'clinical-profiles',
+                        'traceability',
+                      ],
+                    },
+                  },
                 },
+              },
+            },
+            {
+              // Phase 7 Task 5: the QC traceability document's shared
+              // builder/renderer — a leaf package importable by BOTH the
+              // server and the client engine (see packages/traceability/
+              // src/index.ts's placement doc). Depends only on shared-types
+              // (the document type + JSON Schema) and clinical-profiles'
+              // canonical-JSON primitive (the same reuse precedent as
+              // tooth-library).
+              from: { element: { types: 'traceability' } },
+              allow: {
+                to: { element: { types: { anyOf: ['clinical-profiles', 'shared-types'] } } },
               },
             },
             {
@@ -77,7 +101,11 @@ export default tseslint.config(
               // than forking a second implementation.
               from: { element: { types: 'tooth-library' } },
               allow: {
-                to: { element: { types: { anyOf: ['kernel', 'io', 'clinical-profiles', 'shared-types'] } } },
+                to: {
+                  element: {
+                    types: { anyOf: ['kernel', 'io', 'clinical-profiles', 'shared-types'] },
+                  },
+                },
               },
             },
             {
@@ -93,7 +121,11 @@ export default tseslint.config(
               // Acyclic: cad-pipeline imports only kernel/io/shared-types, never
               // kernel-workers — so this adds a dependency edge, not a cycle.
               from: { element: { types: 'kernel-workers' } },
-              allow: { to: { element: { types: { anyOf: ['kernel', 'io', 'cad-pipeline', 'shared-types'] } } } },
+              allow: {
+                to: {
+                  element: { types: { anyOf: ['kernel', 'io', 'cad-pipeline', 'shared-types'] } },
+                },
+              },
             },
             {
               from: { element: { types: 'cad-pipeline' } },

@@ -228,6 +228,24 @@ describe('crownDesign controller — happy path + stage hashes', () => {
   });
 });
 
+describe('crownDesign controller — finalMeshForExport (Phase 7 Task 3)', () => {
+  it('returns null without a session/shell or for the wrong restoration, and the live shell (hash-matching stages.finalMesh) once built', async () => {
+    expect(crownDesignEngine.finalMeshForExport(restorationId)).toBeNull();
+    crownDesignEngine.start(restorationId);
+    expect(crownDesignEngine.finalMeshForExport(restorationId)).toBeNull();
+    await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
+    await crownDesignEngine.placeAnatomy(anatomyInput());
+    await crownDesignEngine.runMorph();
+    await crownDesignEngine.constructShell();
+    expect(crownDesignEngine.finalMeshForExport('someone-else')).toBeNull();
+    const mesh = crownDesignEngine.finalMeshForExport(restorationId);
+    expect(mesh).not.toBeNull();
+    expect(mesh!.contentHash).toBe(currentRestoration().stages.finalMesh);
+    expect(mesh!.positions).toBeInstanceOf(Float64Array);
+    expect(mesh!.indices).toBeInstanceOf(Uint32Array);
+  });
+});
+
 describe('crownDesign controller — coalesced journaling', () => {
   it('journals exactly one op per completed stage', async () => {
     crownDesignEngine.start(restorationId);
@@ -401,6 +419,84 @@ describe('crownDesign controller — invalidation cascade (stale QC can never di
     expect(r.stages.finalMesh).toBeUndefined();
     expect(r.qc).toBeNull();
     expect(r.stages.innerSurface).toBeTypeOf('string'); // its own output stands
+  });
+});
+
+describe('crownDesign controller — silent-failure defense at the QC call sites (P7-T1, the 19b sibling sweep)', () => {
+  // The 19b shape: persisted stage hashes say "qc may run" (as after a page
+  // reload) but the in-memory session has no shell — the pre-try session-shape
+  // check used to throw its CrownStageOrderError BEFORE the try block, so the
+  // click silently no-op'd. Both call sites must surface it VISIBLY.
+  function persistStagesWithoutSession(qcReport: import('@dqcad/shared-types').QcReport | null): void {
+    caseStore.updateRestoration(
+      { ...currentRestoration(), stages: { ...currentRestoration().stages, finalMesh: 'persisted-shell-hash' }, qc: qcReport },
+      { id: 'p', name: 'test-persist', params: {}, inputHashes: [], outputHashes: [], kernelVersion: 'test', timestamp: new Date().toISOString() },
+    );
+  }
+  const minimalReport: import('@dqcad/shared-types').QcReport = {
+    gates: [{ gate: 'minWallThickness', passed: false, acknowledged: false, value: 0.3, threshold: 0.5, unit: 'mm', message: 'thin' }],
+    passed: false,
+    kernelVersion: 'test',
+    profileVersion: 'test',
+    journalHash: 'persisted-shell-hash',
+  };
+
+  it('runQc: a CrownStageOrderError from the session-shape check lands in the visible error state', async () => {
+    crownDesignEngine.start(restorationId);
+    persistStagesWithoutSession(null);
+
+    await expect(crownDesignEngine.runQc()).rejects.toThrow(CrownStageOrderError);
+
+    const store = useCrownStore.getState();
+    expect(store.error).toMatch(/CrownStageOrderError/);
+    expect(store.errorStage).toBe('qc');
+    expect(store.busyStage).toBeNull();
+  });
+
+  it('acknowledgeGate: a CrownStageOrderError from the session-shape check lands in the visible error state', async () => {
+    crownDesignEngine.start(restorationId);
+    persistStagesWithoutSession(minimalReport);
+
+    await expect(crownDesignEngine.acknowledgeGate('minWallThickness')).rejects.toThrow(CrownStageOrderError);
+
+    const store = useCrownStore.getState();
+    expect(store.error).toMatch(/CrownStageOrderError/);
+    expect(store.errorStage).toBe('qc');
+    expect(store.busyStage).toBeNull();
+  });
+
+  // P7-T1 fix round (review finding 1): the same class at the MID-WORKFLOW
+  // actions — post-reload the stage gates pass from persisted hashes while the
+  // session fields are null; the panel's fire-and-forget run() wrapper swallows
+  // the rejection, so a pre-try throw is a silent no-op.
+  it('runMorph: a CrownStageOrderError from the session-shape check lands in the visible error state', async () => {
+    crownDesignEngine.start(restorationId);
+    caseStore.updateRestoration(
+      { ...currentRestoration(), stages: { ...currentRestoration().stages, anatomyPlacement: 'persisted-anatomy-hash' } },
+      { id: 'p2', name: 'test-persist', params: {}, inputHashes: [], outputHashes: [], kernelVersion: 'test', timestamp: new Date().toISOString() },
+    );
+
+    await expect(crownDesignEngine.runMorph()).rejects.toThrow(CrownStageOrderError);
+
+    const store = useCrownStore.getState();
+    expect(store.error).toMatch(/CrownStageOrderError/);
+    expect(store.errorStage).toBe('morph');
+    expect(store.busyStage).toBeNull();
+  });
+
+  it('constructShell: a CrownStageOrderError from the session-shape check lands in the visible error state', async () => {
+    crownDesignEngine.start(restorationId);
+    caseStore.updateRestoration(
+      { ...currentRestoration(), stages: { ...currentRestoration().stages, morphState: 'persisted-morph-hash' } },
+      { id: 'p3', name: 'test-persist', params: {}, inputHashes: [], outputHashes: [], kernelVersion: 'test', timestamp: new Date().toISOString() },
+    );
+
+    await expect(crownDesignEngine.constructShell()).rejects.toThrow(CrownStageOrderError);
+
+    const store = useCrownStore.getState();
+    expect(store.error).toMatch(/CrownStageOrderError/);
+    expect(store.errorStage).toBe('shell');
+    expect(store.busyStage).toBeNull();
   });
 });
 

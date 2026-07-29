@@ -44,6 +44,7 @@ import {
 import { DEFAULT_OFFSET_VOXEL_PITCH_MM, STANDARD_ZIRCONIA_PROFILE } from '@dqcad/clinical-profiles';
 import type { FdiTooth, Operation, QcReport, Restoration, RestorationParams, Vec3 } from '@dqcad/shared-types';
 import { caseStore } from './caseStore';
+import { resolveProfileVersion } from './materialProfile';
 import {
   type CrownStage,
   canRunStage,
@@ -53,6 +54,7 @@ import {
   workflowGates,
 } from './crownWorkflow';
 import { boxMesh, builtinLibraryTooth, flattenLoop, type BuiltinLibraryTooth, type IndexedBuffers } from './crownGeometry';
+import { loopJson, meshJson, type CrownExportQcContext } from './exportContext';
 import type { RenderNode } from './renderNode';
 import { getPool } from './workers';
 import { colorForValue, computeAutoRange, distancesToVertexColors } from './colormap';
@@ -619,15 +621,18 @@ class CrownDesignEngine {
    */
   async runMorph(): Promise<void> {
     const session = this.requireSession();
-    this.assertRunnable('morph');
-    if (!session.placed || !session.anatomyInput) {
-      throw new CrownStageOrderError('morph', 'anatomyIncomplete');
-    }
-    const planId = `${session.restorationId}:${session.placed.contentHash}`;
-    const contacts = this.buildMorphContacts(session, session.anatomyInput);
-    const strengths = useCrownStore.getState().strengths;
     this.publish({ busyStage: 'morph', progress: 0, error: null, errorStage: null });
+    // P7-T1 fix round (19b class): sync validation inside the try — post-reload
+    // the gate passes from the persisted anatomyPlacement hash while the
+    // session fields are null; a pre-try throw would be a silent no-op.
     try {
+      this.assertRunnable('morph');
+      if (!session.placed || !session.anatomyInput) {
+        throw new CrownStageOrderError('morph', 'anatomyIncomplete');
+      }
+      const planId = `${session.restorationId}:${session.placed.contentHash}`;
+      const contacts = this.buildMorphContacts(session, session.anatomyInput);
+      const strengths = useCrownStore.getState().strengths;
       const result = await this.pool().run(
         'morphAnatomy',
         {
@@ -773,13 +778,16 @@ class CrownDesignEngine {
    */
   async constructShell(opts: { autoThicken?: boolean } = {}): Promise<void> {
     const session = this.requireSession();
-    this.assertRunnable('shell');
-    if (!session.morphOuter || !session.inner) {
-      throw new CrownStageOrderError('shell', 'morphIncomplete');
-    }
-    const autoThicken = opts.autoThicken ?? false;
     this.publish({ busyStage: 'shell', progress: 0, error: null, errorStage: null });
+    // P7-T1 fix round (19b class): sync validation inside the try — post-reload
+    // the gate passes from the persisted morphState hash while the session
+    // fields are null; a pre-try throw would be a silent no-op.
     try {
+      this.assertRunnable('shell');
+      if (!session.morphOuter || !session.inner) {
+        throw new CrownStageOrderError('shell', 'morphIncomplete');
+      }
+      const autoThicken = opts.autoThicken ?? false;
       const result = await this.pool().run('constructShell', {
         outerPositions: session.morphOuter.positions,
         outerIndices: session.morphOuter.indices,
@@ -902,14 +910,18 @@ class CrownDesignEngine {
    */
   async runQc(): Promise<void> {
     const session = this.requireSession();
-    this.assertRunnable('qc');
-    if (!session.shell || !session.inner || !session.morphOuter) {
-      throw new CrownStageOrderError('qc', 'shellIncomplete');
-    }
-    const document = caseStore.getDocument();
-    const profileVersion = document.settings.profileVersion || 'unversioned';
     this.publish({ busyStage: 'qc', progress: 0, error: null, errorStage: null });
+    // P7-T1 (the 19b sibling sweep): the synchronous order check + session-
+    // shape check live INSIDE the try — a pre-try throw (e.g. persisted stage
+    // hashes without session state, after a reload) would escape `failStage`
+    // and leave the click a silent no-op.
     try {
+      this.assertRunnable('qc');
+      if (!session.shell || !session.inner || !session.morphOuter) {
+        throw new CrownStageOrderError('qc', 'shellIncomplete');
+      }
+      const document = caseStore.getDocument();
+      const profileVersion = resolveProfileVersion(document);
       const { report } = await this.pool().run('runQc', {
         crownPositions: session.shell.positions,
         crownIndices: session.shell.indices,
@@ -954,16 +966,17 @@ class CrownDesignEngine {
    */
   async acknowledgeGate(gate: string): Promise<void> {
     const session = this.requireSession();
-    const restoration = this.restoration();
-    if (restoration.qc === null || !session.shell || !session.inner || !session.morphOuter) {
-      throw new CrownStageOrderError('qc', 'shellIncomplete');
-    }
-    const alreadyAck = restoration.qc.gates.filter((g) => g.acknowledged).map((g) => g.gate);
-    const acknowledgedGates = Array.from(new Set([...alreadyAck, gate]));
-    const document = caseStore.getDocument();
-    const profileVersion = document.settings.profileVersion || 'unversioned';
     this.publish({ busyStage: 'qc', error: null, errorStage: null });
+    // Same defense as runQc (P7-T1): no pre-try synchronous escape.
     try {
+      const restoration = this.restoration();
+      if (restoration.qc === null || !session.shell || !session.inner || !session.morphOuter) {
+        throw new CrownStageOrderError('qc', 'shellIncomplete');
+      }
+      const alreadyAck = restoration.qc.gates.filter((g) => g.acknowledged).map((g) => g.gate);
+      const acknowledgedGates = Array.from(new Set([...alreadyAck, gate]));
+      const document = caseStore.getDocument();
+      const profileVersion = resolveProfileVersion(document);
       const { report } = await this.pool().run('runQc', {
         crownPositions: session.shell.positions,
         crownIndices: session.shell.indices,
@@ -1014,6 +1027,66 @@ class CrownDesignEngine {
       timestamp: nowIso(),
     };
     caseStore.updateRestoration(next, operation);
+  }
+
+  // ---- export access (Phase 7 Task 3) -----------------------------------
+
+  /**
+   * The session's FINAL restoration solid (the shell that wrote
+   * `stages.finalMesh`) for the export flow — `null` when no session is
+   * active for `restorationId` or the shell has not been built in THIS
+   * session (e.g. right after a reload). The caller
+   * (engine/exportFlow.ts) verifies `contentHash` against the document's
+   * `stages.finalMesh` before serializing — a mismatch is refused, never
+   * exported. Read-only access to the live session buffers (the export job
+   * copies them before transfer).
+   */
+  finalMeshForExport(
+    restorationId: string,
+  ): { positions: Float64Array; indices: Uint32Array; contentHash: string } | null {
+    const session = this.session;
+    if (!session || session.restorationId !== restorationId || !session.shell) return null;
+    return {
+      positions: session.shell.positions,
+      indices: session.shell.indices,
+      contentHash: session.shell.contentHash,
+    };
+  }
+
+  /**
+   * The RIDING QC context for the server export re-validation (Phase 7 Task 7)
+   * — the design-time surfaces + measured inputs the delivered bytes can't
+   * reconstruct, built from the SAME live-session buffers + profile constants
+   * this engine's `runQc` fed the worker (parity: the server recompute over the
+   * re-imported solid + this context reproduces the client `QcReport`). `null`
+   * under the same no-live-session conditions as `finalMeshForExport`. Every
+   * threshold is profile-sourced (invariant 7) and matches the server-resolved
+   * authority; the export schema's forbidden free knobs are never present.
+   */
+  exportQcContext(restorationId: string): CrownExportQcContext | null {
+    const session = this.session;
+    if (
+      !session ||
+      session.restorationId !== restorationId ||
+      !session.inner ||
+      !session.morphOuter ||
+      !session.shell
+    ) {
+      return null;
+    }
+    return {
+      innerSurfaceMesh: meshJson(session.inner.positions, session.inner.indices),
+      outerSurfaceMesh: meshJson(session.morphOuter.positions, session.morphOuter.indices),
+      dieSolid: meshJson(session.diePositions, session.dieIndices),
+      marginResampledPoints: loopJson(session.marginLoopFlat),
+      insertionAxis: [...session.insertionAxis],
+      minWallThicknessMm: session.params.minWallThicknessMm,
+      occlusalMinWallThicknessMm: STANDARD_ZIRCONIA_PROFILE.occlusalMinWallThicknessMm,
+      connectorAreaTargetMm2: STANDARD_ZIRCONIA_PROFILE.connectorAreaMm2.anteriorMm2,
+      contacts: [...session.morphContacts],
+      contactClampWarning: session.morphContacts.some((c) => c.clampBound),
+      marginExclusionMm: STANDARD_ZIRCONIA_PROFILE.marginExclusionMm,
+    };
   }
 
   // ---- failure surfacing ------------------------------------------------

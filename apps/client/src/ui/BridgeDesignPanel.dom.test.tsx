@@ -228,5 +228,37 @@ describe('BridgeDesignPanel — browser-lane critical path (real WorkerPool, 3-u
     );
     expect(historyNames()).toContain('bridge-qc-ack');
     expect(restoration(id).qc!.gates.find((g) => g.gate === 'connectorCrossSection')!.acknowledged).toBe(true);
+
+    // --- P7-T1 regression (phase-6.md item 19b): reload → "Run QC" is REAL ---
+    // Simulate a page reload: the persisted CaseDocument survives, every
+    // in-memory session/store is torn down, the panel re-opens the SAME case.
+    // Pre-fix, this click silently no-op'd (buildQcPayload threw synchronously
+    // before the try/busy/error publishes); now the session re-materializes
+    // from the persisted stages + journal and a REAL QC run lands.
+    const qcOpsBefore = historyNames().filter((n) => n === 'bridge-qc').length;
+    const saved = caseStore.getDocument();
+    cleanup();
+    bridgeDesignEngine.resetForTests();
+    caseStore.resetForTests();
+    caseStore.loadDocument(saved);
+
+    render(<BridgeDesignPanel />);
+    await user.selectOptions(screen.getByTestId('bridge-restoration-select'), id);
+    await user.click(screen.getByTestId('bridge-start-button'));
+    // Every stage checkmark restored from persistence; QC is allowed.
+    expect(screen.getByTestId('bridge-stage-margins').getAttribute('data-complete')).toBe('true');
+
+    await user.click(screen.getByTestId('bridge-qc-run'));
+    await waitFor(
+      () => expect(historyNames().filter((n) => n === 'bridge-qc').length).toBe(qcOpsBefore + 1),
+      { timeout: 120_000 },
+    );
+    // A REAL re-run: no error banner, a fresh report on the restoration (the
+    // re-run drops the acknowledgment — the thin connector FAILS again, which
+    // is the honest un-acknowledged verdict of a fresh run).
+    expect(screen.queryByTestId('bridge-error')).toBeNull();
+    expect(restoration(id).qc).not.toBeNull();
+    expect(restoration(id).qc!.gates.find((g) => g.gate === 'connectorCrossSection')!.passed).toBe(false);
+    await waitFor(() => expect(screen.getByTestId('bridge-qc-failed')).toBeTruthy(), { timeout: 30_000 });
   }, 600_000);
 });

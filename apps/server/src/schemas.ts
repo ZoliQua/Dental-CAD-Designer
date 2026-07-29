@@ -453,6 +453,31 @@ export const postMeshResponseSchema = {
   },
 } as const;
 
+// Phase 7 Task 6 (Part A — the T4-F2 closure): POST /api/final-meshes stores a
+// lossless final-mesh container content-addressed by the DECODED mesh's hash
+// (server-computed, never trusted), returning that hash. The body is raw
+// octet-stream bytes (no `schema.body` — same reason as POST /api/meshes).
+export const postFinalMeshResponseSchema = {
+  200: {
+    type: 'object',
+    required: ['contentHash', 'byteLength'],
+    additionalProperties: false,
+    properties: {
+      contentHash: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+      byteLength: { type: 'integer', minimum: 0 },
+    },
+  },
+  400: {
+    type: 'object',
+    required: ['error', 'message'],
+    additionalProperties: false,
+    properties: {
+      error: { type: 'string' },
+      message: { type: 'string' },
+    },
+  },
+} as const;
+
 // ---------------------------------------------------------------------------
 // Tooth library (Phase 4 Task 2): GET /api/tooth-library[/:fdi]. Mesh BYTES
 // are deliberately NOT part of either response — they're already reachable
@@ -826,7 +851,14 @@ const fitRegionInputSchema = {
 
 const bridgeUnitInputSchema = {
   type: 'object',
-  required: ['label', 'kind', 'innerSurfaceMesh', 'outerSurfaceMesh', 'insertionAxis', 'marginLoop'],
+  required: [
+    'label',
+    'kind',
+    'innerSurfaceMesh',
+    'outerSurfaceMesh',
+    'insertionAxis',
+    'marginLoop',
+  ],
   additionalProperties: false,
   properties: {
     label: { type: 'string' },
@@ -922,8 +954,485 @@ export const validateQcBodySchema = {
   oneOf: [crownValidateQcBodySchema, inlayValidateQcBodySchema, bridgeValidateQcBodySchema],
 } as const;
 
+// ---------------------------------------------------------------------------
+// POST /api/restorations/:id/export (Phase 7 Task 4) — the independent
+// re-validation on the exact exported bytes (CLAUDE.md invariant 6 in its
+// strongest form: the server's QC input is what a mill would read, never a
+// client-shipped array for the restoration solid).
+//
+// The body is `{ request, qcContext }`:
+//  - `request` is the Task 3 `RestorationExportRequest` currency VERBATIM
+//    (shared-types) — bytes (base64) + integrity hashes + the client QcReport
+//    (compare-only, never trusted) + journal/profile/kernel identity.
+//  - `qcContext` is the RIDING geometry context — exactly the matching
+//    validate-qc branch MINUS (a) the restoration solid (crownSolid /
+//    inlaySolid / assembledSolid: byte-derived — the server re-imports it
+//    from `request.bytesBase64`, the one place the bytes are authoritative)
+//    and (b) the request-level metadata (`kernelVersion`/`profileVersion`/
+//    `journalHash`/`acknowledgedGates`/`clientReport`/`restorationType`),
+//    which the route derives from verified `request` fields so a context/
+//    request disagreement cannot be smuggled in. The subtraction is
+//    performed PROGRAMMATICALLY from the validate-qc branch schemas
+//    (`omitBodySchemaProperties`) so the boundary is defined in one place
+//    and can never drift from the validate-qc contract.
+// ---------------------------------------------------------------------------
+
+interface BodyObjectSchema {
+  readonly type: 'object';
+  readonly required: readonly string[];
+  readonly additionalProperties: false;
+  readonly properties: Readonly<Record<string, unknown>>;
+}
+
+/** `schema` minus the named properties (removed from both `properties` and
+ * `required`). Throws if a named property does not exist — a rename in the
+ * source schema must fail loudly here, not silently widen the derived one. */
+function omitBodySchemaProperties(
+  schema: BodyObjectSchema,
+  omit: readonly string[],
+): BodyObjectSchema {
+  const properties: Record<string, unknown> = { ...schema.properties };
+  for (const name of omit) {
+    if (!(name in properties)) {
+      throw new Error(
+        `omitBodySchemaProperties: property ${JSON.stringify(name)} not found in schema`,
+      );
+    }
+    delete properties[name];
+  }
+  return {
+    type: 'object',
+    required: schema.required.filter((r) => !omit.includes(r)),
+    additionalProperties: false,
+    properties,
+  };
+}
+
+/** Request-level fields present on every validate-qc branch that the export
+ * route derives from the VERIFIED `request` instead (see the section doc). */
+const EXPORT_CONTEXT_REQUEST_DERIVED = [
+  'restorationType',
+  'kernelVersion',
+  'profileVersion',
+  'journalHash',
+  'acknowledgedGates',
+  'clientReport',
+] as const;
+
+// F1 fix round: FREE gate-tolerance knobs are FORBIDDEN in the export
+// contexts entirely (removed from the schema → `additionalProperties: false`
+// makes their presence a 400). The design engines never send them
+// (crownDesign/cavityDesign/bridgeDesign build their QC payloads without any
+// override — verified against the client sources), they have NO
+// profile-authoritative value to verify against (their authority is the gate
+// DEFAULT constants in cad-pipeline, which both sides then use identically),
+// and each one is an unbounded knob that could silently loosen a release
+// gate (the F1 exploit class). Validate-qc keeps accepting them — it is
+// advisory; the export route RELEASES a manufacturing file. The
+// profile-derived thresholds that remain in the contexts are pinned by the
+// route against the server-resolved material profile (export-profile.ts).
+const EXPORT_CONTEXT_FORBIDDEN_KNOBS = {
+  crown: [
+    'marginFitThresholdMm',
+    'seatingInterferenceVolumeToleranceMm3',
+    'contactToleranceMm',
+    'connectors',
+  ],
+  inlay: [
+    'marginFitThresholdMm',
+    'seamDihedralThresholdDeg',
+    'seatingInterferenceVolumeToleranceMm3',
+    'contactToleranceMm',
+  ],
+  bridge: ['marginFitThresholdMm', 'seatingInterferenceVolumeToleranceMm3'],
+} as const;
+
+export const crownExportQcContextSchema = omitBodySchemaProperties(crownValidateQcBodySchema, [
+  'crownSolid',
+  ...EXPORT_CONTEXT_REQUEST_DERIVED,
+  ...EXPORT_CONTEXT_FORBIDDEN_KNOBS.crown,
+]);
+
+export const inlayExportQcContextSchema = omitBodySchemaProperties(inlayValidateQcBodySchema, [
+  'inlaySolid',
+  ...EXPORT_CONTEXT_REQUEST_DERIVED,
+  ...EXPORT_CONTEXT_FORBIDDEN_KNOBS.inlay,
+]);
+
+// The bridge context additionally derives knob-free NESTED schemas: the
+// per-unit `marginExclusionMm` band (never sent by bridgeDesign; its crown
+// analogue is profile-pinned) and `ponticRelief.thresholdMm` (the ±20 µm
+// gate default is the only value the client ever uses) are forbidden the
+// same way as the top-level knobs.
+const bridgeExportBase = omitBodySchemaProperties(bridgeValidateQcBodySchema, [
+  'assembledSolid',
+  ...EXPORT_CONTEXT_REQUEST_DERIVED,
+  ...EXPORT_CONTEXT_FORBIDDEN_KNOBS.bridge,
+]);
+
+export const bridgeExportQcContextSchema = {
+  ...bridgeExportBase,
+  properties: {
+    ...bridgeExportBase.properties,
+    units: {
+      type: 'array',
+      items: omitBodySchemaProperties(bridgeUnitInputSchema, ['marginExclusionMm']),
+      minItems: 1,
+    },
+    ponticRelief: omitBodySchemaProperties(ponticReliefInputSchema, ['thresholdMm']),
+  },
+};
+
+const sha256HexSchema = { type: 'string', pattern: '^[0-9a-f]{64}$' } as const;
+
+const exportAcknowledgmentSchema = {
+  type: 'object',
+  required: ['gate', 'message', 'value', 'threshold', 'unit', 'operationId'],
+  additionalProperties: false,
+  properties: {
+    gate: { type: 'string' },
+    message: { type: 'string' },
+    value: { type: ['number', 'null'] },
+    threshold: { type: ['number', 'null'] },
+    unit: { type: ['string', 'null'] },
+    // `null` is accepted by the SCHEMA (the shared-types shape allows it) but
+    // REFUSED by the route with a distinct 409 (`export-unjournaled-
+    // acknowledgment`) — the N4 contract: an acknowledgment without a journal
+    // ref is never a valid authorization; schema-rejecting it would hide the
+    // typed diagnostic behind a generic 400.
+    operationId: { type: ['string', 'null'] },
+  },
+} as const;
+
+/** Mirrors shared-types' `RestorationExportRequest` (schemaVersion 1). */
+export const restorationExportRequestSchema = {
+  type: 'object',
+  required: [
+    'schemaVersion',
+    'caseId',
+    'restorationId',
+    'restorationType',
+    'teeth',
+    'format',
+    'meshContentHash',
+    'exportOperationId',
+    'bytesBase64',
+    'bytesSha256',
+    'byteLength',
+    'qcReport',
+    'acknowledgments',
+    'caseJournalHash',
+    'journalOperationCount',
+    'materialProfile',
+    'kernelVersion',
+  ],
+  additionalProperties: false,
+  properties: {
+    schemaVersion: { type: 'integer', const: 1 },
+    caseId: { type: 'string', minLength: 1 },
+    restorationId: { type: 'string', minLength: 1 },
+    restorationType: { type: 'string', enum: ['crown', 'inlay', 'onlay', 'bridge'] },
+    teeth: { type: 'array', items: fdiToothSchema, minItems: 1 },
+    format: { type: 'string', enum: ['stl', 'ply'] },
+    headerText: { type: 'string', maxLength: 80 },
+    meshContentHash: sha256HexSchema,
+    exportOperationId: { type: 'string', minLength: 1 },
+    bytesBase64: { type: 'string', minLength: 1 },
+    bytesSha256: sha256HexSchema,
+    byteLength: { type: 'integer', minimum: 1 },
+    qcReport: qcReportSchema,
+    acknowledgments: { type: 'array', items: exportAcknowledgmentSchema },
+    caseJournalHash: sha256HexSchema,
+    journalOperationCount: { type: 'integer', minimum: 0 },
+    materialProfile: {
+      type: 'object',
+      required: ['id', 'version', 'checksum'],
+      additionalProperties: false,
+      properties: {
+        id: { type: 'string', minLength: 1 },
+        version: { type: 'string', minLength: 1 },
+        checksum: sha256HexSchema,
+      },
+    },
+    kernelVersion: { type: 'string', minLength: 1 },
+  },
+} as const;
+
+// The three context branches are mutually exclusive under `oneOf`: each keeps
+// `additionalProperties: false` and requires fields the other branches forbid
+// (crown: `dieSolid`+`marginResampledPoints`; inlay/onlay: `fitSurfaceMesh`+
+// `patchMesh`; bridge: `units`+`dieSolids`+`ponticRelief`), so exactly one
+// branch can validate. The route separately enforces that the branch MATCHES
+// `request.restorationType` (400 `export-context-type-mismatch`).
+export const exportBodySchema = {
+  type: 'object',
+  required: ['request', 'qcContext'],
+  additionalProperties: false,
+  properties: {
+    request: restorationExportRequestSchema,
+    qcContext: {
+      oneOf: [crownExportQcContextSchema, inlayExportQcContextSchema, bridgeExportQcContextSchema],
+    },
+  },
+} as const;
+
+// Every rejection is a TYPED, schema'd error body (the 19b/no-silent-failure
+// discipline server-side): `error` is the closed rejection code the route
+// maps from `ExportRejectionError.code`, `message` the human diagnostic,
+// `details` the code-specific structured payload. The 400 shape must ALSO
+// survive Fastify's own AJV validation-error serialization (statusCode/code/
+// error='Bad Request'/message) — same constraint as validateQcResponseSchema's
+// 400, so it stays permissive (no additionalProperties: false).
+const exportErrorSchema = {
+  type: 'object',
+  required: ['error', 'message'],
+  properties: {
+    error: { type: 'string' },
+    message: { type: 'string' },
+    /** Code-specific structured diagnostics (free-form object). */
+    details: { type: 'object', additionalProperties: true },
+    /** Present on Fastify's own validation-error shape. */
+    statusCode: { type: 'number' },
+    code: { type: 'string' },
+  },
+} as const;
+
+const qcReportDifferenceSchema = {
+  type: 'object',
+  required: ['path', 'server', 'client'],
+  additionalProperties: false,
+  properties: {
+    path: { type: 'string' },
+    server: {},
+    client: {},
+  },
+} as const;
+
+export const exportResponseSchema = {
+  200: {
+    type: 'object',
+    required: [
+      'released',
+      'exportId',
+      'caseId',
+      'restorationId',
+      'restorationType',
+      'teeth',
+      'format',
+      'bytesSha256',
+      'byteLength',
+      'meshContentHash',
+      'reimportMeshHash',
+      'downloadPath',
+      'traceabilityJsonPath',
+      'traceabilityHtmlPath',
+      'releasedAt',
+      'alreadyStored',
+      'qcReport',
+    ],
+    additionalProperties: false,
+    properties: {
+      released: { type: 'boolean', const: true },
+      exportId: { type: 'string' },
+      caseId: { type: 'string' },
+      restorationId: { type: 'string' },
+      restorationType: { type: 'string' },
+      teeth: { type: 'array', items: fdiToothSchema },
+      format: { type: 'string', enum: ['stl', 'ply'] },
+      bytesSha256: sha256HexSchema,
+      byteLength: { type: 'integer', minimum: 1 },
+      meshContentHash: sha256HexSchema,
+      /** Canonical hash of the byte-derived re-imported solid the server QC
+       * measured — differs from `meshContentHash` by the documented canonical
+       * re-index + f32 narrowing (see export-route.ts's module doc). */
+      reimportMeshHash: sha256HexSchema,
+      downloadPath: { type: 'string' },
+      /** GET routes for the Task 5 traceability document (JSON verbatim
+       * canonical bytes / PDF-ready HTML). */
+      traceabilityJsonPath: { type: 'string' },
+      traceabilityHtmlPath: { type: 'string' },
+      /** Server release timestamp — a RECORD field only (never hashed). */
+      releasedAt: { type: 'string' },
+      /** True iff byte-identical content was already in the store (an
+       * idempotent re-release — same object, new ledger row). */
+      alreadyStored: { type: 'boolean' },
+      /** The SERVER-recomputed report (the authoritative copy). */
+      qcReport: qcReportSchema,
+    },
+  },
+  400: exportErrorSchema,
+  404: exportErrorSchema,
+  409: {
+    type: 'object',
+    required: ['error', 'message'],
+    properties: {
+      error: { type: 'string' },
+      message: { type: 'string' },
+      details: { type: 'object', additionalProperties: true },
+      /** `export-qc-mismatch` only: the per-field client/server diff. */
+      differences: { type: 'array', items: qcReportDifferenceSchema },
+      /** `export-qc-mismatch` only: the persisted ExportDiagnostic row id. */
+      diagnosticId: { type: 'string' },
+      /** `export-qc-mismatch` only: the full diagnostic bundle (also
+       * persisted server-side under `diagnosticId`). */
+      bundle: { type: 'object', additionalProperties: true },
+      /** `export-gates-failing` only: failing unacknowledged gate ids. */
+      failingGates: { type: 'array', items: { type: 'string' } },
+      /** `export-outer-envelope-mismatch` only (Phase 7 Task 6 Part A): the
+       * reference (persisted design) vs delivered re-import content hashes. */
+      referenceHash: sha256HexSchema,
+      reimportMeshHash: sha256HexSchema,
+      /** `export-final-mesh-not-persisted` only (Phase 7 Task 8): the
+       * unresolved final-design mesh content hash (stages.finalMesh). */
+      meshContentHash: sha256HexSchema,
+    },
+  },
+} as const;
+
+// GET /api/exports/:hash/download — the 200 body is the raw released bytes
+// (no JSON schema; serialized as a Buffer with explicit content-type/
+// disposition headers), so only the error statuses carry response schemas.
+export const exportDownloadResponseSchema = {
+  404: exportErrorSchema,
+  500: exportErrorSchema,
+} as const;
+
+// GET /api/exports/:id/traceability.{json,html} (Phase 7 Task 5). The 200
+// bodies carry NO response schema BY DESIGN (the same precedent as the
+// download route): the JSON route must serve the STORED canonical document
+// bytes VERBATIM (re-serializing through fast-json-stringify would re-order
+// keys and break the byte-pinnable contract), and the HTML route serves a
+// text/html string. Only the error statuses are schema'd.
+export const exportTraceabilityParamsSchema = {
+  type: 'object',
+  required: ['id'],
+  additionalProperties: false,
+  properties: {
+    /** Export LEDGER ROW id (uuid) — per release event, unlike the
+     * download route's per-content `:hash` (a re-release shares bytes but
+     * has its own row + document). */
+    id: { type: 'string', minLength: 1 },
+  },
+} as const;
+
+export const exportTraceabilityQuerySchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    /** Display locale for the HTML rendering — explicit, defaulted to EN
+     * (the render function takes locale as a parameter; the server never
+     * reads environment locale state). */
+    lang: { type: 'string', enum: ['en', 'hu', 'de', 'es'], default: 'en' },
+  },
+} as const;
+
+export const exportTraceabilityResponseSchema = {
+  404: exportErrorSchema,
+  500: exportErrorSchema,
+} as const;
+
+// Phase 7 Task 6 (Part B): case archive export/import.
+const archiveErrorSchema = {
+  type: 'object',
+  required: ['error', 'message'],
+  additionalProperties: false,
+  properties: {
+    error: { type: 'string' },
+    message: { type: 'string' },
+    caseId: { type: 'string' },
+    entryName: { type: ['string', 'null'] },
+  },
+} as const;
+
+// POST /api/cases/:id/archive — the 200 body is the raw archive bytes (no JSON
+// schema; sent as a Buffer with explicit content-type/disposition), so only the
+// error statuses carry response schemas.
+export const archiveExportResponseSchema = {
+  404: archiveErrorSchema,
+  409: archiveErrorSchema,
+} as const;
+
+export const archiveImportQuerySchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    /** Confirms overwriting an existing case id (invariant 5: no silent
+     * mutation — an unconfirmed collision is a typed 409). */
+    overwrite: { type: 'boolean', default: false },
+  },
+} as const;
+
+export const archiveImportResponseSchema = {
+  200: {
+    type: 'object',
+    required: ['imported', 'caseId', 'overwritten', 'counts'],
+    additionalProperties: false,
+    properties: {
+      imported: { type: 'boolean', const: true },
+      caseId: { type: 'string' },
+      overwritten: { type: 'boolean' },
+      counts: {
+        type: 'object',
+        required: ['scans', 'finalMeshes', 'exportRows', 'exportBytes'],
+        additionalProperties: false,
+        properties: {
+          scans: { type: 'integer', minimum: 0 },
+          finalMeshes: { type: 'integer', minimum: 0 },
+          exportRows: { type: 'integer', minimum: 0 },
+          exportBytes: { type: 'integer', minimum: 0 },
+        },
+      },
+    },
+  },
+  201: {
+    type: 'object',
+    required: ['imported', 'caseId', 'overwritten', 'counts'],
+    additionalProperties: false,
+    properties: {
+      imported: { type: 'boolean', const: true },
+      caseId: { type: 'string' },
+      overwritten: { type: 'boolean' },
+      counts: {
+        type: 'object',
+        required: ['scans', 'finalMeshes', 'exportRows', 'exportBytes'],
+        additionalProperties: false,
+        properties: {
+          scans: { type: 'integer', minimum: 0 },
+          finalMeshes: { type: 'integer', minimum: 0 },
+          exportRows: { type: 'integer', minimum: 0 },
+          exportBytes: { type: 'integer', minimum: 0 },
+        },
+      },
+    },
+  },
+  400: archiveErrorSchema,
+  409: archiveErrorSchema,
+  415: archiveErrorSchema,
+} as const;
+
 export const validateQcResponseSchema = {
   200: qcReportSchema,
+  // Phase 7 Task 1 (the P6-T8 carry-in): a SCHEMA-valid but semantically
+  // invalid body (a typed QC input error thrown during the server's
+  // independent recompute) maps to 400 with the diagnostic. This schema must
+  // stay PERMISSIVE (no `additionalProperties: false`, `required` covering
+  // both shapes): Fastify serializes its OWN AJV validation-error 400s
+  // through the same 400 response schema, and their body
+  // (`statusCode`/`code`/`error: 'Bad Request'`/`message`) must survive
+  // serialization unchanged alongside our `qc-invalid-input` shape.
+  400: {
+    type: 'object',
+    required: ['error', 'message'],
+    properties: {
+      error: { type: 'string' },
+      message: { type: 'string' },
+      /** Present on the qc-invalid-input shape: the typed error's class name. */
+      errorName: { type: 'string' },
+      /** Present on Fastify's own validation-error shape. */
+      statusCode: { type: 'number' },
+      code: { type: 'string' },
+    },
+  },
   409: {
     type: 'object',
     required: ['error', 'message', 'differences'],

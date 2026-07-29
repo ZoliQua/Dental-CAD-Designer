@@ -1,6 +1,9 @@
 // packages/shared-types — the canonical CaseDocument data model (PLAN.md §2.2).
 // Type declarations only: no runtime logic, no clinical defaults, no I/O.
 // Units are millimeters (mm) unless a field name says otherwise.
+// (One documented exception: traceability.ts exports the QC traceability
+// document's versioned JSON Schema as an inert data literal — see that
+// file's module doc for why the schema must live in THIS package.)
 
 // ---------------------------------------------------------------------------
 // FDI tooth numbering
@@ -358,6 +361,153 @@ export interface QcReport {
 }
 
 // ---------------------------------------------------------------------------
+// Export (Phase 7 Task 3 — the client half of the export/re-validation
+// currency; the server half, POST /api/restorations/:id/export, is Task 4)
+// ---------------------------------------------------------------------------
+
+/** Manufacturing export formats — binary STL (mandatory per PLAN.md §Phase 7)
+ * and binary-little-endian PLY (the optional color-capable route). */
+export type ExportFormat = 'stl' | 'ply';
+
+/**
+ * One acknowledged-with-warning QC gate riding into an export record
+ * (CLAUDE.md invariant 4: acknowledged gates are journaled and reported,
+ * never silently bypassed). Snapshot of the gate's measured state at export
+ * time plus the journal reference to the acknowledgment `Operation`.
+ */
+export interface ExportAcknowledgment {
+  /** `QcGateResult.gate` id of the acknowledged gate. */
+  gate: string;
+  /** The gate's failing message at export time — the human-readable "reason"
+   * the acknowledgment covers (from the QC report, not free text). */
+  message: string;
+  value: number | null;
+  threshold: number | null;
+  unit: string | null;
+  /**
+   * `Operation.id` of the `*-qc-ack` journal entry that recorded this
+   * acknowledgment (`crown-qc-ack` / `inlay-qc-ack` / `bridge-qc-ack`), or
+   * `null` when the current journal contains no matching ack op for this
+   * gate. `null` is a DEFENSIVE value only (e.g. a hand-edited/truncated
+   * loaded document) — a normally-produced acknowledgment always has its op
+   * (the ack action journals before the report can carry `acknowledged:
+   * true`). BINDING Task 4 semantics: the server MUST NOT accept a `null`
+   * ref as a valid acknowledgment of a failing gate — it REFUSES the export
+   * (409, unjournaled acknowledgment) so the user re-acknowledges through
+   * the real journaled path. Warn-and-accept is forbidden: an unjournaled
+   * acknowledgment the server tolerates would be exactly the
+   * hand-edited-document bypass this field exists to expose.
+   */
+  operationId: string | null;
+}
+
+/** Material profile identity riding with an export — name + version +
+ * content checksum (the same canonical-JSON SHA-256 the profile file itself
+ * carries, `@dqcad/clinical-profiles`) so the server re-validation can pin
+ * the EXACT parameter set the client designed against. */
+export interface ExportRequestMaterialProfile {
+  id: string;
+  version: string;
+  /** 64-char lowercase-hex SHA-256 over the profile's canonical JSON
+   * (checksum field excluded) — `MaterialProfile.checksum`. */
+  checksum: string;
+}
+
+/**
+ * The client→server export request (Phase 7 Task 3; consumed by Task 4's
+ * `POST /api/restorations/:id/export`). The server re-validation consumes
+ * `bytesBase64` — the EXACT bytes that would be handed to the mill — and
+ * re-runs every QC gate on them independently (CLAUDE.md invariant 6: dual
+ * validation stays dual; the client-shipped `qcReport` is compared against,
+ * never trusted).
+ *
+ * ## Bytes transport: base64-in-JSON (decided Task 3, binds Task 4)
+ *
+ * The exported bytes ride base64-encoded inside the JSON body rather than as
+ * a separate `application/octet-stream` request:
+ * 1. the request is inseparable from its context (QC report, acknowledgments,
+ *    journal hash, profile identity) — one JSON body keeps the WHOLE request
+ *    under a single Fastify JSON schema (backend convention: routes always
+ *    define JSON schemas), where the octet-stream route style
+ *    (`POST /api/meshes`) has to smuggle context through headers/query;
+ * 2. precedent: tooth-library uploads already ride mesh bytes as base64 in
+ *    JSON for small assets, and restoration exports ARE small (the largest
+ *    Phase 4–6 fixture solid is ~54k triangles ≈ 2.7 MB STL ≈ 3.6 MB
+ *    base64 — far under the mesh-upload `bodyLimit` ceiling the server
+ *    already provisions for scan-sized octet-stream bodies);
+ * 3. integrity is explicit either way: `bytesSha256`/`byteLength` MUST be
+ *    verified server-side against the decoded bytes before anything else
+ *    (base64 decode is deterministic and lossless, so a mismatch is
+ *    tampering/corruption, not transport noise).
+ * If a future export ever exceeds the mesh `bodyLimit`, the fallback is a
+ * two-phase flow (octet-stream upload + JSON finalize referencing the byte
+ * hash) — explicitly out of scope until such an export exists.
+ */
+export interface RestorationExportRequest {
+  /** Version of THIS request shape (bumped on breaking change). */
+  schemaVersion: 1;
+  caseId: string;
+  restorationId: string;
+  restorationType: RestorationType;
+  teeth: readonly FdiTooth[];
+  format: ExportFormat;
+  /** STL only: the exact deterministic header text journaled on the export
+   * `Operation` (derived from journaled params only — never a timestamp).
+   * Absent for PLY. */
+  headerText?: string;
+  /** Content hash (SHA-256 over Float64 positions ‖ Uint32 indices) of the
+   * final restoration solid the bytes serialize — equals the export
+   * `Operation.inputHashes[0]` and `Restoration.stages.finalMesh`. */
+  meshContentHash: string;
+  /** `Operation.id` of the journaled `restoration-export` op these bytes
+   * came from — ties the request to the case journal. */
+  exportOperationId: string;
+  /** The exported file bytes, base64 (RFC 4648, standard alphabet, padded). */
+  bytesBase64: string;
+  /** 64-char lowercase-hex SHA-256 of the DECODED bytes — computed
+   * worker-side over the exact serialized output; equals the export
+   * `Operation.outputHashes[0]`. */
+  bytesSha256: string;
+  /** Decoded byte count (pre-base64) — cheap first-line integrity check. */
+  byteLength: number;
+  /** The client's current QC report for this restoration (fresh —
+   * `qc.journalHash === stages.finalMesh` — or the export is refused
+   * client-side before this request can exist). */
+  qcReport: QcReport;
+  /** Every acknowledged-with-warning gate in `qcReport`, with journal refs. */
+  acknowledgments: readonly ExportAcknowledgment[];
+  /**
+   * SHA-256 (lowercase hex) over the canonical JSON of the case journal's
+   * REPRODUCIBLE view — for each `Operation` in `CaseDocument.history`, in
+   * order, exactly the fields `{ inputHashes, kernelVersion, name,
+   * outputHashes, params }` (object keys sorted recursively; `id` and
+   * `timestamp` excluded: the former is a random UUID and the latter is
+   * audit-display-only by `Operation`'s own contract, so a journal REPLAY —
+   * which regenerates both but must reproduce every hash/param — yields the
+   * SAME journal hash). Computed by `@dqcad/kernel-workers`'s
+   * `hashCaseJournal` (the single shared implementation; the Task 4 server
+   * recomputes it with the same function). NOT the same value as
+   * `QcReport.journalHash`, which by the Phase 4 convention carries the
+   * `finalMesh` CONTENT hash the report ran against — hence the distinct
+   * field name here.
+   *
+   * SEQUENCING (binds Task 4/7 wiring): this request carries the journal
+   * HASH, not the journal — the server recomputes over the PERSISTED case's
+   * journal, so the client must save the case (with the export op already
+   * appended) before, or atomically with, sending this request; skipping
+   * that save guarantees a hash mismatch.
+   */
+  caseJournalHash: string;
+  /** Number of operations hashed into `caseJournalHash` — diagnostic aid
+   * for mismatch triage (a truncated-journal mismatch is instantly visible
+   * as a count delta). */
+  journalOperationCount: number;
+  materialProfile: ExportRequestMaterialProfile;
+  /** `@dqcad/kernel`'s `KERNEL_VERSION` at export time. */
+  kernelVersion: string;
+}
+
+// ---------------------------------------------------------------------------
 // Case
 // ---------------------------------------------------------------------------
 
@@ -393,3 +543,27 @@ export interface CaseDocument {
   history: readonly Operation[];
   settings: CaseSettings;
 }
+
+// ---------------------------------------------------------------------------
+// QC traceability document (Phase 7 Task 5) — see traceability.ts
+// ---------------------------------------------------------------------------
+
+export type {
+  QcTraceabilityDocument,
+  TraceabilityCertification,
+  TraceabilityDocumentKind,
+  TraceabilityErrorBounds,
+  TraceabilityExportFile,
+  TraceabilityF32NarrowingBound,
+  TraceabilityIdentity,
+  TraceabilityJournalBinding,
+  TraceabilityLimitation,
+  TraceabilityMeshHashRelation,
+  TraceabilityQc,
+  TraceabilityReimportVerification,
+  TraceabilityVersions,
+} from './traceability.ts';
+export {
+  QC_TRACEABILITY_DOCUMENT_JSON_SCHEMA,
+  TRACEABILITY_SCHEMA_VERSION,
+} from './traceability.ts';

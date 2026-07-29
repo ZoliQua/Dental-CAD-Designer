@@ -29,6 +29,7 @@
 //   jobs/sdf.ts        buildSdf, signedClosestPoint, sampleSdfGrid (Phase 2 Task 6)
 //   jobs/offset.ts     offsetMesh (Phase 2 Task 7)
 //   jobs/decimate.ts   decimateMesh (Phase 2 Task 10 — render LODs)
+//   jobs/export.ts     exportRestorationMesh (Phase 7 Task 3 — manufacturing bytes)
 //   jobs/registry.ts   this file — types + runJob + registry assembly
 //
 // This was a PURE MECHANICAL MOVE (plus this same task's worker-side-hashing
@@ -214,6 +215,13 @@ export type { ApplySculptStrokePayload, ApplySculptStrokeResult };
 import { runQcJob, type RunQcPayload, type RunQcResult } from './runQc.ts';
 export type { RunQcPayload, RunQcResult };
 
+import {
+  exportRestorationMesh,
+  type ExportRestorationMeshPayload,
+  type ExportRestorationMeshResult,
+} from './export.ts';
+export type { ExportRestorationMeshPayload, ExportRestorationMeshResult };
+
 import { runInlayQcJob, type RunInlayQcPayload, type RunInlayQcResult } from './runInlayQc.ts';
 export type { RunInlayQcPayload, RunInlayQcResult };
 
@@ -397,6 +405,7 @@ import {
   manifoldSmoke,
   rescaleMesh,
   serializeMeshStl,
+  serializeFinalMeshContent,
   hashMesh,
   type EchoMeshPayload,
   type EchoMeshResult,
@@ -408,6 +417,8 @@ import {
   type RescaleMeshResult,
   type SerializeMeshStlPayload,
   type SerializeMeshStlResult,
+  type SerializeFinalMeshContentPayload,
+  type SerializeFinalMeshContentResult,
   type HashMeshPayload,
   type HashMeshResult,
 } from './misc.ts';
@@ -422,6 +433,8 @@ export {
   type RescaleMeshResult,
   type SerializeMeshStlPayload,
   type SerializeMeshStlResult,
+  type SerializeFinalMeshContentPayload,
+  type SerializeFinalMeshContentResult,
   type HashMeshPayload,
   type HashMeshResult,
 };
@@ -433,6 +446,7 @@ export interface JobPayloadMap {
   parseMeshFile: ParseMeshFilePayload;
   intakeMesh: IntakeMeshPayload;
   serializeMeshStl: SerializeMeshStlPayload;
+  serializeFinalMeshContent: SerializeFinalMeshContentPayload;
   weldMeshSoup: WeldMeshSoupPayload;
   rescaleMesh: RescaleMeshPayload;
   buildBvh: BuildBvhPayload;
@@ -463,6 +477,7 @@ export interface JobPayloadMap {
   runQc: RunQcPayload;
   runInlayQc: RunInlayQcPayload;
   runBridgeQc: RunBridgeQcPayload;
+  exportRestorationMesh: ExportRestorationMeshPayload;
   undercutScan: UndercutScanPayload;
   undercutScanBatch: UndercutScanBatchPayload;
   computeCurvature: ComputeCurvaturePayload;
@@ -491,6 +506,7 @@ export interface JobResultMap {
   parseMeshFile: ParseMeshFileResult;
   intakeMesh: IntakeMeshResult;
   serializeMeshStl: SerializeMeshStlResult;
+  serializeFinalMeshContent: SerializeFinalMeshContentResult;
   weldMeshSoup: WeldMeshSoupResult;
   rescaleMesh: RescaleMeshResult;
   buildBvh: BuildBvhResult;
@@ -521,6 +537,7 @@ export interface JobResultMap {
   runQc: RunQcResult;
   runInlayQc: RunInlayQcResult;
   runBridgeQc: RunBridgeQcResult;
+  exportRestorationMesh: ExportRestorationMeshResult;
   undercutScan: UndercutScanResult;
   undercutScanBatch: UndercutScanBatchResult;
   computeCurvature: ComputeCurvatureResult;
@@ -556,6 +573,7 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   parseMeshFile,
   intakeMesh,
   serializeMeshStl,
+  serializeFinalMeshContent,
   weldMeshSoup,
   rescaleMesh,
   buildBvh: buildBvhJob,
@@ -586,6 +604,7 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   runQc: runQcJob,
   runInlayQc: runInlayQcJob,
   runBridgeQc: runBridgeQcJob,
+  exportRestorationMesh,
   undercutScan: undercutScanJob,
   undercutScanBatch: undercutScanBatchJob,
   computeCurvature: computeCurvatureJob,

@@ -321,6 +321,26 @@ describe('bridgeDesign — HONEST failure surfacing', () => {
   });
 });
 
+describe('bridgeDesign — finalMeshForExport (Phase 7 Task 3)', () => {
+  it('returns null without a session/assembly or for the wrong restoration, and the live assembled solid (hash-matching stages.finalMesh) once built', async () => {
+    const id = setupBridgeCase();
+    expect(bridgeDesignEngine.finalMeshForExport(id)).toBeNull();
+    bridgeDesignEngine.start(id, geometry());
+    expect(bridgeDesignEngine.finalMeshForExport(id)).toBeNull();
+    await bridgeDesignEngine.commitAbutmentSurfaces();
+    await bridgeDesignEngine.commitPontic('hygienic');
+    await bridgeDesignEngine.commitConnectors();
+    await bridgeDesignEngine.selectFramework('fullContour');
+    await bridgeDesignEngine.runAssembly();
+    expect(bridgeDesignEngine.finalMeshForExport('someone-else')).toBeNull();
+    const mesh = bridgeDesignEngine.finalMeshForExport(id);
+    expect(mesh).not.toBeNull();
+    expect(mesh!.contentHash).toBe(restoration(id).stages.finalMesh);
+    expect(mesh!.positions).toBeInstanceOf(Float64Array);
+    expect(mesh!.indices).toBeInstanceOf(Uint32Array);
+  });
+});
+
 describe('bridgeDesign — ACKNOWLEDGE journaling (invariant 4, never a silent bypass)', () => {
   it('a failing connector gate is acknowledged via a re-run, journaling bridge-qc-ack', async () => {
     const id = setupBridgeCase();

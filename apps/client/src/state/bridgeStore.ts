@@ -116,6 +116,14 @@ export interface BridgeState {
    * stage or `clearError`. `errorStage` names which stage failed. */
   error: string | null;
   errorStage: BridgeStageName | null;
+  /** When the failure is a KNOWN, user-actionable condition (currently the
+   * P7-T1 session-restore failure), the i18n key the panel translates INSTEAD
+   * of showing the raw `error` string — so the actionable message renders in
+   * all four languages. `errorDetail` carries the untranslated technical
+   * detail interpolated into the translation ({{detail}}). Null for every
+   * other failure (the raw `error` path is unchanged). */
+  errorKey: string | null;
+  errorDetail: string | null;
 
   sharedAxis: BridgeSharedAxisSummary | null;
   abutmentSurfaces: BridgeAbutmentSummary | null;
@@ -146,6 +154,8 @@ const INITIAL: Omit<BridgeState, 'apply' | 'reset'> = {
   progress: 0,
   error: null,
   errorStage: null,
+  errorKey: null,
+  errorDetail: null,
   sharedAxis: null,
   abutmentSurfaces: null,
   pontic: null,
