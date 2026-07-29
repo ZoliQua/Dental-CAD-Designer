@@ -142,7 +142,12 @@
 import { PrismaClient } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { KERNEL_VERSION } from '@dqcad/kernel';
-import type { CaseDocument, QcReport, RestorationExportRequest } from '@dqcad/shared-types';
+import type {
+  CaseDocument,
+  QcReport,
+  QcTraceabilityDocument,
+  RestorationExportRequest,
+} from '@dqcad/shared-types';
 import {
   runBridgeQc,
   runCrownQc,
@@ -167,6 +172,7 @@ import {
   type ReimportResult,
 } from './export-validation.js';
 import { renderTraceabilityHtml, type TraceabilityLocale } from '@dqcad/traceability';
+import { validateTraceabilityDocument } from '@dqcad/traceability/validate';
 import { resolveExportMaterialProfile, verifyProfileThresholds } from './export-profile.js';
 import { buildReleaseTraceability, type TraceabilityReleaseRecord } from './export-traceability.js';
 import { hashMesh } from './journal-replay.js';
@@ -611,6 +617,9 @@ export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps
           caseId: exportRequest.caseId,
           restorationId: exportRequest.restorationId,
           restorationType: exportRequest.restorationType,
+          // VERIFIED at step 6 (review B1): request = saved restoration =
+          // journaled export op, exact sequence — so feeding the request
+          // value IS the saved authority (the T4-F1 equality pattern).
           teeth: exportRequest.teeth,
           format: exportRequest.format,
           bytesSha256: exportRequest.bytesSha256,
@@ -736,10 +745,17 @@ export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps
   // LEDGER ROW id (per release event), unlike the per-content download
   // `:hash` — a re-release shares bytes but has its own row + document. ---
 
-  /** Shared row lookup: 404 typed for an unknown id, 404
-   * `export-traceability-missing` for a legacy (pre-Task-5) row that never
-   * stored a document. */
-  async function findTraceabilityRow(id: string): Promise<{ json: string; releasedAt: Date }> {
+  /** Shared row lookup + READ-PATH INTEGRITY GATE (review S1 — the
+   * download-route symmetry: corrupt bytes are never served, and neither is
+   * a corrupt regulatory record). 404 typed for an unknown id; 404
+   * `export-traceability-missing` for a legacy (pre-Task-5) row; a stored
+   * document that no longer PARSES or no longer VALIDATES against the
+   * shared-types schema — a tampered/corrupted row — is a typed 500, never
+   * served. Cheap on every read: the ajv validator is compiled once at
+   * module load. */
+  async function findTraceabilityRow(
+    id: string,
+  ): Promise<{ json: string; document: QcTraceabilityDocument; releasedAt: Date }> {
     const row = await prisma.export.findUnique({ where: { id } });
     if (!row) {
       throw new ExportRejectionError('export-not-found', 404, `no released export with id ${id}`, {
@@ -754,7 +770,29 @@ export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps
         { id },
       );
     }
-    return { json: row.traceabilityJson, releasedAt: row.releasedAt };
+    let document: QcTraceabilityDocument;
+    try {
+      document = JSON.parse(row.traceabilityJson) as QcTraceabilityDocument;
+    } catch {
+      throw new ExportRejectionError(
+        'export-storage-integrity',
+        500,
+        `the stored traceability document for release ${id} is not parseable JSON — ` +
+          'tampered/corrupted row; refusing to serve',
+        { id },
+      );
+    }
+    const validation = validateTraceabilityDocument(document);
+    if (!validation.valid) {
+      throw new ExportRejectionError(
+        'export-storage-integrity',
+        500,
+        `the stored traceability document for release ${id} no longer validates against the schema — ` +
+          'tampered/corrupted row; refusing to serve a corrupt regulatory record',
+        { id, errors: validation.errors },
+      );
+    }
+    return { json: row.traceabilityJson, document, releasedAt: row.releasedAt };
   }
 
   // GET /api/exports/:id/traceability.json — serves the STORED canonical
@@ -804,8 +842,7 @@ export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps
     async (request, reply) => {
       try {
         const stored = await findTraceabilityRow(request.params.id);
-        const document = JSON.parse(stored.json) as Parameters<typeof renderTraceabilityHtml>[0];
-        const html = renderTraceabilityHtml(document, {
+        const html = renderTraceabilityHtml(stored.document, {
           locale: request.query.lang,
           releasedAt: stored.releasedAt.toISOString(),
         });

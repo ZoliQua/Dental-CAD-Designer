@@ -298,6 +298,12 @@ function isAckOpFor(operation: Operation, restorationId: string, gate: string): 
   return Array.isArray(list) && list.includes(gate);
 }
 
+/** Exact-sequence FDI equality (review B1) — see the three-way teeth check
+ * in `verifyExportJournal` for why order is NOT normalized. */
+function sameToothSequence(a: readonly number[], b: readonly number[]): boolean {
+  return a.length === b.length && a.every((tooth, i) => tooth === b[i]);
+}
+
 function verificationFailure(
   reason: string,
   message: string,
@@ -319,9 +325,13 @@ function verificationFailure(
  *  2. the journaled `restoration-export` Operation exists and binds this
  *     exact request: `outputHashes[0] === bytesSha256`, `inputHashes[0] ===
  *     meshContentHash`, matching restoration id + format + headerText;
- *  3. the restoration exists, its `type` matches, and its persisted
+ *  3. the restoration exists, its `type` matches, its persisted
  *     `stages.finalMesh` IS `meshContentHash` (the bytes serialize the
- *     persisted final design, not some other mesh);
+ *     persisted final design, not some other mesh), and the FDI TEETH agree
+ *     three-way — request = saved restoration = journaled export op
+ *     (review B1: the teeth land in the release ledger + traceability
+ *     identity block, so an unverified set would be a wrong-site labeling
+ *     defect on a manufacturing record);
  *  4. every acknowledgment ref resolves to a real `*-qc-ack` op for this
  *     restoration + gate. `operationId: null` → 409
  *     `export-unjournaled-acknowledgment` (the N4 BINDING contract:
@@ -422,6 +432,41 @@ export function verifyExportJournal(
       "the request meshContentHash is not the restoration's persisted stages.finalMesh — " +
         'the bytes do not serialize the saved final design',
       { savedFinalMesh: restoration.stages.finalMesh ?? null, request: request.meshContentHash },
+    );
+  }
+
+  // Review B1 (BLOCKER fix) — THREE-WAY TEETH IDENTITY: request = saved
+  // restoration = journaled export op. The FDI teeth land verbatim in the
+  // release ledger (`Export.teethJson`) and the traceability document's
+  // identity block — "the identity block a lab matches against the physical
+  // order" — so an unverified tooth set is a wrong-site labeling defect on a
+  // manufacturing record. Exact-SEQUENCE equality on purpose: the client
+  // copies the saved `restoration.teeth` array verbatim into both the
+  // request and the journaled op (exportFlow.ts), so any reordering is not
+  // a legitimate client state either — fail closed, never normalize.
+  // The SAVED restoration is checked first (it is the authority the ledger
+  // must match), then the journaled op binding.
+  if (!sameToothSequence(restoration.teeth, request.teeth)) {
+    throw verificationFailure(
+      'restoration-teeth-mismatch',
+      `the request teeth [${request.teeth.join(', ')}] do not match the saved restoration's teeth ` +
+        `[${restoration.teeth.join(', ')}] — the release identity record must carry the saved authority`,
+      { saved: [...restoration.teeth], request: [...request.teeth] },
+    );
+  }
+  const journaledTeeth = exportOp.params['teeth'];
+  if (
+    !Array.isArray(journaledTeeth) ||
+    !sameToothSequence(journaledTeeth as readonly number[], request.teeth)
+  ) {
+    throw verificationFailure(
+      'export-operation-teeth-mismatch',
+      'the journaled restoration-export params.teeth do not match the request teeth — the bytes are not ' +
+        'the journaled export of this tooth set',
+      {
+        journaled: Array.isArray(journaledTeeth) ? journaledTeeth : null,
+        request: [...request.teeth],
+      },
     );
   }
 

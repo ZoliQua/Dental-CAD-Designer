@@ -10,7 +10,12 @@
 import { describe, expect, it } from 'vitest';
 import { KERNEL_VERSION, indexedToSoup, weldVertices, type IndexedMesh } from '@dqcad/kernel';
 import { exportPlyBinary, exportStlBinary, writeStlBinary } from '@dqcad/io';
-import type { CaseDocument, Operation, QcReport, RestorationExportRequest } from '@dqcad/shared-types';
+import type {
+  CaseDocument,
+  Operation,
+  QcReport,
+  RestorationExportRequest,
+} from '@dqcad/shared-types';
 import {
   decodeExportBytes,
   reimportExportedBytes,
@@ -26,7 +31,10 @@ import { sha256HexOf } from './mesh-storage.js';
  * component, positive volume. */
 function cube(): IndexedMesh {
   const v = [0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1];
-  const idx = [0, 3, 2, 0, 2, 1, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 3, 7, 6, 3, 6, 2, 0, 4, 7, 0, 7, 3, 1, 2, 6, 1, 6, 5];
+  const idx = [
+    0, 3, 2, 0, 2, 1, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 3, 7, 6, 3, 6, 2, 0, 4, 7, 0, 7, 3, 1, 2,
+    6, 1, 6, 5,
+  ];
   return { positions: new Float64Array(v), indices: Uint32Array.from(idx) };
 }
 
@@ -39,7 +47,11 @@ function translated(mesh: IndexedMesh, dx: number): IndexedMesh {
 /** Per-triangle soup expansion of an indexed mesh (for the RAW writer, which
  * unlike the export writers performs no solid validation — exactly what the
  * dirty-bytes tests need). */
-function soupOf(...meshes: IndexedMesh[]): { positions: Float64Array; normals: null; triangleCount: number } {
+function soupOf(...meshes: IndexedMesh[]): {
+  positions: Float64Array;
+  normals: null;
+  triangleCount: number;
+} {
   const tris: number[] = [];
   for (const mesh of meshes) {
     for (let i = 0; i < mesh.indices.length; i++) {
@@ -129,7 +141,9 @@ describe('reimportExportedBytes (parse + intake + T2 cleanliness conditions)', (
 
   it('rejects truncated bytes with export-bytes-parse-failed (TruncatedFileError)', () => {
     const bytes = exportStlBinary(cube());
-    const err = rejectionOf(() => reimportExportedBytes(bytes.slice(0, bytes.byteLength - 13), 'stl'));
+    const err = rejectionOf(() =>
+      reimportExportedBytes(bytes.slice(0, bytes.byteLength - 13), 'stl'),
+    );
     expect(err.code).toBe('export-bytes-parse-failed');
     expect(err.httpStatus).toBe(400);
     expect(err.details['errorName']).toBe('TruncatedFileError');
@@ -153,7 +167,11 @@ describe('reimportExportedBytes (parse + intake + T2 cleanliness conditions)', (
     positions.set(base.positions);
     // Append a zero-area triangle (all three vertices identical).
     positions.set([0, 0, 0, 0, 0, 0, 0, 0, 0], base.positions.length);
-    const bytes = writeStlBinary({ positions, normals: null, triangleCount: base.triangleCount + 1 });
+    const bytes = writeStlBinary({
+      positions,
+      normals: null,
+      triangleCount: base.triangleCount + 1,
+    });
     const err = rejectionOf(() => reimportExportedBytes(bytes, 'stl'));
     expect(err.code).toBe('export-reimport-integrity');
     const violations = err.details['violations'] as Record<string, number>;
@@ -185,8 +203,24 @@ describe('verifyExportJournal (persisted-journal authority)', () => {
 
   const report: QcReport = {
     gates: [
-      { gate: 'watertight', passed: true, acknowledged: false, value: null, threshold: null, unit: null, message: 'ok' },
-      { gate: 'seating', passed: false, acknowledged: true, value: 2, threshold: 1, unit: 'mm3', message: 'high' },
+      {
+        gate: 'watertight',
+        passed: true,
+        acknowledged: false,
+        value: null,
+        threshold: null,
+        unit: null,
+        message: 'ok',
+      },
+      {
+        gate: 'seating',
+        passed: false,
+        acknowledged: true,
+        value: 2,
+        threshold: 1,
+        unit: 'mm3',
+        message: 'high',
+      },
     ],
     passed: true,
     kernelVersion: KERNEL_VERSION,
@@ -197,7 +231,11 @@ describe('verifyExportJournal (persisted-journal authority)', () => {
   const ackOp: Operation = {
     id: 'ack-1',
     name: 'inlay-qc-ack',
-    params: { restorationId: 'resto-1', acknowledgedGate: 'seating', acknowledgedGates: ['seating'] },
+    params: {
+      restorationId: 'resto-1',
+      acknowledgedGate: 'seating',
+      acknowledgedGates: ['seating'],
+    },
     inputHashes: [],
     outputHashes: [],
     kernelVersion: KERNEL_VERSION,
@@ -206,7 +244,16 @@ describe('verifyExportJournal (persisted-journal authority)', () => {
   const exportOp: Operation = {
     id: 'export-1',
     name: 'restoration-export',
-    params: { restorationId: 'resto-1', restorationType: 'inlay', format: 'stl', byteLength: bytes.byteLength },
+    // `teeth` is part of the REAL journaled op shape (exportFlow.ts) and is
+    // verified three-way since review B1 (request = saved restoration =
+    // journaled op).
+    params: {
+      restorationId: 'resto-1',
+      restorationType: 'inlay',
+      teeth: [36],
+      format: 'stl',
+      byteLength: bytes.byteLength,
+    },
     inputHashes: [finalMeshHash],
     outputHashes: [bytesSha256],
     kernelVersion: KERNEL_VERSION,
@@ -244,7 +291,12 @@ describe('verifyExportJournal (persisted-journal authority)', () => {
                 proximalContactPenetrationMm: 0.02,
                 occlusalContactMm: 0,
               },
-              stages: overrides && 'finalMesh' in overrides ? (overrides.finalMesh === undefined ? {} : { finalMesh: overrides.finalMesh }) : { finalMesh: finalMeshHash },
+              stages:
+                overrides && 'finalMesh' in overrides
+                  ? overrides.finalMesh === undefined
+                    ? {}
+                    : { finalMesh: overrides.finalMesh }
+                  : { finalMesh: finalMeshHash },
               qc: report,
             },
           ],
@@ -269,7 +321,14 @@ describe('verifyExportJournal (persisted-journal authority)', () => {
       byteLength: bytes.byteLength,
       qcReport: report,
       acknowledgments: [
-        { gate: 'seating', message: 'high', value: 2, threshold: 1, unit: 'mm3', operationId: 'ack-1' },
+        {
+          gate: 'seating',
+          message: 'high',
+          value: 2,
+          threshold: 1,
+          unit: 'mm3',
+          operationId: 'ack-1',
+        },
       ],
       caseJournalHash: 'f'.repeat(64),
       journalOperationCount: 2,
@@ -283,8 +342,10 @@ describe('verifyExportJournal (persisted-journal authority)', () => {
     expect(() => verifyExportJournal(makeDocument(), makeRequest())).not.toThrow();
   });
 
-  const reject = (document: CaseDocument, request: RestorationExportRequest): ExportRejectionError =>
-    rejectionOf(() => verifyExportJournal(document, request));
+  const reject = (
+    document: CaseDocument,
+    request: RestorationExportRequest,
+  ): ExportRejectionError => rejectionOf(() => verifyExportJournal(document, request));
 
   it('rejects an operation-count mismatch (truncated-journal triage)', () => {
     const err = reject(makeDocument(), makeRequest({ journalOperationCount: 5 }));
@@ -294,7 +355,10 @@ describe('verifyExportJournal (persisted-journal authority)', () => {
   });
 
   it('rejects a missing export operation', () => {
-    const err = reject(makeDocument({ history: [ackOp] }), makeRequest({ journalOperationCount: 1 }));
+    const err = reject(
+      makeDocument({ history: [ackOp] }),
+      makeRequest({ journalOperationCount: 1 }),
+    );
     expect(err.details['reason']).toBe('export-operation-missing');
   });
 
@@ -331,6 +395,39 @@ describe('verifyExportJournal (persisted-journal authority)', () => {
     expect(err.details['reason']).toBe('restoration-type-mismatch');
   });
 
+  // Review B1 — three-way teeth identity (request = saved restoration =
+  // journaled export op). Both refusal reasons unit-covered; the endpoint-
+  // level red-pre-fix regressions live in export-traceability.test.ts.
+  it('B1: rejects request teeth that disagree with the SAVED restoration (the authority)', () => {
+    const err = reject(makeDocument(), makeRequest({ teeth: [46] }));
+    expect(err.details['reason']).toBe('restoration-teeth-mismatch');
+    expect(err.details['saved']).toEqual([36]);
+    expect(err.details['request']).toEqual([46]);
+  });
+
+  it('B1: rejects a journaled export op whose params.teeth disagree with the request', () => {
+    const tamperedOp = { ...exportOp, params: { ...exportOp.params, teeth: [46] } };
+    const err = reject(makeDocument({ history: [ackOp, tamperedOp] }), makeRequest());
+    expect(err.details['reason']).toBe('export-operation-teeth-mismatch');
+  });
+
+  it('B1: rejects a journaled export op MISSING params.teeth entirely (not a legitimate op shape)', () => {
+    const withoutTeeth = { ...(exportOp.params as Record<string, unknown>) };
+    delete withoutTeeth['teeth'];
+    const tamperedOp = { ...exportOp, params: withoutTeeth };
+    const err = reject(makeDocument({ history: [ackOp, tamperedOp] }), makeRequest());
+    expect(err.details['reason']).toBe('export-operation-teeth-mismatch');
+  });
+
+  it('B1: teeth equality is exact-SEQUENCE — a reordered set is refused, never normalized', () => {
+    const multi = { ...exportOp, params: { ...exportOp.params, teeth: [36, 37] } };
+    const document = makeDocument({ history: [ackOp, multi] });
+    const restoration = document.restorations[0]! as unknown as { teeth: number[] };
+    restoration.teeth = [36, 37];
+    const err = reject(document, makeRequest({ teeth: [37, 36] }));
+    expect(err.details['reason']).toBe('restoration-teeth-mismatch');
+  });
+
   it('rejects bytes that do not serialize the persisted stages.finalMesh', () => {
     const err = reject(makeDocument({ finalMesh: '1'.repeat(64) }), makeRequest());
     expect(err.details['reason']).toBe('final-mesh-mismatch');
@@ -344,7 +441,16 @@ describe('verifyExportJournal (persisted-journal authority)', () => {
 
   it('REFUSES operationId: null (the N4 contract — unjournaled acknowledgment)', () => {
     const request = makeRequest({
-      acknowledgments: [{ gate: 'seating', message: 'high', value: 2, threshold: 1, unit: 'mm3', operationId: null }],
+      acknowledgments: [
+        {
+          gate: 'seating',
+          message: 'high',
+          value: 2,
+          threshold: 1,
+          unit: 'mm3',
+          operationId: null,
+        },
+      ],
     });
     const err = reject(makeDocument(), request);
     expect(err.code).toBe('export-unjournaled-acknowledgment');
@@ -354,7 +460,16 @@ describe('verifyExportJournal (persisted-journal authority)', () => {
 
   it('rejects an ack ref pointing at a nonexistent op (P6-T8 tampering)', () => {
     const request = makeRequest({
-      acknowledgments: [{ gate: 'seating', message: 'high', value: 2, threshold: 1, unit: 'mm3', operationId: 'nope' }],
+      acknowledgments: [
+        {
+          gate: 'seating',
+          message: 'high',
+          value: 2,
+          threshold: 1,
+          unit: 'mm3',
+          operationId: 'nope',
+        },
+      ],
     });
     expect(reject(makeDocument(), request).code).toBe('export-acknowledgment-invalid');
   });
@@ -362,7 +477,14 @@ describe('verifyExportJournal (persisted-journal authority)', () => {
   it('rejects an ack ref pointing at a non-ack op', () => {
     const request = makeRequest({
       acknowledgments: [
-        { gate: 'seating', message: 'high', value: 2, threshold: 1, unit: 'mm3', operationId: 'export-1' },
+        {
+          gate: 'seating',
+          message: 'high',
+          value: 2,
+          threshold: 1,
+          unit: 'mm3',
+          operationId: 'export-1',
+        },
       ],
     });
     expect(reject(makeDocument(), request).code).toBe('export-acknowledgment-invalid');
@@ -371,13 +493,20 @@ describe('verifyExportJournal (persisted-journal authority)', () => {
   it('rejects an ack op that acknowledges a DIFFERENT gate', () => {
     const request = makeRequest({
       acknowledgments: [
-        { gate: 'watertight', message: 'x', value: null, threshold: null, unit: null, operationId: 'ack-1' },
+        {
+          gate: 'watertight',
+          message: 'x',
+          value: null,
+          threshold: null,
+          unit: null,
+          operationId: 'ack-1',
+        },
       ],
     });
     expect(reject(makeDocument(), request).code).toBe('export-acknowledgment-invalid');
   });
 
-  it("rejects an ack op recorded for a DIFFERENT restoration", () => {
+  it('rejects an ack op recorded for a DIFFERENT restoration', () => {
     const foreignAck = { ...ackOp, params: { ...ackOp.params, restorationId: 'other-resto' } };
     const err = reject(makeDocument({ history: [foreignAck, exportOp] }), makeRequest());
     expect(err.code).toBe('export-acknowledgment-invalid');

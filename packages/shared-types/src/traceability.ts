@@ -340,8 +340,25 @@ const certificationJsonSchema = {
   additionalProperties: false,
   properties: {
     outerEnvelopeCertified: { type: 'boolean', const: false },
+    // Review S2: the outer-envelope disclosure is SCHEMA-guaranteed, not
+    // merely builder-guaranteed — a schemaVersion-1 document (release AND
+    // preview: both builders inject it) cannot validly drop the
+    // `outer-envelope-not-certified` limitation. `minItems: 1` forbids the
+    // empty list; `contains` pins the specific disclosure code, so swapping
+    // it for a different limitation is equally schema-invalid. Removing
+    // this constraint requires a schema-version bump carrying the closure
+    // evidence (the same discipline as `outerEnvelopeCertified: const
+    // false`).
     limitations: {
       type: 'array',
+      minItems: 1,
+      contains: {
+        type: 'object',
+        required: ['code'],
+        properties: {
+          code: { type: 'string', const: 'outer-envelope-not-certified' },
+        },
+      },
       items: {
         type: 'object',
         required: ['code', 'statement'],

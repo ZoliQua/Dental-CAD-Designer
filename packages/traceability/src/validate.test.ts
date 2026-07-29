@@ -93,6 +93,28 @@ describe('validateTraceabilityDocument — falsifiable negatives', () => {
     expectInvalid(doc, 'outerEnvelopeCertified cannot flip to true within schemaVersion 1');
   });
 
+  it('S2: rejects a document whose limitations DROP the outer-envelope disclosure (schema-guaranteed, not builder-guaranteed)', () => {
+    // Empty list — the disclosure removed entirely.
+    const empty = mutable(releaseDoc());
+    (empty['certification'] as Record<string, unknown>)['limitations'] = [];
+    expectInvalid(empty, 'limitations: [] must not schema-validate in schemaVersion 1');
+    // Non-empty list that swaps the required disclosure for something else.
+    const swapped = mutable(releaseDoc());
+    (swapped['certification'] as Record<string, unknown>)['limitations'] = [
+      { code: 'some-other-limitation', statement: 'anything but the outer-envelope disclosure' },
+    ];
+    expectInvalid(
+      swapped,
+      'the outer-envelope-not-certified code is schema-required in schemaVersion 1',
+    );
+    // The same holds for previews (the builder injects the disclosure for both kinds).
+    const preview = mutable(
+      buildPreviewTraceabilityDocument(previewInputFixture()) as QcTraceabilityDocument,
+    );
+    (preview['certification'] as Record<string, unknown>)['limitations'] = [];
+    expectInvalid(preview, 'a preview without the disclosure is equally invalid');
+  });
+
   it('rejects malformed hashes, empty gate lists, and non-FDI teeth', () => {
     const badHash = mutable(releaseDoc());
     (badHash['exportFile'] as Record<string, unknown>)['bytesSha256'] = 'not-a-hash';

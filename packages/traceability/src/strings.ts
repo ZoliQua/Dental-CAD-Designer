@@ -142,6 +142,13 @@ const hu: Record<TraceabilityStringKey, string> = {
   'gateStatus.pass': 'megfelelt',
   'gateStatus.fail': 'NEM FELELT MEG',
   'gateStatus.acknowledged': 'NEM FELELT MEG — tudomásul véve',
+  // Review N1, documented DELIBERATE choice: the client itself carries two
+  // established Hungarian terms for "watertight" — the import-stats panel
+  // says 'Vízhatlan' (hu.json import.stats.watertight) while the crown/
+  // cavity/bridge DESIGN-workflow panels say 'Vízzáró ✓' (shellWatertightYes/
+  // assemblyWatertightYes). The traceability document describes the QC gate
+  // the clinician just saw in the design workflow, so it follows the
+  // 'vízzáró' root, not the import-stats variant.
   'gate.watertight': 'Vízzáróság',
   'gate.manifold': 'Sokaság (manifold) élek',
   'gate.selfIntersection': 'Önmetszés',

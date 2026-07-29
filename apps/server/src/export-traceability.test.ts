@@ -35,6 +35,7 @@ import { buildApp } from './app.js';
 import { buildCrownQcInput, toValidateQcBody } from './crown-qc-fixture.testutil.js';
 import {
   buildExportHarness,
+  cloneBody,
   toExportQcContext,
   type ExportHarness,
 } from './export-request.testutil.js';
@@ -391,6 +392,132 @@ describe('QC traceability document — server generation, storage, routes', () =
     expect(html.statusCode).toBe(200);
     expect(html.body).toMatch(/class="[^"]*ack-section/);
     expect(html.body).toContain(document.acknowledgments[0]!.operationId!);
+  });
+
+  // --- Review B1 (BLOCKER, red pre-fix): identity.teeth must be SERVER-
+  // verified. Pre-fix, a request whose teeth disagreed with the saved
+  // restoration (or with the journaled export op) RELEASED with the wrong
+  // FDI numbers in the certified identity block — a wrong-site labeling
+  // defect on the record a lab matches against the physical order. ---
+
+  it('B1: a request with WRONG teeth (all other bookkeeping consistent) is refused 409, nothing released', async () => {
+    const harness = await buildExportHarness({
+      app,
+      restorationType: 'crown',
+      teeth: [16],
+      finalMesh: standinInput.crownSolid,
+      clientReport: standinReport,
+      qcContext: standinContext,
+      format: 'stl',
+    });
+    const body = cloneBody(harness.body);
+    // The attack: only request.teeth moves (16 → 26). No hash, journal, op
+    // or byte bookkeeping depends on it — pre-fix this released 200 with
+    // tooth 26 in the ledger + traceability identity block.
+    (body.request as unknown as { teeth: number[] }).teeth = [26];
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/restorations/${harness.restorationId}/export`,
+      payload: body,
+    });
+    expect(response.statusCode).toBe(409);
+    const rejection = response.json() as { error: string; details?: { reason?: string } };
+    expect(rejection.error).toBe('export-journal-verification-failed');
+    expect(rejection.details?.reason).toBe('restoration-teeth-mismatch');
+    expect(await prisma.export.count({ where: { restorationId: harness.restorationId } })).toBe(0);
+  });
+
+  it('B1: a CONSISTENT-adversary journaled export op with wrong teeth (journal hash recomputed) is refused 409', async () => {
+    const harness = await buildExportHarness({
+      app,
+      restorationType: 'crown',
+      teeth: [16],
+      finalMesh: standinInput.crownSolid,
+      clientReport: standinReport,
+      qcContext: standinContext,
+      format: 'stl',
+      // The journaled op claims tooth 26 while request + saved restoration
+      // agree on 16; the harness recomputes caseJournalHash over the MUTATED
+      // history, so the hash gate passes and only the op-binding check
+      // stands between the tamper and a release.
+      mutateHistory: (history) =>
+        history.map((op) =>
+          op.name === 'restoration-export' ? { ...op, params: { ...op.params, teeth: [26] } } : op,
+        ),
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/restorations/${harness.restorationId}/export`,
+      payload: harness.body,
+    });
+    expect(response.statusCode).toBe(409);
+    const rejection = response.json() as { error: string; details?: { reason?: string } };
+    expect(rejection.error).toBe('export-journal-verification-failed');
+    expect(rejection.details?.reason).toBe('export-operation-teeth-mismatch');
+    expect(await prisma.export.count({ where: { restorationId: harness.restorationId } })).toBe(0);
+  });
+
+  it('B1 three-way closure: the released identity.teeth equals the SAVED restoration teeth', async () => {
+    const row = await storedRow(stlRelease.exportId);
+    const document = JSON.parse(row.traceabilityJson!) as QcTraceabilityDocument;
+    expect(document.identity.teeth).toEqual([16]);
+    expect(JSON.parse(row.teethJson)).toEqual([16]);
+    const savedRestoration = stlHarness.persistedDocument.restorations.find(
+      (r) => r.id === stlHarness.restorationId,
+    );
+    expect(savedRestoration?.teeth).toEqual([16]);
+  });
+
+  // --- Review S1 (red pre-fix): the read path re-validates the stored
+  // document against the schema on EVERY read — a corrupted/tampered row is
+  // a typed 500, never served to a regulator (download-route symmetry). ---
+
+  it('S1: a row-tampered (schema-invalid) stored document is NEVER served — typed 500 on both routes', async () => {
+    const row = await storedRow(stlRelease.exportId);
+    const corrupt = await prisma.export.create({
+      data: {
+        caseId: row.caseId,
+        restorationId: row.restorationId,
+        restorationType: row.restorationType,
+        teethJson: row.teethJson,
+        format: row.format,
+        bytesSha256: row.bytesSha256,
+        byteLength: row.byteLength,
+        meshContentHash: row.meshContentHash,
+        headerText: row.headerText,
+        reimportMeshHash: row.reimportMeshHash,
+        exportOperationId: row.exportOperationId,
+        caseJournalHash: row.caseJournalHash,
+        journalOperationCount: row.journalOperationCount,
+        kernelVersion: row.kernelVersion,
+        profileId: row.profileId,
+        profileVersion: row.profileVersion,
+        profileChecksum: row.profileChecksum,
+        qcReportJson: row.qcReportJson,
+        acknowledgmentsJson: row.acknowledgmentsJson,
+        // Schema-invalid tamper: a release document whose evidence was ripped out.
+        traceabilityJson: JSON.stringify({ schemaVersion: 1, documentKind: 'release' }),
+      },
+    });
+    for (const suffix of ['traceability.json', 'traceability.html']) {
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/exports/${corrupt.id}/${suffix}`,
+      });
+      expect(response.statusCode, suffix).toBe(500);
+      expect((response.json() as { error: string }).error).toBe('export-storage-integrity');
+    }
+    // Unparseable JSON is equally refused.
+    await prisma.export.update({
+      where: { id: corrupt.id },
+      data: { traceabilityJson: 'not-json{' },
+    });
+    const unparseable = await app.inject({
+      method: 'GET',
+      url: `/api/exports/${corrupt.id}/traceability.json`,
+    });
+    expect(unparseable.statusCode).toBe(500);
+    expect((unparseable.json() as { error: string }).error).toBe('export-storage-integrity');
   });
 
   it('byte-pinned golden: the crown-fixture release document (fixed identity) pins byte-identically', async () => {
