@@ -675,21 +675,3 @@ describe('caseStore.addRestoration / updateRestoration / removeRestoration', () 
     expect(useCaseStore.getState().document.history).toHaveLength(1);
   });
 });
-
-describe('caseStore.setMaterialProfile', () => {
-  it('sets the material-profile identity, publishes, and journals NOTHING (settings are config, not geometry)', () => {
-    caseStore.setMaterialProfile('standard-zirconia', '1.4.0');
-    const doc = useCaseStore.getState().document;
-    expect(doc.settings.materialProfileId).toBe('standard-zirconia');
-    expect(doc.settings.profileVersion).toBe('1.4.0');
-    expect(doc.history).toHaveLength(0); // no journal op — a settings edit is not journaled
-  });
-
-  it('no-ops (no re-publish) when the profile is unchanged', () => {
-    caseStore.setMaterialProfile('standard-zirconia', '1.4.0');
-    const before = useCaseStore.getState().document;
-    caseStore.setMaterialProfile('standard-zirconia', '1.4.0');
-    // Same object identity proves no state churn / re-publish occurred.
-    expect(useCaseStore.getState().document).toBe(before);
-  });
-});

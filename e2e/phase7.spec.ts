@@ -55,20 +55,22 @@ import { parseStl, writeStlBinary, type RawTriangleSoup } from '@dqcad/io';
 // export panel REFUSES export (`export-gate-block`, the export button disabled,
 // nothing POSTed), and there is no affordance to "retry until it passes".
 //
-// ## A real gap this spec surfaced (the profileVersion export-mismatch)
+// ## A real gap this spec surfaced -- now RESOLVED (the profileVersion mismatch)
 //
 // Driving the export through the REAL UI (not the T8 harness) revealed a genuine
 // dual-validation catch the fixture harness had masked: a freshly created case
-// has EMPTY `settings`, so the client design engines stamp
+// has EMPTY `settings`, so the client design engines used to stamp
 // `QcReport.profileVersion: 'unversioned'` while the export request/server
 // resolve the profile to standard-zirconia 1.4.0 -- so the server's independent
-// re-validation HONESTLY refuses `export-qc-mismatch` on the `profileVersion`
-// field (diagnostic bundle persisted, nothing released) for EVERY real-UI export
-// until a material picker sets the profile. This spec fixes it the way the
-// (unbuilt) picker will -- `seedMaterialProfile` selects the standard-zirconia
-// profile the design engines' thresholds already use -- and documents the gap
-// in docs/demos/phase-7.md. The server-mismatch diagnostic surface itself (the
-// per-field diff + diagnostic id, no retry button) is proven by
+// re-validation HONESTLY refused `export-qc-mismatch` on the `profileVersion`
+// field for EVERY real-UI export. The Task 9 fix round closed it at the root:
+// the QC stamp and the export path now share ONE resolver
+// (engine/materialProfile.ts), so an empty-settings case stamps
+// standard-zirconia 1.4.0 consistently and a fresh-case export RELEASES with no
+// setup -- proven by this spec releasing from a plain new case (no profile seed).
+// The live multi-material PICKER remains the tracked carry-in
+// (docs/demos/phase-7.md open item 3). The server-mismatch diagnostic surface
+// itself (the per-field diff + diagnostic id, no retry button) is proven by
 // `ExportPanel.dom.test.tsx`'s browser-lane tests; a genuine mismatch is not
 // re-forced here so the released-file happy path stays deterministic.
 const GINGIVAL_R_MM = 4.5;
@@ -223,34 +225,6 @@ async function seedMarginPropose(
     { triangleIndex, barycentric },
   );
 }
-/** Selects the case's material profile via the DEV-only hook -- the write the
- * (unbuilt) live material picker will own. WHY this is needed (a real gap this
- * spec surfaced): a freshly created case has EMPTY `settings`, so the client
- * design engines stamp `QcReport.profileVersion: 'unversioned'` while the export
- * request/server resolve the profile to standard-zirconia 1.4.0 -- so the
- * server's dual re-validation 409s `export-qc-mismatch` on the `profileVersion`
- * field for EVERY real-UI export until a picker sets these (the T8 fixture
- * harness masked this by constructing profile-consistent client reports). This
- * hook selects the SAME standard-zirconia profile the design engines' thresholds
- * already come from, so client QC and server agree (a clean release). See
- * docs/demos/phase-7.md's open items. */
-async function seedMaterialProfile(page: Page, id: string, version: string): Promise<void> {
-  await page.evaluate(
-    ({ id, version }) => {
-      const hooks = (
-        window as unknown as {
-          __dqcadTestHooks__?: { seedMaterialProfile: (id: string, version: string) => void };
-        }
-      ).__dqcadTestHooks__;
-      if (!hooks) throw new Error('seedMaterialProfile: __dqcadTestHooks__ missing');
-      hooks.seedMaterialProfile(id, version);
-    },
-    { id, version },
-  );
-}
-const STANDARD_ZIRCONIA_ID = 'standard-zirconia';
-const STANDARD_ZIRCONIA_VERSION = '1.4.0';
-
 /** Saves a Playwright download to a temp path and returns the bytes -- used to
  * round-trip the released STL and the .dqca archive back through the real
  * @dqcad/io parser / the archive-import file input. */
@@ -293,11 +267,12 @@ test.describe.serial('Phase 7 export & manufacturing-handoff workflow (buildable
     await expect(page.getByTestId('case-picker')).toBeHidden();
     await expect(page.getByTestId('active-case-name')).toHaveText(caseName);
 
-    // Select the case's material profile (the unbuilt picker's job) so the
-    // client QcReport's profileVersion matches the profile the export resolves
-    // -- otherwise the server's dual re-validation 409s on profileVersion (a
-    // real gap this spec surfaced; see the helper's doc + phase-7.md).
-    await seedMaterialProfile(page, STANDARD_ZIRCONIA_ID, STANDARD_ZIRCONIA_VERSION);
+    // NB: a freshly created case needs NO material-profile setup here. The
+    // client QC stamp and the export path now share ONE resolver
+    // (engine/materialProfile.ts `resolveProfileVersion` / `resolveMaterialProfile`),
+    // so an empty-settings case stamps standard-zirconia 1.4.0 consistently and
+    // the server's dual re-validation agrees -- the real-UI export releases from
+    // a fresh case (the Task 9 fix round; see docs/demos/phase-7.md open item 3).
 
     await page.getByTestId('import-file-input').setInputFiles(diePath);
     const row = page.getByTestId('import-file-row').filter({ hasText: 'shoulder-prep-die.stl' });

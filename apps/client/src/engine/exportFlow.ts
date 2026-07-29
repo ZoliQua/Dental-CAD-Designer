@@ -47,10 +47,7 @@ import {
   hashCaseJournal,
   KERNEL_VERSION,
 } from '@dqcad/kernel-workers';
-import {
-  EMAX_LITHIUM_DISILICATE_PROFILE,
-  STANDARD_ZIRCONIA_PROFILE,
-} from '@dqcad/clinical-profiles';
+import { resolveMaterialProfile } from './materialProfile';
 import type {
   CaseDocument,
   ExportAcknowledgment,
@@ -117,27 +114,6 @@ interface HeldExport {
   headerText?: string;
   finalMeshHash: string;
   exportOperationId: string;
-}
-
-/** The known material profiles the client can name in an export request —
- * resolved by `CaseSettings.materialProfileId`, falling back to the
- * standard-zirconia profile: the design engines source every QC threshold
- * from `STANDARD_ZIRCONIA_PROFILE` until the live material picker lands
- * (tracked, NOT this phase — docs/plans/phase-7-export.md carry-ins), so
- * that profile is the honest identity of the parameters actually used. */
-const KNOWN_PROFILES = [STANDARD_ZIRCONIA_PROFILE, EMAX_LITHIUM_DISILICATE_PROFILE] as const;
-
-// Exported (Phase 7 Task 5) so the traceability PREVIEW builds its document
-// with the SAME profile-identity resolution the export request ships — one
-// rule, no drift (engine/traceabilityPreview.ts).
-export function resolveMaterialProfile(document: CaseDocument): {
-  id: string;
-  version: string;
-  checksum: string;
-} {
-  const byId = KNOWN_PROFILES.find((p) => p.id === document.settings.materialProfileId);
-  const profile = byId ?? STANDARD_ZIRCONIA_PROFILE;
-  return { id: profile.id, version: profile.version, checksum: profile.checksum };
 }
 
 /**

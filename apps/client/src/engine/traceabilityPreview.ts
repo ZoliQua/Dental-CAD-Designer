@@ -23,7 +23,7 @@ import {
   type TraceabilityLocale,
 } from '@dqcad/traceability';
 import { collectAcknowledgments } from './exportWorkflow';
-import { resolveMaterialProfile } from './exportFlow';
+import { resolveMaterialProfile } from './materialProfile';
 
 /** Thrown when no preview can honestly be built: unknown restoration, or a
  * restoration whose QC has never run (there is no report to preview) — a

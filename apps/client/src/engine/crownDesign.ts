@@ -44,6 +44,7 @@ import {
 import { DEFAULT_OFFSET_VOXEL_PITCH_MM, STANDARD_ZIRCONIA_PROFILE } from '@dqcad/clinical-profiles';
 import type { FdiTooth, Operation, QcReport, Restoration, RestorationParams, Vec3 } from '@dqcad/shared-types';
 import { caseStore } from './caseStore';
+import { resolveProfileVersion } from './materialProfile';
 import {
   type CrownStage,
   canRunStage,
@@ -920,7 +921,7 @@ class CrownDesignEngine {
         throw new CrownStageOrderError('qc', 'shellIncomplete');
       }
       const document = caseStore.getDocument();
-      const profileVersion = document.settings.profileVersion || 'unversioned';
+      const profileVersion = resolveProfileVersion(document);
       const { report } = await this.pool().run('runQc', {
         crownPositions: session.shell.positions,
         crownIndices: session.shell.indices,
@@ -975,7 +976,7 @@ class CrownDesignEngine {
       const alreadyAck = restoration.qc.gates.filter((g) => g.acknowledged).map((g) => g.gate);
       const acknowledgedGates = Array.from(new Set([...alreadyAck, gate]));
       const document = caseStore.getDocument();
-      const profileVersion = document.settings.profileVersion || 'unversioned';
+      const profileVersion = resolveProfileVersion(document);
       const { report } = await this.pool().run('runQc', {
         crownPositions: session.shell.positions,
         crownIndices: session.shell.indices,

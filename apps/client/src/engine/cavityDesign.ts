@@ -31,6 +31,7 @@ import { KERNEL_VERSION, type JobName, type JobPayloadMap, type JobResultMap, ty
 import { DEFAULT_OFFSET_VOXEL_PITCH_MM, STANDARD_ZIRCONIA_PROFILE } from '@dqcad/clinical-profiles';
 import type { FdiTooth, Operation, QcReport, Restoration, RestorationParams, Vec3 } from '@dqcad/shared-types';
 import { caseStore } from './caseStore';
+import { resolveProfileVersion } from './materialProfile';
 import {
   type CavityStage,
   canRunCavityStage,
@@ -749,7 +750,7 @@ class CavityDesignEngine {
       throw new CavityStageOrderError('qc', 'shellIncomplete');
     }
     const document = caseStore.getDocument();
-    const profileVersion = document.settings.profileVersion || 'unversioned';
+    const profileVersion = resolveProfileVersion(document);
     const coverage =
       session.restorationType === 'onlay' && session.coverage
         ? {

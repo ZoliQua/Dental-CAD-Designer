@@ -13,11 +13,12 @@ authoritative scoping):** Phase 7 is **fixture-proven**, exactly like Phases 5
 and 6 — the export/re-validation/traceability/archive loop is proven on
 synthetic crown/inlay/onlay/bridge fixtures, not on a real patient scan. The
 standing real-scan certifications (P3 retraction-cord crown, P5 cavity, P6
-bridge) are **TRACKED-PENDING** and are NOT closed here (Open Items). A second,
-concrete caveat this task's real-UI e2e surfaced: a real case has no material
-picker yet, so its `settings` are empty and a real-UI export currently 409s on
-`profileVersion` until a profile is selected — see "A real gap this task
-surfaced" and Open Items.
+bridge) are **TRACKED-PENDING** and are NOT closed here (Open Items). A real-UI
+gap this task's e2e surfaced — a fresh case's client QC stamped
+`profileVersion: 'unversioned'` while the export resolved standard-zirconia
+1.4.0, so the server honestly 409'd every real-UI export — was **fixed in the
+Task 9 fix round** (a shared profile-version resolver); the live multi-material
+**picker** remains the tracked carry-in (Open Item 3).
 
 Branch `phase-7-export`. `KERNEL_VERSION` at phase end: **0.26.0** — **no bump
 this phase** (Phase 6 also ended at 0.26.0). Export/handoff composes the EXISTING
@@ -179,7 +180,7 @@ then carries it into the export panel:
 
 | step | result |
 |---|---|
-| import a synthetic shoulder-prep die (real STL input), select the material profile (the unbuilt picker's job — see below), design a crown (margin → inner → anatomy → morph → shell → QC) to a finalMesh | PASS; QC genuinely FAILS minWallThickness + seating at the razor-thin cervical seam (the phase4 finding), unacknowledged |
+| import a synthetic shoulder-prep die (real STL input), design a crown (margin → inner → anatomy → morph → shell → QC) to a finalMesh — a FRESH case, no material-profile setup needed (the fix-round shared resolver stamps zirconia 1.4.0) | PASS; QC genuinely FAILS minWallThickness + seating at the razor-thin cervical seam (the phase4 finding), unacknowledged |
 | **HONEST-FAILURE + ADR-014 PROOF** — the export panel BLOCKS export while a failing gate is unacknowledged: `export-gate-block` (`role="alert"`) shown, the export button DISABLED, nothing POSTed, nothing released; the `export-disclosure` synthetic-data banner rides the panel | PASS |
 | acknowledge the failing gates through the REAL journaled crown-QC acknowledge flow → the panel's recap flips to all-pass, the gate-block clears, the export button ENABLES | PASS |
 | export (STL) → the client journaled export → `POST /export` (the SERVER independently re-imports the exact bytes, re-runs every gate, certifies the outer envelope, generates the traceability doc) → **released** | PASS; the released card renders the real download link + BOTH traceability links (HTML `?lang=` + JSON), all with server hrefs, + the released hash |
@@ -199,31 +200,31 @@ reachable on the happy path without byte tampering, so that surface is proven by
 session DID measure a real server mismatch live (next paragraph), it is
 engineered out of the deterministic happy path.
 
-### A real gap this task surfaced (the `profileVersion` export-mismatch — the T7-N3 concern, now measured live)
+### A real gap this task surfaced — then FIXED at the root (the `profileVersion` export-mismatch — the T7-N3 concern)
 
 Driving the export through the REAL UI (not the T8 harness) revealed a genuine
 dual-validation catch the fixture harness had masked. A freshly created case has
 EMPTY `settings` (`{ materialProfileId: '', profileVersion: '' }`), so the client
-design engines stamp `QcReport.profileVersion: 'unversioned'`
-(`crownDesign.ts:923` et al.) while the export request/server resolve the profile
-to standard-zirconia **1.4.0** — so the server's independent re-validation
-HONESTLY refuses **409 `export-qc-mismatch`** on the `profileVersion` field
-(diagnostic bundle persisted, nothing released) for EVERY real-UI export until a
-material picker sets the profile. (The T8 harness never hit this because it
-constructs client reports whose `profileVersion` already equals the registry
-profile's — the T4 report's own fixture-identity note.) This is the same "live
-material picker tracked, not this phase" carry-in (T3/T4/T7), now with its
-concrete export consequence MEASURED. This task fixes it the way the (unbuilt)
-picker will: a DEV-only `seedMaterialProfile` test hook (mirroring P5's
-`seedCavityOutline` / P6's `seedBridgeAbutmentMargin` wrap-up pattern) selecting
-the standard-zirconia profile the design engines' thresholds already use, plus a
-minimal non-journaled `caseStore.setMaterialProfile` (the write the picker will
-own). With it the client QC and the server agree — a clean release. **Wiring a
-real material picker that sets `settings` from the UI is the open item** (below);
-the honest T7-N3 verdict is confirmed: the server derives `restorationType` from
-the verified request correctly (inlay AND onlay both release in T8), but the
-client's own `profileVersion` stamping is the field that must match, and today it
-only does once a profile is selected.
+design engines USED TO stamp `QcReport.profileVersion: 'unversioned'`
+(`document.settings.profileVersion || 'unversioned'`) while the export request/
+server resolve the profile to standard-zirconia **1.4.0** — so the server's
+independent re-validation HONESTLY refused **409 `export-qc-mismatch`** on the
+`profileVersion` field (diagnostic bundle persisted, nothing released) for EVERY
+real-UI export, even though the thresholds were already zirconia 1.4.0's. (The T8
+harness never hit this because it constructs client reports whose
+`profileVersion` already equals the registry profile's — the T4 fixture-identity
+note.) **The Task 9 fix round closed it at the root:** a single shared resolver
+(`engine/materialProfile.ts` — `resolveMaterialProfile` / `resolveProfileVersion`,
+extracted from `exportFlow.ts` as a leaf module so it can't cycle with the design
+engines) is now called by BOTH paths — the QC stamp in all three engines
+(`crownDesign`/`cavityDesign`/`bridgeDesign`) AND the export request + traceability
+preview — so an empty-settings case stamps `1.4.0` consistently and the server
+agrees. The e2e proves a FRESH case releases with no profile setup at all. This
+confirms the honest T7-N3 verdict: `restorationType` server-derivation is already
+correct (inlay AND onlay release in T8), and the residual `profileVersion` field
+is now consistent by construction. The live **multi-material picker** (choosing
+e.max etc. from the UI, which would set `settings.materialProfileId`) remains the
+tracked carry-in (Open Item 3).
 
 ### Isolated e2e infrastructure (the P4-T13 precedent — NON-NEGOTIABLE)
 
@@ -271,15 +272,17 @@ moved**.
    tooth-11 crown; P5 real inlay/onlay scan (+ the onlay seating fillet-removal
    geometry item, ADR-010); P6 real multi-abutment bridge scan. None block Phase
    7 acceptance (fixture-proven, caveat stated).
-3. **No live material picker → real-UI export currently 409s on `profileVersion`
-   (this task's own measured finding, above).** A real case has empty `settings`,
-   so the client QC stamps `profileVersion: 'unversioned'` while the export
-   resolves standard-zirconia 1.4.0 → `export-qc-mismatch`. Worked around in the
-   e2e via the `seedMaterialProfile` DEV hook (mirroring the unbuilt picker);
-   the real fix is a material-selection UI that sets `settings.materialProfileId`
-   /`profileVersion` (and, once EMAX or others are selectable, resolves the right
-   registry identity). Same "live material picker tracked, not this phase"
-   carry-in as T3/T4/T7 — now with its export consequence disclosed.
+3. **The `profileVersion` real-UI 409 — RESOLVED for the default single-material
+   (zirconia) case; the live multi-material PICKER remains the tracked carry-in.**
+   The Task 9 fix round unified the QC stamp and the export path on one shared
+   resolver (`engine/materialProfile.ts`), so a fresh empty-settings case stamps
+   standard-zirconia 1.4.0 consistently and a real-UI export now RELEASES (proven
+   by the e2e from a plain new case, no seed). What remains: a material-selection
+   UI that lets a user pick e.max (or another registry profile) by setting
+   `settings.materialProfileId` — the same "live material picker tracked, not
+   this phase" carry-in as T3/T4/T7. Until it lands every case defaults to
+   standard-zirconia (the honest identity of the thresholds the design engines
+   already use).
 4. **qcContext serialized on the UI thread (T7 follow-up).** `releaseToServer`
    serializes the riding design surfaces (`Array.from` + `JSON.stringify`) on the
    UI thread; for a large marching-cubes fit/inner/outer surface this can exceed
@@ -334,14 +337,15 @@ moved**.
 | --- | --- |
 | `npm run typecheck` | exit **0** (all workspaces) |
 | `npm run lint` | exit **0** (only the 2 pre-existing warnings in the untouched `test/golden/onlay-acceptance.test.ts`) |
-| `npm test` | exit **0** — **3128 passed / 14 skipped** (308 files passed / 4 skipped) — T8 baseline 3126 + this task's 2 new `caseStore.setMaterialProfile` tests |
-| `npm run test:golden` | exit **0** — **257 passed / 9 skipped**, no pin moved (`git status test-fixtures/` empty) |
-| `npx playwright test --config <untracked isolated> e2e/phase7.spec.ts` (×2 consecutive) | exit **0** both times — **6/6 passed, ~36 s**, against the isolated bootstrap above |
+| `npm test` | exit **0** — **NUMBERS pinned in `.superpowers/sdd/p7-task-9-report.md` (fix-round)** — the 3 qc golden pins byte-identical |
+| `npm run test:golden` | exit **0** — **257 passed / 9 skipped**, no pin moved (`git status test-fixtures/` empty; the 3 qc pins byte-identical — the fix-round pin guard) |
+| `npx playwright test --config <untracked isolated> e2e/phase7.spec.ts` (×2 consecutive) | exit **0** both times — **6/6 passed, ~37 s**, against the isolated bootstrap above (a FRESH case, no profile seed) |
 
-Goldens unchanged this task — no kernel/pipeline op touched (a DEV-only client
-test hook + a minimal non-journaled `caseStore.setMaterialProfile` + its unit
-test, the e2e, docs, and ADRs only), no `KERNEL_VERSION` bump, no `test-fixtures/`
-diff. Coverage note closed: `export-acceptance-lib.ts` (T8) measures **100 % stmt
+Goldens unchanged this phase — no kernel/pipeline op touched (the fix-round's
+shared profile-version resolver only touches the client QC-stamp, which the
+golden qc fixtures do NOT flow through — the 3 qc pins are byte-identical; plus
+the e2e, docs, and ADRs), no `KERNEL_VERSION` bump, no `test-fixtures/` diff.
+Coverage note closed: `export-acceptance-lib.ts` (T8) measures **100 % stmt
 / 91.3 % branch / 100 % func / 100 % line** (the sub-100 branch is the two
 defensive `moveApexOutward` throw arms the T8 reviewer flagged as unreachable in
 the happy path — ≥ 90 % on both stmt and branch).
@@ -384,9 +388,10 @@ the happy path — ≥ 90 % on both stmt and branch).
    traceability HTML view + JSON download + the released hash) or shows the
    **honest mismatch** (the code, the server message, the per-field diff, the
    diagnostic bundle id — with NO retry affordance; nothing released).
-   > Real-case note: until a material picker lands, select the case's material
-   > profile first (today only wired via the e2e hook) or the server honestly
-   > 409s on `profileVersion` — see Open Items 3.
+   > Material note: a fresh case defaults to standard-zirconia (the QC stamp and
+   > the export path share one resolver — `engine/materialProfile.ts`), so a
+   > default case releases with no setup; a live picker for e.max/others is the
+   > tracked carry-in (Open Item 3).
 4. **Case archive** (`archive-section`): export the `.dqca` (scans + journal +
    case document + settings + QC snapshots + released exports, integrity-manifest
    sealed). Import re-CONFIRMS before overwriting an existing case (invariant 5);

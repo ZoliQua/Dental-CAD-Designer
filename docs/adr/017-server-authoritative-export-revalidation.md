@@ -87,10 +87,14 @@ evidence, never the verdict.**
   fixtures, so a legitimate export's client and server reports match exactly.
   When a value genuinely moves under narrowing, the diff 409s with the bundle —
   honest surfacing, not a smoothed comparison. **The Phase 7 e2e measured this
-  live:** a fresh case with empty `settings` stamps `profileVersion:
-  'unversioned'` in the client QC while the export resolves standard-zirconia
-  1.4.0 → the server honestly refuses `export-qc-mismatch` on that field until a
-  material picker sets the profile (docs/demos/phase-7.md open items).
+  live** on the METADATA side: a fresh case with empty `settings` used to stamp
+  `profileVersion: 'unversioned'` in the client QC while the export resolves
+  standard-zirconia 1.4.0, so the server honestly refused `export-qc-mismatch` on
+  that field. The Task 9 fix round CLOSED it: the QC stamp and the export path
+  now share one resolver (`engine/materialProfile.ts`), so an empty-settings case
+  stamps 1.4.0 consistently and a real-UI export releases; the live
+  multi-material picker remains the tracked carry-in (docs/demos/phase-7.md open
+  item 3).
 - `export-outer-envelope-mismatch` (ADR-015) is a distinct, EARLIER gate: it
   certifies the delivered solid's outer geometry against the persisted
   finalMesh, catching a gate-invariant outward tamper the QC diff cannot see.

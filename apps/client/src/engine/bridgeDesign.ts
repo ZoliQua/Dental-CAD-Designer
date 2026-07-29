@@ -45,6 +45,7 @@ import { KERNEL_VERSION, type JobName, type JobPayloadMap, type JobResultMap, ty
 import { STANDARD_ZIRCONIA_PROFILE } from '@dqcad/clinical-profiles';
 import type { Operation, QcReport, Restoration, Vec3 } from '@dqcad/shared-types';
 import { caseStore } from './caseStore';
+import { resolveProfileVersion } from './materialProfile';
 import {
   type BridgeStage,
   canRunBridgeStage,
@@ -967,7 +968,7 @@ class BridgeDesignEngine {
       throw new BridgeStageOrderError('qc', 'assemblyIncomplete');
     }
     const document = caseStore.getDocument();
-    const profileVersion = document.settings.profileVersion || 'unversioned';
+    const profileVersion = resolveProfileVersion(document);
     return {
       assembledPositions: session.assembled.positions,
       assembledIndices: session.assembled.indices,
