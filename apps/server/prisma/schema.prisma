@@ -79,6 +79,18 @@ model Export {
   /// the only release-time record, and it never enters this document).
   /// Null only on pre-Task-5 rows (the routes 404 typed for those).
   traceabilityJson    String?
+  /// Phase 7 Task 6 (Part B, review F-B1) — provenance of THIS ledger row.
+  /// `true` iff the row was reconstructed from an imported case archive rather
+  /// than written by the server's own dual-validation release path. An archive
+  /// is client-supplied + unsigned: its manifest gives INTEGRITY, not
+  /// AUTHENTICITY, and imported release rows (qcReportJson/traceabilityJson/
+  /// acknowledgments) are attested by the archive author, NOT re-validated here
+  /// (the qcContext riding surfaces needed to re-run QC are not carried in the
+  /// ledger/archive). This flag keeps the ledger honest so a consumer never
+  /// mistakes an imported release for a server-re-validated one. `null` on
+  /// rows predating this column (all genuinely server-verified). Never enters
+  /// any hashed content.
+  importedUnverified  Boolean?
   releasedAt          DateTime @default(now())
 
   @@index([bytesSha256])

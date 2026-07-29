@@ -25,12 +25,25 @@
 //
 // ## Integrity
 //
-// `parseCaseArchive` recomputes every entry's sha256 from its slice of the
-// payload section and the whole-archive sha256, and REJECTS (typed
-// `CaseArchiveError`, naming the failing entry) on any mismatch — a corrupted
-// entry is caught, never reconstructed. The manifest itself is covered because
-// each entry's declared `offset`/`length`/`sha256` must agree with the actual
-// bytes, and `archiveSha256` pins the whole payload section.
+// TWO layers, so BOTH the payloads AND the manifest's descriptive fields are
+// protected (review F-B2):
+//  - `archiveSha256` pins the concatenated PAYLOAD section, and each entry's
+//    `sha256` pins its own payload slice — a corrupted entry is caught, named,
+//    and never reconstructed.
+//  - `manifestSha256` is a SELF-HASH over the canonical manifest itself (with
+//    the self-hash field held at a fixed placeholder while hashing), so the
+//    DESCRIPTIVE fields — `case.name` (the sole source of the DB case name on
+//    import), `kernelVersion`, every entry's `name`/`kind`/`offset`/`length` —
+//    are integrity-protected too. Without it, a payload-untouched tamper of a
+//    descriptive field (with `archiveSha256` still valid) parsed cleanly; now
+//    it is a typed rejection.
+// `parseCaseArchive` verifies the manifest self-hash FIRST, then the
+// whole-archive hash, then every per-entry hash — any mismatch is a typed
+// `CaseArchiveError` (naming the failing entry on the per-entry path). This is
+// INTEGRITY, not AUTHENTICITY: the archive is client-supplied and unsigned, so
+// an adversary who rewrites the payload can recompute every hash (see
+// archive-route.ts's import trust-boundary doc — imported ledger rows are
+// attested, not re-validated).
 import { createHash } from 'node:crypto';
 import { canonicalStringify } from '@dqcad/clinical-profiles';
 
@@ -61,6 +74,23 @@ export interface CaseArchiveManifest {
   entries: readonly CaseArchiveManifestEntry[];
   /** sha256 of the concatenated payload section (the whole-archive hash). */
   archiveSha256: string;
+  /** sha256 SELF-HASH of this manifest — computed over the canonical manifest
+   * with this field held at `MANIFEST_SELF_HASH_PLACEHOLDER` while hashing, so
+   * it covers every descriptive field (`case.*`, `kernelVersion`, each entry's
+   * `name`/`kind`/`offset`/`length`/`sha256`, `archiveSha256`). Review F-B2. */
+  manifestSha256: string;
+}
+
+/** The value `manifestSha256` holds while the self-hash is being computed —
+ * a fixed 64-hex-zero placeholder so both build and verify hash the SAME
+ * canonical bytes deterministically. */
+const MANIFEST_SELF_HASH_PLACEHOLDER = '0'.repeat(64);
+
+/** Computes a manifest's self-hash: the sha256 of the canonical JSON of the
+ * manifest with `manifestSha256` set to the fixed placeholder. */
+function manifestSelfHash(manifest: CaseArchiveManifest): string {
+  const canonical = canonicalStringify({ ...manifest, manifestSha256: MANIFEST_SELF_HASH_PLACEHOLDER });
+  return sha256Hex(new TextEncoder().encode(canonical));
 }
 
 /** An entry to bundle: a name + kind + its raw payload bytes. */
@@ -122,7 +152,9 @@ export function buildCaseArchive(
     case: { id: caseInfo.id, name: caseInfo.name, schemaVersion: caseInfo.schemaVersion },
     entries: manifestEntries,
     archiveSha256,
+    manifestSha256: MANIFEST_SELF_HASH_PLACEHOLDER,
   };
+  manifest.manifestSha256 = manifestSelfHash(manifest);
   const manifestBytes = new TextEncoder().encode(canonicalStringify(manifest));
 
   const out = new Uint8Array(HEADER_BYTES + manifestBytes.byteLength + payloadSection.byteLength);
@@ -184,6 +216,17 @@ export function parseCaseArchive(bytes: Uint8Array): ParsedCaseArchive {
   }
   if (manifest.formatVersion !== CASE_ARCHIVE_FORMAT_VERSION || !Array.isArray(manifest.entries)) {
     throw new CaseArchiveError('manifest is structurally invalid');
+  }
+
+  // Manifest self-hash FIRST — protects the descriptive fields (review F-B2).
+  if (typeof manifest.manifestSha256 !== 'string') {
+    throw new CaseArchiveError('manifest is missing its self-hash (manifestSha256)');
+  }
+  if (manifestSelfHash(manifest) !== manifest.manifestSha256) {
+    throw new CaseArchiveError(
+      'manifest self-hash mismatch — a descriptive field (case name, kernelVersion, entry name/kind/…) ' +
+        'was tampered',
+    );
   }
 
   const payloadSection = bytes.subarray(payloadStart);

@@ -103,6 +103,18 @@ function resolveMeshMaxBytes(): number {
   return Number.isFinite(fromEnv) && fromEnv > 0 ? fromEnv : DEFAULT_MESH_MAX_BYTES;
 }
 
+// Phase 7 Task 6 (Part B, review bodyLimit NOTE): a case archive bundles MANY
+// scans + final meshes + released exports, so it is a LARGER size class than a
+// single mesh — a dedicated ceiling (default 2 GB) rather than sharing the
+// per-mesh limit, overridable via `ARCHIVE_MAX_BYTES` (deployment) or
+// `BuildAppOptions.archiveMaxBytes` (tests).
+const DEFAULT_ARCHIVE_MAX_BYTES = 2 * 1024 * 1024 * 1024;
+
+function resolveArchiveMaxBytes(): number {
+  const fromEnv = process.env.ARCHIVE_MAX_BYTES ? Number(process.env.ARCHIVE_MAX_BYTES) : NaN;
+  return Number.isFinite(fromEnv) && fromEnv > 0 ? fromEnv : DEFAULT_ARCHIVE_MAX_BYTES;
+}
+
 // apps/server/data/meshes — see mesh-storage.ts's module doc. Git-ignored
 // (see .gitignore's `apps/server/data/` entry); created on first upload.
 const DEFAULT_MESH_DATA_DIR = fileURLToPath(new URL('../data/meshes', import.meta.url));
@@ -386,6 +398,8 @@ export interface BuildAppOptions {
   /** Injectable for tests (an isolated temp dir) — defaults to
    * apps/server/data/final-meshes. See final-mesh-storage.ts. */
   finalMeshDataDir?: string;
+  /** Injectable for tests — defaults to `ARCHIVE_MAX_BYTES` env var or 2 GB. */
+  archiveMaxBytes?: number;
 }
 
 /** App factory: builds and configures a Fastify instance without
@@ -413,6 +427,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   const toothLibraryDataDir = options.toothLibraryDataDir ?? DEFAULT_TOOTH_LIBRARY_DATA_DIR;
   const exportsDataDir = options.exportsDataDir ?? DEFAULT_EXPORTS_DATA_DIR;
   const finalMeshDataDir = options.finalMeshDataDir ?? DEFAULT_FINAL_MESH_DATA_DIR;
+  const archiveMaxBytes = options.archiveMaxBytes ?? resolveArchiveMaxBytes();
 
   await seedStarterToothLibrary(toothLibraryDataDir, meshDataDir);
 
@@ -835,7 +850,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     meshDataDir,
     finalMeshDataDir,
     exportsDataDir,
-    archiveMaxBytes: meshMaxBytes,
+    archiveMaxBytes,
   });
 
   return app;

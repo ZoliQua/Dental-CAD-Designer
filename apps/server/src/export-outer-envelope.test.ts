@@ -166,8 +166,11 @@ describe('POST /api/restorations/:id/export — outer-envelope certification (T4
     expect(diag).not.toBeNull();
     expect(diag!.reason).toBe('outer-envelope-mismatch');
 
-    // Nothing was released.
-    const released = await prisma.export.findFirst({ where: { restorationId: harness.restorationId } });
+    // Nothing was released. Scoped by the harness's fresh caseId (uuid) — the
+    // testutil's restorationId counter is per-module and NOT unique across test
+    // files sharing test.db, so a restorationId filter can match another file's
+    // release; caseId cannot.
+    const released = await prisma.export.findFirst({ where: { caseId: harness.caseId } });
     expect(released).toBeNull();
   });
 

@@ -230,9 +230,15 @@ describe('case archive export/import — round-trip identity (Phase 7 Task 6 Par
     expect(Buffer.from(dstFinal.rawPayload).equals(Buffer.from(srcFinal.rawPayload))).toBe(true);
 
     // 5. Export ledger row reconstructed verbatim + its bytes downloadable.
+    //    Every release-content field is identical; the ONLY difference is the
+    //    provenance marker (review F-B1): the source row is server-verified
+    //    (importedUnverified null), the imported row is stamped true so the
+    //    ledger never presents it as server-re-validated.
     const srcRow = await source.prisma.export.findFirstOrThrow({ where: { caseId: harness.caseId } });
     const dstRow = await target.prisma.export.findFirstOrThrow({ where: { caseId: harness.caseId } });
-    expect(dstRow).toEqual(srcRow);
+    expect(srcRow.importedUnverified).toBeNull();
+    expect(dstRow.importedUnverified).toBe(true);
+    expect({ ...dstRow, importedUnverified: srcRow.importedUnverified }).toEqual(srcRow);
     const dl = await target.app.inject({ method: 'GET', url: `/api/exports/${dstRow.bytesSha256}/download` });
     expect(dl.statusCode).toBe(200);
     expect(Buffer.from(dl.rawPayload).equals(Buffer.from(harness.bytes))).toBe(true);

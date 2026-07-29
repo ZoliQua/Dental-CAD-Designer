@@ -101,9 +101,12 @@
 // EVERY gate value unchanged (thickness/marginFit measure the RIDING
 // inner/outer surfaces; the solid-consuming gates are insensitive to an outward
 // move) — so the server report matched the client report while the delivered
-// bytes carried moved geometry. It RELEASED (proven red pre-fix under
-// `DQ_RED_PROOF=1` in export-outer-envelope.test.ts: the moved-apex crown
-// returns 200).
+// bytes carried moved geometry. It RELEASED. The step-10.5 assertion below is
+// the SOLE source of the `export-outer-envelope-mismatch` code, so the
+// always-on `moved-vertex → 409` regression (export-outer-envelope.test.ts)
+// fails the instant the block is removed — that green test IS the guard (there
+// is deliberately NO env switch that can disable the assertion in a
+// deployment).
 //
 // The closure: the client now persists the finalMesh bytes content-addressed
 // (the lossless `@dqcad/io` DQFM container → `POST /api/final-meshes`, keyed by

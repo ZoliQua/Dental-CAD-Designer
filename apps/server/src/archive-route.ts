@@ -24,6 +24,28 @@
 // No-silent-mutation (invariant 5): importing over an EXISTING case id is a
 // typed 409 conflict the caller must resolve with `?overwrite=true` — never a
 // silent overwrite.
+//
+// ## TRUST BOUNDARY — integrity, NOT authenticity (review F-B1)
+//
+// An archive is CLIENT-SUPPLIED and UNSIGNED. The DQCA manifest gives INTEGRITY
+// (self-hash over descriptive fields + whole-archive + per-entry hashes catch
+// corruption/tampering of a fixed archive), NOT AUTHENTICITY — an adversary who
+// rewrites the whole archive recomputes every hash. On import, the case document
+// and every Export ledger row (`qcReportJson`, `traceabilityJson`,
+// `acknowledgmentsJson`, hashes) are reconstructed VERBATIM. They are NOT
+// re-validated: a full re-validation would re-run the export QC, but the riding
+// `qcContext` (inner/outer/fit surfaces, dies, polylines) it needs is design-
+// time context the release ledger deliberately never persisted (only the
+// finalMesh solid + released bytes are content-addressed), so it is not
+// recoverable from the archive. Re-running QC on import is therefore NOT
+// tractable in this design. Instead, every imported release row is stamped
+// `importedUnverified: true` (schema.prisma) so the ledger stays honest — a
+// consumer of the `Export` table can always distinguish a server-re-validated
+// release from an imported, author-attested one. This is a deliberate second
+// ledger write-path whose provenance is explicit, never silently trusted. (A
+// future hardening could re-run the geometry-only outer-envelope check on
+// imported releases whose finalMesh container is present; the QC-gate re-run
+// stays blocked on the un-persisted qcContext.)
 import type { FastifyInstance } from 'fastify';
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { KERNEL_VERSION } from '@dqcad/kernel';
@@ -50,12 +72,11 @@ export interface ArchiveRouteDeps {
   meshDataDir: string;
   finalMeshDataDir: string;
   exportsDataDir: string;
-  /** Body-size ceiling for the import POST. An archive carries the case's
-   * scans + final meshes + released export bytes, so it is the same
-   * (potentially large) payload class as a single mesh upload — the mesh
-   * ceiling is shared deliberately; raise `MESH_MAX_BYTES` for archives with
-   * many large scans. Synthetic-fixture archives (the only ones in tests) are
-   * tiny. */
+  /** Body-size ceiling for the import POST. An archive bundles the case's MANY
+   * scans + final meshes + released export bytes, so it is a LARGER payload
+   * class than a single mesh — a DEDICATED ceiling (default 2 GB, env
+   * `ARCHIVE_MAX_BYTES`), not the per-mesh limit (review bodyLimit NOTE).
+   * Synthetic-fixture archives (the only ones in tests) are tiny. */
   archiveMaxBytes: number;
 }
 
@@ -83,6 +104,7 @@ interface ArchivedExportRow {
   qcReportJson: string;
   acknowledgmentsJson: string;
   traceabilityJson: string | null;
+  importedUnverified: boolean | null;
   releasedAt: string;
 }
 
@@ -310,6 +332,10 @@ export function registerArchiveRoutes(app: FastifyInstance, deps: ArchiveRouteDe
             qcReportJson: row.qcReportJson,
             acknowledgmentsJson: row.acknowledgmentsJson,
             traceabilityJson: row.traceabilityJson,
+            // Provenance: THIS row arrived via import, unverified — stamp it
+            // regardless of what the archive claimed (review F-B1). The ledger
+            // must never present an imported release as server-re-validated.
+            importedUnverified: true,
             releasedAt: new Date(row.releasedAt),
           };
           await tx.export.create({ data });

@@ -27,8 +27,11 @@ then          each entry's payload bytes, concatenated in manifest order
 ```
 
 Manifest per entry: `name`, `kind`, `offset`, `length`, `sha256`; plus a
-whole-archive `archiveSha256` (sha256 of the concatenated payload section) and
-`formatVersion`. Entries are laid out in a fixed order (by `name`, ascending).
+whole-archive `archiveSha256` (sha256 of the concatenated payload section), a
+`manifestSha256` **self-hash** over the manifest's own descriptive fields
+(review F-B2 — computed with the self-hash field held at a fixed placeholder),
+and `formatVersion`. Entries are laid out in a fixed order (by `name`,
+ascending).
 
 ### Why not ZIP
 
@@ -50,7 +53,29 @@ whole-archive `archiveSha256` (sha256 of the concatenated payload section) and
   case, because it is a stored value, not a build-time read.
 
 Portability across labs is preserved: the format is fully documented here and in
-`case-archive.ts`, and the reader verifies everything before reconstructing.
+`case-archive.ts`, and the reader verifies the archive's **integrity** (manifest
+self-hash + whole-archive + per-entry hashes) before reconstructing.
+
+## Trust boundary: INTEGRITY, not AUTHENTICITY (review F-B1)
+
+The archive is **client-supplied and unsigned**. The manifest detects
+corruption/tampering of a *fixed* archive (integrity) but provides **no
+authenticity** — an adversary who rewrites the whole archive recomputes every
+hash. On import, the case document and every Export ledger row (`qcReportJson`,
+`traceabilityJson`, `acknowledgmentsJson`, hashes) are reconstructed **verbatim
+and are NOT re-validated**: a full re-run of the export QC needs the riding
+`qcContext` (inner/outer/fit surfaces, dies, polylines), which is design-time
+context the release ledger deliberately never persisted, so it is not
+recoverable from the archive — re-validation on import is not tractable in this
+design. To keep the ledger honest, every imported release row is stamped
+**`importedUnverified: true`** (a nullable `Export` column; portable
+`ALTER TABLE … ADD COLUMN` migration), so a consumer of the `Export` table can
+always distinguish a server-re-validated release from an imported,
+author-attested one. This is a deliberate second ledger write-path whose
+provenance is explicit — never silently trusted. (A future hardening could
+re-run the geometry-only outer-envelope check on imported releases whose
+finalMesh container is present; the QC-gate re-run stays blocked on the
+un-persisted qcContext.)
 
 ## Round-trip identity
 

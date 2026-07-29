@@ -17,9 +17,14 @@ RELEASES: the server report matches the client report while the delivered part's
 outer shape is not the designed one. No gate measured the delivered solid's
 **outer envelope** against a reference.
 
-We reproduced this precisely: with the new assertion disabled
-(`DQ_RED_PROOF=1`), the moved-apex crown export returns **200 (released)** —
-`export-outer-envelope.test.ts`.
+We reproduced this precisely during development by temporarily gating the
+step-10.5 block off: the moved-apex crown export then returns **200 (released)**
+— it passes every gate AND the client/server QC diff, confirming the outward
+move is gate-invariant. There is **no** env switch or backdoor that can disable
+the assertion in a deployment (a deliberate choice). The regression is guarded
+by the always-on `moved-vertex → 409` test in `export-outer-envelope.test.ts`:
+the step-10.5 block is the SOLE source of the `export-outer-envelope-mismatch`
+code, so that green test fails the instant the block is removed.
 
 ## Decision
 
