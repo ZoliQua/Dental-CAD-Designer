@@ -46,8 +46,19 @@
 // rather than trusted from the request.
 import { createHash } from 'node:crypto';
 import { intake, type IndexedMesh, type IntakeReport } from '@dqcad/kernel';
-import { parsePly, parseStl, writeStlBinary, EXPORT_STL_HEADER_TEXT, IoParseError } from '@dqcad/io';
-import type { CaseDocument, Operation, Restoration, RestorationExportRequest } from '@dqcad/shared-types';
+import {
+  parsePly,
+  parseStl,
+  writeStlBinary,
+  EXPORT_STL_HEADER_TEXT,
+  IoParseError,
+} from '@dqcad/io';
+import type {
+  CaseDocument,
+  Operation,
+  Restoration,
+  RestorationExportRequest,
+} from '@dqcad/shared-types';
 
 /** Closed rejection code set — the `error` field of every non-200 export
  * response (schemas.ts `exportErrorSchema`; the mismatch/gates 409s carry
@@ -72,6 +83,7 @@ export type ExportRejectionCode =
   | 'export-gates-failing'
   | 'export-not-found'
   | 'export-storage-integrity'
+  | 'export-traceability-missing'
   | 'qc-invalid-input';
 
 /**
@@ -157,15 +169,18 @@ function assertCleanReimport(report: IntakeReport, format: 'stl' | 'ply'): void 
   const violations: Record<string, number> = {};
   for (const step of report.steps) {
     if (step.step === 'dropDegenerateTriangles') {
-      if (step.details['degenerateCount'] !== 0) violations['degenerateCount'] = step.details['degenerateCount']!;
+      if (step.details['degenerateCount'] !== 0)
+        violations['degenerateCount'] = step.details['degenerateCount']!;
       if (step.details['duplicateIndexCount'] !== 0)
         violations['duplicateIndexCount'] = step.details['duplicateIndexCount']!;
     }
     if (step.step === 'orientNormalsConsistently') {
-      if (step.details['flippedCount'] !== 0) violations['flippedCount'] = step.details['flippedCount']!;
+      if (step.details['flippedCount'] !== 0)
+        violations['flippedCount'] = step.details['flippedCount']!;
       if (step.details['ambiguousComponentCount'] !== 0)
         violations['ambiguousComponentCount'] = step.details['ambiguousComponentCount']!;
-      if (step.details['componentCount'] !== 1) violations['componentCount'] = step.details['componentCount']!;
+      if (step.details['componentCount'] !== 1)
+        violations['componentCount'] = step.details['componentCount']!;
     }
   }
   if (Object.keys(violations).length > 0) {
@@ -196,12 +211,18 @@ export function reimportExportedBytes(bytes: Uint8Array, format: 'stl' | 'ply'):
       assertCleanReimport(result.report, format);
       return {
         mesh: result.mesh,
-        parseDiagnostics: { format: diagnostics.format, warnings: diagnostics.warnings.map((w) => String(w)) },
+        parseDiagnostics: {
+          format: diagnostics.format,
+          warnings: diagnostics.warnings.map((w) => String(w)),
+        },
         intakeReport: result.report,
       };
     }
     const ply = parsePly(bytes);
-    const result = intake({ kind: 'indexed', mesh: { positions: ply.positions, indices: ply.indices } });
+    const result = intake({
+      kind: 'indexed',
+      mesh: { positions: ply.positions, indices: ply.indices },
+    });
     assertCleanReimport(result.report, format);
     return {
       mesh: result.mesh,
@@ -277,8 +298,15 @@ function isAckOpFor(operation: Operation, restorationId: string, gate: string): 
   return Array.isArray(list) && list.includes(gate);
 }
 
-function verificationFailure(reason: string, message: string, details: Record<string, unknown>): ExportRejectionError {
-  return new ExportRejectionError('export-journal-verification-failed', 409, message, { reason, ...details });
+function verificationFailure(
+  reason: string,
+  message: string,
+  details: Record<string, unknown>,
+): ExportRejectionError {
+  return new ExportRejectionError('export-journal-verification-failed', 409, message, {
+    reason,
+    ...details,
+  });
 }
 
 /**
@@ -312,7 +340,10 @@ function verificationFailure(reason: string, message: string, details: Record<st
  *   `export-unjournaled-acknowledgment` / `export-acknowledgment-invalid`
  *   (all 409).
  */
-export function verifyExportJournal(document: CaseDocument, request: RestorationExportRequest): Restoration {
+export function verifyExportJournal(
+  document: CaseDocument,
+  request: RestorationExportRequest,
+): Restoration {
   const history = document.history;
   if (request.journalOperationCount !== history.length) {
     throw verificationFailure(

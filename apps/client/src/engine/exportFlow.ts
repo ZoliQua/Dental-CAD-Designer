@@ -127,7 +127,10 @@ interface HeldExport {
  * that profile is the honest identity of the parameters actually used. */
 const KNOWN_PROFILES = [STANDARD_ZIRCONIA_PROFILE, EMAX_LITHIUM_DISILICATE_PROFILE] as const;
 
-function resolveMaterialProfile(document: CaseDocument): {
+// Exported (Phase 7 Task 5) so the traceability PREVIEW builds its document
+// with the SAME profile-identity resolution the export request ships — one
+// rule, no drift (engine/traceabilityPreview.ts).
+export function resolveMaterialProfile(document: CaseDocument): {
   id: string;
   version: string;
   checksum: string;

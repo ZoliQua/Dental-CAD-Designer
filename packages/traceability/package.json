@@ -1,0 +1,18 @@
+{
+  "name": "@dqcad/traceability",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./validate": "./src/validate.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@dqcad/clinical-profiles": "*",
+    "@dqcad/shared-types": "*",
+    "ajv": "^8.17.1"
+  }
+}

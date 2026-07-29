@@ -53,8 +53,16 @@ model Export {
   /// QC actually measured (differs from `meshContentHash` by the documented
   /// canonical re-index + f32 narrowing — see export-route.ts).
   reimportMeshHash    String
+  /// Phase 7 Task 5 — the journaled STL header text (header-verified at
+  /// release; null for PLY and for pre-Task-5 rows). Recorded so the
+  /// traceability document is REGENERABLE from the ledger row alone
+  /// (export-traceability.ts).
+  headerText          String?
   exportOperationId   String
   caseJournalHash     String
+  /// Phase 7 Task 5 — operations hashed into `caseJournalHash` (the request
+  /// binding); null only on pre-Task-5 rows (regeneration refuses those).
+  journalOperationCount Int?
   kernelVersion       String
   profileId           String
   profileVersion      String
@@ -63,6 +71,14 @@ model Export {
   qcReportJson        String
   /// The journal-verified acknowledgments riding into this release, JSON.
   acknowledgmentsJson String
+  /// Phase 7 Task 5 — the CANONICAL (sorted-keys, whitespace-free) QC
+  /// traceability document JSON, generated at release time from the
+  /// SERVER's re-validation results, schema-validated before storage, and
+  /// served VERBATIM by GET /api/exports/:id/traceability.json (byte-
+  /// pinnable: the document carries ZERO timestamps — `releasedAt` below is
+  /// the only release-time record, and it never enters this document).
+  /// Null only on pre-Task-5 rows (the routes 404 typed for those).
+  traceabilityJson    String?
   releasedAt          DateTime @default(now())
 
   @@index([bytesSha256])

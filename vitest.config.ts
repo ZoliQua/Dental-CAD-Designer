@@ -32,6 +32,7 @@ export default defineConfig({
     projects: [
       project('shared-types', './packages/shared-types'),
       project('clinical-profiles', './packages/clinical-profiles'),
+      project('traceability', './packages/traceability'),
       project('tooth-library', './packages/tooth-library'),
       project('kernel', './packages/kernel'),
       project('kernel-workers', './packages/kernel-workers'),

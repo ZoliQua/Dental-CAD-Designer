@@ -1,6 +1,9 @@
 // packages/shared-types — the canonical CaseDocument data model (PLAN.md §2.2).
 // Type declarations only: no runtime logic, no clinical defaults, no I/O.
 // Units are millimeters (mm) unless a field name says otherwise.
+// (One documented exception: traceability.ts exports the QC traceability
+// document's versioned JSON Schema as an inert data literal — see that
+// file's module doc for why the schema must live in THIS package.)
 
 // ---------------------------------------------------------------------------
 // FDI tooth numbering
@@ -540,3 +543,27 @@ export interface CaseDocument {
   history: readonly Operation[];
   settings: CaseSettings;
 }
+
+// ---------------------------------------------------------------------------
+// QC traceability document (Phase 7 Task 5) — see traceability.ts
+// ---------------------------------------------------------------------------
+
+export type {
+  QcTraceabilityDocument,
+  TraceabilityCertification,
+  TraceabilityDocumentKind,
+  TraceabilityErrorBounds,
+  TraceabilityExportFile,
+  TraceabilityF32NarrowingBound,
+  TraceabilityIdentity,
+  TraceabilityJournalBinding,
+  TraceabilityLimitation,
+  TraceabilityMeshHashRelation,
+  TraceabilityQc,
+  TraceabilityReimportVerification,
+  TraceabilityVersions,
+} from './traceability.ts';
+export {
+  QC_TRACEABILITY_DOCUMENT_JSON_SCHEMA,
+  TRACEABILITY_SCHEMA_VERSION,
+} from './traceability.ts';

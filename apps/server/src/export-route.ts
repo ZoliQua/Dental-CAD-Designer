@@ -157,6 +157,7 @@ import {
   type RunInlayQcInput,
 } from '@dqcad/cad-pipeline';
 import { hashCaseJournal } from '@dqcad/kernel-workers/journal-hash';
+import { EXPORT_STL_HEADER_TEXT } from '@dqcad/io';
 import {
   decodeExportBytes,
   reimportExportedBytes,
@@ -165,7 +166,9 @@ import {
   ExportRejectionError,
   type ReimportResult,
 } from './export-validation.js';
+import { renderTraceabilityHtml, type TraceabilityLocale } from '@dqcad/traceability';
 import { resolveExportMaterialProfile, verifyProfileThresholds } from './export-profile.js';
+import { buildReleaseTraceability, type TraceabilityReleaseRecord } from './export-traceability.js';
 import { hashMesh } from './journal-replay.js';
 import { readMeshBytes, sha256HexOf, storeMeshBytes } from './mesh-storage.js';
 import {
@@ -186,6 +189,9 @@ import {
   exportBodySchema,
   exportDownloadResponseSchema,
   exportResponseSchema,
+  exportTraceabilityParamsSchema,
+  exportTraceabilityQuerySchema,
+  exportTraceabilityResponseSchema,
   meshHashParamsSchema,
 } from './schemas.js';
 
@@ -219,7 +225,10 @@ export interface InlayExportQcContext {
   insertionAxis: number[];
   thicknessMinimums: { inlayMinThicknessMm: number; onlayMinThicknessMm: number };
   marginExclusionMm: number;
-  coverage?: { coverageDivider: { pointMm: number[]; normalMm: number[] }; cuspCoverageMinThicknessMm: number };
+  coverage?: {
+    coverageDivider: { pointMm: number[]; normalMm: number[] };
+    cuspCoverageMinThicknessMm: number;
+  };
   seamEdges: SeamEdgeInput[];
   cavityTriangleIndices: number[];
   contacts: ContactResidualInput[];
@@ -384,7 +393,11 @@ export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps
     '/api/restorations/:id/export',
     {
       bodyLimit: meshMaxBytes,
-      schema: { params: caseIdParamsSchema, body: exportBodySchema, response: exportResponseSchema },
+      schema: {
+        params: caseIdParamsSchema,
+        body: exportBodySchema,
+        response: exportResponseSchema,
+      },
     },
     async (request, reply) => {
       const { request: exportRequest, qcContext } = request.body;
@@ -420,9 +433,14 @@ export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps
         // 4. The persisted case (the journal authority — N5 sequencing).
         const caseRow = await prisma.case.findUnique({ where: { id: exportRequest.caseId } });
         if (!caseRow) {
-          throw new ExportRejectionError('export-case-not-found', 404, `no case ${exportRequest.caseId}`, {
-            caseId: exportRequest.caseId,
-          });
+          throw new ExportRejectionError(
+            'export-case-not-found',
+            404,
+            `no case ${exportRequest.caseId}`,
+            {
+              caseId: exportRequest.caseId,
+            },
+          );
         }
         const document = JSON.parse(caseRow.documentJson) as CaseDocument;
 
@@ -460,7 +478,10 @@ export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps
             'export-kernel-version-mismatch',
             409,
             `the export was produced on kernel ${exportRequest.kernelVersion} but this server runs ${KERNEL_VERSION}`,
-            { requestKernelVersion: exportRequest.kernelVersion, serverKernelVersion: KERNEL_VERSION },
+            {
+              requestKernelVersion: exportRequest.kernelVersion,
+              serverKernelVersion: KERNEL_VERSION,
+            },
           );
         }
 
@@ -497,7 +518,9 @@ export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps
             error instanceof MinWallThicknessInputError ||
             error instanceof NonCavityRestorationTypeError
           ) {
-            throw new ExportRejectionError('qc-invalid-input', 400, error.message, { errorName: error.name });
+            throw new ExportRejectionError('qc-invalid-input', 400, error.message, {
+              errorName: error.name,
+            });
           }
           throw error;
         }
@@ -556,7 +579,9 @@ export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps
         // the client report AGREED (no diff), i.e. a hand-built request
         // shipped a knowingly-unauthorized export — refused, never released.
         if (!serverReport.passed) {
-          const failingGates = serverReport.gates.filter((g) => !g.passed && !g.acknowledged).map((g) => g.gate);
+          const failingGates = serverReport.gates
+            .filter((g) => !g.passed && !g.acknowledged)
+            .map((g) => g.gate);
           reply.code(409);
           return {
             error: 'export-gates-failing',
@@ -567,7 +592,12 @@ export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps
           };
         }
 
-        // 14. Release: content-addressed immutable storage + ledger row.
+        // 14. Release: content-addressed immutable storage + ledger row +
+        // the Task 5 traceability document (built from the SERVER's report
+        // and the VERIFIED request bindings, schema-validated at generation,
+        // stored as canonical JSON — the same record-assembly module the
+        // regeneration path uses, so stored and regenerated documents are
+        // byte-identical by construction).
         const stored = await storeMeshBytes(exportsDataDir, bytes);
         if (stored.hash !== exportRequest.bytesSha256) {
           // Unreachable (step 1 verified the hash over the same bytes) —
@@ -577,6 +607,32 @@ export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps
             `export release integrity: stored hash ${stored.hash} != verified bytesSha256 ${exportRequest.bytesSha256}`,
           );
         }
+        const releaseRecord: TraceabilityReleaseRecord = {
+          caseId: exportRequest.caseId,
+          restorationId: exportRequest.restorationId,
+          restorationType: exportRequest.restorationType,
+          teeth: exportRequest.teeth,
+          format: exportRequest.format,
+          bytesSha256: exportRequest.bytesSha256,
+          byteLength: exportRequest.byteLength,
+          meshContentHash: exportRequest.meshContentHash,
+          // STL: verified byte-for-byte against the delivered header (step
+          // 9); when the request carried none, the delivered header IS the
+          // writer's deterministic default (step 9 verified exactly that),
+          // so the record states it explicitly.
+          headerText:
+            exportRequest.format === 'stl'
+              ? (exportRequest.headerText ?? EXPORT_STL_HEADER_TEXT)
+              : null,
+          reimportMeshHash,
+          exportOperationId: exportRequest.exportOperationId,
+          caseJournalHash: exportRequest.caseJournalHash,
+          journalOperationCount: exportRequest.journalOperationCount,
+          profile: exportRequest.materialProfile,
+          serverReport,
+          acknowledgments: exportRequest.acknowledgments,
+        };
+        const traceability = buildReleaseTraceability(releaseRecord, reimport.mesh.positions);
         const row = await prisma.export.create({
           data: {
             caseId: exportRequest.caseId,
@@ -587,15 +643,18 @@ export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps
             bytesSha256: exportRequest.bytesSha256,
             byteLength: exportRequest.byteLength,
             meshContentHash: exportRequest.meshContentHash,
+            headerText: releaseRecord.headerText,
             reimportMeshHash,
             exportOperationId: exportRequest.exportOperationId,
             caseJournalHash: exportRequest.caseJournalHash,
+            journalOperationCount: exportRequest.journalOperationCount,
             kernelVersion: exportRequest.kernelVersion,
             profileId: exportRequest.materialProfile.id,
             profileVersion: exportRequest.materialProfile.version,
             profileChecksum: exportRequest.materialProfile.checksum,
             qcReportJson: JSON.stringify(serverReport),
             acknowledgmentsJson: JSON.stringify(exportRequest.acknowledgments),
+            traceabilityJson: traceability.json,
           },
         });
 
@@ -612,6 +671,8 @@ export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps
           meshContentHash: row.meshContentHash,
           reimportMeshHash: row.reimportMeshHash,
           downloadPath: `/api/exports/${row.bytesSha256}/download`,
+          traceabilityJsonPath: `/api/exports/${row.id}/traceability.json`,
+          traceabilityHtmlPath: `/api/exports/${row.id}/traceability.html`,
           releasedAt: row.releasedAt.toISOString(),
           alreadyStored: stored.alreadyExisted,
           qcReport: serverReport,
@@ -668,6 +729,95 @@ export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps
       reply.header('content-disposition', `attachment; filename="${downloadFilename(row)}"`);
       reply.header('content-length', String(bytes.byteLength));
       return reply.send(bytes);
+    },
+  );
+
+  // --- Task 5: the traceability document routes. Keyed by the export
+  // LEDGER ROW id (per release event), unlike the per-content download
+  // `:hash` — a re-release shares bytes but has its own row + document. ---
+
+  /** Shared row lookup: 404 typed for an unknown id, 404
+   * `export-traceability-missing` for a legacy (pre-Task-5) row that never
+   * stored a document. */
+  async function findTraceabilityRow(id: string): Promise<{ json: string; releasedAt: Date }> {
+    const row = await prisma.export.findUnique({ where: { id } });
+    if (!row) {
+      throw new ExportRejectionError('export-not-found', 404, `no released export with id ${id}`, {
+        id,
+      });
+    }
+    if (row.traceabilityJson === null) {
+      throw new ExportRejectionError(
+        'export-traceability-missing',
+        404,
+        `release ${id} predates the traceability record — no stored document`,
+        { id },
+      );
+    }
+    return { json: row.traceabilityJson, releasedAt: row.releasedAt };
+  }
+
+  // GET /api/exports/:id/traceability.json — serves the STORED canonical
+  // document bytes VERBATIM (`reply.send(string)` with a JSON content type
+  // bypasses re-serialization deliberately: the stored string IS the
+  // deterministic, byte-pinnable core — see schemas.ts's traceability
+  // section). No timestamp appears anywhere in this body (the shared-types
+  // traceability.ts policy; `releasedAt` stays on the ledger row).
+  app.get<{ Params: { id: string } }>(
+    '/api/exports/:id/traceability.json',
+    {
+      schema: {
+        params: exportTraceabilityParamsSchema,
+        response: exportTraceabilityResponseSchema,
+      },
+    },
+    async (request, reply) => {
+      try {
+        const stored = await findTraceabilityRow(request.params.id);
+        reply.type('application/json; charset=utf-8');
+        return reply.send(stored.json);
+      } catch (error) {
+        if (error instanceof ExportRejectionError) {
+          reply.code(error.httpStatus);
+          return { error: error.code, message: error.message, details: error.details };
+        }
+        throw error;
+      }
+    },
+  );
+
+  // GET /api/exports/:id/traceability.html?lang=en|hu|de|es — the PDF-ready
+  // human rendering of the SAME stored JSON (one render function, shared
+  // with the client preview — no second source of truth). The row's
+  // `releasedAt` is passed ONLY as the renderer's labeled non-hashed record
+  // envelope (the Task 5 timestamp policy). Deterministic per (row, lang):
+  // pure function of stored fields.
+  app.get<{ Params: { id: string }; Querystring: { lang: TraceabilityLocale } }>(
+    '/api/exports/:id/traceability.html',
+    {
+      schema: {
+        params: exportTraceabilityParamsSchema,
+        querystring: exportTraceabilityQuerySchema,
+        response: exportTraceabilityResponseSchema,
+      },
+    },
+    async (request, reply) => {
+      try {
+        const stored = await findTraceabilityRow(request.params.id);
+        const document = JSON.parse(stored.json) as Parameters<typeof renderTraceabilityHtml>[0];
+        const html = renderTraceabilityHtml(document, {
+          locale: request.query.lang,
+          releasedAt: stored.releasedAt.toISOString(),
+        });
+        reply.type('text/html; charset=utf-8');
+        return reply.send(html);
+      } catch (error) {
+        if (error instanceof ExportRejectionError) {
+          reply.code(error.httpStatus);
+          return { error: error.code, message: error.message, details: error.details };
+        }
+        throw error;
+      }
     },
   );
 }

@@ -826,7 +826,14 @@ const fitRegionInputSchema = {
 
 const bridgeUnitInputSchema = {
   type: 'object',
-  required: ['label', 'kind', 'innerSurfaceMesh', 'outerSurfaceMesh', 'insertionAxis', 'marginLoop'],
+  required: [
+    'label',
+    'kind',
+    'innerSurfaceMesh',
+    'outerSurfaceMesh',
+    'insertionAxis',
+    'marginLoop',
+  ],
   additionalProperties: false,
   properties: {
     label: { type: 'string' },
@@ -955,11 +962,16 @@ interface BodyObjectSchema {
 /** `schema` minus the named properties (removed from both `properties` and
  * `required`). Throws if a named property does not exist — a rename in the
  * source schema must fail loudly here, not silently widen the derived one. */
-function omitBodySchemaProperties(schema: BodyObjectSchema, omit: readonly string[]): BodyObjectSchema {
+function omitBodySchemaProperties(
+  schema: BodyObjectSchema,
+  omit: readonly string[],
+): BodyObjectSchema {
   const properties: Record<string, unknown> = { ...schema.properties };
   for (const name of omit) {
     if (!(name in properties)) {
-      throw new Error(`omitBodySchemaProperties: property ${JSON.stringify(name)} not found in schema`);
+      throw new Error(
+        `omitBodySchemaProperties: property ${JSON.stringify(name)} not found in schema`,
+      );
     }
     delete properties[name];
   }
@@ -995,7 +1007,12 @@ const EXPORT_CONTEXT_REQUEST_DERIVED = [
 // profile-derived thresholds that remain in the contexts are pinned by the
 // route against the server-resolved material profile (export-profile.ts).
 const EXPORT_CONTEXT_FORBIDDEN_KNOBS = {
-  crown: ['marginFitThresholdMm', 'seatingInterferenceVolumeToleranceMm3', 'contactToleranceMm', 'connectors'],
+  crown: [
+    'marginFitThresholdMm',
+    'seatingInterferenceVolumeToleranceMm3',
+    'contactToleranceMm',
+    'connectors',
+  ],
   inlay: [
     'marginFitThresholdMm',
     'seamDihedralThresholdDeg',
@@ -1182,6 +1199,8 @@ export const exportResponseSchema = {
       'meshContentHash',
       'reimportMeshHash',
       'downloadPath',
+      'traceabilityJsonPath',
+      'traceabilityHtmlPath',
       'releasedAt',
       'alreadyStored',
       'qcReport',
@@ -1203,6 +1222,10 @@ export const exportResponseSchema = {
        * re-index + f32 narrowing (see export-route.ts's module doc). */
       reimportMeshHash: sha256HexSchema,
       downloadPath: { type: 'string' },
+      /** GET routes for the Task 5 traceability document (JSON verbatim
+       * canonical bytes / PDF-ready HTML). */
+      traceabilityJsonPath: { type: 'string' },
+      traceabilityHtmlPath: { type: 'string' },
       /** Server release timestamp — a RECORD field only (never hashed). */
       releasedAt: { type: 'string' },
       /** True iff byte-identical content was already in the store (an
@@ -1238,6 +1261,40 @@ export const exportResponseSchema = {
 // (no JSON schema; serialized as a Buffer with explicit content-type/
 // disposition headers), so only the error statuses carry response schemas.
 export const exportDownloadResponseSchema = {
+  404: exportErrorSchema,
+  500: exportErrorSchema,
+} as const;
+
+// GET /api/exports/:id/traceability.{json,html} (Phase 7 Task 5). The 200
+// bodies carry NO response schema BY DESIGN (the same precedent as the
+// download route): the JSON route must serve the STORED canonical document
+// bytes VERBATIM (re-serializing through fast-json-stringify would re-order
+// keys and break the byte-pinnable contract), and the HTML route serves a
+// text/html string. Only the error statuses are schema'd.
+export const exportTraceabilityParamsSchema = {
+  type: 'object',
+  required: ['id'],
+  additionalProperties: false,
+  properties: {
+    /** Export LEDGER ROW id (uuid) — per release event, unlike the
+     * download route's per-content `:hash` (a re-release shares bytes but
+     * has its own row + document). */
+    id: { type: 'string', minLength: 1 },
+  },
+} as const;
+
+export const exportTraceabilityQuerySchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    /** Display locale for the HTML rendering — explicit, defaulted to EN
+     * (the render function takes locale as a parameter; the server never
+     * reads environment locale state). */
+    lang: { type: 'string', enum: ['en', 'hu', 'de', 'es'], default: 'en' },
+  },
+} as const;
+
+export const exportTraceabilityResponseSchema = {
   404: exportErrorSchema,
   500: exportErrorSchema,
 } as const;
