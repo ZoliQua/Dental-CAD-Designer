@@ -13,6 +13,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from './app.js';
 import {
+  authStartupLine,
   constantTimeEqual,
   extractPresentedToken,
   MUTATING_METHODS,
@@ -131,6 +132,10 @@ describe('local single-user auth gate', () => {
     expect(response.json()).toEqual({ token: TOKEN });
   });
 
+  it('decorates the resolved auth config (the source index.ts reads for the F2 startup signal)', () => {
+    expect(app.authConfig).toEqual({ enabled: true, token: TOKEN, source: 'explicit-token' });
+  });
+
   it('a full authenticated create→save round-trip works end-to-end', async () => {
     const auth = { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' };
     const created = await app
@@ -155,6 +160,7 @@ describe('resolveAuthConfig precedence', () => {
     expect(resolveAuthConfig({ authToken: null, authTokenPath: dummyPath })).toEqual({
       enabled: false,
       token: null,
+      source: 'explicit-disabled',
     });
   });
 
@@ -162,6 +168,7 @@ describe('resolveAuthConfig precedence', () => {
     expect(resolveAuthConfig({ authToken: 'abc', authTokenPath: dummyPath })).toEqual({
       enabled: true,
       token: 'abc',
+      source: 'explicit-token',
     });
   });
 
@@ -172,13 +179,14 @@ describe('resolveAuthConfig precedence', () => {
   it('the env var enables the gate', () => {
     expect(
       resolveAuthConfig({ authTokenPath: dummyPath, env: { DQCAD_AUTH_TOKEN: 'env-tok', NODE_ENV: 'test' } }),
-    ).toEqual({ enabled: true, token: 'env-tok' });
+    ).toEqual({ enabled: true, token: 'env-tok', source: 'env' });
   });
 
   it('NODE_ENV=test with no explicit/env token disables (the test seam)', () => {
     expect(resolveAuthConfig({ authTokenPath: dummyPath, env: { NODE_ENV: 'test' } })).toEqual({
       enabled: false,
       token: null,
+      source: 'test-env-disabled',
     });
   });
 
@@ -186,11 +194,32 @@ describe('resolveAuthConfig precedence', () => {
     const path = join(mkdtempSync(join(tmpdir(), 'dqcad-provision-')), 'auth-token');
     const first = resolveAuthConfig({ authTokenPath: path, env: { NODE_ENV: 'production' } });
     expect(first.enabled).toBe(true);
+    expect(first.source).toBe('auto-provisioned');
     expect(first.token).toMatch(/^[0-9a-f]{64}$/);
     // Idempotent: a second start reads the SAME persisted token.
     const second = resolveAuthConfig({ authTokenPath: path, env: { NODE_ENV: 'production' } });
     expect(second.token).toBe(first.token);
     rmSync(path, { force: true });
+  });
+});
+
+// --- F2: the loud, non-secret startup signal ---
+
+describe('authStartupLine (F2 misconfig signal)', () => {
+  it('a DISABLED gate yields a WARN line that never contains the token', () => {
+    for (const source of ['test-env-disabled', 'explicit-disabled'] as const) {
+      const line = authStartupLine({ enabled: false, token: null, source });
+      expect(line.level).toBe('warn');
+      expect(line.message).toMatch(/DISABLED/);
+      expect(line.message).toMatch(/OPEN/);
+    }
+  });
+
+  it('an ENABLED gate yields an INFO line with provenance but NOT the token', () => {
+    const line = authStartupLine({ enabled: true, token: 'super-secret-token', source: 'auto-provisioned' });
+    expect(line.level).toBe('info');
+    expect(line.message).toMatch(/ENABLED/);
+    expect(line.message).not.toContain('super-secret-token');
   });
 });
 

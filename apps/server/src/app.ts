@@ -456,6 +456,11 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     authTokenPath: options.authTokenPath ?? DEFAULT_AUTH_TOKEN_PATH,
   });
   registerAuthGate(app, authConfig);
+  // Expose the resolved state (single source of truth) so the real startup
+  // entry (index.ts) can emit the loud auth-state signal (F2). Decorated, not
+  // logged here — buildApp runs per-test, and the loud signal belongs at
+  // process startup, not on every app build.
+  app.decorate('authConfig', authConfig);
 
   const prisma = options.prisma ?? new PrismaClient();
   const meshDataDir = options.meshDataDir ?? DEFAULT_MESH_DATA_DIR;

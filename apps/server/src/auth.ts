@@ -15,7 +15,7 @@
 // `DQCAD_AUTH_TOKEN`, else disabled under NODE_ENV=test, else an auto-generated
 // 0600 token file under the git-ignored `apps/server/data/` dir. NO secret ships
 // in the repo.
-import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
@@ -25,10 +25,29 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
  * moment it is added, with no per-route wiring. */
 export const MUTATING_METHODS: ReadonlySet<string> = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
+/** Where the resolved config came from — a NON-SECRET provenance tag used to
+ * emit an honest, loud startup signal (F2; never carries the token itself). */
+export type AuthSource =
+  | 'explicit-token'
+  | 'explicit-disabled'
+  | 'env'
+  | 'test-env-disabled'
+  | 'auto-provisioned';
+
 /** The resolved auth state for a built app. `token` is non-null iff `enabled`. */
 export interface AuthConfig {
   readonly enabled: boolean;
   readonly token: string | null;
+  readonly source: AuthSource;
+}
+
+declare module 'fastify' {
+  // The resolved auth config, decorated onto the built app so the real startup
+  // entry (index.ts) can emit the loud state signal (F2) from a single source
+  // of truth. Non-secret provenance + the token; never logged directly.
+  interface FastifyInstance {
+    authConfig: AuthConfig;
+  }
 }
 
 export interface ResolveAuthOptions {
@@ -68,27 +87,55 @@ export function resolveAuthConfig(options: ResolveAuthOptions): AuthConfig {
   const env = options.env ?? process.env;
 
   // 1. Explicit option wins (test/embedding seam).
-  if (options.authToken === null) return { enabled: false, token: null };
+  if (options.authToken === null) return { enabled: false, token: null, source: 'explicit-disabled' };
   if (typeof options.authToken === 'string') {
     if (options.authToken.length === 0) {
       throw new Error('resolveAuthConfig: an explicit authToken must be a non-empty string (or null to disable)');
     }
-    return { enabled: true, token: options.authToken };
+    return { enabled: true, token: options.authToken, source: 'explicit-token' };
   }
 
   // 2. Deployment env var.
   const envToken = env[AUTH_TOKEN_ENV];
   if (typeof envToken === 'string' && envToken.length > 0) {
-    return { enabled: true, token: envToken };
+    return { enabled: true, token: envToken, source: 'env' };
   }
 
   // 3. Test env: disabled by default (the pre-existing suites don't send a
   //    token; the auth suite opts in with an explicit token). Mirrors the
   //    `logger: NODE_ENV !== 'test'` convention.
-  if (env.NODE_ENV === 'test') return { enabled: false, token: null };
+  if (env.NODE_ENV === 'test') return { enabled: false, token: null, source: 'test-env-disabled' };
 
   // 4. Real local install: auto-provision (default on, zero setup).
-  return { enabled: true, token: provisionFileToken(options.authTokenPath) };
+  return { enabled: true, token: provisionFileToken(options.authTokenPath), source: 'auto-provisioned' };
+}
+
+/** A NON-SECRET, human-readable startup line describing the auth gate state
+ * (F2 — misconfig hardening: a silent disable must be observable). `warn` when
+ * the gate is OFF so a prod-misconfig (e.g. NODE_ENV=test leaking into
+ * production) is LOUD; `info` when on. Never contains the token. Emitted at real
+ * server startup (index.ts) so it is visible even if the Fastify request logger
+ * is off, and NOT per `buildApp` (tests stay quiet). */
+export function authStartupLine(config: AuthConfig): { level: 'warn' | 'info'; message: string } {
+  if (config.enabled) {
+    const how =
+      config.source === 'auto-provisioned'
+        ? 'auto-provisioned local token'
+        : config.source === 'env'
+          ? 'DQCAD_AUTH_TOKEN env'
+          : 'explicit token';
+    return { level: 'info', message: `auth gate: ENABLED (${how}); mutating routes require a bearer token` };
+  }
+  const why =
+    config.source === 'test-env-disabled'
+      ? 'NODE_ENV=test'
+      : config.source === 'explicit-disabled'
+        ? 'explicitly disabled (authToken=null)'
+        : 'no token';
+  return {
+    level: 'warn',
+    message: `auth gate: DISABLED (${why}) — ALL mutating routes are OPEN (no auth). This must not be a production run.`,
+  };
 }
 
 /** Extracts a presented token from `Authorization: Bearer <t>` or `X-DQCAD-Auth:
@@ -104,24 +151,27 @@ export function extractPresentedToken(headers: FastifyRequest['headers']): strin
   return null;
 }
 
-/** Constant-time string equality. Length-guarded (timingSafeEqual throws on
- * unequal-length buffers) via a fixed-length compare against a padded copy, so
- * the early-return does not leak length by timing beyond the unavoidable. */
+/** Genuinely constant-time string equality (N1): both inputs are SHA-256'd to a
+ * fixed 32-byte digest before the `timingSafeEqual`, so neither the comparison
+ * time nor an early return leaks the input LENGTH — the compare always runs over
+ * equal-length digests regardless of `a`/`b` length. (Collision resistance of
+ * SHA-256 means equal digests ⇔ equal inputs for any realistic token.) */
 export function constantTimeEqual(a: string, b: string): boolean {
-  const ab = Buffer.from(a, 'utf8');
-  const bb = Buffer.from(b, 'utf8');
-  if (ab.length !== bb.length) {
-    // Still do a compare (against itself) so the branch cost is symmetric-ish;
-    // length inequality is already a definite non-match.
-    timingSafeEqual(ab, ab);
-    return false;
-  }
-  return timingSafeEqual(ab, bb);
+  const ad = createHash('sha256').update(a, 'utf8').digest();
+  const bd = createHash('sha256').update(b, 'utf8').digest();
+  return timingSafeEqual(ad, bd);
 }
 
 /** Registers the single enforcement hook. No-op when the gate is disabled (the
  * hook is never even added, so a disabled build has zero overhead and the
- * pre-existing suites are untouched). The 401 body is typed and secret-free. */
+ * pre-existing suites are untouched). The 401 body is typed and secret-free.
+ *
+ * N3 (documented, benign): this `onRequest` hook is registered before the
+ * @fastify/cors plugin's own hook, so a 401 emitted here can short-circuit
+ * BEFORE CORS sets `Access-Control-Allow-Origin`. Harmless for the modeled flow
+ * — the browser still receives the 401 status; a cross-origin page simply can't
+ * READ the 401 body (which is correct: it carries no secret anyway). If a future
+ * flow needs the 401 body readable cross-origin, register CORS before the gate. */
 export function registerAuthGate(app: FastifyInstance, config: AuthConfig): void {
   if (!config.enabled || config.token === null) return;
   const token = config.token;
