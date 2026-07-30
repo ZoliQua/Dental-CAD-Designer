@@ -36,7 +36,13 @@ import {
   type RecoveryPayloadStore,
 } from './crashRecovery';
 import { createCase, resetPersistenceForTests, save } from './persistence';
-import { acceptRecovery, dismissRecovery, initRecovery, resetRecoveryCoordinatorForTests } from './recovery';
+import {
+  acceptRecovery,
+  acknowledgeIncompleteRestore,
+  dismissRecovery,
+  initRecovery,
+  resetRecoveryCoordinatorForTests,
+} from './recovery';
 
 const EMPTY_REPORT: IntakeReport = { weldEpsilonMm: 1e-6, steps: [] };
 const TET_POSITIONS = new Float64Array([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1]);
@@ -319,6 +325,59 @@ describe('a failed restore preserves the snapshot for retry', () => {
     expect(useRecoveryStore.getState().kind).toBe('error');
     // Snapshot NOT discarded — the user can retry.
     expect((await detectRecovery()).kind).toBe('recoverable');
+  });
+});
+
+describe('SF2 — an incomplete restore (never-uploaded mesh) is surfaced, not a clean success', () => {
+  it('names the mesh(es) that could not be recovered and keeps the case loaded + un-synced', async () => {
+    // A case with an imported-but-NEVER-SAVED mesh (so it has no fileHash — the
+    // realistic 2s..30s window the local snapshot can capture).
+    await createCase('Unsaved-mesh case');
+    const contentHash = 'never-uploaded-hash';
+    caseStore.registerImportedMesh({
+      contentHash,
+      name: 'prep-scan.stl',
+      format: 'stl',
+      positions: TET_POSITIONS.slice(),
+      indices: TET_INDICES.slice(),
+      stats: tetStats(),
+      report: EMPTY_REPORT,
+      operations: [importOp(contentHash)],
+    });
+    caseStore.addSceneNode(contentHash, 'prepDie');
+    expect(usePersistenceStore.getState().status).toBe('unsaved');
+    const caseId = usePersistenceStore.getState().activeCaseId!;
+    await writeLocalSnapshot();
+
+    simulateRelaunch();
+    await initRecovery();
+    expect(useRecoveryStore.getState().kind).toBe('recoverable');
+
+    await acceptRecovery();
+
+    // The restore DID happen (case loaded + un-synced), but the loss is
+    // surfaced to the operator — NOT reported as a clean success.
+    expect(usePersistenceStore.getState().activeCaseId).toBe(caseId);
+    expect(usePersistenceStore.getState().status).toBe('unsaved');
+    expect(useRecoveryStore.getState().kind).toBe('incomplete');
+    expect(useRecoveryStore.getState().unrecoverableMeshes).toContain('prep-scan.stl');
+    // The dropped node genuinely has no renderable geometry (the silent-loss
+    // condition this fix exposes).
+    expect(caseStore.getMeshRecord(contentHash)).toBeUndefined();
+
+    // Acknowledging the informational prompt only hides it — the snapshot is
+    // kept (it clears on the next server save), never discarded here.
+    acknowledgeIncompleteRestore();
+    expect(useRecoveryStore.getState().kind).toBe('hidden');
+    expect((await detectRecovery()).kind).toBe('recoverable');
+  });
+
+  it('a fully-recoverable restore still reports a clean success (no incomplete surface)', async () => {
+    await seedCrashedSession();
+    simulateRelaunch();
+    await initRecovery();
+    await acceptRecovery();
+    expect(useRecoveryStore.getState().kind).toBe('hidden');
   });
 });
 

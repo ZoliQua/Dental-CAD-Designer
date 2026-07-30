@@ -397,10 +397,18 @@ export async function clearLocalSnapshot(): Promise<void> {
  * snapshot payload is deliberately LEFT in place: it is harmless (the
  * cleanShutdown flag guards it) and avoids an unreliable async IDB delete on
  * unload; the next session's first snapshot write overwrites it.
+ *
+ * SESSION-GUARDED (review SF1): only flips the marker when it belongs to THIS
+ * session (`marker.sessionId === sessionId`). The marker is a SINGLE shared
+ * localStorage record across all same-origin tabs; without this guard a SECOND
+ * tab that merely opens and closes cleanly would flip the FIRST (editing) tab's
+ * marker to `cleanShutdown = true`, masking that tab's later crash and silently
+ * losing its un-synced edits. A foreign tab must never mark another tab's
+ * crash-safe snapshot clean.
  */
 export function markCleanShutdown(): void {
   const marker = markerStore().read();
-  if (marker === null) {
+  if (marker === null || marker.sessionId !== sessionId) {
     return;
   }
   markerStore().write({ ...marker, cleanShutdown: true });

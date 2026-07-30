@@ -183,6 +183,16 @@ function resetMeshRegistryForCaseSwitch(): void {
   caseStore.meshStore.clear();
 }
 
+/** A scene-referenced mesh whose geometry could NOT be reconstructed on load
+ * (no durable byte source) — surfaced honestly to the operator by crash
+ * recovery (Phase 8 Task 4 review SF2) rather than dropped with only a
+ * `console.warn`. `name` falls back to the meshId when the `MeshAsset` itself
+ * is missing. */
+export interface UnrecoverableMesh {
+  meshId: string;
+  name: string;
+}
+
 /**
  * Fetches, parses, welds, and registers every mesh referenced by
  * `document.scene` that is not already resident — the shared mesh-reconstruction
@@ -191,24 +201,28 @@ function resetMeshRegistryForCaseSwitch(): void {
  * to `registeredThisAttempt` as it goes (so a caller's `catch` can roll back
  * even a partial run — see `openCase`'s atomic-swap doc). A mesh with no
  * `fileHash` (never uploaded — no durable byte source) or an unknown meshId is
- * SKIPPED with a warning, never fabricated. Throws on a fetch/parse failure,
+ * SKIPPED (never fabricated) and, so the caller can surface it, recorded in
+ * `unrecoverable` when that array is provided. Throws on a fetch/parse failure,
  * leaving `registeredThisAttempt` populated up to the failure for rollback.
  */
 async function reconstructSceneMeshes(
   document: CaseDocument,
   registeredThisAttempt: string[],
+  unrecoverable?: UnrecoverableMesh[],
 ): Promise<void> {
   const liveMeshIds = new Set(document.scene.map((node) => node.meshId));
   for (const meshId of liveMeshIds) {
     const asset: MeshAsset | undefined = document.meshes.find((mesh) => mesh.contentHash === meshId);
     if (!asset) {
       console.warn(`persistence: reconstructSceneMeshes — scene references unknown mesh ${meshId}, skipping`);
+      unrecoverable?.push({ meshId, name: meshId });
       continue;
     }
     if (!asset.fileHash) {
       console.warn(
         `persistence: reconstructSceneMeshes — MeshAsset ${asset.contentHash} has no fileHash (never saved), skipping`,
       );
+      unrecoverable?.push({ meshId: asset.contentHash, name: asset.name });
       continue;
     }
     if (caseStore.meshStore.has(asset.contentHash)) {
@@ -732,10 +746,25 @@ export const saveActiveCase = save;
  * deliberately NOT cleared here: it stays until that server save confirms
  * (`save()` clears it), so a second crash before the re-sync still recovers.
  *
+ * ## Incomplete restore is surfaced, not hidden (review SF2)
+ *
+ * A local snapshot can legitimately capture a mesh imported but NEVER uploaded
+ * (the local debounce fires ~2 s after an edit, well before the 30 s server
+ * autosave stamps a `fileHash`), whose bytes therefore exist nowhere durable.
+ * Such a mesh cannot be rebuilt from a document-only snapshot; its scene node
+ * silently vanishes from the render output (`getRenderNodes` skips a node with
+ * no mesh record). Rather than report a clean success, this returns the list of
+ * `unrecoverableMeshes` so the caller (engine/recovery.ts) can TELL the operator
+ * exactly which geometry did not come back — fulfilling the DoD's "if some
+ * element is genuinely unrecoverable, say so and fail visibly, never fabricate"
+ * to the OPERATOR, not just the console.
+ *
  * On failure (e.g. the server is down and a mesh fetch fails), this THROWS and
  * rolls back its own partial mesh registrations, leaving the outgoing case and
  * the local snapshot untouched — the user can retry; nothing is discarded.
  *
+ * @returns the meshes whose geometry could not be reconstructed (empty on a
+ * fully-complete restore).
  * @throws on a mesh fetch/parse failure (recovery surfaced as a visible error;
  * the snapshot is preserved for retry).
  */
@@ -743,13 +772,14 @@ export async function restoreFromLocalSnapshot(
   document: CaseDocument,
   caseId: string,
   caseName: string,
-): Promise<void> {
+): Promise<{ unrecoverableMeshes: UnrecoverableMesh[] }> {
   const registeredThisAttempt: string[] = [];
+  const unrecoverableMeshes: UnrecoverableMesh[] = [];
   try {
     const previousMeshHashes = new Set(caseStore.meshStore.list().map((record) => record.contentHash));
     const liveMeshIds = new Set(document.scene.map((node) => node.meshId));
 
-    await reconstructSceneMeshes(document, registeredThisAttempt);
+    await reconstructSceneMeshes(document, registeredThisAttempt, unrecoverableMeshes);
 
     // The restored document carries un-synced edits — mark it dirty so the
     // normal save path re-syncs it to the server (never trusted as "saved").
@@ -768,6 +798,7 @@ export async function restoreFromLocalSnapshot(
     usePersistenceStore.getState().setActiveCase({ id: caseId, name: caseName });
     // Honest status: the recovered state is NOT on the server yet.
     usePersistenceStore.getState().setStatus('unsaved');
+    return { unrecoverableMeshes };
   } catch (error) {
     for (const contentHash of registeredThisAttempt) {
       caseStore.meshStore.remove(contentHash);

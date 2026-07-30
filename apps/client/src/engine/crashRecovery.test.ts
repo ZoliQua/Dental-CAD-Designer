@@ -200,6 +200,34 @@ describe('FALSIFIABLE #2 — clean exit → NO spurious recovery prompt', () => 
     const detection = await detectRecovery();
     expect(detection.kind).toBe('none');
   });
+
+  it('SF1: a FOREIGN tab\'s clean close does NOT mask this tab\'s crash (sessionId-guarded)', async () => {
+    // Tab A (session A) writes the shared marker for its un-synced edits.
+    activateCase('case-1', 'unsaved');
+    await writeLocalSnapshot();
+    const sessionA = markerStore.read()!.sessionId;
+    expect(markerStore.read()!.cleanShutdown).toBe(false);
+
+    // Tab B: a DIFFERENT session opens and closes cleanly (its own pagehide).
+    resetCrashRecoveryForTests(); // regenerates the module session id → session B
+    markCleanShutdown();
+
+    // Tab A's marker must be untouched — a foreign tab cannot mark A's crash
+    // clean. Before the sessionId guard this flipped cleanShutdown=true and the
+    // next launch returned 'none' (A's work silently lost).
+    expect(markerStore.read()!.sessionId).toBe(sessionA);
+    expect(markerStore.read()!.cleanShutdown).toBe(false);
+    expect((await detectRecovery()).kind).toBe('recoverable');
+  });
+
+  it('SF1: the SAME session\'s clean close still marks clean (single-tab reload path preserved)', async () => {
+    activateCase('case-1', 'unsaved');
+    await writeLocalSnapshot();
+    // Same session (no reset) → the guard permits the flip.
+    markCleanShutdown();
+    expect(markerStore.read()!.cleanShutdown).toBe(true);
+    expect((await detectRecovery()).kind).toBe('none');
+  });
 });
 
 describe('FALSIFIABLE #3 — corrupt / partial snapshot → detected and REJECTED', () => {
@@ -338,12 +366,20 @@ describe('startLocalSnapshotTracking — debounced autosave on document change',
       await vi.advanceTimersByTimeAsync(LOCAL_SNAPSHOT_DEBOUNCE_MS - 1);
       expect(markerStore.read()).toBeNull();
 
+      // Fires the debounce → writeLocalSnapshot() STARTS. Its actual write is
+      // gated behind an `await sha256Hex()` (real-async WebCrypto, NOT
+      // controlled by fake timers), so the marker is not guaranteed to be
+      // present the instant the timer fires.
       await vi.advanceTimersByTimeAsync(1);
-      expect(markerStore.read()).not.toBeNull();
-      expect(markerStore.read()!.caseId).toBe('case-1');
     } finally {
       vi.useRealTimers();
     }
+    // Deterministically wait for the real-async write to settle (avoids a
+    // cross-test leak where a not-yet-settled write lands in the next test).
+    await vi.waitFor(() => {
+      expect(markerStore.read()).not.toBeNull();
+    });
+    expect(markerStore.read()!.caseId).toBe('case-1');
   });
 
   it('does not schedule a snapshot when no case is open', async () => {
@@ -351,6 +387,9 @@ describe('startLocalSnapshotTracking — debounced autosave on document change',
     try {
       usePersistenceStore.setState({ activeCaseId: null, status: 'idle' });
       startLocalSnapshotTracking();
+      // No case open → the subscription returns early, so no debounce is ever
+      // scheduled (no timer, no async write to leak) — advancing well past the
+      // debounce writes nothing.
       useCaseStore.setState({ document: buildDocument('x') });
       await vi.advanceTimersByTimeAsync(LOCAL_SNAPSHOT_DEBOUNCE_MS + 10);
       expect(markerStore.read()).toBeNull();

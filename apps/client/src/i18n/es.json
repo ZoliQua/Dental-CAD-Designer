@@ -323,6 +323,8 @@
     "restoreFailed": "Error al restaurar: {{message}}. La copia de seguridad local se conservó; puede volver a intentarlo.",
     "corruptTitle": "No se pudo recuperar el trabajo sin guardar",
     "corruptBody": "Se encontró una copia de seguridad local de la sesión anterior, pero estaba incompleta o dañada y no puede restaurarse de forma segura. La última versión guardada en el servidor no se ve afectada.",
+    "incompleteTitle": "Restaurado: faltan algunos escaneos",
+    "incompleteBody": "Su trabajo se restauró, pero no se pudieron recuperar {{count}} escaneo(s) porque nunca se guardaron en el servidor. Vuelva a importar los escaneos indicados abajo para completar el caso:",
     "acknowledgeButton": "OK"
   },
   "repair": {

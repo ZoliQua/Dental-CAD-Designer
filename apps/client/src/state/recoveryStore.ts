@@ -16,8 +16,17 @@ import { create } from 'zustand';
  *   NOT restored, the user is informed and acknowledges before it is discarded.
  * `error` — a Restore attempt failed (e.g. server down); the snapshot is kept
  *   for retry, the failure is shown (never a silent loss).
+ * `incomplete` — the Restore SUCCEEDED but one or more meshes could not be
+ *   reconstructed (never-uploaded geometry); the operator is told exactly which
+ *   ones are missing rather than shown a clean success (review SF2).
  */
-export type RecoveryPromptKind = 'hidden' | 'recoverable' | 'restoring' | 'corrupt' | 'error';
+export type RecoveryPromptKind =
+  | 'hidden'
+  | 'recoverable'
+  | 'restoring'
+  | 'corrupt'
+  | 'error'
+  | 'incomplete';
 
 /** Non-PHI summary of the pending snapshot, shown in the prompt. Deliberately
  * only metadata (case name + when + op count) — never the case contents. */
@@ -35,10 +44,14 @@ interface RecoveryState {
   /** Detection reason when `kind === 'corrupt'`, or the failure message when
    * `kind === 'error'`. */
   detail: string | null;
+  /** Names of the meshes that could not be reconstructed — populated when
+   * `kind === 'incomplete'` (review SF2). Non-PHI (mesh display names only). */
+  unrecoverableMeshes: string[];
   showRecoverable: (info: RecoverablePromptInfo) => void;
   showCorrupt: (reason: string) => void;
   setRestoring: () => void;
   setError: (message: string) => void;
+  showIncomplete: (meshNames: string[]) => void;
   hide: () => void;
 }
 
@@ -46,9 +59,12 @@ export const useRecoveryStore = create<RecoveryState>((set) => ({
   kind: 'hidden',
   info: null,
   detail: null,
-  showRecoverable: (info) => set({ kind: 'recoverable', info, detail: null }),
-  showCorrupt: (reason) => set({ kind: 'corrupt', info: null, detail: reason }),
+  unrecoverableMeshes: [],
+  showRecoverable: (info) => set({ kind: 'recoverable', info, detail: null, unrecoverableMeshes: [] }),
+  showCorrupt: (reason) => set({ kind: 'corrupt', info: null, detail: reason, unrecoverableMeshes: [] }),
   setRestoring: () => set((state) => ({ kind: 'restoring', info: state.info, detail: null })),
   setError: (message) => set((state) => ({ kind: 'error', info: state.info, detail: message })),
-  hide: () => set({ kind: 'hidden', info: null, detail: null }),
+  showIncomplete: (meshNames) =>
+    set({ kind: 'incomplete', info: null, detail: null, unrecoverableMeshes: meshNames }),
+  hide: () => set({ kind: 'hidden', info: null, detail: null, unrecoverableMeshes: [] }),
 }));

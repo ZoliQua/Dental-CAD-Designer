@@ -8,7 +8,7 @@
 // no-op. i18n ×4; a11y: role=dialog + aria-modal + focus trap.
 import { useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { acceptRecovery, dismissRecovery } from '../engine/recovery';
+import { acceptRecovery, acknowledgeIncompleteRestore, dismissRecovery } from '../engine/recovery';
 import { useRecoveryStore } from '../state/recoveryStore';
 import { useFocusTrap } from './actions/useFocusTrap';
 
@@ -17,6 +17,7 @@ export function RecoveryPrompt() {
   const kind = useRecoveryStore((state) => state.kind);
   const info = useRecoveryStore((state) => state.info);
   const detail = useRecoveryStore((state) => state.detail);
+  const unrecoverableMeshes = useRecoveryStore((state) => state.unrecoverableMeshes);
   const dialogRef = useRef<HTMLDivElement>(null);
 
   // A critical data decision — Escape must not silently dismiss it.
@@ -29,6 +30,13 @@ export function RecoveryPrompt() {
 
   const restoring = kind === 'restoring';
   const corrupt = kind === 'corrupt';
+  const incomplete = kind === 'incomplete';
+
+  const titleKey = corrupt
+    ? 'recovery.corruptTitle'
+    : incomplete
+      ? 'recovery.incompleteTitle'
+      : 'recovery.title';
 
   return (
     <div className="recovery-prompt__backdrop" data-testid="recovery-prompt-backdrop">
@@ -42,10 +50,23 @@ export function RecoveryPrompt() {
         tabIndex={-1}
       >
         <h2 id="recovery-prompt-title" className="recovery-prompt__title">
-          {corrupt ? t('recovery.corruptTitle') : t('recovery.title')}
+          {t(titleKey)}
         </h2>
 
-        {corrupt ? (
+        {incomplete ? (
+          <div data-testid="recovery-prompt-incomplete">
+            <p className="recovery-prompt__body">
+              {t('recovery.incompleteBody', { count: unrecoverableMeshes.length })}
+            </p>
+            <ul className="recovery-prompt__mesh-list" data-testid="recovery-prompt-mesh-list">
+              {unrecoverableMeshes.map((name, index) => (
+                <li key={`${name}-${index}`} className="recovery-prompt__mesh-item">
+                  {name}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : corrupt ? (
           <p className="recovery-prompt__body" data-testid="recovery-prompt-corrupt">
             {t('recovery.corruptBody')}
           </p>
@@ -78,7 +99,16 @@ export function RecoveryPrompt() {
         ) : null}
 
         <div className="recovery-prompt__actions">
-          {corrupt ? (
+          {incomplete ? (
+            <button
+              type="button"
+              className="recovery-prompt__button recovery-prompt__button--primary"
+              data-testid="recovery-prompt-incomplete-acknowledge"
+              onClick={() => acknowledgeIncompleteRestore()}
+            >
+              {t('recovery.acknowledgeButton')}
+            </button>
+          ) : corrupt ? (
             <button
               type="button"
               className="recovery-prompt__button recovery-prompt__button--primary"

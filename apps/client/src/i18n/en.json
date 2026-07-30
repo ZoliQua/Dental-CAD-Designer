@@ -323,6 +323,8 @@
     "restoreFailed": "Restore failed: {{message}}. The local backup was kept — you can try again.",
     "corruptTitle": "Unsaved work could not be recovered",
     "corruptBody": "A local backup from the previous session was found, but it was incomplete or damaged and cannot be safely restored. The last version saved to the server is unaffected.",
+    "incompleteTitle": "Restored — some scans are missing",
+    "incompleteBody": "Your work was restored, but {{count}} scan(s) could not be recovered because they had never been saved to the server. Re-import the scan(s) listed below to complete the case:",
     "acknowledgeButton": "OK"
   },
   "repair": {

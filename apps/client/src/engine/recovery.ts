@@ -60,9 +60,12 @@ export async function initRecovery(): Promise<void> {
 
 /**
  * The user chose RESTORE. Installs the pre-crash document (state-identical) via
- * persistence.ts. On success the prompt closes; on failure it stays open in the
- * `error` state and the snapshot is PRESERVED for retry (never discarded on a
- * failed restore — e.g. the server was down).
+ * persistence.ts. On a fully-complete restore the prompt closes; if some mesh
+ * geometry could not be reconstructed (never-uploaded bytes — review SF2) it
+ * shows the `incomplete` surface naming the missing meshes rather than a clean
+ * success; on failure it stays open in the `error` state and the snapshot is
+ * PRESERVED for retry (never discarded on a failed restore — e.g. the server
+ * was down).
  */
 export async function acceptRecovery(): Promise<void> {
   if (pendingDocument === null || pendingMarker === null) {
@@ -71,13 +74,31 @@ export async function acceptRecovery(): Promise<void> {
   }
   useRecoveryStore.getState().setRestoring();
   try {
-    await restoreFromLocalSnapshot(pendingDocument, pendingMarker.caseId, pendingMarker.caseName);
+    const { unrecoverableMeshes } = await restoreFromLocalSnapshot(
+      pendingDocument,
+      pendingMarker.caseId,
+      pendingMarker.caseName,
+    );
     pendingDocument = null;
     pendingMarker = null;
-    useRecoveryStore.getState().hide();
+    if (unrecoverableMeshes.length > 0) {
+      useRecoveryStore.getState().showIncomplete(unrecoverableMeshes.map((mesh) => mesh.name));
+    } else {
+      useRecoveryStore.getState().hide();
+    }
   } catch (error) {
     useRecoveryStore.getState().setError(errorMessageOf(error));
   }
+}
+
+/**
+ * Acknowledges an `incomplete` restore (review SF2). The restore already
+ * succeeded and the case is loaded + marked un-synced; the local snapshot is
+ * deliberately KEPT (it clears on the next server save), so this only dismisses
+ * the informational prompt — it does NOT discard the snapshot.
+ */
+export function acknowledgeIncompleteRestore(): void {
+  useRecoveryStore.getState().hide();
 }
 
 /**

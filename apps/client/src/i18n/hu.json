@@ -323,6 +323,8 @@
     "restoreFailed": "A visszaállítás sikertelen: {{message}}. A helyi biztonsági mentés megmaradt – megpróbálhatja újra.",
     "corruptTitle": "A nem mentett munka nem állítható helyre",
     "corruptBody": "Az előző munkamenetből származó helyi biztonsági mentés megtalálható, de hiányos vagy sérült, ezért nem állítható helyre biztonságosan. A szerverre utoljára mentett változat ettől nem sérül.",
+    "incompleteTitle": "Helyreállítva – néhány szkennelés hiányzik",
+    "incompleteBody": "A munkája helyreáll, de {{count}} szkennelés nem állítható vissza, mert soha nem került mentésre a szerverre. Az eset teljessé tételéhez importálja újra az alább felsorolt szkennelés(eke)t:",
     "acknowledgeButton": "Rendben"
   },
   "repair": {

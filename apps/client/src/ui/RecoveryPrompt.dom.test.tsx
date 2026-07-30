@@ -88,4 +88,27 @@ describe('RecoveryPrompt', () => {
 
     expect(screen.getByTestId('recovery-prompt-error').textContent).toContain('network down');
   });
+
+  it('shows the incomplete surface listing the meshes that could not be recovered', () => {
+    useRecoveryStore.getState().showIncomplete(['prep-scan.stl', 'antagonist.stl']);
+    render(<RecoveryPrompt />);
+
+    expect(screen.getByTestId('recovery-prompt-incomplete')).toBeTruthy();
+    const list = screen.getByTestId('recovery-prompt-mesh-list');
+    expect(list.textContent).toContain('prep-scan.stl');
+    expect(list.textContent).toContain('antagonist.stl');
+    expect(screen.getByTestId('recovery-prompt-incomplete-acknowledge')).toBeTruthy();
+    // Not the recoverable choices, not the corrupt surface.
+    expect(screen.queryByTestId('recovery-prompt-restore')).toBeNull();
+    expect(screen.queryByTestId('recovery-prompt-corrupt')).toBeNull();
+  });
+
+  it('acknowledging the incomplete surface hides it', async () => {
+    const user = userEvent.setup();
+    useRecoveryStore.getState().showIncomplete(['prep-scan.stl']);
+    render(<RecoveryPrompt />);
+
+    await user.click(screen.getByTestId('recovery-prompt-incomplete-acknowledge'));
+    await waitFor(() => expect(useRecoveryStore.getState().kind).toBe('hidden'));
+  });
 });

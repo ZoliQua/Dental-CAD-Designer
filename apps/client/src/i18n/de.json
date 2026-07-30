@@ -323,6 +323,8 @@
     "restoreFailed": "Wiederherstellung fehlgeschlagen: {{message}}. Die lokale Sicherung wurde behalten – Sie können es erneut versuchen.",
     "corruptTitle": "Ungespeicherte Arbeit konnte nicht wiederhergestellt werden",
     "corruptBody": "Eine lokale Sicherung der vorherigen Sitzung wurde gefunden, war aber unvollständig oder beschädigt und kann nicht sicher wiederhergestellt werden. Die zuletzt auf dem Server gespeicherte Version ist nicht betroffen.",
+    "incompleteTitle": "Wiederhergestellt – einige Scans fehlen",
+    "incompleteBody": "Ihre Arbeit wurde wiederhergestellt, aber {{count}} Scan(s) konnten nicht wiederhergestellt werden, da sie nie auf dem Server gespeichert wurden. Importieren Sie die unten aufgeführten Scans erneut, um den Fall zu vervollständigen:",
     "acknowledgeButton": "OK"
   },
   "repair": {
