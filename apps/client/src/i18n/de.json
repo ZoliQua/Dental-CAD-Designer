@@ -715,5 +715,66 @@
     "archiveImportedProvenance": "{{count}} importierte Freigabe(n) sind als importedUnverified markiert — dieser Server hat sie NICHT unabhängig revalidiert (vom Autor attestiert, nicht server-zertifiziert).",
     "archiveError": "Archivvorgang fehlgeschlagen: {{message}}",
     "archiveDismiss": "Verwerfen"
+  },
+  "actions": {
+    "group": {
+      "view": "Ansicht",
+      "case": "Fall",
+      "restoration": "Restauration",
+      "help": "Hilfe"
+    },
+    "case": {
+      "save": "Fall speichern"
+    },
+    "export": {
+      "releaseSelected": "Ausgewählte Restauration exportieren"
+    },
+    "restoration": {
+      "deleteMarginAnchors": "Ausgewählte Randlinienpunkte löschen"
+    },
+    "help": {
+      "commandPalette": "Befehlspalette",
+      "shortcuts": "Tastenkürzel"
+    },
+    "tour": {
+      "show": "Einführungstour anzeigen"
+    }
+  },
+  "commandPalette": {
+    "title": "Befehlspalette",
+    "searchLabel": "Befehle suchen",
+    "searchPlaceholder": "Befehle suchen…",
+    "empty": "Keine passenden Befehle",
+    "unavailable": "Nicht verfügbar"
+  },
+  "shortcutsHelp": {
+    "title": "Tastenkürzel",
+    "closeLabel": "Schließen"
+  },
+  "tour": {
+    "progress": "Schritt {{current}} von {{total}}",
+    "closeLabel": "Schließen",
+    "skip": "Überspringen",
+    "back": "Zurück",
+    "next": "Weiter",
+    "done": "Loslegen",
+    "steps": {
+      "import": {
+        "title": "Scans importieren",
+        "body": "Ziehe einen STL- oder PLY-Scan hinein, bestätige seine Einheiten und füge Stumpf, Antagonist und Nachbarzähne zur Szene hinzu."
+      },
+      "design": {
+        "title": "Restauration konstruieren",
+        "body": "Lege eine Restauration an, bestimme die Einschubachse, zeichne die Präparationsgrenze und modelliere Krone, Inlay/Onlay oder Brücke."
+      },
+      "qc": {
+        "title": "Qualität prüfen",
+        "body": "Prüfe die QK-Kriterien — Wandstärke, Randschluss, Verbinderquerschnitt und Sitz — und bestätige alle Warnungen vor dem Export."
+      },
+      "export": {
+        "title": "Exportieren und übergeben",
+        "body": "Exportiere die geprüfte Restauration als STL oder PLY; der Server führt vor der Freigabe alle QK-Kriterien erneut auf den exakten Bytes aus."
+      }
+    }
   }
 }

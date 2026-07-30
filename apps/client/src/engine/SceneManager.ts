@@ -86,7 +86,6 @@ import type { MeasurementKind, MeshRole } from '@dqcad/shared-types';
 import type { RenderNode } from './renderNode';
 import {
   resolveJawContext,
-  standardViewForDigitKey,
   standardViewOffset,
   type StandardView,
 } from './standardViews';
@@ -472,12 +471,6 @@ export function transparentRenderOrders(opacity: number): {
   return { meshRenderOrder, wireframeRenderOrder: meshRenderOrder + 1 };
 }
 
-function isEditableTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  if (target.isContentEditable) return true;
-  return ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
-}
-
 export class SceneManager {
   private readonly container: HTMLElement;
   private readonly renderer: WebGLRenderer;
@@ -648,7 +641,9 @@ export class SceneManager {
 
     this.renderer.domElement.addEventListener('pointerdown', this.handlePointerDown);
     this.renderer.domElement.addEventListener('pointerup', this.handlePointerUp);
-    window.addEventListener('keydown', this.handleKeyDown);
+    // Digit-key (1–6) standard-view switching moved to the app-wide action
+    // registry (ui/actions/registry.ts + useGlobalShortcuts) in Phase 8 Task 2
+    // — the UI dispatcher calls setStandardView via engine/viewerController.
 
     // Initial framing: a fixed "front" placeholder view of an empty scene —
     // the same role Task 5/Phase 0's hardcoded camera position played, but
@@ -1509,14 +1504,6 @@ export class SceneManager {
     this.onSelect?.(hitId);
   }
 
-  private handleKeyDown = (event: KeyboardEvent): void => {
-    if (isEditableTarget(event.target) || event.metaKey || event.ctrlKey || event.altKey) return;
-    const view = standardViewForDigitKey(event.key);
-    if (!view) return;
-    event.preventDefault();
-    this.setStandardView(view);
-  };
-
   // ---------------------------------------------------------------------
   // Camera: projection toggle
   // ---------------------------------------------------------------------
@@ -1736,7 +1723,6 @@ export class SceneManager {
     }
     this.renderer.domElement.removeEventListener('pointerdown', this.handlePointerDown);
     this.renderer.domElement.removeEventListener('pointerup', this.handlePointerUp);
-    window.removeEventListener('keydown', this.handleKeyDown);
     this.resizeObserver.disconnect();
     this.controls.dispose();
     // Explicit (not relying on disposeObject3DTree's blanket traversal

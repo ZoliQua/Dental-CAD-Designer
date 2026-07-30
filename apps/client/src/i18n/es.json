@@ -715,5 +715,66 @@
     "archiveImportedProvenance": "{{count}} liberación(es) importada(s) están marcadas como importedUnverified — este servidor NO las revalidó de forma independiente (atestiguadas por el autor, no certificadas por el servidor).",
     "archiveError": "La operación de archivo falló: {{message}}",
     "archiveDismiss": "Descartar"
+  },
+  "actions": {
+    "group": {
+      "view": "Vista",
+      "case": "Caso",
+      "restoration": "Restauración",
+      "help": "Ayuda"
+    },
+    "case": {
+      "save": "Guardar caso"
+    },
+    "export": {
+      "releaseSelected": "Exportar restauración seleccionada"
+    },
+    "restoration": {
+      "deleteMarginAnchors": "Eliminar puntos de línea de margen seleccionados"
+    },
+    "help": {
+      "commandPalette": "Paleta de comandos",
+      "shortcuts": "Atajos de teclado"
+    },
+    "tour": {
+      "show": "Mostrar tour de introducción"
+    }
+  },
+  "commandPalette": {
+    "title": "Paleta de comandos",
+    "searchLabel": "Buscar comandos",
+    "searchPlaceholder": "Buscar comandos…",
+    "empty": "No hay comandos que coincidan",
+    "unavailable": "No disponible"
+  },
+  "shortcutsHelp": {
+    "title": "Atajos de teclado",
+    "closeLabel": "Cerrar"
+  },
+  "tour": {
+    "progress": "Paso {{current}} de {{total}}",
+    "closeLabel": "Cerrar",
+    "skip": "Omitir",
+    "back": "Atrás",
+    "next": "Siguiente",
+    "done": "Empezar",
+    "steps": {
+      "import": {
+        "title": "Importar escaneos",
+        "body": "Arrastra un escaneo STL o PLY, confirma sus unidades y añade el muñón, el antagonista y los dientes adyacentes a la escena."
+      },
+      "design": {
+        "title": "Diseñar la restauración",
+        "body": "Añade una restauración, define el eje de inserción, traza la línea de margen y modela la corona, el inlay/onlay o el puente."
+      },
+      "qc": {
+        "title": "Comprobar la calidad",
+        "body": "Revisa los controles de calidad — grosor de pared, ajuste marginal, sección del conector y asentamiento — y confirma cualquier advertencia antes de exportar."
+      },
+      "export": {
+        "title": "Exportar y entregar",
+        "body": "Exporta la restauración validada como STL o PLY; el servidor vuelve a ejecutar todos los controles de calidad sobre los bytes exactos antes de publicar el archivo."
+      }
+    }
   }
 }

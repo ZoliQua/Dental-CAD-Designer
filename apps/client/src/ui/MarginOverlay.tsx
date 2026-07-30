@@ -120,6 +120,8 @@ import { declutterScreenPoints, nearestScreenPointWithinRadius, toRenderPoint, t
 import { getActiveSceneManager } from '../engine/viewerController';
 import { useCaseStore } from '../state/caseStore';
 import { useMarginStore, type MagnifierSectionSnapshot } from '../state/marginStore';
+import { actionShortcuts, getActionById, isActionEnabled } from './actions/registry';
+import { isEditableTarget, matchesShortcut } from './actions/shortcuts';
 
 const CLICK_DRAG_THRESHOLD_PX = 5;
 const MAGNIFIER_SIZE_PX = 160;
@@ -218,12 +220,6 @@ function drawMagnifierSection(ctx: CanvasRenderingContext2D, snapshot: Magnifier
   ctx.lineTo(center, center + 6);
   ctx.stroke();
   ctx.restore();
-}
-
-function isEditableTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  if (target.isContentEditable) return true;
-  return ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
 }
 
 export function MarginOverlay() {
@@ -433,25 +429,28 @@ export function MarginOverlay() {
   }, [phase, cursorScreenPos]);
 
   // Delete/Backspace deletes the selection — the bulk multi-select set when
-  // non-empty (ONE coalesced journal op — Phase 3 editor-enhancement task
-  // 2), else the single selected anchor (existing behavior, unchanged).
+  // non-empty (ONE coalesced journal op — Phase 3 editor-enhancement task 2),
+  // else the single selected anchor. Phase 8 Task 2: the binding + delete
+  // logic now live in the ONE action registry (the CONTEXTUAL
+  // `restoration.deleteMarginAnchors` action) so the palette/help surface it
+  // too; MarginOverlay stays the DISPATCH host because the chord is only live
+  // inside this editor (the app-wide dispatcher skips contextual actions).
+  // enabled() reads the live margin store, so no store values in the deps.
   useEffect(() => {
+    const action = getActionById('restoration.deleteMarginAnchors');
+    if (action === undefined) {
+      return undefined;
+    }
     function handleKeyDown(event: KeyboardEvent): void {
-      if (phase !== 'active') return;
-      const hasBulkSelection = selectedAnchorIndices.size > 0;
-      if (!hasBulkSelection && selectedAnchorIndex === null) return;
-      if (event.key !== 'Delete' && event.key !== 'Backspace') return;
       if (isEditableTarget(event.target)) return;
+      if (!actionShortcuts(action!).some((binding) => matchesShortcut(event, binding))) return;
+      if (!isActionEnabled(action!)) return;
       event.preventDefault();
-      if (hasBulkSelection) {
-        void marginEditor.deleteSelectedAnchors();
-      } else {
-        void marginEditor.deleteSelectedAnchor();
-      }
+      action!.run();
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [phase, selectedAnchorIndex, selectedAnchorIndices]);
+  }, []);
 
   function handlePointerDown(event: React.PointerEvent<HTMLDivElement>, index: number): void {
     event.stopPropagation();

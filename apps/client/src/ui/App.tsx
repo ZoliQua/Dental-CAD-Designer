@@ -1,19 +1,15 @@
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { saveActiveCase } from '../engine/persistence';
 import { useAppStore } from '../state/appStore';
+import { useGlobalShortcuts } from './actions/useGlobalShortcuts';
 import { CasePicker } from './CasePicker';
+import { CommandPalette } from './CommandPalette';
 import { Header } from './Header';
+import { OnboardingTour } from './OnboardingTour';
+import { ShortcutsHelpOverlay } from './ShortcutsHelpOverlay';
 import { Sidebar } from './Sidebar';
 import { StatusBar } from './StatusBar';
 import { Viewport } from './Viewport';
-
-/** True for the platform's "save" chord: Cmd+S on macOS, Ctrl+S elsewhere —
- * `event.metaKey` is the Command key on macOS (and never set on
- * Windows/Linux keyboards, where Ctrl is what's pressed instead). */
-function isSaveShortcut(event: KeyboardEvent): boolean {
-  return (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's';
-}
 
 export function App() {
   const theme = useAppStore((state) => state.theme);
@@ -32,18 +28,11 @@ export function App() {
     void i18n.changeLanguage(language);
   }, [i18n, language]);
 
-  // Task 11: manual save (Cmd/Ctrl+S) — prevents the browser's own
-  // "save page" dialog and calls the same `save()` engine/persistence.ts
-  // uses for autosave (see that module's doc for why they're one function).
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent): void {
-      if (!isSaveShortcut(event)) return;
-      event.preventDefault();
-      void saveActiveCase();
-    }
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
+  // Phase 8 Task 2: the ONE app-wide keyboard-shortcut dispatcher. Replaces
+  // the former inline Cmd/Ctrl+S handler here (now the registered `case.save`
+  // action) and the SceneManager digit-key view handler — all read the single
+  // action registry (ui/actions/registry.ts).
+  useGlobalShortcuts();
 
   return (
     <div className="app-shell">
@@ -54,6 +43,9 @@ export function App() {
       </div>
       <StatusBar />
       <CasePicker />
+      <CommandPalette />
+      <ShortcutsHelpOverlay />
+      <OnboardingTour />
     </div>
   );
 }

@@ -1429,3 +1429,218 @@ body {
 .fdi-chart__swatch.fdi-tooth--abutment {
   border: none;
 }
+
+/* ------------------------------------------------------------------ */
+/* Phase 8 Task 2 — command palette, shortcuts help, onboarding tour  */
+/* ------------------------------------------------------------------ */
+
+.command-palette__backdrop,
+.shortcuts-help__backdrop,
+.onboarding-tour__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  z-index: 300;
+}
+
+.command-palette__backdrop {
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+}
+
+.shortcuts-help__backdrop,
+.onboarding-tour__backdrop {
+  align-items: center;
+  justify-content: center;
+}
+
+.command-palette {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  width: 34rem;
+  max-width: calc(100vw - 2rem);
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.4);
+}
+
+.command-palette__input {
+  border: none;
+  border-bottom: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text);
+  padding: 0.9rem 1.1rem;
+  font-size: 1rem;
+  outline: none;
+}
+
+.command-palette__list {
+  list-style: none;
+  margin: 0;
+  padding: 0.35rem;
+  overflow-y: auto;
+}
+
+.command-palette__option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.55rem 0.8rem;
+  border-radius: 6px;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.command-palette__option--active {
+  background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+
+.command-palette__option--disabled {
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+}
+
+.command-palette__option-hint {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.command-palette__empty {
+  padding: 1rem 1.1rem;
+  color: var(--color-text-muted);
+}
+
+.shortcuts-help,
+.onboarding-tour {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 1.4rem 1.6rem;
+  width: 30rem;
+  max-width: calc(100vw - 2rem);
+  max-height: calc(100vh - 4rem);
+  overflow-y: auto;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.4);
+}
+
+.shortcuts-help__header,
+.onboarding-tour__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.shortcuts-help__title {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.shortcuts-help__close,
+.onboarding-tour__close {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  border-radius: 6px;
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+}
+
+.shortcuts-help__group-title {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+  margin: 1rem 0 0.4rem;
+}
+
+.shortcuts-help__list {
+  margin: 0;
+}
+
+.shortcuts-help__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.3rem 0;
+}
+
+.shortcuts-help__label {
+  color: var(--color-text);
+}
+
+.shortcuts-help__keys {
+  margin: 0;
+  display: flex;
+  gap: 0.35rem;
+}
+
+.shortcuts-help__key {
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  padding: 0.1rem 0.45rem;
+  font-family: inherit;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  background: var(--color-bg);
+}
+
+.onboarding-tour__progress {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.onboarding-tour__title {
+  margin: 0.9rem 0 0.5rem;
+  font-size: 1.2rem;
+}
+
+.onboarding-tour__body {
+  margin: 0 0 1.2rem;
+  color: var(--color-text);
+  line-height: 1.5;
+}
+
+.onboarding-tour__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.onboarding-tour__nav {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.onboarding-tour__skip,
+.onboarding-tour__back,
+.onboarding-tour__next,
+.onboarding-tour__done {
+  border-radius: 6px;
+  padding: 0.45rem 0.9rem;
+  border: 1px solid var(--color-border);
+  cursor: pointer;
+  background: transparent;
+  color: var(--color-text);
+}
+
+.onboarding-tour__next,
+.onboarding-tour__done {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+}
+
+.onboarding-tour__back:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

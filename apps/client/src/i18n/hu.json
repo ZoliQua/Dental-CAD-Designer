@@ -715,5 +715,66 @@
     "archiveImportedProvenance": "{{count}} importált kiadás „importedUnverified” jelölésű — ezt a szerver NEM ellenőrizte újra függetlenül (szerző által igazolt, nem szerver-tanúsított).",
     "archiveError": "Az archívum-művelet sikertelen: {{message}}",
     "archiveDismiss": "Elvetés"
+  },
+  "actions": {
+    "group": {
+      "view": "Nézet",
+      "case": "Eset",
+      "restoration": "Restauráció",
+      "help": "Súgó"
+    },
+    "case": {
+      "save": "Eset mentése"
+    },
+    "export": {
+      "releaseSelected": "Kijelölt restauráció exportálása"
+    },
+    "restoration": {
+      "deleteMarginAnchors": "Kijelölt határvonalpontok törlése"
+    },
+    "help": {
+      "commandPalette": "Parancspaletta",
+      "shortcuts": "Billentyűparancsok"
+    },
+    "tour": {
+      "show": "Bemutató megjelenítése"
+    }
+  },
+  "commandPalette": {
+    "title": "Parancspaletta",
+    "searchLabel": "Parancsok keresése",
+    "searchPlaceholder": "Parancsok keresése…",
+    "empty": "Nincs találat",
+    "unavailable": "Nem elérhető"
+  },
+  "shortcutsHelp": {
+    "title": "Billentyűparancsok",
+    "closeLabel": "Bezárás"
+  },
+  "tour": {
+    "progress": "{{total}} lépésből a(z) {{current}}.",
+    "closeLabel": "Bezárás",
+    "skip": "Kihagyás",
+    "back": "Vissza",
+    "next": "Tovább",
+    "done": "Kezdés",
+    "steps": {
+      "import": {
+        "title": "Szkennek importálása",
+        "body": "Húzz be egy STL- vagy PLY-szkennt, erősítsd meg a mértékegységét, majd add a jelenethez a csonkot, az antagonistát és a szomszédos fogakat."
+      },
+      "design": {
+        "title": "Restauráció tervezése",
+        "body": "Hozz létre restaurációt, állítsd be a behelyezési tengelyt, rajzold meg a preparációs határvonalat, majd formázd meg a koronát, az inlayt/onlayt vagy a hidat."
+      },
+      "qc": {
+        "title": "Minőség ellenőrzése",
+        "body": "Nézd át a minőségi ellenőrzéseket — falvastagság, széli záródás, összekötő keresztmetszete és felülés —, és nyugtázz minden figyelmeztetést az exportálás előtt."
+      },
+      "export": {
+        "title": "Exportálás és átadás",
+        "body": "Exportáld a jóváhagyott restaurációt STL- vagy PLY-formátumban; a szerver a fájl kiadása előtt minden minőségi kaput újra lefuttat a pontos bájtokon."
+      }
+    }
   }
 }

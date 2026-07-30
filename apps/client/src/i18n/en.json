@@ -715,5 +715,66 @@
     "archiveImportedProvenance": "{{count}} imported release(s) are marked importedUnverified — this server did NOT independently re-validate them (author-attested, not server-certified).",
     "archiveError": "Archive operation failed: {{message}}",
     "archiveDismiss": "Dismiss"
+  },
+  "actions": {
+    "group": {
+      "view": "View",
+      "case": "Case",
+      "restoration": "Restoration",
+      "help": "Help"
+    },
+    "case": {
+      "save": "Save case"
+    },
+    "export": {
+      "releaseSelected": "Export selected restoration"
+    },
+    "restoration": {
+      "deleteMarginAnchors": "Delete selected margin anchors"
+    },
+    "help": {
+      "commandPalette": "Command palette",
+      "shortcuts": "Keyboard shortcuts"
+    },
+    "tour": {
+      "show": "Show onboarding tour"
+    }
+  },
+  "commandPalette": {
+    "title": "Command palette",
+    "searchLabel": "Search commands",
+    "searchPlaceholder": "Search commands…",
+    "empty": "No matching commands",
+    "unavailable": "Unavailable"
+  },
+  "shortcutsHelp": {
+    "title": "Keyboard shortcuts",
+    "closeLabel": "Close"
+  },
+  "tour": {
+    "progress": "Step {{current}} of {{total}}",
+    "closeLabel": "Close",
+    "skip": "Skip",
+    "back": "Back",
+    "next": "Next",
+    "done": "Get started",
+    "steps": {
+      "import": {
+        "title": "Import scans",
+        "body": "Drag and drop an STL or PLY scan, confirm its units, and add the prep/die, antagonist, and adjacent teeth to the scene."
+      },
+      "design": {
+        "title": "Design the restoration",
+        "body": "Add a restoration, set the insertion axis, trace the margin line, and shape the crown, inlay/onlay, or bridge."
+      },
+      "qc": {
+        "title": "Check quality",
+        "body": "Review the QC gates — wall thickness, marginal fit, connector cross-section, and seating — and acknowledge any warnings before export."
+      },
+      "export": {
+        "title": "Export and hand off",
+        "body": "Export the validated restoration as STL or PLY; the server re-runs every QC gate on the exact bytes before releasing the file."
+      }
+    }
   }
 }
