@@ -20,6 +20,7 @@ import { getActiveSceneManager } from '../../engine/viewerController';
 import { saveActiveCase } from '../../engine/persistence';
 import { handoffController } from '../../engine/handoff';
 import { marginEditor } from '../../engine/marginEditor';
+import { exportGateVerdict } from '../../engine/exportWorkflow';
 import { STANDARD_VIEW_KEY_ORDER } from '../../engine/standardViews';
 import { useCaseStore } from '../../state/caseStore';
 import { useMarginStore } from '../../state/marginStore';
@@ -100,16 +101,31 @@ const saveAction: AppAction = {
 };
 
 // --- export the selected restoration (palette-only; no keyboard chord) -------
-// Context-gated (19b): disabled with no restoration selected. Uses the default
-// STL format (the ExportPanel's own default); firing a full server release
-// from a chord would be surprising, so this is palette-only — an explicit,
-// deliberate invocation.
+// Context-gated (19b): disabled with no restoration selected AND whenever the
+// export gate would refuse. enabled() consults the SAME pure `exportGateVerdict`
+// the ExportPanel button uses (disabled on qcStale / gatesFailing / missing
+// mesh|QC), so the palette never offers an export the panel greys out. Even if
+// it somehow ran while disabled, `exportAndRelease` re-checks the verdict and
+// publishes a `refused` snapshot (never a silent success) — enforcement lives
+// in the engine, not this affordance. STL is the ExportPanel's own default;
+// firing a full server release from a chord would be surprising, so this is
+// palette-only — an explicit, deliberate invocation.
 const exportAction: AppAction = {
   id: 'export.releaseSelected',
   labelKey: 'actions.export.releaseSelected',
   group: 'restoration',
   scope: 'global',
-  enabled: () => useCaseStore.getState().selectedRestorationId !== null,
+  enabled: () => {
+    const { selectedRestorationId, document } = useCaseStore.getState();
+    if (selectedRestorationId === null) {
+      return false;
+    }
+    const restoration = document.restorations.find((r) => r.id === selectedRestorationId);
+    if (restoration === undefined) {
+      return false;
+    }
+    return exportGateVerdict(restoration, document.history).allowed;
+  },
   run: () => {
     const restorationId = useCaseStore.getState().selectedRestorationId;
     if (restorationId !== null) {

@@ -92,25 +92,35 @@ export const useUiOverlayStore = create<UiOverlayState>((set) => ({
   tourStep: 0,
   tourSeen: readTourSeen(),
 
-  // Opening one overlay closes the other so two modal focus traps never
-  // fight (a11y): the palette and the help overlay are mutually exclusive.
-  openCommandPalette: () => set({ commandPaletteOpen: true, shortcutsHelpOpen: false }),
+  // ALL THREE modals (palette, help, tour) are mutually exclusive: opening any
+  // one closes the other two so exactly one modal focus trap is ever active
+  // (a11y — two live useFocusTrap listeners would fight over Tab, and a single
+  // Escape would fire BOTH onEscape handlers). Crucially, opening the palette
+  // or help CLOSES the tour WITHOUT marking it seen (`tourSeen` untouched): an
+  // Escape the user meant for the palette must never silently, permanently
+  // dismiss an unfinished first-run tour — only finishTour() persists seen.
+  openCommandPalette: () =>
+    set({ commandPaletteOpen: true, shortcutsHelpOpen: false, tourOpen: false }),
   closeCommandPalette: () => set({ commandPaletteOpen: false }),
   toggleCommandPalette: () =>
-    set((state) => ({
-      commandPaletteOpen: !state.commandPaletteOpen,
-      shortcutsHelpOpen: false,
-    })),
+    set((state) =>
+      state.commandPaletteOpen
+        ? { commandPaletteOpen: false }
+        : { commandPaletteOpen: true, shortcutsHelpOpen: false, tourOpen: false },
+    ),
 
-  openShortcutsHelp: () => set({ shortcutsHelpOpen: true, commandPaletteOpen: false }),
+  openShortcutsHelp: () =>
+    set({ shortcutsHelpOpen: true, commandPaletteOpen: false, tourOpen: false }),
   closeShortcutsHelp: () => set({ shortcutsHelpOpen: false }),
   toggleShortcutsHelp: () =>
-    set((state) => ({
-      shortcutsHelpOpen: !state.shortcutsHelpOpen,
-      commandPaletteOpen: false,
-    })),
+    set((state) =>
+      state.shortcutsHelpOpen
+        ? { shortcutsHelpOpen: false }
+        : { shortcutsHelpOpen: true, commandPaletteOpen: false, tourOpen: false },
+    ),
 
-  startTour: () => set({ tourOpen: true, tourStep: 0 }),
+  startTour: () =>
+    set({ tourOpen: true, tourStep: 0, commandPaletteOpen: false, shortcutsHelpOpen: false }),
   setTourStep: (step) => set({ tourStep: clampStep(step) }),
   nextTourStep: () => set((state) => ({ tourStep: clampStep(state.tourStep + 1) })),
   prevTourStep: () => set((state) => ({ tourStep: clampStep(state.tourStep - 1) })),

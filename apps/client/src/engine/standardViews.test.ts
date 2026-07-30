@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   resolveJawContext,
-  standardViewForDigitKey,
   standardViewOffset,
   STANDARD_VIEW_KEY_ORDER,
   STANDARD_VIEWS,
@@ -94,21 +93,8 @@ describe('standardViewOffset — non-occlusal views are jaw-independent', () => 
   });
 });
 
-describe('standardViewForDigitKey', () => {
-  it('maps "1".."6" to STANDARD_VIEW_KEY_ORDER in order', () => {
-    for (let i = 0; i < STANDARD_VIEW_KEY_ORDER.length; i++) {
-      expect(standardViewForDigitKey(String(i + 1))).toBe(STANDARD_VIEW_KEY_ORDER[i]);
-    }
-  });
-
-  it('covers all 6 standard views exactly once', () => {
+describe('STANDARD_VIEW_KEY_ORDER (digit→view mapping source)', () => {
+  it('covers all 6 standard views exactly once (the registry indexes this array)', () => {
     expect([...STANDARD_VIEW_KEY_ORDER].sort()).toEqual([...STANDARD_VIEWS].sort());
-  });
-
-  it('returns null for out-of-range or non-numeric keys', () => {
-    expect(standardViewForDigitKey('0')).toBeNull();
-    expect(standardViewForDigitKey('7')).toBeNull();
-    expect(standardViewForDigitKey('a')).toBeNull();
-    expect(standardViewForDigitKey('')).toBeNull();
   });
 });

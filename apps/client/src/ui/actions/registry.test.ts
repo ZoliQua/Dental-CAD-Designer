@@ -114,11 +114,16 @@ describe('registry — 19b enabled() predicates track live store state', () => {
     expect(save.preventDefaultWhenDisabled).toBe(true);
   });
 
-  it('export is disabled without a selected restoration', () => {
+  it('export is disabled with no selection, and stays disabled for a selected id with no matching restoration (F2: gate-aware)', () => {
     const exp = getActionById('export.releaseSelected')!;
     expect(isActionEnabled(exp)).toBe(false);
-    useCaseStore.setState({ selectedRestorationId: 'restoration-1' });
-    expect(isActionEnabled(exp)).toBe(true);
+    // A dangling selection (no restoration by that id in the document) is still
+    // disabled — enabled() now resolves the restoration and consults the gate,
+    // so it cannot report enabled without a real, gate-passing restoration.
+    // (The allowed/refused directions are proven end-to-end in
+    // CommandPalette.dom.test.tsx against a real exportGateVerdict.)
+    useCaseStore.setState({ selectedRestorationId: 'missing-restoration' });
+    expect(isActionEnabled(exp)).toBe(false);
   });
 
   it('view actions are disabled when no SceneManager is mounted (node lane)', () => {

@@ -96,7 +96,13 @@ export function isMacPlatform(): boolean {
   return /mac|iphone|ipad|ipod/i.test(platform) || /mac os x/i.test(ua);
 }
 
-/** A special-key display map (locale-invariant symbols; NOT UI copy). */
+/** A special-key display map. These key NAMES (`Esc`, `Space`, `Ctrl`,
+ * `Shift`, and the `Delete`/`Backspace` passthrough below) are rendered inside
+ * <kbd> elements but live here in a `.ts` constant, OUTSIDE the hardcoded-string
+ * guard's `.tsx` JSX scan surface. That is a deliberate, documented blind spot:
+ * by keyboard convention key names are not localized (the physical keycaps read
+ * the same regardless of UI language), so they stay as literals here rather
+ * than routing through i18n. The ACTION label beside the <kbd> IS localized. */
 const KEY_DISPLAY: Readonly<Record<string, string>> = {
   ' ': 'Space',
   Escape: 'Esc',

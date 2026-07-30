@@ -117,8 +117,11 @@ export function CommandPalette() {
           type="text"
           className="command-palette__input"
           role="combobox"
-          aria-expanded="true"
-          aria-controls={LISTBOX_ID}
+          // Only advertise the listbox while it is actually rendered — an
+          // empty result set renders no <ul id={LISTBOX_ID}>, so pointing
+          // aria-controls at it (or claiming expanded) would dangle.
+          aria-expanded={results.length > 0}
+          aria-controls={results.length > 0 ? LISTBOX_ID : undefined}
           aria-activedescendant={activeAction ? optionId(activeAction.id) : undefined}
           aria-label={t('commandPalette.searchLabel')}
           placeholder={t('commandPalette.searchPlaceholder')}
