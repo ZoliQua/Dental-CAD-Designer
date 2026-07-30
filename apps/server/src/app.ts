@@ -5,7 +5,7 @@ import cors from '@fastify/cors';
 import { PrismaClient } from '@prisma/client';
 import type { Case } from '@prisma/client';
 import Fastify from 'fastify';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, onRouteHookHandler } from 'fastify';
 import { KERNEL_VERSION } from '@dqcad/kernel';
 import type { CaseDocument, QcReport, RestorationType } from '@dqcad/shared-types';
 import {
@@ -62,7 +62,9 @@ import {
   seedToothLibraryAsset,
   ToothLibraryStorageIntegrityError,
 } from './tooth-library-storage.js';
+import { resolveAuthConfig, registerAuthGate } from './auth.js';
 import {
+  authBootstrapResponseSchema,
   caseIdParamsSchema,
   createCaseBodySchema,
   createCaseResponseSchema,
@@ -135,6 +137,12 @@ const DEFAULT_EXPORTS_DATA_DIR = fileURLToPath(new URL('../data/exports', import
 // endpoint can certify the delivered outer envelope. Git-ignored, same parent
 // as DEFAULT_MESH_DATA_DIR; immutable/write-once.
 const DEFAULT_FINAL_MESH_DATA_DIR = fileURLToPath(new URL('../data/final-meshes', import.meta.url));
+
+// apps/server/data/auth-token — the auto-provisioned local single-user
+// capability token (Phase 8 Task 6; see auth.ts + ADR-020). Git-ignored (same
+// `apps/server/data/` tree as the mesh/export stores), created 0600 on first
+// real (non-test, no env-token) start; NEVER committed.
+const DEFAULT_AUTH_TOKEN_PATH = fileURLToPath(new URL('../data/auth-token', import.meta.url));
 
 interface CaseSummary {
   id: string;
@@ -400,6 +408,18 @@ export interface BuildAppOptions {
   finalMeshDataDir?: string;
   /** Injectable for tests — defaults to `ARCHIVE_MAX_BYTES` env var or 2 GB. */
   archiveMaxBytes?: number;
+  /** Phase 8 Task 6 — local single-user auth (ADR-020). A `string` sets the
+   * capability token (gate ON); `null` DISABLES the gate; `undefined`
+   * (production default) resolves from `DQCAD_AUTH_TOKEN`, else disabled under
+   * NODE_ENV=test, else an auto-provisioned 0600 token file. */
+  authToken?: string | null;
+  /** Injectable for tests (an isolated temp path) — defaults to
+   * apps/server/data/auth-token. Only consulted when auto-provisioning. */
+  authTokenPath?: string;
+  /** Test seam: an `onRoute` hook registered BEFORE any route, so the
+   * route-schema audit (route-audit.ts) can enumerate every registered route
+   * with its schemas. Unused in production. */
+  onRoute?: onRouteHookHandler;
 }
 
 /** App factory: builds and configures a Fastify instance without
@@ -421,6 +441,22 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     logger: process.env.NODE_ENV !== 'test',
     ajv: { customOptions: { removeAdditional: false } },
   });
+  // Register the route-audit collector FIRST (before any route/plugin), so it
+  // fires as each route — including Fastify's auto-generated HEAD siblings and
+  // @fastify/cors' OPTIONS handler — is registered (test seam; see route-audit.ts).
+  if (options.onRoute) {
+    app.addHook('onRoute', options.onRoute);
+  }
+
+  // Phase 8 Task 6 — resolve + install the local single-user auth gate (ADR-020).
+  // Registered here so the `onRequest` hook precedes every route (incl. the
+  // body-parser), rejecting an unauthorized mutation before its body is read.
+  const authConfig = resolveAuthConfig({
+    authToken: options.authToken,
+    authTokenPath: options.authTokenPath ?? DEFAULT_AUTH_TOKEN_PATH,
+  });
+  registerAuthGate(app, authConfig);
+
   const prisma = options.prisma ?? new PrismaClient();
   const meshDataDir = options.meshDataDir ?? DEFAULT_MESH_DATA_DIR;
   const meshMaxBytes = options.meshMaxBytes ?? resolveMeshMaxBytes();
@@ -451,6 +487,15 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     status: 'ok' as const,
     version: packageJson.version,
     kernelVersion: KERNEL_VERSION,
+  }));
+
+  // Phase 8 Task 6 — the local single-user auth bootstrap (ADR-020 §3). The
+  // same-origin client reads the active capability token once at startup and
+  // attaches it to mutating requests. `null` when the gate is disabled. Open GET
+  // BY DESIGN: CORS restricts which origin may READ this response, which is what
+  // keeps the token out of a cross-origin attacker's hands (the CSRF defense).
+  app.get('/api/auth/bootstrap', { schema: { response: authBootstrapResponseSchema } }, async () => ({
+    token: authConfig.token,
   }));
 
   app.get('/api/cases', { schema: { response: listCasesResponseSchema } }, async () => {

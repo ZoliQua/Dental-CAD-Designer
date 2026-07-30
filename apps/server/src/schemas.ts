@@ -14,6 +14,22 @@ export const healthResponseSchema = {
   },
 } as const;
 
+// Phase 8 Task 6 — GET /api/auth/bootstrap. The local single-user client reads
+// the active capability token once at startup (ADR-020 §3). `token` is `null`
+// when the gate is disabled (a dev/test run "just works"). Open GET; CORS
+// restricts which origin may READ this response, which is what keeps the token
+// out of a cross-origin attacker's hands (the CSRF defense — see ADR-020).
+export const authBootstrapResponseSchema = {
+  200: {
+    type: 'object',
+    required: ['token'],
+    additionalProperties: false,
+    properties: {
+      token: { type: ['string', 'null'] },
+    },
+  },
+} as const;
+
 const caseSummarySchema = {
   type: 'object',
   required: ['id', 'name', 'createdAt', 'updatedAt', 'schemaVersion'],

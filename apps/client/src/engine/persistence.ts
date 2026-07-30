@@ -58,6 +58,7 @@
 import type { CaseDocument, MeshAsset, Restoration } from '@dqcad/shared-types';
 import { createEmptyCaseDocument, useCaseStore } from '../state/caseStore';
 import { type CaseSummary, usePersistenceStore } from '../state/persistenceStore';
+import { authHeaders } from './apiAuth';
 import { caseStore } from './caseStore';
 import { migrateCaseDocumentIfNeeded } from './caseDocumentMigration';
 import { clearLocalSnapshot } from './crashRecovery';
@@ -80,9 +81,13 @@ function errorMessageOf(error: unknown): string {
 }
 
 async function requestJson<T>(method: string, path: string, body?: unknown): Promise<T> {
+  // Phase 8 Task 6: attach the local single-user auth token to mutating
+  // requests (ADR-020). `authHeaders()` is `{}` for GETs-when-uninitialized and
+  // for a disabled-gate server, so this is inert in dev/tests.
+  const auth = await authHeaders();
   const response = await fetch(`${API_BASE}${path}`, {
     method,
-    headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+    headers: body === undefined ? auth : { 'content-type': 'application/json', ...auth },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!response.ok) {
@@ -117,7 +122,7 @@ async function headFinalMeshExists(contentHash: string): Promise<boolean> {
 async function uploadFinalMeshContainer(expectedContentHash: string, bytes: Uint8Array): Promise<void> {
   const response = await fetch(`${API_BASE}/final-meshes`, {
     method: 'POST',
-    headers: { 'content-type': 'application/octet-stream' },
+    headers: { 'content-type': 'application/octet-stream', ...(await authHeaders()) },
     body: bytes as unknown as BodyInit,
   });
   if (!response.ok) {
@@ -136,7 +141,7 @@ async function uploadFinalMeshContainer(expectedContentHash: string, bytes: Uint
 async function uploadMeshBytes(expectedHash: string, bytes: Uint8Array): Promise<void> {
   const response = await fetch(`${API_BASE}/meshes`, {
     method: 'POST',
-    headers: { 'content-type': 'application/octet-stream' },
+    headers: { 'content-type': 'application/octet-stream', ...(await authHeaders()) },
     // Same TS 5.7+ `ArrayBufferView<ArrayBuffer>`-vs-`ArrayBufferLike`
     // generic-typing gap as kernel-workers/src/hash.ts's `sha256Hex` cast —
     // `bytes` is a real, non-shared-ArrayBuffer-backed Uint8Array at

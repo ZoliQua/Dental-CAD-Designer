@@ -32,6 +32,7 @@
 // state, shared-types. Fetches the NEW export/archive routes directly (the
 // persistence module owns only the /api/cases + /api/meshes routes).
 import type { CaseDocument, ExportFormat, Restoration } from '@dqcad/shared-types';
+import { authHeaders } from './apiAuth';
 import { caseStore } from './caseStore';
 import { bridgeDesignEngine } from './bridgeDesign';
 import { cavityDesignEngine } from './cavityDesign';
@@ -212,7 +213,7 @@ class HandoffController {
 
       const response = await fetch(`${API_BASE}/restorations/${restorationId}/export`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', ...(await authHeaders()) },
         body: JSON.stringify({ request, qcContext }),
       });
       const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
@@ -280,7 +281,10 @@ class HandoffController {
   async exportCaseArchive(caseId: string): Promise<void> {
     this.setArchive({ ...IDLE_ARCHIVE, state: 'exporting' });
     try {
-      const response = await fetch(`${API_BASE}/cases/${caseId}/archive`, { method: 'POST' });
+      const response = await fetch(`${API_BASE}/cases/${caseId}/archive`, {
+        method: 'POST',
+        headers: { ...(await authHeaders()) },
+      });
       if (!response.ok) {
         const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
         this.setArchive({
@@ -317,7 +321,7 @@ class HandoffController {
       const query = opts.overwrite ? '?overwrite=true' : '';
       const response = await fetch(`${API_BASE}/archives/import${query}`, {
         method: 'POST',
-        headers: { 'content-type': 'application/octet-stream' },
+        headers: { 'content-type': 'application/octet-stream', ...(await authHeaders()) },
         body: bytes as unknown as BodyInit,
       });
       const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
