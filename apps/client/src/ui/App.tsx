@@ -1,10 +1,13 @@
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { installGlobalErrorHandlers } from '../engine/errorCapture';
 import { initRecovery } from '../engine/recovery';
 import { useAppStore } from '../state/appStore';
 import { useGlobalShortcuts } from './actions/useGlobalShortcuts';
 import { CasePicker } from './CasePicker';
 import { CommandPalette } from './CommandPalette';
+import { ErrorBoundary } from './ErrorBoundary';
+import { ErrorReportSurface } from './ErrorReportSurface';
 import { Header } from './Header';
 import { OnboardingTour } from './OnboardingTour';
 import { RecoveryPrompt } from './RecoveryPrompt';
@@ -44,12 +47,29 @@ export function App() {
     void initRecovery();
   }, []);
 
+  // Phase 8 Task 5: install the global error handlers (window.onerror +
+  // unhandledrejection) once at launch. Idempotent (a second StrictMode invoke
+  // is a no-op). These feed the same capture path as the render-error
+  // ErrorBoundary → the non-blocking ErrorReportSurface + the local diagnostic
+  // bundle (telemetry-free, PHI-free).
+  useEffect(() => {
+    const dispose = installGlobalErrorHandlers();
+    return dispose;
+  }, []);
+
+  // Sidebar and Viewport are wrapped in SEPARATE error boundaries so a render
+  // error in one panel degrades gracefully (shows a small localized fallback in
+  // that panel) instead of white-screening the whole app.
   return (
     <div className="app-shell">
       <Header />
       <div className="app-body">
-        <Sidebar />
-        <Viewport />
+        <ErrorBoundary regionLabelKey="errorReport.regionSidebar">
+          <Sidebar />
+        </ErrorBoundary>
+        <ErrorBoundary regionLabelKey="errorReport.regionViewport">
+          <Viewport />
+        </ErrorBoundary>
       </div>
       <StatusBar />
       <CasePicker />
@@ -57,6 +77,7 @@ export function App() {
       <ShortcutsHelpOverlay />
       <OnboardingTour />
       <RecoveryPrompt />
+      <ErrorReportSurface />
     </div>
   );
 }

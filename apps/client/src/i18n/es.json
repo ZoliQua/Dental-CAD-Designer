@@ -795,5 +795,17 @@
         "body": "Exporta la restauración validada como STL o PLY; el servidor vuelve a ejecutar todos los controles de calidad sobre los bytes exactos antes de publicar el archivo."
       }
     }
+  },
+  "errorReport": {
+    "title": "Se ha producido un error",
+    "body": "La aplicación ha encontrado un error inesperado. Puedes descargar un paquete de diagnóstico para compartirlo con soporte — permanece en tu ordenador hasta que decidas enviarlo y no contiene datos del paciente.",
+    "downloadButton": "Descargar paquete de diagnóstico",
+    "downloadingButton": "Preparando…",
+    "dismissButton": "Cerrar",
+    "downloadFailed": "No se pudo crear el paquete de diagnóstico. Inténtalo de nuevo.",
+    "boundaryTitle": "No se pudo mostrar este panel",
+    "boundaryBody": "El {{region}} ha encontrado un error. El resto de la aplicación sigue disponible.",
+    "regionSidebar": "panel de diseño",
+    "regionViewport": "vista 3D"
   }
 }

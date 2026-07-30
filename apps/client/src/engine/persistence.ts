@@ -61,6 +61,7 @@ import { type CaseSummary, usePersistenceStore } from '../state/persistenceStore
 import { caseStore } from './caseStore';
 import { migrateCaseDocumentIfNeeded } from './caseDocumentMigration';
 import { clearLocalSnapshot } from './crashRecovery';
+import { logInfo } from './diagnosticLog';
 import { liveFinalMeshForRestoration, type LiveFinalMeshBuffers } from './finalMeshSource';
 import { getPool, releaseBvhForMesh } from './workers';
 
@@ -439,6 +440,13 @@ export async function openCase(id: string, name: string): Promise<void> {
     }
 
     usePersistenceStore.getState().setActiveCase({ id, name });
+    // PHI-free diagnostic breadcrumb (engine/diagnosticLog.ts): the case id (a
+    // UUID) + sizes only — never the case name, patientRef, or any content.
+    logInfo('case.opened', {
+      caseId: id,
+      restorationCount: useCaseStore.getState().document.restorations.length,
+      journalOperationCount: useCaseStore.getState().document.history.length,
+    });
     if (wasMigrated) {
       // See the `lastPersistedDocument` doc above — a migrated document is
       // NOT yet in sync with the server (the server never sees a

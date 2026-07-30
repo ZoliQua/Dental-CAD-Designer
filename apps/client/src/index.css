@@ -1644,3 +1644,100 @@ body {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* Phase 8 Task 5 — telemetry-free local error surfaces. */
+.error-report {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 400;
+  max-width: 26rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem 1.15rem;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid #e0554e;
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+  color: var(--color-text);
+}
+
+.error-report__title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.error-report__body {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.error-report__detail {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  word-break: break-word;
+  max-height: 6rem;
+  overflow-y: auto;
+}
+
+.error-report__error {
+  margin: 0;
+  color: #e0554e;
+  font-size: 0.85rem;
+}
+
+.error-report__actions {
+  display: flex;
+  gap: 0.6rem;
+  justify-content: flex-end;
+}
+
+.error-report__button,
+.error-boundary__button {
+  padding: 0.45rem 0.9rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.error-report__button--primary {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+}
+
+.error-report__button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.error-boundary {
+  margin: 1rem;
+  padding: 1rem 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  align-items: flex-start;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text);
+}
+
+.error-boundary__title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.error-boundary__body {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}

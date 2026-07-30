@@ -795,5 +795,17 @@
         "body": "Exportiere die geprüfte Restauration als STL oder PLY; der Server führt vor der Freigabe alle QK-Kriterien erneut auf den exakten Bytes aus."
       }
     }
+  },
+  "errorReport": {
+    "title": "Es ist ein Fehler aufgetreten",
+    "body": "In der Anwendung ist ein unerwarteter Fehler aufgetreten. Sie können ein Diagnosepaket herunterladen, um es mit dem Support zu teilen — es verbleibt auf Ihrem Computer, bis Sie es senden, und enthält keine Patientendaten.",
+    "downloadButton": "Diagnosepaket herunterladen",
+    "downloadingButton": "Wird vorbereitet…",
+    "dismissButton": "Schließen",
+    "downloadFailed": "Das Diagnosepaket konnte nicht erstellt werden. Bitte versuchen Sie es erneut.",
+    "boundaryTitle": "Dieses Panel konnte nicht angezeigt werden",
+    "boundaryBody": "Im {{region}} ist ein Fehler aufgetreten. Der Rest der Anwendung ist weiterhin nutzbar.",
+    "regionSidebar": "Design-Panel",
+    "regionViewport": "3D-Ansicht"
   }
 }

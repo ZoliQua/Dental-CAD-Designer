@@ -795,5 +795,17 @@
         "body": "Exportáld a jóváhagyott restaurációt STL- vagy PLY-formátumban; a szerver a fájl kiadása előtt minden minőségi kaput újra lefuttat a pontos bájtokon."
       }
     }
+  },
+  "errorReport": {
+    "title": "Hiba történt",
+    "body": "Az alkalmazás váratlan hibába ütközött. Letölthetsz egy diagnosztikai csomagot, amit megoszthatsz a támogatással — a fájl a számítógépeden marad, amíg úgy nem döntesz, hogy elküldöd, és nem tartalmaz betegadatot.",
+    "downloadButton": "Diagnosztikai csomag letöltése",
+    "downloadingButton": "Előkészítés…",
+    "dismissButton": "Bezárás",
+    "downloadFailed": "A diagnosztikai csomagot nem sikerült létrehozni. Kérlek, próbáld újra.",
+    "boundaryTitle": "Ez a panel nem jeleníthető meg",
+    "boundaryBody": "A(z) {{region}} hibába ütközött. Az alkalmazás többi része továbbra is használható.",
+    "regionSidebar": "tervezőpanel",
+    "regionViewport": "3D nézet"
   }
 }

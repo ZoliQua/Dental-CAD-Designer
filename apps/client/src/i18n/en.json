@@ -795,5 +795,17 @@
         "body": "Export the validated restoration as STL or PLY; the server re-runs every QC gate on the exact bytes before releasing the file."
       }
     }
+  },
+  "errorReport": {
+    "title": "Something went wrong",
+    "body": "The app hit an unexpected error. You can download a diagnostic bundle to share with support — it stays on your computer until you choose to send it, and it contains no patient data.",
+    "downloadButton": "Download diagnostic bundle",
+    "downloadingButton": "Preparing…",
+    "dismissButton": "Dismiss",
+    "downloadFailed": "The diagnostic bundle could not be created. Please try again.",
+    "boundaryTitle": "This panel could not be displayed",
+    "boundaryBody": "The {{region}} ran into an error. The rest of the app is still usable.",
+    "regionSidebar": "design panel",
+    "regionViewport": "3D viewport"
   }
 }
