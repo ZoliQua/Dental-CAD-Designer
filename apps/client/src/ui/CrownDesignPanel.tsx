@@ -71,7 +71,11 @@ export function CrownDesignPanel() {
     try {
       crownDesignEngine.start(pendingId);
     } catch (error) {
-      setStartError(error instanceof Error ? error.message : String(error));
+      // Translated frame around the raw engine message — see CavityDesignPanel
+      // (sibling-panel `startErrorOther` pattern); never show bare English.
+      setStartError(
+        t('crown.startErrorOther', { message: error instanceof Error ? error.message : String(error) }),
+      );
     }
   }
 

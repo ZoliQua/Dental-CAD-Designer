@@ -16,6 +16,20 @@
 // user-facing string PROPS. Everything else — className, data-*, keys, event
 // handlers, technical constants, i18n key arguments to t() — is out of scope
 // by construction, so the guard never fires on them.
+//
+// STRUCTURAL LIMITATIONS (a green guard is NOT proof of full coverage). This is
+// a syntactic scan, not dataflow analysis, so it is *incapable* of seeing a
+// user-facing string that reaches the DOM through a variable rather than a
+// literal:
+//   • const/variable-hoisted text — `const label = 'Export'; <b>{label}</b>`.
+//   • string-literal ternary as a JSX child — `{ok ? 'Ready' : 'Not ready'}`.
+//   • a raw `error.message` routed through a state setter or a store value and
+//     rendered as `{startError}` / `{error}` (the F1 class — see the sibling
+//     lock DesignPanelErrorI18n.dom.test.tsx, which covers it behaviorally).
+//   • strings handed to non-JSX sinks — `throw new Error(...)`, `alert(...)`,
+//     template-literal JSX expressions (`` `${x} mm²` ``).
+// None of these patterns carry hardcoded user copy in ui/ today (audited), but
+// closing them needs `t()`-tracing lint or behavioral tests, not this scanner.
 import ts from 'typescript';
 
 /**

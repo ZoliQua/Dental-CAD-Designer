@@ -51,7 +51,12 @@ export function MeasureToolbar() {
           {busy ? '…' : ''}
         </p>
       )}
-      {error && <p className="measure-toolbar__error">{error}</p>}
+      {error && (
+        // `toolStore.error` is the RAW engine/worker message (ToolManager stays
+        // i18n-free per the layer rule) — wrap it in a translated frame here, at
+        // the UI boundary, so non-EN dentists never see bare English.
+        <p className="measure-toolbar__error">{t('measure.toolError', { message: error })}</p>
+      )}
     </div>
   );
 }

@@ -117,13 +117,43 @@ describe('hardcoded-string guard — scanner core (falsifiability)', () => {
     expect(found).toEqual([]);
   });
 
-  it('allowlist stays narrow: only unit-shaped tokens', () => {
-    for (const token of ALLOWED_UNIT_TOKENS) {
-      // Each allowlisted token must itself be short and unit-shaped, never a
-      // word — a tripwire against neutering the guard by parking prose here.
-      expect(token.length, token).toBeLessThanOrEqual(5);
-      expect(token, token).toMatch(/^[a-zµ²³/]+$/);
+  // Anti-neuter tripwire. A token is a genuine metric-unit symbol ONLY if it
+  // either carries a unit-specific glyph (the micro sign `µ`, or a superscript
+  // `²`/`³`) OR is one of a tiny fixed set of base length-unit stems. Crucially
+  // this REJECTS short lowercase prose words (close/reset/apply/start/…) — the
+  // exact way an earlier version (a bare `^[a-z…]+$` charset + length≤5) could
+  // be neutered by parking a word in the allowlist.
+  const BASE_LENGTH_UNIT_STEMS = new Set(['m', 'mm', 'cm', 'nm', 'dm', 'km', 'µm', 'um']);
+  const isUnitShapedToken = (token: string): boolean => {
+    if (token.length > 5) return false;
+    if (!/^[a-zµ²³/]+$/.test(token)) return false;
+    if (/[µ²³]/.test(token)) return true; // carries a unit glyph → definitely a unit
+    // No unit glyph: every remaining part (split on the `/` of e.g. mm²/s — the
+    // `²` already qualified that one, so here parts are glyph-free) must be a
+    // base length-unit stem, never a word.
+    return token.split('/').every((part) => BASE_LENGTH_UNIT_STEMS.has(part));
+  };
+
+  it('anti-neuter tripwire REJECTS prose words parked as units (falsifiable)', () => {
+    for (const word of ['close', 'reset', 'apply', 'start', 'done', 'next', 'erase', 'clear']) {
+      expect(isUnitShapedToken(word), word).toBe(false);
     }
+    // And genuinely accepts the real unit shapes.
+    for (const unit of ['mm', 'µm', 'cm', 'nm', 'mm²', 'µm³', 'mm²/s']) {
+      expect(isUnitShapedToken(unit), unit).toBe(true);
+    }
+  });
+
+  it('every allowlisted token is unit-shaped, and the set is frozen to a reviewed contents', () => {
+    for (const token of ALLOWED_UNIT_TOKENS) {
+      expect(isUnitShapedToken(token), token).toBe(true);
+    }
+    // Freeze the exact contents: adding ANY token (prose or otherwise) must be a
+    // deliberate, reviewed act that also updates this frozen expectation — a
+    // silent allowlist growth fails here even if the new token were unit-shaped.
+    expect([...ALLOWED_UNIT_TOKENS].sort()).toEqual(
+      ['cm', 'cm²', 'mm', 'mm²', 'mm²/s', 'mm³', 'nm', 'µm', 'µm²', 'µm³'].sort(),
+    );
   });
 });
 
