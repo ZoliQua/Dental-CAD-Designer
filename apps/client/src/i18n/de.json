@@ -293,6 +293,7 @@
       "unsaved": "Ungespeicherte Änderungen",
       "error": "Speichern fehlgeschlagen: {{message}}"
     },
+    "localBackupHint": "Lokal gesichert",
     "picker": {
       "title": "Fälle",
       "closeButton": "Schließen",
@@ -307,6 +308,22 @@
       "activeLabel": "Aktiv",
       "updatedAtLabel": "Aktualisiert: {{date}}"
     }
+  },
+  "recovery": {
+    "title": "Ungespeicherte Arbeit wiederherstellen?",
+    "body": "Die Anwendung wurde unerwartet geschlossen, während Änderungen den Server noch nicht erreicht hatten. Sie können sie wiederherstellen oder verwerfen und die zuletzt auf dem Server gespeicherte Version behalten.",
+    "caseLabel": "Fall",
+    "savedAtLabel": "Gesichert",
+    "savedAtValue": "{{date}}",
+    "operationsLabel": "Konstruktionsschritte",
+    "operationsValue": "{{count}}",
+    "restoreButton": "Wiederherstellen",
+    "restoringButton": "Wird wiederhergestellt…",
+    "discardButton": "Verwerfen",
+    "restoreFailed": "Wiederherstellung fehlgeschlagen: {{message}}. Die lokale Sicherung wurde behalten – Sie können es erneut versuchen.",
+    "corruptTitle": "Ungespeicherte Arbeit konnte nicht wiederhergestellt werden",
+    "corruptBody": "Eine lokale Sicherung der vorherigen Sitzung wurde gefunden, war aber unvollständig oder beschädigt und kann nicht sicher wiederhergestellt werden. Die zuletzt auf dem Server gespeicherte Version ist nicht betroffen.",
+    "acknowledgeButton": "OK"
   },
   "repair": {
     "panelTitle": "Reparatur",

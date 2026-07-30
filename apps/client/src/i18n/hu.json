@@ -293,6 +293,7 @@
       "unsaved": "Nem mentett változtatások",
       "error": "Mentés sikertelen: {{message}}"
     },
+    "localBackupHint": "Helyileg mentve",
     "picker": {
       "title": "Esetek",
       "closeButton": "Bezárás",
@@ -307,6 +308,22 @@
       "activeLabel": "Aktív",
       "updatedAtLabel": "Frissítve: {{date}}"
     }
+  },
+  "recovery": {
+    "title": "Nem mentett munka helyreállítása?",
+    "body": "Az alkalmazás váratlanul bezárult, és voltak olyan változtatások, amelyek még nem jutottak el a szerverre. Visszaállíthatja őket, vagy elvetheti azokat és megtarthatja a szerverre utoljára mentett változatot.",
+    "caseLabel": "Eset",
+    "savedAtLabel": "Mentve",
+    "savedAtValue": "{{date}}",
+    "operationsLabel": "Tervezési lépések",
+    "operationsValue": "{{count}}",
+    "restoreButton": "Visszaállítás",
+    "restoringButton": "Visszaállítás…",
+    "discardButton": "Elvetés",
+    "restoreFailed": "A visszaállítás sikertelen: {{message}}. A helyi biztonsági mentés megmaradt – megpróbálhatja újra.",
+    "corruptTitle": "A nem mentett munka nem állítható helyre",
+    "corruptBody": "Az előző munkamenetből származó helyi biztonsági mentés megtalálható, de hiányos vagy sérült, ezért nem állítható helyre biztonságosan. A szerverre utoljára mentett változat ettől nem sérül.",
+    "acknowledgeButton": "Rendben"
   },
   "repair": {
     "panelTitle": "Javítás",

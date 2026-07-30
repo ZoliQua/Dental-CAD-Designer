@@ -293,6 +293,7 @@
       "unsaved": "Unsaved changes",
       "error": "Save failed: {{message}}"
     },
+    "localBackupHint": "Backed up locally",
     "picker": {
       "title": "Cases",
       "closeButton": "Close",
@@ -307,6 +308,22 @@
       "activeLabel": "Active",
       "updatedAtLabel": "Updated {{date}}"
     }
+  },
+  "recovery": {
+    "title": "Recover unsaved work?",
+    "body": "The app closed unexpectedly with changes that had not yet reached the server. You can restore them, or discard them and keep the last version saved to the server.",
+    "caseLabel": "Case",
+    "savedAtLabel": "Backed up",
+    "savedAtValue": "{{date}}",
+    "operationsLabel": "Design steps",
+    "operationsValue": "{{count}}",
+    "restoreButton": "Restore",
+    "restoringButton": "Restoring…",
+    "discardButton": "Discard",
+    "restoreFailed": "Restore failed: {{message}}. The local backup was kept — you can try again.",
+    "corruptTitle": "Unsaved work could not be recovered",
+    "corruptBody": "A local backup from the previous session was found, but it was incomplete or damaged and cannot be safely restored. The last version saved to the server is unaffected.",
+    "acknowledgeButton": "OK"
   },
   "repair": {
     "panelTitle": "Repair",

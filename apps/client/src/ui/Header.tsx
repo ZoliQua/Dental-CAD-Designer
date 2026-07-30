@@ -6,16 +6,26 @@ import { ThemeToggle } from './ThemeToggle';
 
 /** Task 11: save status label — 'idle'/'saved'/'saving'/'unsaved'/'error'
  * (state/persistenceStore.ts's `SaveStatus`), with the failed save's error
- * message interpolated for the 'error' case. */
+ * message interpolated for the 'error' case.
+ *
+ * Phase 8 Task 4: when there are un-synced-to-server edits ('unsaved'/'error')
+ * that the crash-safe LOCAL layer HAS captured (`localBackupAt` set), a small
+ * "backed up locally" hint is shown ALONGSIDE the server status — the local
+ * protection is visible without ever misrepresenting a not-yet-server-saved
+ * state as 'saved' (the server status stays authoritative). */
 function SaveStatusIndicator() {
   const { t } = useTranslation();
   const status = usePersistenceStore((state) => state.status);
   const errorMessage = usePersistenceStore((state) => state.errorMessage);
+  const localBackupAt = usePersistenceStore((state) => state.localBackupAt);
 
   const label =
     status === 'error'
       ? t('persistence.status.error', { message: errorMessage ?? '' })
       : t(`persistence.status.${status}`);
+
+  const showLocalBackupHint =
+    localBackupAt !== null && (status === 'unsaved' || status === 'error');
 
   return (
     <span
@@ -23,6 +33,11 @@ function SaveStatusIndicator() {
       data-testid="save-status"
     >
       {label}
+      {showLocalBackupHint ? (
+        <span className="app-header__local-backup-hint" data-testid="local-backup-hint">
+          {t('persistence.localBackupHint')}
+        </span>
+      ) : null}
     </span>
   );
 }

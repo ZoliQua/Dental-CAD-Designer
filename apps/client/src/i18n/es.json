@@ -293,6 +293,7 @@
       "unsaved": "Cambios sin guardar",
       "error": "Error al guardar: {{message}}"
     },
+    "localBackupHint": "Copia de seguridad local",
     "picker": {
       "title": "Casos",
       "closeButton": "Cerrar",
@@ -307,6 +308,22 @@
       "activeLabel": "Activo",
       "updatedAtLabel": "Actualizado: {{date}}"
     }
+  },
+  "recovery": {
+    "title": "¿Recuperar el trabajo sin guardar?",
+    "body": "La aplicación se cerró inesperadamente con cambios que aún no habían llegado al servidor. Puede restaurarlos, o descartarlos y conservar la última versión guardada en el servidor.",
+    "caseLabel": "Caso",
+    "savedAtLabel": "Copia de seguridad",
+    "savedAtValue": "{{date}}",
+    "operationsLabel": "Pasos de diseño",
+    "operationsValue": "{{count}}",
+    "restoreButton": "Restaurar",
+    "restoringButton": "Restaurando…",
+    "discardButton": "Descartar",
+    "restoreFailed": "Error al restaurar: {{message}}. La copia de seguridad local se conservó; puede volver a intentarlo.",
+    "corruptTitle": "No se pudo recuperar el trabajo sin guardar",
+    "corruptBody": "Se encontró una copia de seguridad local de la sesión anterior, pero estaba incompleta o dañada y no puede restaurarse de forma segura. La última versión guardada en el servidor no se ve afectada.",
+    "acknowledgeButton": "OK"
   },
   "repair": {
     "panelTitle": "Reparación",

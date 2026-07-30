@@ -1,11 +1,13 @@
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { initRecovery } from '../engine/recovery';
 import { useAppStore } from '../state/appStore';
 import { useGlobalShortcuts } from './actions/useGlobalShortcuts';
 import { CasePicker } from './CasePicker';
 import { CommandPalette } from './CommandPalette';
 import { Header } from './Header';
 import { OnboardingTour } from './OnboardingTour';
+import { RecoveryPrompt } from './RecoveryPrompt';
 import { ShortcutsHelpOverlay } from './ShortcutsHelpOverlay';
 import { Sidebar } from './Sidebar';
 import { StatusBar } from './StatusBar';
@@ -34,6 +36,14 @@ export function App() {
   // action registry (ui/actions/registry.ts).
   useGlobalShortcuts();
 
+  // Phase 8 Task 4: start the crash-safe local autosave and, if the previous
+  // session ended uncleanly with un-synced edits, surface the recovery prompt.
+  // Runs once at launch (StrictMode double-invokes effects in dev — initRecovery
+  // and startLocalSnapshotTracking are both idempotent, so that is harmless).
+  useEffect(() => {
+    void initRecovery();
+  }, []);
+
   return (
     <div className="app-shell">
       <Header />
@@ -46,6 +56,7 @@ export function App() {
       <CommandPalette />
       <ShortcutsHelpOverlay />
       <OnboardingTour />
+      <RecoveryPrompt />
     </div>
   );
 }
