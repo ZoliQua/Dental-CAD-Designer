@@ -47,6 +47,7 @@ class FakePool {
   calls: FakeCall[] = [];
   private hashCounter = 0;
   failShell = false;
+  failResolveMorph = false;
 
   readonly run: RunnablePool['run'] = (async (job: string, payload: unknown): Promise<unknown> => {
     this.calls.push({ job, payload });
@@ -62,6 +63,11 @@ class FakePool {
         return { transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], ...tetra(3), originMm: [0, 0, 0], mesialDistal: [1, 0, 0], buccoLingual: [0, 1, 0], occlusoGingival: [0, 0, 1], scaleMesialDistal: 1.1, scaleBuccoLingual: 1.0, scaleOcclusoGingival: 0.9, nativeMesialDistalWidthMm: 2, nativeOcclusoGingivalHeightMm: 4, targetMesialDistalWidthMm: 2.2, targetOcclusoGingivalHeightMm: 3.6, usedProximalGap: true, antagonistUsed: true, occlusoGingivalReoriented: false };
       case 'morphAnatomy':
       case 'resolveMorph': {
+        if (job === 'resolveMorph' && this.failResolveMorph) {
+          const err = new Error('resolveMorph worker rejected');
+          err.name = 'MorphSolveError';
+          throw err;
+        }
         const strengths = (payload as { strengths?: { antagonist?: number } }).strengths;
         const antStrength = strengths?.antagonist ?? 1;
         return {
@@ -497,6 +503,50 @@ describe('crownDesign controller — silent-failure defense at the QC call sites
     expect(store.error).toMatch(/CrownStageOrderError/);
     expect(store.errorStage).toBe('shell');
     expect(store.busyStage).toBeNull();
+  });
+
+  // H6 (the SAME 19b class the siblings above were hardened against, but at the
+  // sculpt call site): post-reload `start()` rebuilds the session with
+  // `shell: null` while persisted `stages.finalMesh` keeps the freeform gate
+  // `allowed`, so the sculpt button is ENABLED. Before the fix the
+  // `session.shell` null-check threw its CrownStageOrderError OUTSIDE the try,
+  // so `failStage` never ran and the click was a fully silent no-op (no error
+  // banner, no busy indicator) — the UI's fire-and-forget run() swallowed it.
+  it('applySculptStroke: a CrownStageOrderError from the session-shape check lands in the visible error state', async () => {
+    crownDesignEngine.start(restorationId);
+    persistStagesWithoutSession(null);
+
+    await expect(
+      crownDesignEngine.applySculptStroke({ center: [0, 0, 3], radiusMm: 0.5, strength: 0.1, brush: 'add' }),
+    ).rejects.toThrow(CrownStageOrderError);
+
+    const store = useCrownStore.getState();
+    expect(store.error).toMatch(/CrownStageOrderError/);
+    expect(store.errorStage).toBe('freeform');
+    expect(store.busyStage).toBeNull();
+  });
+});
+
+describe('crownDesign controller — previewMorphStrengths worker-reject safety (MEDIUM)', () => {
+  // Called fire-and-forget on every slider move; without a try/catch a worker
+  // rejection leaves `morphBusy` stuck true forever (the "updating…" indicator
+  // never clears) AND the error is swallowed by the panel's run() wrapper.
+  it('a worker rejection surfaces the error and clears morphBusy (never stuck on)', async () => {
+    crownDesignEngine.start(restorationId);
+    await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
+    await crownDesignEngine.placeAnatomy(anatomyInput());
+    await crownDesignEngine.runMorph(); // establishes the cached morph plan
+    expect(useCrownStore.getState().morphBusy).toBe(false);
+
+    fake.failResolveMorph = true;
+    await expect(
+      crownDesignEngine.previewMorphStrengths({ proximalMesial: 1, proximalDistal: 1, antagonist: 0.5 }),
+    ).rejects.toThrow(/resolveMorph worker rejected/);
+
+    const store = useCrownStore.getState();
+    expect(store.morphBusy).toBe(false); // FAILS pre-fix: stuck true
+    expect(store.error).toMatch(/MorphSolveError/); // FAILS pre-fix: swallowed
+    expect(store.errorStage).toBe('morph');
   });
 });
 

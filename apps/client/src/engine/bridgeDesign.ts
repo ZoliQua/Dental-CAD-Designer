@@ -1148,7 +1148,12 @@ class BridgeDesignEngine {
         label: c.label,
         minAreaMm2: c.minAreaMm2,
         ...(c.teeth ? { teeth: [...c.teeth] } : {}),
-        ...(c.targetMm2 === undefined ? {} : { targetMm2: c.targetMm2 }),
+        // Always supply the per-connector positional target (a committed
+        // connector always carries it — `connectorTargetMm2(teeth)`) so the
+        // server's connectorCrossSection gate enforces + reports the
+        // per-connector target, never the global-fallback path. Dropping this
+        // conditional omit removes the latent fallback-to-global dependency.
+        targetMm2: c.targetMm2,
       })),
       minWallThicknessMm: STANDARD_ZIRCONIA_PROFILE.restorationParams.minWallThicknessMm,
       occlusalMinWallThicknessMm: STANDARD_ZIRCONIA_PROFILE.occlusalMinWallThicknessMm,

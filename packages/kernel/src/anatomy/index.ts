@@ -28,6 +28,7 @@ export {
   DEFAULT_MORPH_OPTIONS,
   MorphContactMeshError,
   MorphNoAnchorsError,
+  MorphDegenerateNeighborTriangleError,
   type MorphContactKind,
   type MorphContactInput,
   type MorphOptions,

@@ -271,6 +271,87 @@ describe('minWallThicknessGate', () => {
       }),
     ).toThrow(MinWallThicknessInputError);
   }, 120000);
+
+  // ---- fold-in (516a283): measured===false is an EXPLICIT hard FAIL ----------
+
+  it('HARD-FAILS (measured===false) when the margin band excludes EVERY wall sample', async () => {
+    const inner = await intaglio();
+    const outer = outerDome(1.0);
+    // A margin exclusion so large it swallows every sample → zero surviving
+    // samples → the kernel reports measured=false + a fail-closed 0 sentinel.
+    const args = {
+      innerSurfaceMesh: inner,
+      outerSurfaceMesh: outer,
+      minWallThicknessMm: MIN_WALL_MM,
+      occlusalMinWallThicknessMm: OCCLUSAL_MIN_MM,
+      insertionAxis: AXIS,
+      marginResampledPoints: marginCircle(MARGIN_R, MARGIN_Z, 240),
+      marginExclusionMm: 100, // swallows the whole restoration
+    };
+    const m = measureMinWallThickness(args);
+    expect(m.measured).toBe(false);
+    expect(m.sampleCount).toBe(0);
+    expect(m.passed).toBe(false); // measurement failure is a hard FAIL, not "infinitely thick"
+    const res = minWallThicknessGate(args);
+    expect(res.passed).toBe(false);
+    expect(res.value).toBeNull(); // unmeasurable, NOT the 0 sentinel
+    // The report says clearly WHY it failed — a measurement failure attributable
+    // to the band, not the pre-fix generic "surfaces do not face each other".
+    expect(res.message).toMatch(/MEASUREMENT FAILED/);
+    expect(res.message).toMatch(/marginExclusion band/);
+    console.log(`[gate] measurement-failed hard FAIL: ${res.message}`);
+  }, 120000);
+
+  // ---- MEDIUM: the ungated-thin-floor disclosure is load-bearing -------------
+
+  it('DISCLOSES (un-missably) a sub-minimum wall hidden inside the excluded band while the core PASSES', () => {
+    // Thick core, thin near-margin band: a vertical inner wall (r=1) against a
+    // steep outer cone (r 1.15 → 4.0 over z 0→3). Near the margin (z≈0) the wall
+    // is ~0.15 mm (< the 0.5 mm minimum); in the core it is comfortably thick.
+    // A 1.0 mm margin band excludes the thin near-margin ring, so the gate PASSES
+    // on the thick core — but the excluded band harbours a sub-minimum wall that
+    // is NOT gated here. That must be surfaced (never a silent clean pass).
+    const inner = buildFrustum(1.0, 1.0, 0.0, 3.0, 64, false, false); // vertical cylinder wall
+    const outer = buildFrustum(1.15, 4.0, 0.0, 3.0, 64, false, false); // steep cone
+    const args = {
+      innerSurfaceMesh: inner,
+      outerSurfaceMesh: outer,
+      minWallThicknessMm: MIN_WALL_MM,
+      occlusalMinWallThicknessMm: OCCLUSAL_MIN_MM,
+      insertionAxis: AXIS,
+      marginResampledPoints: marginCircle(1.0, 0.0, 240),
+      marginExclusionMm: 1.0,
+    };
+    const m = measureMinWallThickness(args);
+    expect(m.passed).toBe(true); // the INCLUDED core clears the minimum
+    expect(m.excludedCount).toBeGreaterThan(0);
+    expect(m.minExcludedThicknessMm).toBeLessThan(MIN_WALL_MM); // thin wall inside the band
+    const res = minWallThicknessGate(args);
+    expect(res.passed).toBe(true); // DISCLOSURE, not a pass/fail change
+    expect(res.message).toMatch(/excluded band contains a wall as thin as .* NOT gated here/);
+    expect(res.message).toMatch(/ungated structural floor/);
+    console.log(`[gate] ungated-thin-floor disclosure: ${res.message}`);
+  }, 120000);
+
+  it('does NOT emit the thin-floor disclosure when the excluded feather stays above the minimum', async () => {
+    // A crown-like intaglio + a 1 mm outer dome: the excluded feather is ~1 mm
+    // (≥ the 0.5 mm minimum), so the disclosure MUST stay silent (a crown's
+    // finish-line feather is genuinely marginFit's concern) — the crown path
+    // stays byte-identical.
+    const inner = await intaglio();
+    const outer = outerDome(1.0);
+    const res = minWallThicknessGate({
+      innerSurfaceMesh: inner,
+      outerSurfaceMesh: outer,
+      minWallThicknessMm: MIN_WALL_MM,
+      occlusalMinWallThicknessMm: OCCLUSAL_MIN_MM,
+      insertionAxis: AXIS,
+      marginResampledPoints: marginCircle(MARGIN_R, MARGIN_Z, 240),
+      marginExclusionMm: 0.5,
+    });
+    expect(res.passed).toBe(true);
+    expect(res.message).not.toMatch(/NOT gated here/);
+  }, 120000);
 });
 
 // Phase 6 Task 5 — the mode-switched thickness gate (framework vs full-contour).

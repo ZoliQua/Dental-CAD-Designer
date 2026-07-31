@@ -43,6 +43,12 @@ export interface RunQcPayload {
   // T6 contact residuals
   contacts: readonly ContactResidualInput[];
   contactClampWarning: boolean;
+  /** The shell stage's journaled morph→shell heal @errorBound (`healOuterAnatomy`
+   * remesh shift, mm) — SUMMED onto every contact residual by the contact gate
+   * so the residual honestly includes the heal shift (see cad-pipeline
+   * `contact.ts`'s `outerShiftBoundMm`). Omitted/0 when the outer was not
+   * healed ⇒ byte-identical to the pre-heal report. */
+  healErrorBoundMm?: number;
   // optional overrides
   marginExclusionMm?: number;
   marginFitThresholdMm?: number;
@@ -88,6 +94,7 @@ export const runQcJob = async (payload: RunQcPayload, ctx: JobContext): Promise<
       connectorAreaTargetMm2: payload.connectorAreaTargetMm2,
       contacts: payload.contacts,
       contactClampWarning: payload.contactClampWarning,
+      healErrorBoundMm: payload.healErrorBoundMm,
       marginExclusionMm: payload.marginExclusionMm,
       marginFitThresholdMm: payload.marginFitThresholdMm,
       seatingInterferenceVolumeToleranceMm3: payload.seatingInterferenceVolumeToleranceMm3,

@@ -49,6 +49,50 @@ export const OUTER_ENVELOPE_LIMITATION: TraceabilityLimitation = {
     'with all recorded hashes would not be detected by this release.',
 };
 
+/**
+ * Stable `code` of the CLIENT-ATTESTED-GATES disclosure. Surfaced as an
+ * additional `certification.limitations` entry (NOT a new document field —
+ * schemaVersion stays 2, so previously-generated valid documents keep
+ * validating and stay byte-identical; a release whose attested-gate list is
+ * empty carries no such entry). The server's export re-validation recomputes
+ * every SOLID-CONSUMING gate (watertight, manifold, self-intersection, minimum
+ * wall thickness, margin fit, seating) on the re-imported mill bytes, but three
+ * gates — `connectorCrossSection`/`ponticRelief` (bridge) and `contact`
+ * (crown/inlay/onlay) — consume a client-MEASURED scalar whose design-time
+ * inputs (connector frame/profiles, pontic↔gingiva relation, contact morph
+ * residuals) are recoverable from neither the delivered bytes nor the release
+ * request. This disclosure names those gates so a lab/regulator SEES which gate
+ * verdicts were client-attested vs independently server-verified (invariant 6
+ * disclosure; mirrors the archive `importedUnverified` / server
+ * `clientAttestedGates` provenance).
+ */
+export const CLIENT_ATTESTED_GATES_LIMITATION_CODE = 'gates-client-attested';
+
+/**
+ * Builds the client-attested-gates disclosure limitation for a NON-EMPTY gate
+ * list. The `statement` (the fixed English record text) is deterministic given
+ * the gate-name list — the gate names ride VERBATIM so the disclosure is
+ * legible in the JSON and the rendered HTML without a locale lookup (the
+ * renderer translates the `code` for the human-facing notice). Gate order
+ * follows the caller's list (the server report's gate order — deterministic).
+ */
+export function clientAttestedGatesLimitation(
+  gates: readonly string[],
+): TraceabilityLimitation {
+  return {
+    code: CLIENT_ATTESTED_GATES_LIMITATION_CODE,
+    statement:
+      'The QC results for the following gates were CLIENT-ATTESTED at release and NOT independently ' +
+      `re-verified by the server: ${gates.join(', ')}. Their design-time inputs (bridge connector ` +
+      'frame/profiles, pontic-to-gingiva relation, crown/inlay/onlay contact morph residuals) are ' +
+      'recoverable from neither the exported mill bytes nor the release request, so the re-validation ' +
+      'consumed the client-measured value rather than recomputing it. The solid-consuming gates ' +
+      '(watertight, manifold, self-intersection, minimum wall thickness, margin fit, seating) WERE ' +
+      'recomputed on the re-imported bytes; the gates listed here must not be read as a full-authority ' +
+      'server-verified pass.',
+  };
+}
+
 /** Thrown on an internally inconsistent release input (format vs narrowing
  * vs headerText) — a genuine caller bug, never a clinical outcome. */
 export class ReleaseTraceabilityInputError extends Error {
@@ -79,6 +123,13 @@ export interface ReleaseTraceabilityInput {
     headerText: string | null;
   };
   journal: TraceabilityJournalBinding;
+  /** The gate names whose MEASURED value the server consumed from the client
+   * rather than recomputing from the re-imported solid (the server route's
+   * `clientAttestedGates` — the trustworthy source). Non-empty ⇒ the release
+   * document carries the `gates-client-attested` disclosure; empty ⇒ no such
+   * limitation (and the document stays byte-identical to the pre-disclosure
+   * shape). Order is the server report's gate order (deterministic). */
+  clientAttestedGates: readonly string[];
   /** Content hash of the re-imported solid the server QC measured. */
   reimportMeshHash: string;
   /** STL: the analytic f32 narrowing bound measured over the DELIVERED
@@ -167,8 +218,17 @@ export function buildReleaseTraceabilityDocument(
     // the delivered geometry IS that solid up to the format narrowing
     // (export-route.ts step 10.5 — mandatory since Task 8). So the outer
     // envelope IS certified, and the `outer-envelope-not-certified` disclosure
-    // no longer applies to a release (limitations empty).
-    certification: { outerEnvelopeCertified: true, limitations: [] },
+    // no longer applies to a release. The ONLY limitation a release may carry
+    // is the client-attested-gates disclosure — added iff the server marked any
+    // gate client-attested (empty ⇒ no entry, so the document stays
+    // byte-identical to the pre-disclosure shape).
+    certification: {
+      outerEnvelopeCertified: true,
+      limitations:
+        input.clientAttestedGates.length === 0
+          ? []
+          : [clientAttestedGatesLimitation(input.clientAttestedGates)],
+    },
   };
 }
 

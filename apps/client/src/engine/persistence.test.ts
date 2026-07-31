@@ -476,6 +476,186 @@ describe('save / openCase round trip', () => {
   });
 });
 
+describe('save — cross-case + mid-save-mesh + failed-save safety (review fixes)', () => {
+  it('BLOCKER: a case switch during the upload window never PUTs the new case\'s document to the old case\'s URL', async () => {
+    const caseA = await createSavedCase('Case A', ['a-hash']);
+    const caseAId = caseA.id;
+
+    // Build case B (a genuinely different document) so we can install it mid-save.
+    const caseB = await createSavedCase('Case B', ['b-hash']);
+    const caseBId = caseB.id;
+    const caseBName = caseB.name;
+    const caseBDoc = useCaseStore.getState().document;
+
+    // Reopen A, then make it dirty by importing a NEW mesh (no fileHash) so
+    // save()'s uploadMissingMeshes has a real awaited upload phase — the window
+    // the bug lives in.
+    await openCase(caseAId, caseA.name);
+    const newPositions = TET_POSITIONS.map((v, i) => (i % 3 === 0 ? v + 9 : v));
+    caseStore.registerImportedMesh({
+      contentHash: 'a-new-hash',
+      name: 'a-new.stl',
+      format: 'stl',
+      positions: newPositions,
+      indices: TET_INDICES.slice(),
+      stats: tetStats(),
+      report: EMPTY_REPORT,
+      operations: [importOp('a-new-hash')],
+    });
+    caseStore.addSceneNode('a-new-hash', 'upperJaw');
+
+    // The instant A's new mesh is HEAD-checked during save, simulate the user
+    // having opened case B (openCase installs B's document + flips activeCaseId).
+    let switched = false;
+    const putBodies: Array<{ path: string; id: string }> = [];
+    const realFetch = server.fetchImpl;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const method = (init?.method ?? 'GET').toUpperCase();
+        const path = String(input);
+        if (!switched && method === 'HEAD' && path.includes('/api/meshes/')) {
+          switched = true;
+          caseStore.loadDocument(caseBDoc);
+          usePersistenceStore.getState().setActiveCase({ id: caseBId, name: caseBName });
+        }
+        if (method === 'PUT') {
+          putBodies.push({ path, id: (JSON.parse(String(init?.body)) as CaseDocument).id });
+        }
+        return realFetch(input, init);
+      }),
+    );
+
+    await save();
+
+    // The window WAS exercised (the switch happened mid-upload).
+    expect(switched).toBe(true);
+    // Client-side fault is the whole point: the client must NEVER PUT a
+    // document to a case URL that is not that document's own case. Pre-fix
+    // save() PUT the live (now B's) document to /cases/A.
+    const putsToA = putBodies.filter((p) => p.path.includes(`/cases/${caseAId}`));
+    for (const put of putsToA) {
+      expect(put.id).toBe(caseAId);
+    }
+    // Case A's durable server row still holds A's own document.
+    expect(server.cases.get(caseAId)!.document!.id).toBe(caseAId);
+  });
+
+  it('HIGH: a mesh imported DURING the save-upload window is not silently marked clean — it is retried and survives reload', async () => {
+    await createCase('Mid-save mesh case');
+    // Mesh M1 (no fileHash) gives save()'s uploadMissingMeshes a real awaited
+    // upload phase.
+    caseStore.registerImportedMesh({
+      contentHash: 'm1-hash',
+      name: 'm1.stl',
+      format: 'stl',
+      positions: TET_POSITIONS.slice(),
+      indices: TET_INDICES.slice(),
+      stats: tetStats(),
+      report: EMPTY_REPORT,
+      operations: [importOp('m1-hash')],
+    });
+    caseStore.addSceneNode('m1-hash', 'upperJaw');
+
+    // The instant M1 is HEAD-checked during save, import a SECOND mesh M2 — it
+    // was not in uploadMissingMeshes's initial snapshot, so its bytes never
+    // upload in this pass.
+    let imported = false;
+    const realFetch = server.fetchImpl;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const method = (init?.method ?? 'GET').toUpperCase();
+        const path = String(input);
+        if (!imported && method === 'HEAD' && path.includes('/api/meshes/')) {
+          imported = true;
+          const m2Positions = TET_POSITIONS.map((v, i) => (i % 3 === 0 ? v + 5 : v));
+          caseStore.registerImportedMesh({
+            contentHash: 'm2-hash',
+            name: 'm2.stl',
+            format: 'stl',
+            positions: m2Positions,
+            indices: TET_INDICES.slice(),
+            stats: tetStats(),
+            report: EMPTY_REPORT,
+            operations: [importOp('m2-hash')],
+          });
+          caseStore.addSceneNode('m2-hash', 'lowerJaw');
+        }
+        return realFetch(input, init);
+      }),
+    );
+
+    await save();
+    // The coalesced retry must upload M2's bytes; wait for it to settle.
+    await vi.waitFor(() => {
+      expect(usePersistenceStore.getState().status).toBe('saved');
+    });
+
+    const caseId = usePersistenceStore.getState().activeCaseId!;
+    const caseName = usePersistenceStore.getState().activeCaseName!;
+    const savedDoc = useCaseStore.getState().document;
+    // M2 now has a durable fileHash (retried, not dropped) — FAILS pre-fix.
+    expect(savedDoc.meshes.find((m) => m.contentHash === 'm2-hash')?.fileHash).toBeTruthy();
+
+    // Reload from scratch: M2's scene node resolves. Pre-fix M2 had no fileHash
+    // on the server → reconstructSceneMeshes skips it → its render node vanishes.
+    caseStore.resetForTests();
+    resetPersistenceForTests();
+    await openCase(caseId, caseName);
+    expect(caseStore.getRenderNodes()).toHaveLength(2);
+  });
+
+  it('HIGH: a FAILED save is rescheduled (the un-synced edit is retried, not stranded until the next edit)', async () => {
+    await createCase('Retry-after-failure case');
+
+    let putCount = 0;
+    const realFetch = server.fetchImpl;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const method = (init?.method ?? 'GET').toUpperCase();
+        if (method === 'PUT') {
+          putCount += 1;
+          if (putCount === 1) {
+            return new Response(null, { status: 500 }); // first save fails
+          }
+        }
+        return realFetch(input, init);
+      }),
+    );
+
+    vi.useFakeTimers();
+    try {
+      // A mesh-free mutation → schedules the 30 s autosave.
+      caseStore.addMeasurement({
+        id: 'm-fail',
+        kind: 'pointToPoint',
+        points: [
+          { nodeId: 'n/a', position: [0, 0, 0] },
+          { nodeId: 'n/a', position: [1, 0, 0] },
+        ],
+        value: 1,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      });
+      expect(usePersistenceStore.getState().status).toBe('unsaved');
+
+      // First autosave fires → PUT #1 fails → status 'error'.
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(putCount).toBe(1);
+      expect(usePersistenceStore.getState().status).toBe('error');
+
+      // Post-fix: the failed save re-armed the autosave, so another 30 s later
+      // it retries and succeeds. Pre-fix: no reschedule → stranded at 'error'.
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(putCount).toBe(2);
+      expect(usePersistenceStore.getState().status).toBe('saved');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe('CaseDocument.schemaVersion 1 -> 2 migration (Phase 3 Task 1)', () => {
   it('migrates a legacy schemaVersion-1 document on load, then a save -> reload round trip is byte-for-byte identical', async () => {
     // Simulate a case row that predates this task's schema evolution: the

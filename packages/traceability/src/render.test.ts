@@ -44,6 +44,30 @@ describe('renderTraceabilityHtml — purity + self-containment', () => {
     expect(html).not.toContain('<script>alert');
     expect(html).toContain('&lt;script&gt;');
   });
+
+  it('a hostile schemaVersion is coerced+escaped and cannot break out of the header', () => {
+    // schemaVersion is a numeric const today, not attacker-reachable — but a
+    // forged/corrupted value must never inject. It is coerced through
+    // `Number(...)` (any non-numeric injection collapses to NaN) and escaped.
+    const hostile = {
+      ...releaseDoc(),
+      schemaVersion: '2"><script>alert(1)</script>' as unknown as 2,
+    };
+    const html = renderTraceabilityHtml(hostile, { locale: 'en' });
+    expect(html).not.toContain('<script>');
+    expect(html).toContain('NaN');
+  });
+
+  it('an unsanitized locale fails safe — it never renders an unescaped lang attribute', () => {
+    // `locale` doubles as the strings-table key, so a non-locale value fails
+    // safe by THROWING before any HTML is produced (no partial injected output
+    // escapes). The `lang` attribute is escaped regardless (defense-in-depth).
+    expect(() =>
+      renderTraceabilityHtml(releaseDoc(), {
+        locale: 'en"><script>alert(2)</script>' as never,
+      }),
+    ).toThrow();
+  });
 });
 
 describe('renderTraceabilityHtml — release content', () => {

@@ -155,6 +155,13 @@ interface Session {
   morphHeatmap: Float64Array | null;
   shell: DerivedMesh | null;
   shellThicknessHeatmap: Float64Array | null;
+  /** The shell stage's journaled morph→shell heal @errorBound (mm), captured
+   * from the `constructShell` worker result when the outer was healed; `null`
+   * when no heal ran. Threaded into the contact QC input (`healErrorBoundMm`)
+   * so the contact gate SUMS it onto every contact residual — the same
+   * journaled param the server export re-validation receives, keeping the
+   * client-attested contact verdict in agreement. */
+  shellHealErrorBoundMm: number | null;
 }
 
 function nowIso(): string {
@@ -235,6 +242,7 @@ class CrownDesignEngine {
       morphHeatmap: null,
       shell: null,
       shellThicknessHeatmap: null,
+      shellHealErrorBoundMm: null,
     };
     caseStore.setSelectedRestorationId(restorationId);
     this.publish({ restorationId, active: true, error: null, errorStage: null });
@@ -726,16 +734,26 @@ class CrownDesignEngine {
    */
   async previewMorphStrengths(strengths: MorphStrengthsUi): Promise<void> {
     const session = this.requireSession();
-    if (!session.morphPlanId) {
-      throw new CrownStageOrderError('morph', 'anatomyIncomplete');
-    }
     this.publish({ strengths, morphBusy: true });
-    const result = await this.pool().run(
-      'resolveMorph',
-      { planId: session.morphPlanId, strengths, computeHeatmaps: true },
-      { affinityKey: session.morphPlanId },
-    );
-    await this.applyMorphResult(session, result, strengths, false);
+    // Fire-and-forget on every slider move (CrownDesignPanel), so a worker
+    // rejection here is swallowed by the UI's `run()` wrapper. Without this
+    // try/catch a reject would leave `morphBusy` stuck true forever (the
+    // "updating…" indicator sticks on) and hide the error. `failStage` clears
+    // `morphBusy` AND surfaces the error, matching `commitMorphStrengths`.
+    try {
+      if (!session.morphPlanId) {
+        throw new CrownStageOrderError('morph', 'anatomyIncomplete');
+      }
+      const result = await this.pool().run(
+        'resolveMorph',
+        { planId: session.morphPlanId, strengths, computeHeatmaps: true },
+        { affinityKey: session.morphPlanId },
+      );
+      await this.applyMorphResult(session, result, strengths, false);
+    } catch (error) {
+      this.failStage('morph', error);
+      throw error;
+    }
   }
 
   /**
@@ -802,6 +820,12 @@ class CrownDesignEngine {
       const contentHash = await this.hashMesh(result.positions, result.indices);
       session.shell = { positions: result.positions, indices: result.indices, contentHash };
       session.shellThicknessHeatmap = result.thicknessHeatmap;
+      // The morph→shell heal @errorBound (mm) when the outer was healed —
+      // captured here, journaled on the shell op, and SUMMED onto every contact
+      // residual by the contact gate (runQc + the export re-validation both
+      // receive it, so the client-attested contact verdict stays in agreement).
+      // `undefined` on the no-heal path ⇒ 0 ⇒ byte-identical contact residuals.
+      session.shellHealErrorBoundMm = result.healOuterErrorBoundMm ?? null;
       this.commitStage(
         'shell',
         'finalMesh',
@@ -814,6 +838,9 @@ class CrownDesignEngine {
           volumeMm3: result.volumeMm3,
           autoThickenApplied: result.autoThickenApplied,
           autoThickenMaxAppliedMm: result.autoThickenMaxAppliedMm,
+          ...(result.healOuterErrorBoundMm !== undefined
+            ? { healOuterErrorBoundMm: result.healOuterErrorBoundMm }
+            : {}),
         },
         [session.morphOuter.contentHash, session.inner.contentHash],
       );
@@ -847,13 +874,19 @@ class CrownDesignEngine {
    */
   async applySculptStroke(stroke: { center: Vec3; radiusMm: number; strength: number; brush: SculptBrushType }): Promise<void> {
     const session = this.requireSession();
-    this.assertRunnable('freeform');
-    if (!session.shell || !session.inner) {
-      throw new CrownStageOrderError('freeform', 'shellIncomplete');
-    }
-    const unlock = !useCrownStore.getState().outerLock;
     this.publish({ busyStage: 'freeform', progress: 0, error: null, errorStage: null });
+    // P7-T1 fix round (19b class): the sync order check + session-shape check
+    // live INSIDE the try — post-reload the freeform gate passes from the
+    // persisted stages.finalMesh hash while `session.shell`/`session.inner` are
+    // null; a pre-try throw would escape `failStage` and leave the sculpt click
+    // a fully silent no-op (button enabled, nothing happens). Matches the
+    // runQc/runMorph/constructShell siblings.
     try {
+      this.assertRunnable('freeform');
+      if (!session.shell || !session.inner) {
+        throw new CrownStageOrderError('freeform', 'shellIncomplete');
+      }
+      const unlock = !useCrownStore.getState().outerLock;
       const result = await this.pool().run('applySculptStroke', {
         shellPositions: session.shell.positions,
         shellIndices: session.shell.indices,
@@ -945,6 +978,10 @@ class CrownDesignEngine {
         marginExclusionMm: STANDARD_ZIRCONIA_PROFILE.marginExclusionMm,
         contacts: session.morphContacts,
         contactClampWarning: session.morphContacts.some((c) => c.clampBound),
+        // The journaled morph→shell heal @errorBound — SUMMED onto each contact
+        // residual so the gate is honest; the export re-validation gets the same
+        // value. `null` (no heal) ⇒ undefined ⇒ 0 ⇒ pre-heal-identical.
+        healErrorBoundMm: session.shellHealErrorBoundMm ?? undefined,
         kernelVersion: KERNEL_VERSION,
         profileVersion,
         journalHash: session.shell.contentHash,
@@ -1000,6 +1037,9 @@ class CrownDesignEngine {
         marginExclusionMm: STANDARD_ZIRCONIA_PROFILE.marginExclusionMm,
         contacts: session.morphContacts,
         contactClampWarning: session.morphContacts.some((c) => c.clampBound),
+        // Same journaled heal @errorBound as runQc — re-supplied on the ack
+        // re-run so the acknowledged report's contact residual is unchanged.
+        healErrorBoundMm: session.shellHealErrorBoundMm ?? undefined,
         kernelVersion: KERNEL_VERSION,
         profileVersion,
         journalHash: session.shell.contentHash,
@@ -1086,6 +1126,13 @@ class CrownDesignEngine {
       contacts: [...session.morphContacts],
       contactClampWarning: session.morphContacts.some((c) => c.clampBound),
       marginExclusionMm: STANDARD_ZIRCONIA_PROFILE.marginExclusionMm,
+      // The journaled heal @errorBound rides with the export request (a
+      // journaled PARAM, not a re-measurement) so the server's independent
+      // contact gate SUMS the exact same value — the client-attested contact
+      // residual matches field-for-field. Omitted (no heal) ⇒ 0 both sides.
+      ...(session.shellHealErrorBoundMm !== null
+        ? { healErrorBoundMm: session.shellHealErrorBoundMm }
+        : {}),
     };
   }
 

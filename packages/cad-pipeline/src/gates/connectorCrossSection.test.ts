@@ -106,6 +106,32 @@ describe('connectorCrossSectionGate — Phase 6 ACCEPTANCE (falsifiable pair)', 
     expect(posterior.passed).toBe(false);
   });
 
+  it('reports the ENFORCED per-connector target as the threshold, not the (possibly wrong) global', () => {
+    // Finding #5: a POSTERIOR connector (needs 9) supplied under an ANTERIOR
+    // global (7) but carrying its own positional targetMm2=9. It is correctly
+    // judged against 9 (8 < 9 → BLOCKS), but the REPORTED threshold must be the
+    // enforced 9, not the global 7 (pre-fix reported 7 — a latent under-report).
+    const r = connectorCrossSectionGate({
+      connectorAreaTargetMm2: 7, // wrong (anterior) global
+      connectors: [{ label: '15–16', minAreaMm2: 8.0, teeth: [15, 16], targetMm2: 9 }],
+    });
+    expect(r.passed).toBe(false);
+    expect(r.threshold).toBe(9); // the ENFORCED per-connector target, not the global 7
+    expect(r.value).toBeCloseTo(8.0, 6);
+  });
+
+  it('uniform-target bridge: reported threshold equals the global (byte-identical for the real path)', () => {
+    const r = connectorCrossSectionGate({
+      connectorAreaTargetMm2: 9,
+      connectors: [
+        { label: '14–15', minAreaMm2: 11.0, teeth: [14, 15], targetMm2: 9 },
+        { label: '15–16', minAreaMm2: 12.0, teeth: [15, 16], targetMm2: 9 },
+      ],
+    });
+    expect(r.passed).toBe(true);
+    expect(r.threshold).toBe(9); // worstOffenderTarget === global when uniform
+  });
+
   it('mixed bridge: a passing posterior + a failing posterior → gate BLOCKS and names the offender', () => {
     const r = connectorCrossSectionGate({
       connectorAreaTargetMm2: 9,

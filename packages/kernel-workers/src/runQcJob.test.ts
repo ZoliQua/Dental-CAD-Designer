@@ -74,6 +74,31 @@ describe('runQcJob', () => {
     for (let i = 1; i < progresses.length; i++) expect(progresses[i]!).toBeGreaterThanOrEqual(progresses[i - 1]!);
   }, 120000);
 
+  it('W1: SUMS the journaled healErrorBoundMm onto the contact residual (fails pre-wiring)', async () => {
+    // A single 40 µm proximal contact — passes ALONE (≤ 50 µm tolerance). With a
+    // 20 µm journaled morph→shell heal bound threaded through the payload the
+    // contact gate must sum to 60 µm → FAIL. Pre-wiring (payload.healErrorBoundMm
+    // dropped by the job) the gate reads 40 µm and PASSES — this test is red.
+    const payload = await buildPayload();
+    const at40um = { kind: 'proximalMesial', targetPenetrationMm: 0.02, achievedSignedDistanceMm: -0.02, contactResidualMm: 0.04, regionResidualMm: 0.0003, clampBound: false };
+    const withHeal = { ...payload, contacts: [at40um], healErrorBoundMm: 0.02 };
+    const ctx: JobContext = { progress: () => {}, cancelled: () => false };
+
+    const { report } = await runQcJob(withHeal, ctx);
+    const contact = report.gates.find((g) => g.gate === 'contact')!;
+    expect(contact.value).toBeCloseTo(0.06, 6);
+    expect(contact.passed).toBe(false);
+    expect(contact.message).toContain('heal shift');
+
+    // Control: SAME 40 µm contact, NO heal bound → 40 µm → passes (proves the
+    // failure above is the summed heal bound, not the contact itself).
+    const noHeal = { ...payload, contacts: [at40um] };
+    const { report: r2 } = await runQcJob(noHeal, ctx);
+    const c2 = r2.gates.find((g) => g.gate === 'contact')!;
+    expect(c2.value).toBeCloseTo(0.04, 6);
+    expect(c2.passed).toBe(true);
+  }, 120000);
+
   it('throws JobCancelledError when cancelled up front', async () => {
     const payload = await buildPayload();
     const ctx: JobContext = { progress: () => {}, cancelled: () => true };

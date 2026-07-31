@@ -484,6 +484,17 @@ class CavityDesignEngine {
           seamDihedralMaxDeg: result.seamDihedralMaxDeg,
           seamDihedralMeanDeg: result.seamDihedralMeanDeg,
           seamDihedralBoundDeg: result.seamDihedralBoundDeg,
+          // The AUTHORITATIVE seam verdict, computed with the SAME predicate the
+          // seam-dihedral gate uses (gates/seamDihedral.ts): `sampleCount > 0 AND
+          // maxDeg < boundDeg`. `measureSeamDihedral` THROWS on an unmatched seam
+          // edge rather than silently skipping it, so `sampleCount` equals the
+          // seam-edge count whenever the measurement returns — hence an empty
+          // `seamEdges` is exactly the gate's zero-sample HARD FAIL (which the
+          // raw `maxDeg < bound` compare would mispaint GREEN, since maxDeg is 0
+          // for an empty seam). The panel reads this boolean; it never re-derives.
+          seamWithinBound:
+            result.seamEdges.length > 0 &&
+            result.seamDihedralMaxDeg < result.seamDihedralBoundDeg,
           patchTriangleCount: result.patchTriangleCount,
           proximalFaceCount: result.proximalFaces.length,
         },

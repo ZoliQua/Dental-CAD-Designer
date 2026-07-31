@@ -107,6 +107,7 @@ interface ExportOkBody {
   reimportMeshHash: string;
   downloadPath: string;
   traceabilityJsonPath: string;
+  clientAttestedGates: string[];
 }
 
 let source: Server;
@@ -204,7 +205,19 @@ describe.each(CASES)('Phase 7 acceptance — $name (full loop, STL)', ({ build }
     expect(doc.schemaVersion).toBe(2);
     expect(doc.documentKind).toBe('release');
     expect(doc.certification.outerEnvelopeCertified).toBe(true);
-    expect(doc.certification.limitations).toEqual([]);
+    // H1 disclosure: the client-attested gates (bridge → connectorCrossSection
+    // + ponticRelief; crown/inlay/onlay → contact) are surfaced as the release's
+    // sole `gates-client-attested` limitation, naming each gate in the record
+    // text. A release never carries the (dropped) outer-envelope disclosure.
+    const attested =
+      bundle.restorationType === 'bridge'
+        ? ['connectorCrossSection', 'ponticRelief']
+        : ['contact'];
+    expect(release.clientAttestedGates).toEqual(attested);
+    expect(doc.certification.limitations.map((l) => l.code)).toEqual(['gates-client-attested']);
+    for (const gate of attested) {
+      expect(doc.certification.limitations[0]?.statement).toContain(gate);
+    }
     expect(doc.qc.passed).toBe(true);
     // The acknowledged onlay carries its journal-verified acknowledgment.
     expect(doc.acknowledgments.length > 0).toBe(bundle.hasAcknowledgedGate);

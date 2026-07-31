@@ -55,6 +55,51 @@ class FakePayloadStore implements RecoveryPayloadStore {
   async write(checksum: string, json: string): Promise<void> {
     this.map.set(checksum, json);
   }
+  async delete(checksum: string): Promise<void> {
+    this.map.delete(checksum);
+  }
+  async prune(keep: string | null): Promise<void> {
+    for (const key of [...this.map.keys()]) {
+      if (keep === null || key !== keep) {
+        this.map.delete(key);
+      }
+    }
+  }
+}
+
+/** A payload store whose `write` STAGES the payload, signals `staged`, then
+ * suspends on a gate the test releases — lets a test force the exact
+ * clear-vs-write interleave (the HIGH dangling-marker race). */
+class GatedPayloadStore implements RecoveryPayloadStore {
+  readonly map = new Map<string, string>();
+  staged: Promise<void> | null = null;
+  private gate: Promise<void> | null = null;
+  private release: (() => void) | null = null;
+  private signalStaged: (() => void) | null = null;
+  arm(): void {
+    this.gate = new Promise<void>((r) => {
+      this.release = r;
+    });
+    this.staged = new Promise<void>((r) => {
+      this.signalStaged = r;
+    });
+  }
+  releaseGate(): void {
+    this.release?.();
+  }
+  async read(checksum: string): Promise<string | null> {
+    return this.map.get(checksum) ?? null;
+  }
+  async write(checksum: string, json: string): Promise<void> {
+    this.map.set(checksum, json);
+    if (this.gate) {
+      this.signalStaged?.();
+      await this.gate;
+    }
+  }
+  async delete(checksum: string): Promise<void> {
+    this.map.delete(checksum);
+  }
   async prune(keep: string | null): Promise<void> {
     for (const key of [...this.map.keys()]) {
       if (keep === null || key !== keep) {
@@ -447,6 +492,7 @@ describe('defensive + lifecycle paths', () => {
     const throwingPayload: RecoveryPayloadStore = {
       read: () => Promise.reject(new Error('idb unavailable')),
       write: () => Promise.resolve(),
+      delete: () => Promise.resolve(),
       prune: () => Promise.resolve(),
     };
     __setRecoveryStoresForTests(markerStore, throwingPayload);
@@ -480,6 +526,80 @@ describe('defensive + lifecycle paths', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('FALSIFIABLE (HIGH) — writeLocalSnapshot protects an edit across the whole save window', () => {
+  it('captures a snapshot even while a server save is IN FLIGHT (status "saving")', async () => {
+    // A quick Cmd/Ctrl+S within the 2 s local debounce flips status to
+    // 'saving' before the snapshot timer fires. "In the middle of getting to
+    // the server" is NOT durable — a crash during the PUT means the server
+    // never got it — so the local snapshot MUST still protect the edit. Pre-fix
+    // writeLocalSnapshot early-returned for any status other than
+    // unsaved/error, leaving the edit protected nowhere during the PUT.
+    activateCase('case-1', 'saving');
+    await writeLocalSnapshot();
+    const marker = markerStore.read();
+    expect(marker).not.toBeNull(); // FAILS pre-fix: no-op while 'saving'
+    expect(marker!.caseId).toBe('case-1');
+    expect(payloadStore.map.has(marker!.payloadChecksum)).toBe(true);
+  });
+});
+
+describe('FALSIFIABLE (HIGH) — clearLocalSnapshot never races writeLocalSnapshot into a dangling marker', () => {
+  it('a server-sync clear concurrent with a debounced write never commits the marker at a pruned payload', async () => {
+    const gated = new GatedPayloadStore();
+    __setRecoveryStoresForTests(markerStore, gated);
+    resetCrashRecoveryForTests(); // fresh session/owned-set/mutex for this store
+
+    activateCase('case-1', 'unsaved', buildDocument('case-1'));
+    gated.arm();
+
+    // writeLocalSnapshot stages its payload, then suspends on the gate.
+    const writePromise = writeLocalSnapshot();
+    await gated.staged;
+
+    // The server save resolves → clearLocalSnapshot fires. Pre-fix (no mutex)
+    // it prunes the just-staged payload while the marker commit is still
+    // pending; post-fix it is serialized behind the in-flight write.
+    const clearPromise = clearLocalSnapshot();
+    gated.releaseGate();
+    await Promise.all([writePromise, clearPromise]);
+
+    // The core invariant: a committed marker must NEVER point at a payload that
+    // was pruned out from under it (that is the dangling → silent-loss state).
+    const marker = markerStore.read();
+    if (marker !== null) {
+      expect(gated.map.has(marker.payloadChecksum)).toBe(true); // FAILS pre-fix
+    }
+    // And detection must not silently degrade to a dangling 'none'.
+    const detection = await detectRecovery();
+    expect(detection.kind === 'recoverable' || detection.kind === 'none').toBe(true);
+  });
+});
+
+describe('FALSIFIABLE (HIGH) — multi-tab: a second tab does not destroy the first tab\'s un-synced payload', () => {
+  it('a second session\'s snapshot prunes only ITS OWN payloads, never a foreign live tab\'s', async () => {
+    // Tab A (session A) writes an un-synced snapshot for case-1.
+    activateCase('case-1', 'unsaved', buildDocument('case-1'));
+    await writeLocalSnapshot();
+    const checksumA = markerStore.read()!.payloadChecksum;
+    expect(payloadStore.map.has(checksumA)).toBe(true);
+
+    // Tab B is a DIFFERENT session (a new tab — modelled by regenerating the
+    // module session id + its owned-checksum set) editing a different case; the
+    // shared marker + payload stores persist across the "tabs".
+    resetCrashRecoveryForTests();
+    activateCase('case-2', 'unsaved', buildDocument('case-2'));
+    await writeLocalSnapshot();
+    const checksumB = markerStore.read()!.payloadChecksum;
+    expect(checksumB).not.toBe(checksumA);
+
+    // Tab B pruned only its own session's payloads — tab A's un-synced payload
+    // survives. Pre-fix the blanket prune-all deleted checksumA, so tab A's
+    // un-synced case-1 edits were silently lost on its next crash.
+    expect(payloadStore.map.has(checksumB)).toBe(true);
+    expect(payloadStore.map.has(checksumA)).toBe(true); // FAILS pre-fix
   });
 });
 

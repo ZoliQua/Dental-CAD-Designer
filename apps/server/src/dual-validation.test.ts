@@ -121,6 +121,50 @@ describe('POST /api/restorations/:id/validate-qc — dual validation (client/ser
     expect(body.differences.some((d) => d.path === 'passed')).toBe(true);
   }, 120_000);
 
+  it('W1: the journaled healErrorBoundMm rides with the request; server SUMS it identically (client==server; 40µm+20µm heal → 60µm contact FAILS)', async () => {
+    const contact = {
+      kind: 'proximalMesial',
+      targetPenetrationMm: 0.02,
+      achievedSignedDistanceMm: -0.02,
+      contactResidualMm: 0.04,
+      regionResidualMm: 0.0003,
+      clampBound: false,
+    };
+    // A 40 µm contact + a 20 µm journaled morph→shell heal bound. The contact
+    // gate must sum to 60 µm and FAIL — on BOTH sides identically.
+    const healedInput = await buildCrownQcInput('standin', {
+      contacts: [contact],
+      contactClampWarning: false,
+      healErrorBoundMm: 0.02,
+    });
+    const healedClientReport = await runCrownQc(healedInput);
+    const clientContact = healedClientReport.gates.find((g) => g.gate === 'contact')!;
+    expect(clientContact.value).toBeCloseTo(0.06, 6);
+    expect(clientContact.passed).toBe(false);
+
+    const res = await post(healedInput);
+    expect(res.statusCode).toBe(200);
+    const serverReport = res.json() as QcReport;
+    // DUAL-VALIDATION AGREEMENT: the server independently re-runs runCrownQc with
+    // the SAME riding heal bound → bit-identical. A dropped server-side heal
+    // bound would read 40 µm and DIVERGE here (proving the server threading).
+    expect(serverReport).toEqual(healedClientReport);
+    expect(canonical(serverReport)).toBe(canonical(healedClientReport));
+
+    // The matching client cross-check still 200 — no NEW 409 from the wiring.
+    const crossCheck = await post(healedInput, { clientReport: healedClientReport });
+    expect(crossCheck.statusCode).toBe(200);
+
+    // Control: the SAME 40 µm contact with NO heal bound → 40 µm → PASSES, and
+    // still client==server (proves the failure above is the summed heal bound).
+    const plainInput = await buildCrownQcInput('standin', { contacts: [contact], contactClampWarning: false });
+    const plainClient = await runCrownQc(plainInput);
+    const plainContact = plainClient.gates.find((g) => g.gate === 'contact')!;
+    expect(plainContact.value).toBeCloseTo(0.04, 6);
+    expect(plainContact.passed).toBe(true);
+    expect((await post(plainInput)).json()).toEqual(plainClient);
+  }, 300_000);
+
   it('rejects a malformed validate-qc body with 400', async () => {
     const res = await app.inject({
       method: 'POST',

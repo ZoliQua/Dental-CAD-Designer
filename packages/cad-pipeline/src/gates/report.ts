@@ -74,6 +74,12 @@ export interface RunCrownQcInput {
   // --- T6 morph contact residuals ---
   readonly contacts: readonly ContactResidualInput[];
   readonly contactClampWarning: boolean;
+  /** The morph→shell HEAL error bound (mm) — the shell stage's
+   * `healOuterErrorBoundMm` (`healOuterAnatomy`'s `pitchMm/2`), or omitted/0 when
+   * the outer was not healed. SUMMED onto each contact's residual by the contact
+   * gate (the consumer summation the kernel doc requires — see `contact.ts`'s
+   * `outerShiftBoundMm`). Omit ⇒ 0 ⇒ byte-identical to the pre-heal report. */
+  readonly healErrorBoundMm?: number;
 
   // --- optional gate-tolerance / measurement overrides ---
   readonly marginExclusionMm?: number;
@@ -142,7 +148,13 @@ export async function runCrownQc(input: RunCrownQcInput, onProgress?: (fraction:
       }),
     (c) => seatingGate({ measurement: c.seating, interferenceVolumeToleranceMm3: c.input.seatingInterferenceVolumeToleranceMm3 }),
     (c) => connectorCrossSectionGate({ connectorAreaTargetMm2: c.input.connectorAreaTargetMm2, connectors: c.input.connectors }),
-    (c) => contactGate({ contacts: c.input.contacts, contactClampWarning: c.input.contactClampWarning, toleranceMm: c.input.contactToleranceMm }),
+    (c) =>
+      contactGate({
+        contacts: c.input.contacts,
+        contactClampWarning: c.input.contactClampWarning,
+        toleranceMm: c.input.contactToleranceMm,
+        outerShiftBoundMm: c.input.healErrorBoundMm,
+      }),
   ];
 
   // Per-gate progress over the [0.6..1.0] band — pure wrapping, no effect on the

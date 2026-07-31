@@ -134,8 +134,14 @@ export interface RecoveryMarkerStore {
 export interface RecoveryPayloadStore {
   read(checksum: string): Promise<string | null>;
   write(checksum: string, json: string): Promise<void>;
+  /** Delete ONE specific payload by key (a no-op if absent). The GC step
+   * (`writeLocalSnapshot`) and the clear step (`clearLocalSnapshot`) delete
+   * only the checksums THIS session staged — never a blanket delete-all, so a
+   * second live tab's payload is never destroyed (review SF, multi-tab). */
+  delete(checksum: string): Promise<void>;
   /** Delete every stored payload whose key !== `keep` (`keep === null` deletes
-   * all). The post-commit GC step — never touches the just-committed payload. */
+   * all). Retained store API; the module no longer calls it (a blanket prune
+   * would delete a foreign live session's payload — see `delete`). */
   prune(keep: string | null): Promise<void>;
 }
 
@@ -261,6 +267,22 @@ function createIndexedDbPayloadStore(): RecoveryPayloadStore {
         db.close();
       }
     },
+    async delete(checksum: string): Promise<void> {
+      if (!hasIndexedDb()) {
+        return;
+      }
+      const db = await openPayloadDb();
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const tx = db.transaction(PAYLOAD_STORE_NAME, 'readwrite');
+          tx.objectStore(PAYLOAD_STORE_NAME).delete(checksum);
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => reject(tx.error ?? new Error('crashRecovery: payload delete failed'));
+        });
+      } finally {
+        db.close();
+      }
+    },
     async prune(keep: string | null): Promise<void> {
       if (!hasIndexedDb()) {
         return;
@@ -324,9 +346,38 @@ export function __setRecoveryStoresForTests(
   payloadStoreOverride = payload;
 }
 
-// A stable per-session id (diagnostic only). Regenerated on reset-for-tests so
-// each test starts clean.
+// A stable per-session id. Used BOTH as a diagnostic breadcrumb AND as the
+// multi-tab safety key: the marker is one shared localStorage record and the
+// payload store is shared across all same-origin tabs, so a tab must only ever
+// prune/clear the payloads IT staged and only clear the marker when the marker
+// is its own (P8-T4 sessionId discipline; mirrors `markCleanShutdown`'s SF1
+// guard). Regenerated on reset-for-tests so each test (modelling a fresh tab)
+// starts clean.
 let sessionId = generateSessionId();
+
+/** The payload checksums THIS session has staged (the only ones it is allowed
+ * to delete). Never a blanket delete-all, so a second live tab's un-synced
+ * payload survives our GC/clear. Reset per session (per tab). */
+let sessionPayloadChecksums = new Set<string>();
+
+/**
+ * Serializes `writeLocalSnapshot` against `clearLocalSnapshot` (and against
+ * each other): both mutate the shared marker + payload store, and interleaving
+ * their steps can commit the marker pointing at a payload the other just
+ * deleted — a dangling pointer = silent unrecoverable loss (review HIGH). This
+ * mutex guarantees one runs fully before the next starts. Errors are contained
+ * so a rejected op never wedges the queue.
+ */
+let snapshotMutex: Promise<void> = Promise.resolve();
+
+function withSnapshotLock<T>(fn: () => Promise<T>): Promise<T> {
+  const result = snapshotMutex.then(fn, fn);
+  snapshotMutex = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
 
 function generateSessionId(): string {
   return typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `session-${Date.now()}`;
@@ -346,36 +397,57 @@ function generateSessionId(): string {
  * prunes older payloads. Non-blocking; safe to call from a debounce timer.
  */
 export async function writeLocalSnapshot(): Promise<void> {
-  const persistence = usePersistenceStore.getState();
-  if (persistence.activeCaseId === null) {
-    return;
-  }
-  // 'saved'/'saving'/'idle' ⇒ the server has, or is in the middle of getting,
-  // this exact state — no un-synced local edits to protect.
-  if (persistence.status !== 'unsaved' && persistence.status !== 'error') {
-    return;
-  }
-  const document = useCaseStore.getState().document;
-  const json = JSON.stringify(document);
-  const checksum = await sha256Hex(json);
-  // 1. stage the content-addressed payload (never overwrites a prior commit)
-  await payloadStore().write(checksum, json);
-  // 2. commit — flip the marker to this checksum, resetting cleanShutdown to
-  //    false (this session now has recoverable un-synced edits).
-  const snapshotAt = new Date().toISOString();
-  markerStore().write({
-    schemaVersion: RECOVERY_SCHEMA_VERSION,
-    sessionId,
-    cleanShutdown: false,
-    caseId: persistence.activeCaseId,
-    caseName: persistence.activeCaseName ?? '',
-    snapshotAt,
-    payloadChecksum: checksum,
-    journalOperationCount: document.history.length,
+  return withSnapshotLock(async () => {
+    const persistence = usePersistenceStore.getState();
+    if (persistence.activeCaseId === null) {
+      return;
+    }
+    // 'saved'/'idle' ⇒ the server already durably holds this exact state — no
+    // un-synced local edits to protect. 'saving' is DELIBERATELY protected
+    // (review HIGH): an edit saved via a quick Cmd/Ctrl+S within the 2 s
+    // debounce flips status to 'saving' before this timer fires; "in the middle
+    // of getting to the server" is NOT durable — a crash during the PUT means
+    // the server never got it. Protecting 'saving' keeps the edit covered
+    // across the whole save window (the success path clears it afterward).
+    if (
+      persistence.status !== 'unsaved' &&
+      persistence.status !== 'error' &&
+      persistence.status !== 'saving'
+    ) {
+      return;
+    }
+    const document = useCaseStore.getState().document;
+    const json = JSON.stringify(document);
+    const checksum = await sha256Hex(json);
+    // The payloads this session had staged BEFORE this write — the only ones we
+    // are allowed to GC (never a foreign live tab's). Recorded as staged now
+    // (before the await) so a concurrent op sees this session owns `checksum`.
+    const previous = [...sessionPayloadChecksums].filter((c) => c !== checksum);
+    sessionPayloadChecksums.add(checksum);
+    // 1. stage the content-addressed payload (never overwrites a prior commit)
+    await payloadStore().write(checksum, json);
+    // 2. commit — flip the marker to this checksum, resetting cleanShutdown to
+    //    false (this session now has recoverable un-synced edits).
+    const snapshotAt = new Date().toISOString();
+    markerStore().write({
+      schemaVersion: RECOVERY_SCHEMA_VERSION,
+      sessionId,
+      cleanShutdown: false,
+      caseId: persistence.activeCaseId,
+      caseName: persistence.activeCaseName ?? '',
+      snapshotAt,
+      payloadChecksum: checksum,
+      journalOperationCount: document.history.length,
+    });
+    // 3. GC only THIS session's older staged payloads (keep the just-committed
+    //    one). Never `prune`-all: a blanket delete would destroy a second live
+    //    tab's un-synced payload (multi-tab clobber, review HIGH).
+    for (const stale of previous) {
+      sessionPayloadChecksums.delete(stale);
+      await payloadStore().delete(stale);
+    }
+    usePersistenceStore.getState().setLocalBackupAt(snapshotAt);
   });
-  // 3. GC older staged payloads (keep only the just-committed one).
-  await payloadStore().prune(checksum);
-  usePersistenceStore.getState().setLocalBackupAt(snapshotAt);
 }
 
 /**
@@ -385,9 +457,23 @@ export async function writeLocalSnapshot(): Promise<void> {
  * Never called silently over un-synced edits from anywhere else.
  */
 export async function clearLocalSnapshot(): Promise<void> {
-  markerStore().clear();
-  await payloadStore().prune(null);
-  usePersistenceStore.getState().setLocalBackupAt(null);
+  return withSnapshotLock(async () => {
+    const marker = markerStore().read();
+    // Only clear the SHARED marker when it is THIS session's (or absent): a
+    // foreign live tab's commit pointer must survive our server-sync clear
+    // (multi-tab safety; mirrors `markCleanShutdown`'s SF1 guard).
+    if (marker === null || marker.sessionId === sessionId) {
+      markerStore().clear();
+    }
+    // Delete only the payloads THIS session staged — never `prune`-all, which
+    // would destroy a second live tab's un-synced payload.
+    const mine = [...sessionPayloadChecksums];
+    sessionPayloadChecksums.clear();
+    for (const checksum of mine) {
+      await payloadStore().delete(checksum);
+    }
+    usePersistenceStore.getState().setLocalBackupAt(null);
+  });
 }
 
 /**
@@ -564,4 +650,6 @@ function stopLocalSnapshotTracking(): void {
 export function resetCrashRecoveryForTests(): void {
   stopLocalSnapshotTracking();
   sessionId = generateSessionId();
+  sessionPayloadChecksums = new Set();
+  snapshotMutex = Promise.resolve();
 }

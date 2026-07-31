@@ -7,7 +7,9 @@
 // detection, purity/determinism), never exported from this package.
 import { describe, expect, it } from 'vitest';
 import type { QcGateResult } from '@dqcad/shared-types';
-import { DuplicateGateNameError, runQcGates, type QcGate } from './runner.ts';
+import { DuplicateGateNameError, HardGateAcknowledgmentError, NON_ACKNOWLEDGEABLE_GATES, runQcGates, type QcGate } from './runner.ts';
+import { WATERTIGHT_GATE_NAME, MANIFOLD_GATE_NAME } from './watertight.ts';
+import { SELF_INTERSECTION_GATE_NAME } from './selfIntersection.ts';
 
 interface TrivialContext {
   readonly value: number;
@@ -120,6 +122,48 @@ describe('runQcGates — acknowledge path (CLAUDE.md invariant 4: never silently
     });
     expect(report.gates[0]!.acknowledged).toBe(false);
     expect(report.passed).toBe(false);
+  });
+});
+
+describe('runQcGates — HARD gates cannot be acknowledged (structural, non-manufacturable)', () => {
+  const failingWatertight: QcGate<TrivialContext> = () => ({
+    gate: WATERTIGHT_GATE_NAME,
+    passed: false,
+    acknowledged: false,
+    value: null,
+    threshold: null,
+    unit: null,
+    message: 'not watertight',
+  });
+
+  it('the allowlist is exactly the three structural gate-name constants (no drift)', () => {
+    expect(NON_ACKNOWLEDGEABLE_GATES).toEqual(new Set([WATERTIGHT_GATE_NAME, MANIFOLD_GATE_NAME, SELF_INTERSECTION_GATE_NAME]));
+  });
+
+  it('REJECTS an attempt to acknowledge a failing watertight gate (throws, never bypassed)', () => {
+    expect(() =>
+      runQcGates({ value: 1 }, [failingWatertight], { ...baseOptions, acknowledgedGates: [WATERTIGHT_GATE_NAME] }),
+    ).toThrow(HardGateAcknowledgmentError);
+  });
+
+  it('REJECTS acknowledging a failing manifold or selfIntersection gate too', () => {
+    for (const gateName of [MANIFOLD_GATE_NAME, SELF_INTERSECTION_GATE_NAME]) {
+      const g: QcGate<TrivialContext> = () => ({ gate: gateName, passed: false, acknowledged: false, value: null, threshold: null, unit: null, message: 'structural fail' });
+      expect(() => runQcGates({ value: 1 }, [g], { ...baseOptions, acknowledgedGates: [gateName] })).toThrow(HardGateAcknowledgmentError);
+    }
+  });
+
+  it('a PASSING hard gate whose name appears in acknowledgedGates is a no-op (no throw)', () => {
+    const passingWatertight: QcGate<TrivialContext> = () => ({ gate: WATERTIGHT_GATE_NAME, passed: true, acknowledged: false, value: null, threshold: null, unit: null, message: 'ok' });
+    const report = runQcGates({ value: 1 }, [passingWatertight], { ...baseOptions, acknowledgedGates: [WATERTIGHT_GATE_NAME] });
+    expect(report.gates[0]!.acknowledged).toBe(false);
+    expect(report.passed).toBe(true);
+  });
+
+  it('a SOFT gate is still acknowledge-able (the hard-gate rule does not over-reach)', () => {
+    const report = runQcGates({ value: 1 }, [alwaysFailGate], { ...baseOptions, acknowledgedGates: ['alwaysFail'] });
+    expect(report.gates[0]!.acknowledged).toBe(true);
+    expect(report.passed).toBe(true);
   });
 });
 

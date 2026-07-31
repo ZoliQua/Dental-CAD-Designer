@@ -162,7 +162,46 @@ describe('WorkerPool — parseMeshFile: STL', () => {
   });
 });
 
+/** The io-workers review's exact 169-byte hostile PLY: a skipped element with
+ * zero properties + a huge declared count, before the real vertex element.
+ * Pre-fix this pinned a pool worker at ~100% CPU forever (the tiny source
+ * drains, so chunkStream's per-chunk cancel check is never reached again, and
+ * no signal was threaded into parsePlyStream). Post-fix the count/zero-byte-row
+ * guard rejects it synchronously with a typed IoParseError. */
+function hostileSpinPlyBytes(): Uint8Array {
+  const header =
+    'ply\n' +
+    'format binary_little_endian 1.0\n' +
+    'element junk 5000000000\n' +
+    'element vertex 1\n' +
+    'property float64 x\n' +
+    'property float64 y\n' +
+    'property float64 z\n' +
+    'end_header\n';
+  const headerBytes = new TextEncoder().encode(header);
+  const out = new Uint8Array(headerBytes.byteLength + 24);
+  out.set(headerBytes, 0);
+  return out;
+}
+
 describe('WorkerPool — parseMeshFile: PLY', () => {
+  it('rejects the hostile "spin" PLY FAST with a typed error instead of hanging the worker', async () => {
+    const pool = createPool({ size: 1 });
+
+    let thrown: unknown;
+    try {
+      await pool.run('parseMeshFile', { format: 'ply', bytes: hostileSpinPlyBytes() });
+    } catch (error) {
+      thrown = error;
+    }
+    // Comlink preserves name/message across the boundary, not the exact class.
+    expect((thrown as Error)?.name).toMatch(/TruncatedFileError|MalformedSyntaxError/);
+
+    // Worker stays reusable — proof it rejected cleanly rather than wedging.
+    const after = await pool.run('parseMeshFile', { format: 'ply', bytes: plyFixtureBytes(4) });
+    expect(after.kind).toBe('ply-mesh');
+  }, 5000);
+
   it('parses a binary_little_endian PLY and transfers its output buffers', async () => {
     const pool = createPool({ size: 1 });
     const bytes = plyFixtureBytes(50);

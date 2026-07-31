@@ -65,6 +65,23 @@ export const RAW_BODY_ROUTES: ReadonlySet<string> = new Set([
   'POST /api/archives/import',
 ]);
 
+/** Routes that READ query parameters (`request.query.*`) and therefore MUST
+ * carry a `schema.querystring` (validation + serialization). Keyed `METHOD url`.
+ *
+ * Fastify's route metadata cannot tell us whether a handler reads `request.query`
+ * (it is opaque handler code), so — exactly like the body/response gaps that
+ * cannot be auto-detected — this is an EXPLICIT registry: every query-reading
+ * route is listed here, the audit asserts each has a query schema, and
+ * `auditAllowlistFreshness` asserts no entry is stale. A new query-reading route
+ * that the author forgets to schema (and register here) is caught in review by
+ * the missing-registry-entry; a registered route that loses its query schema is
+ * caught by the audit. Today's two query-reading routes: the archive import's
+ * `?overwrite` confirmation and the traceability HTML's `?lang` selector. */
+export const QUERY_READING_ROUTES: ReadonlySet<string> = new Set([
+  'POST /api/archives/import', // ?overwrite=true (no-silent-overwrite confirmation)
+  'GET /api/exports/:id/traceability.html', // ?lang=en|hu|de|es (locale selector)
+]);
+
 /** Routes whose success body is a raw byte stream, or is deliberately
  * un-schema'd (documented per route). Keyed `METHOD url`. */
 export const RAW_OR_NO_SUCCESS_RESPONSE_ROUTES: ReadonlySet<string> = new Set([
@@ -124,6 +141,17 @@ export function auditRoutes(records: readonly RouteRecord[]): string[] {
       );
     }
 
+    // Query: a route that reads query parameters must validate them. Fastify's
+    // metadata cannot signal "reads query", so this is keyed off the explicit
+    // QUERY_READING_ROUTES registry (freshness-checked). Closes the latent blind
+    // spot the earlier audit had — it captured `hasQuerySchema` but never
+    // asserted it (server code-review LOW #4).
+    if (QUERY_READING_ROUTES.has(key) && !r.hasQuerySchema) {
+      violations.push(
+        `${key}: reads query parameters (QUERY_READING_ROUTES) but has no querystring schema`,
+      );
+    }
+
     // Response: every JSON-bodied method must schema at least its success
     // status, unless it streams raw bytes / is a documented no-response route.
     if (
@@ -152,6 +180,7 @@ export function auditAllowlistFreshness(records: readonly RouteRecord[]): string
     ...RAW_BODY_ROUTES,
     ...RAW_OR_NO_SUCCESS_RESPONSE_ROUTES,
     ...NO_REQUEST_BODY_ROUTES,
+    ...QUERY_READING_ROUTES,
   ]) {
     if (!live.has(key)) stale.push(`allowlist entry has no matching live route: ${key}`);
   }

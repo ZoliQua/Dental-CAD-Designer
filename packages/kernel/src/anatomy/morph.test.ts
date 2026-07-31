@@ -16,6 +16,7 @@ import {
   morphAnatomy,
   DEFAULT_MORPH_OPTIONS,
   MorphContactMeshError,
+  NonWatertightMeshError,
   type AnatomyMorphInput,
   type MorphOptions,
   type IndexedMesh,
@@ -290,6 +291,70 @@ describe('morphAnatomy — cervical anchor fallback (coarse placement off the fi
     expect(plan.cervicalAnchorCount).toBeGreaterThan(0);
     const result = solveAnatomyMorph(plan);
     expect(result.marginSealMaxDeviationMm).toBeLessThan(0.010);
+  });
+});
+
+// --- M1: penetration sign from the angle-weighted pseudonormal, not a single
+// face normal. A watertight L-shaped prism (one REFLEX/concave vertical edge):
+// a point in the concave wedge is genuinely INSIDE the solid, but the single
+// closest triangle's face normal reads it as OUTSIDE (clearance, +1) — the
+// systemic gate false-negative. The pseudonormal reads it correctly (negative).
+function lPrism(): IndexedMesh {
+  const poly: [number, number][] = [[0, 0], [2, 0], [2, 1], [1, 1], [1, 2], [0, 2]];
+  const D = 3;
+  const n = poly.length;
+  const pos: number[] = [];
+  for (const [x, y] of poly) pos.push(x, y, 0);
+  for (const [x, y] of poly) pos.push(x, y, D);
+  const idx: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    idx.push(i, j, j + n, i, j + n, i + n);
+  }
+  for (let i = 1; i < n - 1; i++) idx.push(0, i + 1, i); // bottom cap (−z)
+  for (let i = 1; i < n - 1; i++) idx.push(n, n + i, n + i + 1); // top cap (+z)
+  return { positions: new Float64Array(pos), indices: Uint32Array.from(idx) };
+}
+
+describe('morphAnatomy — M1 concave-neighbour penetration sign (pseudonormal)', () => {
+  it('reports NEGATIVE (penetration) for points inside a concave neighbour wedge, not +clearance', () => {
+    // Tiny tooth whose vertices sit INSIDE the L-prism concave wedge (near the
+    // reflex edge x=1,y=1). With ALL strengths 0 (identity morph) the reported
+    // signed distances are just the measurement of those interior points against
+    // the neighbour — negative iff the sign is correct. Pre-fix (single face
+    // normal) these interior points read as +clearance, so this test FAILS.
+    const tooth: IndexedMesh = {
+      positions: new Float64Array([0.6, 1.0, 1.5, 0.9, 1.0, 1.6, 0.7, 1.0, 1.4, 0.7, 0.85, 1.5]),
+      indices: Uint32Array.from([0, 1, 2, 0, 2, 3, 0, 3, 1, 1, 3, 2]),
+    };
+    const marginLoop: Vec3[] = [[-5, -5, -5], [-5, 5, -5], [5, 5, -5], [5, -5, -5]];
+    const plan = planAnatomyMorph({
+      placedMesh: tooth,
+      marginLoop,
+      contacts: [{ kind: 'proximalDistal', mesh: lPrism(), targetPenetrationMm: 0.02 }],
+      options: { minCervicalAnchors: 3, maxCervicalAnchors: 4 },
+    });
+    const res = solveAnatomyMorph(plan, { proximalMesial: 0, proximalDistal: 0, antagonist: 0 });
+    const c = res.contacts.find((x) => x.kind === 'proximalDistal')!;
+    // Genuinely inside the solid ⇒ penetration (negative). The face-normal
+    // convention would report a POSITIVE (clearance) value here.
+    expect(c.achievedSignedDistanceMm).toBeLessThan(0);
+    expect(c.regionMinSignedDistanceMm).toBeLessThan(0);
+    expect(c.achievedSignedDistanceMm).toBeCloseTo(-0.1, 6);
+    expect(c.regionMinSignedDistanceMm).toBeCloseTo(-0.4, 6);
+  });
+
+  it('REJECTS a non-watertight neighbour (no well-defined inside/outside)', () => {
+    // An OPEN neighbour (single triangle) has no consistent "inside" — signing a
+    // penetration query against it is meaningless. Pre-fix it was measured
+    // anyway (indices.length !== 0); post-fix computePseudonormals rejects it.
+    const openMesh: IndexedMesh = {
+      positions: new Float64Array([10, -1, 2, 10, 1, 2, 10, 0, 4]),
+      indices: Uint32Array.from([0, 1, 2]),
+    };
+    expect(() => morphAnatomy(baseInput({
+      contacts: [{ kind: 'proximalDistal', mesh: openMesh, targetPenetrationMm: PEN }],
+    }))).toThrow(NonWatertightMeshError);
   });
 });
 

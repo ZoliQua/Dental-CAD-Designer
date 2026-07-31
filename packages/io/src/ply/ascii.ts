@@ -19,7 +19,7 @@
 import { MalformedSyntaxError, TruncatedFileError } from '../types.ts';
 import type { ParseDiagnostics } from '../types.ts';
 import { GrowableUint32Array } from './growable-uint32-array.ts';
-import { assertPlausibleElementCount } from './element-count-guard.ts';
+import { assertPlausibleElementCount, assertSkippableElement } from './element-count-guard.ts';
 import { plyColorNormalizationDivisor } from './scalars.ts';
 import type { FacePlan, PlyPlan, VertexPlan } from './plan.ts';
 import type { PlyElementSpec, PlyHeader, PlyMesh } from './types.ts';
@@ -341,6 +341,13 @@ function readFaceElement(
 }
 
 function skipElement(source: LineSource, element: PlyElementSpec): void {
+  // Same pre-loop guard the binary/streaming skip paths use — an
+  // implausibly huge or zero-property declared count is rejected before the
+  // row loop. The ASCII sync reader is not itself vulnerable to the unbounded
+  // spin (its `nextRowTokens` hits EOF and throws), but applying the identical
+  // guard here keeps all three skip paths consistent and rejects the hostile
+  // header with the SAME typed error regardless of format/entry point.
+  assertSkippableElement(element);
   for (let r = 0; r < element.count; r++) {
     const { tokens, lineNumber } = nextRowTokens(source, `${element.name}[${r}]`);
     let pos = 0;

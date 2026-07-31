@@ -56,8 +56,8 @@
 // is `max(maxContactResidual, max regionResidual)`, so a region that
 // over-penetrates while the contact vertices sit on target CANNOT report a
 // deceptively small bound to the contact/interpenetration gate (conservative by
-// construction — see the open-patch sign caveat on `signedDistanceToMesh`: it
-// can over-report, never silently under-report). Typical residual on the
+// construction — the signed distance's sign is EXACT on the required watertight
+// neighbour; see the pseudonormal-sign note on `signedDistanceToMesh`). Typical residual on the
 // synthetic analytic case is < 1 µm; on real curved/unsegmented neighbours it
 // is bounded by the fixed-iteration, CLAMPED root-find (a clamped, unachieved
 // contact is flagged in `clampedContacts`, never a silent success).
@@ -73,15 +73,20 @@ import type { IndexedMesh } from '../mesh/types.ts';
 import type { Bvh } from '../bvh/types.ts';
 import { buildBvh } from '../bvh/build.ts';
 import { closestPoint } from '../bvh/closestPoint.ts';
+import { computePseudonormals, type Pseudonormals } from '../sdf/pseudonormals.ts';
+import { signedClosestPoint } from '../sdf/signedDistance.ts';
 import { fitRbf, applyRbfDisplacement, evaluateRbf, type RbfControlPoint, type RbfField } from '../rbf/rbf.ts';
 
 export type MorphContactKind = 'proximalMesial' | 'proximalDistal' | 'antagonist';
 
-/** One opposing surface the morph makes contact against. `mesh` MUST have
- * triangles and consistent OUTWARD winding (the intake pipeline's
- * `orientNormalsConsistently` guarantees this) — the signed distance is
- * classified by the closest triangle's face normal, mirroring the P1
- * distance-heatmap job's `signed` option. */
+/** One opposing surface the morph makes contact against. `mesh` MUST be a
+ * WATERTIGHT, consistently OUTWARD-wound 2-manifold (the intake pipeline's
+ * `orientNormalsConsistently` + repair/hole-filling guarantee this) — the
+ * signed distance is classified by the angle-weighted PSEUDONORMAL of the
+ * closest Voronoi feature (`sdf/signedDistance.ts`), so the inside/outside
+ * sign is EXACT everywhere on the surface, including at concave edges/vertices
+ * where a single incident face normal flips. A non-watertight neighbour is
+ * REJECTED (`NonWatertightMeshError`), never silently measured. */
 export interface MorphContactInput {
   readonly kind: MorphContactKind;
   readonly mesh: IndexedMesh;
@@ -168,6 +173,27 @@ export class MorphNoAnchorsError extends Error {
   }
 }
 
+/** The closest triangle of a contact neighbour is DEGENERATE (zero-area
+ * sliver): its face normal is `[0,0,0]`, so the inside/outside sign cannot be
+ * derived from it. A silent fallback to `+1` (clearance) would let a
+ * penetrating point read as clearance and pass the interpenetration gate — a
+ * false negative — so this is a HARD ERROR (fail-closed). Repair the neighbour
+ * mesh (`packages/kernel/src/repair`) before measuring against it. */
+export class MorphDegenerateNeighborTriangleError extends Error {
+  readonly kind: MorphContactKind;
+  readonly triangleIndex: number;
+  constructor(kind: MorphContactKind, triangleIndex: number) {
+    super(
+      `anatomy/morph: contact "${kind}" nearest triangle ${triangleIndex} is degenerate (zero-area sliver) — ` +
+        `its face normal is [0,0,0], so the penetration sign is undefined; refusing to default it to +1 ` +
+        `(clearance). Repair the neighbour mesh (packages/kernel/src/repair) before measuring against it.`,
+    );
+    this.name = 'MorphDegenerateNeighborTriangleError';
+    this.kind = kind;
+    this.triangleIndex = triangleIndex;
+  }
+}
+
 export interface AnatomyMorphInput {
   /** The placed library tooth (Task 5 output). NEVER mutated. */
   readonly placedMesh: IndexedMesh;
@@ -186,6 +212,10 @@ interface ContactPlan {
   readonly targetPenetrationMm: number;
   readonly mesh: IndexedMesh;
   readonly bvh: Bvh;
+  /** Angle-weighted pseudonormals of `mesh` — the EXACT inside/outside sign
+   * source for every signed-distance query against this neighbour (built once
+   * in `planAnatomyMorph`; requires `mesh` watertight). */
+  readonly pseudonormals: Pseudonormals;
   readonly facingVertexIndices: Int32Array;
   /** True if the root-find hit the `contactMaxExtraTravelMm` clamp (target not
    * freely reachable) — surfaced as a QC warning. */
@@ -234,9 +264,8 @@ export interface MorphContactResult {
   /** |achievedSignedDistance − (−target)| — the reported residual. */
   readonly contactResidualMm: number;
   /** Min signed distance over the contact's facing region (most-penetrating
-   * point) — a heatmap summary reusing `closestPoint`. SEE the sign caveat on
-   * `signedDistanceToMesh`: on an OPEN neighbour patch this is a lower bound and
-   * may over-state penetration. */
+   * point) — a heatmap summary. The sign is EXACT (angle-weighted pseudonormal
+   * on the required watertight neighbour — see `signedDistanceToMesh`). */
   readonly regionMinSignedDistanceMm: number;
   readonly regionMeanSignedDistanceMm: number;
   readonly regionRmsSignedDistanceMm: number;
@@ -262,8 +291,8 @@ export interface AnatomyMorphResult {
   /** The @errorBound fed downstream: `max(maxContactResidual, max region
    * residual)` — so a case where the contact vertices sit on target but the
    * region over-penetrates elsewhere CANNOT report a deceptively small bound to
-   * the contact/interpenetration gate. Conservative by construction (see the
-   * open-patch sign caveat: it can over-report, never silently under-report).
+   * the contact/interpenetration gate. Conservative by construction; the signed
+   * distance's sign is EXACT on the required watertight neighbour (pseudonormal).
    * `null` if no active contacts. */
   readonly errorBoundMm: number | null;
   /** The kinds of contacts whose root-find was CLAMPED (unachieved target) —
@@ -286,20 +315,21 @@ export interface AnatomyMorphResult {
   readonly controlPointCount: number;
 }
 
-// --- signed distance to an outward-wound triangle mesh (mirrors heatmap job) ---
+// --- signed distance to a WATERTIGHT outward-wound triangle mesh ------------
 //
-// SIGN CAVEAT (important for reading the region metrics below): the sign comes
-// from the CLOSEST TRIANGLE's face normal (the P1 distance-heatmap convention),
-// which is reliable on a closed, consistently-outward-wound mesh but UNRELIABLE
-// near the OPEN BOUNDARIES of a cut/rough patch — there the closest feature is a
-// boundary edge whose adjacent face normal need not point "outward" in the
-// inside/outside sense, so a point just outside the patch can read as negative
-// (spurious penetration). Consequence: on an OPEN neighbour patch (e.g. a real
-// arch-ball submesh), `regionMinSignedDistanceMm` is a LOWER BOUND on the true
-// signed distance and may over-state penetration. This is deliberately the SAFE
-// direction for the QC error bound (it can over-report, never silently
-// under-report, contact error — a fail-safe for a downstream contact gate); on
-// a WATERTIGHT neighbour (a full scan) the sign is trustworthy.
+// SIGN (important for reading the region metrics below): the inside/outside
+// sign comes from the angle-weighted PSEUDONORMAL of the closest Voronoi
+// feature (`sdf/signedDistance.ts`'s `signedClosestPoint`, Bærentzen & Aanæs
+// 2005), NOT the single closest triangle's face normal. On a watertight,
+// consistently-outward-wound neighbour this sign is EXACT everywhere — at a
+// concave (reflex) edge or vertex, where a single incident face normal flips
+// the sign of a penetrating query point (reading penetration as clearance —
+// a gate false-negative), the pseudonormal gives the correct sign. The
+// neighbour mesh MUST therefore be watertight: `computePseudonormals` (called
+// once per contact in `planAnatomyMorph`) REJECTS a non-watertight mesh with
+// `NonWatertightMeshError` rather than measuring against an ill-defined
+// "inside", and a degenerate (zero-area) nearest triangle is a HARD ERROR
+// (`MorphDegenerateNeighborTriangleError`), never a silent `+1` (clearance).
 
 function faceNormalUnnormalized(mesh: IndexedMesh, tri: number): Vec3 {
   const i0 = mesh.indices[tri * 3]!;
@@ -318,19 +348,38 @@ function faceNormalUnnormalized(mesh: IndexedMesh, tri: number): Vec3 {
 interface SignedResult {
   readonly signedDistance: number;
   readonly closest: Vec3;
-  /** Unit OUTWARD normal at the closest triangle. */
+  /** Unit OUTWARD normal at the closest triangle (used only for the
+   * on-surface approach-direction fallback in `refineContactTarget`). */
   readonly outwardNormal: Vec3;
 }
 
-function signedDistanceToMesh(point: Vec3, mesh: IndexedMesh, bvh: Bvh): SignedResult {
-  const cp = closestPoint(mesh, bvh, point);
-  const n = faceNormalUnnormalized(mesh, cp.triangleIndex);
+/**
+ * Signed closest-surface distance of `point` to a WATERTIGHT neighbour `mesh`
+ * (negative = inside/penetrating, positive = outside/clearance), with the sign
+ * taken from the angle-weighted pseudonormal — see this section's comment.
+ *
+ * @throws {MorphDegenerateNeighborTriangleError} if the nearest triangle is a
+ * zero-area sliver (its face normal is `[0,0,0]`) — refusing to default the
+ * sign to `+1`.
+ */
+function signedDistanceToMesh(
+  point: Vec3,
+  mesh: IndexedMesh,
+  bvh: Bvh,
+  pseudonormals: Pseudonormals,
+  kind: MorphContactKind,
+): SignedResult {
+  const scp = signedClosestPoint(mesh, bvh, pseudonormals, point);
+  const n = faceNormalUnnormalized(mesh, scp.triangleIndex);
   const nl = Math.hypot(n[0], n[1], n[2]);
-  const outward: Vec3 = nl > 0 ? [n[0] / nl, n[1] / nl, n[2] / nl] : [0, 0, 0];
-  const rel: Vec3 = [point[0] - cp.point[0], point[1] - cp.point[1], point[2] - cp.point[2]];
-  const dotN = rel[0] * outward[0] + rel[1] * outward[1] + rel[2] * outward[2];
-  const sign = dotN < 0 ? -1 : 1;
-  return { signedDistance: sign * cp.distance, closest: [cp.point[0], cp.point[1], cp.point[2]], outwardNormal: outward };
+  if (!(nl > 0)) {
+    // A degenerate nearest triangle: the pseudonormal sign is only as
+    // trustworthy as its zero-area face normal — fail closed rather than let a
+    // penetrating point silently read as clearance (the M1 false-negative).
+    throw new MorphDegenerateNeighborTriangleError(kind, scp.triangleIndex);
+  }
+  const outward: Vec3 = [n[0] / nl, n[1] / nl, n[2] / nl];
+  return { signedDistance: scp.signedDistance, closest: [scp.point[0], scp.point[1], scp.point[2]], outwardNormal: outward };
 }
 
 // --- contact-target root find (FIXED iterations — determinism) ---
@@ -361,6 +410,8 @@ function refineContactTarget(
   center: Vec3,
   mesh: IndexedMesh,
   bvh: Bvh,
+  pseudonormals: Pseudonormals,
+  kind: MorphContactKind,
   targetPen: number,
   iterations: number,
   maxExtraTravel: number,
@@ -375,13 +426,13 @@ function refineContactTarget(
     ny /= nl;
     nz /= nl;
   } else {
-    const o = signedDistanceToMesh(center, mesh, bvh).outwardNormal;
+    const o = signedDistanceToMesh(center, mesh, bvh, pseudonormals, kind).outwardNormal;
     nx = -o[0];
     ny = -o[1];
     nz = -o[2];
   }
   const n0: Vec3 = [nx, ny, nz];
-  const g0 = signedDistanceToMesh(center, mesh, bvh).signedDistance;
+  const g0 = signedDistanceToMesh(center, mesh, bvh, pseudonormals, kind).signedDistance;
   // A clean contact needs travel = g0 + targetPen; bound the search around it.
   const travelHi = Math.max(0, g0) + targetPen + maxExtraTravel;
   const travelLo = Math.min(0, g0) - maxExtraTravel;
@@ -389,7 +440,7 @@ function refineContactTarget(
   let clampBound = false;
   for (let it = 0; it < iterations; it++) {
     const t: Vec3 = [center[0] + n0[0] * travel, center[1] + n0[1] * travel, center[2] + n0[2] * travel];
-    const s = signedDistanceToMesh(t, mesh, bvh).signedDistance;
+    const s = signedDistanceToMesh(t, mesh, bvh, pseudonormals, kind).signedDistance;
     travel += s + targetPen;
     if (travel > travelHi) {
       travel = travelHi;
@@ -434,6 +485,11 @@ function strideSubsample(indices: number[], max: number): number[] {
  * cheap slider path.
  *
  * @throws {MorphContactMeshError} if a contact mesh has no triangles.
+ * @throws {NonWatertightMeshError} (sdf/pseudonormals.ts) if a contact
+ * neighbour mesh is not watertight — the inside/outside sign is only
+ * well-defined for a closed surface; repair/hole-fill it first.
+ * @throws {MorphDegenerateNeighborTriangleError} if a neighbour's nearest
+ * triangle is a zero-area sliver (undefined sign) — fail-closed, never `+1`.
  * @throws {MorphNoAnchorsError} if no fixed anchors could be selected.
  */
 export function planAnatomyMorph(input: AnatomyMorphInput): AnatomyMorphPlan {
@@ -447,6 +503,11 @@ export function planAnatomyMorph(input: AnatomyMorphInput): AnatomyMorphPlan {
   for (const contact of input.contacts) {
     if (contact.mesh.indices.length === 0) throw new MorphContactMeshError(contact.kind);
     const bvh = buildBvh(contact.mesh);
+    // EXACT inside/outside sign source — rejects a non-watertight neighbour
+    // (`NonWatertightMeshError`) rather than measuring against an ill-defined
+    // "inside" (the M1 fix). Built ONCE per contact, reused by the root-find
+    // and the solve-time measurement.
+    const pseudonormals = computePseudonormals(contact.mesh);
     // Contact vertex = tooth vertex with the smallest distance to `mesh`
     // (lowest index wins on an exact tie — deterministic).
     let bestIdx = -1;
@@ -463,6 +524,8 @@ export function planAnatomyMorph(input: AnatomyMorphInput): AnatomyMorphPlan {
       center,
       contact.mesh,
       bvh,
+      pseudonormals,
+      contact.kind,
       contact.targetPenetrationMm,
       options.contactRefinementIterations,
       options.contactMaxExtraTravelMm,
@@ -487,6 +550,7 @@ export function planAnatomyMorph(input: AnatomyMorphInput): AnatomyMorphPlan {
       targetPenetrationMm: contact.targetPenetrationMm,
       mesh: contact.mesh,
       bvh,
+      pseudonormals,
       facingVertexIndices: Int32Array.from(facing),
       clampBound,
     });
@@ -634,7 +698,7 @@ export function solveAnatomyMorph(plan: AnatomyMorphPlan, strengths?: MorphStren
     const c = plan.contacts[ci]!;
     const vi = c.contactVertexIndex;
     const vpos: Vec3 = [morphedPositions[vi * 3]!, morphedPositions[vi * 3 + 1]!, morphedPositions[vi * 3 + 2]!];
-    const achieved = signedDistanceToMesh(vpos, c.mesh, c.bvh).signedDistance;
+    const achieved = signedDistanceToMesh(vpos, c.mesh, c.bvh, c.pseudonormals, c.kind).signedDistance;
     const residual = Math.abs(achieved - -c.targetPenetrationMm);
 
     let regionMin = Infinity;
@@ -644,7 +708,7 @@ export function solveAnatomyMorph(plan: AnatomyMorphPlan, strengths?: MorphStren
     for (let f = 0; f < fCount; f++) {
       const fv = c.facingVertexIndices[f]!;
       const fp: Vec3 = [morphedPositions[fv * 3]!, morphedPositions[fv * 3 + 1]!, morphedPositions[fv * 3 + 2]!];
-      const sd = signedDistanceToMesh(fp, c.mesh, c.bvh).signedDistance;
+      const sd = signedDistanceToMesh(fp, c.mesh, c.bvh, c.pseudonormals, c.kind).signedDistance;
       if (sd < regionMin) regionMin = sd;
       sum += sd;
       sumSq += sd * sd;

@@ -60,6 +60,7 @@ import {
 import { readMeshBytes, storeMeshBytes } from './mesh-storage.js';
 import { readFinalMeshBytes, storeFinalMeshContainer, FinalMeshContentMismatchError } from './final-mesh-storage.js';
 import { FinalMeshContainerError } from '@dqcad/io';
+import { validateCaseDocument, summarizeCaseDocumentErrors } from './case-document-validate.js';
 import {
   archiveImportQuerySchema,
   archiveImportResponseSchema,
@@ -105,6 +106,9 @@ interface ArchivedExportRow {
   acknowledgmentsJson: string;
   traceabilityJson: string | null;
   importedUnverified: boolean | null;
+  /** H1 fix (server code-review) — the client-attested gate provenance; carried
+   * verbatim so an archived release round-trips identically. */
+  attestedGatesJson: string | null;
   releasedAt: string;
 }
 
@@ -237,7 +241,40 @@ export function registerArchiveRoutes(app: FastifyInstance, deps: ArchiveRouteDe
         reply.code(400);
         return { error: 'archive-invalid', message: 'archive has no case-document entry' };
       }
-      const document = JSON.parse(new TextDecoder().decode(docEntry.bytes)) as CaseDocument;
+      // Parse the reconstructed document. A non-JSON case-document entry is a
+      // malformed archive (400), not a 500.
+      let parsedDocument: unknown;
+      try {
+        parsedDocument = JSON.parse(new TextDecoder().decode(docEntry.bytes));
+      } catch (error) {
+        reply.code(400);
+        return {
+          error: 'archive-invalid',
+          message: `the archive's case-document entry is not parseable JSON: ${(error as Error).message}`,
+          entryName: 'case-document',
+        };
+      }
+
+      // MEDIUM #2 Defect B — validate the reconstructed document against the
+      // SAME strict `caseDocumentSchema` that `PUT /api/cases/:id` enforces,
+      // BEFORE it is persisted. Import is otherwise a second write-path that
+      // could store a document PUT would reject (arbitrary `schemaVersion`,
+      // missing/extra fields), which `GET /api/cases/:id` then serves verbatim
+      // (ADR-005). An archive is client-supplied + unsigned (its manifest gives
+      // integrity, not authenticity), so this gate is load-bearing even though
+      // the route is auth-gated. Rejected with a typed 400 naming the failure.
+      const validation = validateCaseDocument(parsedDocument);
+      if (!validation.valid) {
+        reply.code(400);
+        return {
+          error: 'archive-invalid',
+          message:
+            'the archive\'s reconstructed case-document does not satisfy the case-document schema ' +
+            `(the same contract PUT /api/cases/:id enforces): ${summarizeCaseDocumentErrors(validation.errors)}`,
+          entryName: 'case-document',
+        };
+      }
+      const document = parsedDocument as CaseDocument;
       const caseId = document.id;
       const overwrite = request.query.overwrite === true;
 
@@ -251,6 +288,36 @@ export function registerArchiveRoutes(app: FastifyInstance, deps: ArchiveRouteDe
             '?overwrite=true to confirm (invariant 5: no silent mutation).',
           caseId,
         };
+      }
+
+      // Parse the export ledger rows (verbatim, original ids + releasedAt
+      // preserved) and validate their case-scoping BEFORE any write, so a
+      // hostile archive persists NOTHING.
+      const exportRowEntries = [...parsed.entries.entries()].filter(([, e]) => e.kind === 'export-row');
+      const exportRows: ArchivedExportRow[] = exportRowEntries.map(
+        ([, e]) => JSON.parse(new TextDecoder().decode(e.bytes)) as ArchivedExportRow,
+      );
+
+      // MEDIUM #2 Defect A — cross-case ledger injection. A crafted (integrity-
+      // valid, unsigned) archive can carry `export-row` entries whose `caseId`
+      // names a DIFFERENT case than the one being imported. The overwrite path
+      // only clears rows for THIS `caseId`, so a foreign-keyed row would inject/
+      // pollute an UNRELATED case's release ledger. A legitimate archive (built
+      // by the export route) only ever carries rows for its own case, so any
+      // mismatch is malformed/hostile: reject with a typed 400 naming the
+      // foreign id — never write a row keyed to a case other than the imported
+      // one. (The rows are also RE-KEYED to `caseId` below, belt-and-suspenders.)
+      for (const row of exportRows) {
+        if (row.caseId !== caseId) {
+          reply.code(400);
+          return {
+            error: 'archive-invalid',
+            message:
+              `an export-row entry is keyed to case ${row.caseId}, but this archive imports case ${caseId} — ` +
+              'refusing to inject a release row into a different case\'s ledger (cross-case ledger injection).',
+            entryName: `export-row/${row.id}`,
+          };
+        }
       }
 
       // Content-addressed stores first (idempotent + immutable): scans, final
@@ -280,12 +347,6 @@ export function registerArchiveRoutes(app: FastifyInstance, deps: ArchiveRouteDe
         }
       }
 
-      // Export ledger rows (verbatim, original ids + releasedAt preserved).
-      const exportRowEntries = [...parsed.entries.entries()].filter(([, e]) => e.kind === 'export-row');
-      const exportRows: ArchivedExportRow[] = exportRowEntries.map(
-        ([, e]) => JSON.parse(new TextDecoder().decode(e.bytes)) as ArchivedExportRow,
-      );
-
       // Transaction: case row + its export rows are reconstructed atomically.
       await prisma.$transaction(async (tx) => {
         if (existing) {
@@ -312,7 +373,9 @@ export function registerArchiveRoutes(app: FastifyInstance, deps: ArchiveRouteDe
         for (const row of exportRows) {
           const data: Prisma.ExportUncheckedCreateInput = {
             id: row.id,
-            caseId: row.caseId,
+            // Re-keyed to the imported case id (verified equal above) — a row is
+            // NEVER written under a foreign case id (MEDIUM #2 Defect A).
+            caseId,
             restorationId: row.restorationId,
             restorationType: row.restorationType,
             teethJson: row.teethJson,
@@ -332,6 +395,10 @@ export function registerArchiveRoutes(app: FastifyInstance, deps: ArchiveRouteDe
             qcReportJson: row.qcReportJson,
             acknowledgmentsJson: row.acknowledgmentsJson,
             traceabilityJson: row.traceabilityJson,
+            // H1 fix: the client-attested gate provenance, carried verbatim
+            // (null on pre-column archives) so the imported ledger row preserves
+            // it round-trip.
+            attestedGatesJson: row.attestedGatesJson ?? null,
             // Provenance: THIS row arrived via import, unverified — stamp it
             // regardless of what the archive claimed (review F-B1). The ledger
             // must never present an imported release as server-re-validated.

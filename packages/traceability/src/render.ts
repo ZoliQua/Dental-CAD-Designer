@@ -240,9 +240,19 @@ export function renderTraceabilityHtml(
   const summaryClass = document.qc.passed ? 'summary-pass' : 'summary-fail';
   const summaryText = document.qc.passed ? t('qcPassed') : t('qcFailed');
 
+  // Defense-in-depth: EVERY interpolation in this regulatory renderer is
+  // uniformly escaped. `locale` is a typed union sanitized at the call sites
+  // and `schemaVersion` is a numeric const, so neither is attacker-reachable
+  // today — but a future caller forwarding an unsanitized value must never be
+  // able to break out of the `lang` attribute or the schema-version text.
+  // `schemaVersion` is additionally coerced through `Number(...)` so any
+  // non-numeric injection collapses to `NaN` before escaping.
+  const localeAttr = escapeHtml(options.locale);
+  const schemaVersionText = escapeHtml(String(Number(document.schemaVersion)));
+
   return (
     `<!doctype html>` +
-    `<html lang="${options.locale}"><head><meta charset="utf-8">` +
+    `<html lang="${localeAttr}"><head><meta charset="utf-8">` +
     `<title>${escapeHtml(t('title'))}</title>` +
     `<style>${STYLE}</style></head>` +
     `<body class="${isPreview ? 'kind-preview' : 'kind-release'}">` +
@@ -252,7 +262,7 @@ export function renderTraceabilityHtml(
       : '') +
     `<header><h1>${escapeHtml(t('title'))}</h1>` +
     `<p class="kind">${escapeHtml(isPreview ? t('kindPreview') : t('kindRelease'))}</p>` +
-    `<p class="meta">${escapeHtml(t('schemaVersionLabel'))}: ${document.schemaVersion}</p></header>` +
+    `<p class="meta">${escapeHtml(t('schemaVersionLabel'))}: ${schemaVersionText}</p></header>` +
     `<section><h2>${escapeHtml(t('identityHeading'))}</h2><dl>` +
     row(t('caseLabel'), document.identity.caseId) +
     row(t('restorationLabel'), document.identity.restorationId) +

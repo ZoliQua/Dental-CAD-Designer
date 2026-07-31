@@ -16,10 +16,12 @@
 // validate`) — see validate.ts's module doc (keeps ajv out of the client
 // bundle by construction).
 export {
+  CLIENT_ATTESTED_GATES_LIMITATION_CODE,
   OUTER_ENVELOPE_LIMITATION,
   ReleaseTraceabilityInputError,
   buildPreviewTraceabilityDocument,
   buildReleaseTraceabilityDocument,
+  clientAttestedGatesLimitation,
   serializeTraceabilityDocument,
 } from './document.ts';
 export type { PreviewTraceabilityInput, ReleaseTraceabilityInput } from './document.ts';

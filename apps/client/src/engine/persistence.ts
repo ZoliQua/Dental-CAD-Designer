@@ -62,7 +62,7 @@ import { authHeaders } from './apiAuth';
 import { caseStore } from './caseStore';
 import { migrateCaseDocumentIfNeeded } from './caseDocumentMigration';
 import { clearLocalSnapshot } from './crashRecovery';
-import { logInfo } from './diagnosticLog';
+import { logInfo, logWarn } from './diagnosticLog';
 import { liveFinalMeshForRestoration, type LiveFinalMeshBuffers } from './finalMeshSource';
 import { getPool, releaseBvhForMesh } from './workers';
 
@@ -651,6 +651,30 @@ async function uploadMissingFinalMeshes(): Promise<void> {
 }
 
 /**
+ * True when `document` has a scene-referenced `MeshAsset` whose bytes were NOT
+ * uploaded yet (no `fileHash`) but whose live geometry buffers are still
+ * resident — i.e. a mesh that CAN and MUST still be uploaded before the save is
+ * complete. A mesh imported DURING a save's upload window lands here:
+ * `uploadMissingMeshes` snapshotted the mesh list before it existed, so its
+ * bytes never uploaded, yet the late-read `documentToSave` still contains it.
+ * Marking such a document clean would silently lose that mesh on reload
+ * (`reconstructSceneMeshes` skips a scene mesh with no `fileHash`). A scene
+ * mesh with no `fileHash` AND no live buffers is deliberately NOT counted — it
+ * cannot be uploaded (the documented `removeSceneNode`-before-save limitation),
+ * so retrying would loop forever with no progress.
+ */
+function hasPendingUploadableSceneMesh(document: CaseDocument): boolean {
+  const liveMeshIds = new Set(document.scene.map((node) => node.meshId));
+  for (const meshId of liveMeshIds) {
+    const asset = document.meshes.find((mesh) => mesh.contentHash === meshId);
+    if (asset && !asset.fileHash && caseStore.meshStore.get(asset.contentHash)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Saves the active case: uploads any not-yet-persisted mesh bytes, then
  * `PUT`s the full document. A no-op if there's no active case, the document
  * hasn't changed since the last confirmed save, or a save is already in
@@ -674,38 +698,76 @@ export async function save(): Promise<void> {
   try {
     await uploadMissingMeshes();
     await uploadMissingFinalMeshes();
+
+    // BLOCKER: re-verify the SAME case is still active BEFORE the destructive
+    // PUT. `documentToSave` is read from the LIVE store below (it must be — the
+    // `fileHash`es stamped by the upload phase above live there, not in any
+    // entry-time snapshot). But if the user opened/created a DIFFERENT case
+    // during the awaited uploads, the live document is now the NEW case's, and
+    // PUTting it to `activeCaseId` (the OLD case's URL) would silently overwrite
+    // the old case with the new case's design (createCase's empty document
+    // would wipe it to empty). Abort BEFORE the PUT — visibly (a diagnostic
+    // breadcrumb), never a silent cross-case overwrite. The now-active case's
+    // own tracking (set by openCase/createCase) is left intact.
+    if (usePersistenceStore.getState().activeCaseId !== activeCaseId) {
+      logWarn('save.abortedCaseSwitched', { entryCaseId: activeCaseId });
+      return;
+    }
+
     const documentToSave = useCaseStore.getState().document;
     const summary = await requestJson<CaseSummary>('PUT', `/cases/${activeCaseId}`, documentToSave);
     if (usePersistenceStore.getState().activeCaseId !== activeCaseId) {
-      // The user opened/created a DIFFERENT case while this save's network
-      // calls were in flight (openCase/createCase already reset
-      // lastPersistedDocument/status/meshStore for the now-active case) —
-      // the PUT above still correctly wrote `documentToSave` to ITS OWN
-      // case id on the server (harmless, even useful), but applying its
-      // "saved" bookkeeping here would clobber the NEW case's tracking
-      // state. Silently drop it.
+      // The case switched DURING the PUT itself (after the pre-PUT check above).
+      // `documentToSave` was captured while `activeCaseId` was still the entry
+      // case (the pre-PUT guard proves it), so the PUT correctly wrote the OLD
+      // case's own document to its own id — only the local "saved" bookkeeping
+      // is now stale (openCase/createCase reset it for the new case). Drop it.
       return;
     }
-    lastPersistedDocument = documentToSave;
-    // Phase 8 Task 4: the server now durably holds `documentToSave`, so the
-    // crash-safe LOCAL snapshot for this state is redundant — clear it (a crash
-    // after a confirmed server save loses nothing). If a newer mutation landed
-    // while this PUT was in flight, the document is dirty again and the local
-    // debounce (crashRecovery.ts) writes a fresh snapshot for THOSE edits; this
-    // clear only drops the now-server-durable state. Fire-and-forget: it is a
-    // best-effort local cleanup, never gates the save result.
-    void clearLocalSnapshot();
+
+    // HIGH: a mesh imported DURING the upload window is present in
+    // `documentToSave` but its bytes were never uploaded (uploadMissingMeshes
+    // snapshotted the mesh list before it existed). Track byte-upload
+    // completion INDEPENDENTLY of document reference identity: if any scene
+    // mesh still lacks durable bytes, do NOT fold the document into the clean
+    // baseline (it would be silently dropped on reload) and do NOT clear the
+    // crash snapshot — keep it dirty and retry (the retry's uploadMissingMeshes
+    // picks up the now-resident mesh and uploads it).
+    const incompleteMeshUpload = hasPendingUploadableSceneMesh(documentToSave);
     usePersistenceStore.getState().setActiveCase({ id: summary.id, name: summary.name });
     usePersistenceStore.getState().setLastSavedAt(summary.updatedAt);
-    // A mutation may have landed WHILE this save's network calls were in
-    // flight (`documentToSave` was snapshotted before them) — if so the
-    // document is dirty again right away; the mutation's own
-    // useCaseStore.subscribe callback (below) has already scheduled a fresh
-    // autosave timer for it, so nothing further is needed here besides
-    // reflecting that in the status.
-    usePersistenceStore.getState().setStatus(isDirty() ? 'unsaved' : 'saved');
+    if (incompleteMeshUpload) {
+      // Leave `lastPersistedDocument` unchanged so `isDirty()` stays true, and
+      // request a coalesced follow-up save (the `finally` fires it) that will
+      // upload the mid-save mesh's bytes. The crash snapshot is intentionally
+      // NOT cleared: the server does not yet fully hold this geometry.
+      pendingSaveRequested = true;
+      usePersistenceStore.getState().setStatus('unsaved');
+    } else {
+      lastPersistedDocument = documentToSave;
+      // Phase 8 Task 4: the server now durably holds `documentToSave`, so the
+      // crash-safe LOCAL snapshot for this state is redundant — clear it (a
+      // crash after a confirmed server save loses nothing). If a newer mutation
+      // landed while this PUT was in flight, the document is dirty again and the
+      // local debounce (crashRecovery.ts) writes a fresh snapshot for THOSE
+      // edits; this clear only drops the now-server-durable state.
+      // Fire-and-forget: best-effort local cleanup, never gates the save result.
+      void clearLocalSnapshot();
+      // A mutation may have landed WHILE this save's network calls were in
+      // flight (`documentToSave` was snapshotted before them) — if so the
+      // document is dirty again right away; the mutation's own
+      // useCaseStore.subscribe callback (below) has already scheduled a fresh
+      // autosave timer for it, so nothing further is needed here besides
+      // reflecting that in the status.
+      usePersistenceStore.getState().setStatus(isDirty() ? 'unsaved' : 'saved');
+    }
   } catch (error) {
     usePersistenceStore.getState().setStatus('error', errorMessageOf(error));
+    // HIGH: a failed save must be RETRIED, not left stranded until the next
+    // edit — the useCaseStore.subscribe hook only (re)schedules on a document
+    // CHANGE, and this save already cleared the autosave timer. Re-arm it so
+    // the un-synced edit eventually reaches the server on its own.
+    scheduleAutosave();
   } finally {
     saveInFlight = false;
     if (pendingSaveRequested) {

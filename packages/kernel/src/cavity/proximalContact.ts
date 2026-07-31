@@ -72,11 +72,14 @@
 // over-penetrates a too-close neighbour (the outline CANNOT retract — it is
 // pinned by invariant) or a clamped unreachable target both surface as an
 // honestly large bound for the downstream contact/interpenetration gates.
-// Sign caveat: the signed distance takes its sign from the closest triangle's
-// face normal (the P1 convention, mirrored from anatomy/morph.ts) — reliable
-// on closed outward-wound neighbours, a conservative LOWER bound (may
-// over-state penetration, never under-state) near the open boundaries of a
-// cut neighbour patch.
+// Sign: the signed distance takes its sign from the angle-weighted PSEUDONORMAL
+// of the closest Voronoi feature (`sdf/signedDistance.ts`, mirrored from
+// anatomy/morph.ts) — EXACT on the required watertight, outward-wound
+// neighbour, including at concave (reflex) edges/vertices where a single
+// incident face normal flips the sign of a penetrating point (the M1
+// false-negative). A non-watertight neighbour is REJECTED
+// (`NonWatertightMeshError`); a degenerate nearest triangle is a HARD ERROR
+// (`ProximalDegenerateNeighborError`), never a silent `+1` (clearance).
 //
 // Determinism: pure Float64 function of (patch bytes, adaptation inputs,
 // options); fixed iteration counts, ascending traversals, no randomness/time.
@@ -85,7 +88,8 @@ import type { IndexedMesh } from '../mesh/types.ts';
 import type { Vec3 } from '../bvh/geometry.ts';
 import type { Bvh } from '../bvh/types.ts';
 import { buildBvh } from '../bvh/build.ts';
-import { closestPoint } from '../bvh/closestPoint.ts';
+import { computePseudonormals, type Pseudonormals } from '../sdf/pseudonormals.ts';
+import { signedClosestPoint } from '../sdf/signedDistance.ts';
 
 // ---------------------------------------------------------------------------
 // Documented ALGORITHM parameters (NOT clinical values — the clinical target
@@ -179,6 +183,26 @@ export class ProximalNeighborMeshError extends Error {
   }
 }
 
+/** The closest triangle of a neighbour is DEGENERATE (zero-area sliver): its
+ * face normal is `[0,0,0]`, so the inside/outside sign cannot be derived from
+ * it. A silent fallback to `+1` (clearance) would let a penetrating point read
+ * as clearance and pass the interpenetration gate — a false negative — so this
+ * is a HARD ERROR (fail-closed). Repair the neighbour mesh first. */
+export class ProximalDegenerateNeighborError extends Error {
+  readonly label: string;
+  readonly triangleIndex: number;
+  constructor(label: string, triangleIndex: number) {
+    super(
+      `adaptProximalContacts: box "${label}" nearest neighbour triangle ${triangleIndex} is degenerate ` +
+        `(zero-area sliver) — its face normal is [0,0,0], so the penetration sign is undefined; refusing to ` +
+        `default it to +1 (clearance). Repair the neighbour mesh (packages/kernel/src/repair) first.`,
+    );
+    this.name = 'ProximalDegenerateNeighborError';
+    this.label = label;
+    this.triangleIndex = triangleIndex;
+  }
+}
+
 /** The seam anchor band consumed the whole rim (no movable vertex remains) —
  * the column is too short for this band, or the band is misconfigured. */
 export class ProximalBandTooWideError extends Error {
@@ -208,8 +232,9 @@ export interface ProximalAdaptationInput {
   readonly label: string;
   readonly columnPoints: readonly Vec3[];
   readonly freeRunPoints: readonly Vec3[];
-  /** Neighbour tooth surface — MUST have triangles and consistent OUTWARD
-   * winding (see the sign caveat in @errorBound). */
+  /** Neighbour tooth surface — MUST be a WATERTIGHT, consistently OUTWARD-wound
+   * 2-manifold (see the Sign note in @errorBound); a non-watertight neighbour
+   * is REJECTED (`NonWatertightMeshError`), never silently measured. */
   readonly neighborMesh: IndexedMesh;
   /** Target signed penetration into the neighbour, mm (profile:
    * `proximalContactPenetrationMm`). Positive = penetrate. */
@@ -270,8 +295,10 @@ export interface ProximalContactResult {
 }
 
 // ---------------------------------------------------------------------------
-// Signed distance to an outward-wound mesh (mirrors anatomy/morph.ts — the P1
-// distance-heatmap sign convention; see the sign caveat in @errorBound above).
+// Signed distance to a WATERTIGHT outward-wound mesh (mirrors anatomy/morph.ts):
+// the inside/outside sign comes from the angle-weighted PSEUDONORMAL of the
+// closest Voronoi feature (`sdf/signedDistance.ts`), EXACT everywhere on a
+// watertight, consistently-wound neighbour — see the Sign note in @errorBound.
 // ---------------------------------------------------------------------------
 
 function faceNormalUnnormalized(mesh: IndexedMesh, tri: number): Vec3 {
@@ -291,18 +318,29 @@ function faceNormalUnnormalized(mesh: IndexedMesh, tri: number): Vec3 {
 interface SignedResult {
   readonly signedDistance: number;
   readonly closest: Vec3;
+  /** Unit OUTWARD normal at the closest triangle (used only for the on-surface
+   * approach-direction fallback). */
   readonly outwardNormal: Vec3;
 }
 
-function signedDistanceToMesh(point: Vec3, mesh: IndexedMesh, bvh: Bvh): SignedResult {
-  const cp = closestPoint(mesh, bvh, point);
-  const n = faceNormalUnnormalized(mesh, cp.triangleIndex);
+/**
+ * Signed closest-surface distance of `point` to a WATERTIGHT neighbour `mesh`
+ * (negative = inside/penetrating, positive = outside/clearance), sign from the
+ * angle-weighted pseudonormal — see this section's comment.
+ *
+ * @throws {ProximalDegenerateNeighborError} if the nearest triangle is a
+ * zero-area sliver (its face normal is `[0,0,0]`) — refusing to default the
+ * sign to `+1`.
+ */
+function signedDistanceToMesh(point: Vec3, mesh: IndexedMesh, bvh: Bvh, pseudonormals: Pseudonormals, label: string): SignedResult {
+  const scp = signedClosestPoint(mesh, bvh, pseudonormals, point);
+  const n = faceNormalUnnormalized(mesh, scp.triangleIndex);
   const nl = Math.hypot(n[0], n[1], n[2]);
-  const outward: Vec3 = nl > 0 ? [n[0] / nl, n[1] / nl, n[2] / nl] : [0, 0, 0];
-  const rel: Vec3 = [point[0] - cp.point[0], point[1] - cp.point[1], point[2] - cp.point[2]];
-  const dotN = rel[0] * outward[0] + rel[1] * outward[1] + rel[2] * outward[2];
-  const sign = dotN < 0 ? -1 : 1;
-  return { signedDistance: sign * cp.distance, closest: [cp.point[0], cp.point[1], cp.point[2]], outwardNormal: outward };
+  if (!(nl > 0)) {
+    throw new ProximalDegenerateNeighborError(label, scp.triangleIndex);
+  }
+  const outward: Vec3 = [n[0] / nl, n[1] / nl, n[2] / nl];
+  return { signedDistance: scp.signedDistance, closest: [scp.point[0], scp.point[1], scp.point[2]], outwardNormal: outward };
 }
 
 function coordKey(x: number, y: number, z: number): string {
@@ -326,6 +364,11 @@ function coordKey(x: number, y: number, z: number): string {
  * patch vertex.
  * @throws {ProximalColumnOverlapError} two boxes claim the same rim.
  * @throws {ProximalNeighborMeshError} a neighbour mesh has no triangles.
+ * @throws {NonWatertightMeshError} (sdf/pseudonormals.ts) a neighbour mesh is
+ * not watertight — the inside/outside sign is only well-defined for a closed
+ * surface; repair/hole-fill it first.
+ * @throws {ProximalDegenerateNeighborError} a neighbour's nearest triangle is a
+ * zero-area sliver (undefined sign) — fail-closed, never `+1`.
  * @throws {ProximalBandTooWideError} the seam band leaves no movable rim.
  */
 export function adaptProximalContacts(
@@ -420,8 +463,12 @@ export function adaptProximalContacts(
 
     // Fixed approach direction n₀ + fixed-iteration clamped Newton (module doc).
     const bvh = buildBvh(box.neighborMesh);
+    // EXACT inside/outside sign source — REJECTS a non-watertight neighbour
+    // (`NonWatertightMeshError`) rather than measuring against an ill-defined
+    // "inside" (the M1 fix). Built ONCE per box.
+    const pseudonormals = computePseudonormals(box.neighborMesh);
     const center = box.columnPoints[drivenK]!;
-    const sd0 = signedDistanceToMesh(center, box.neighborMesh, bvh);
+    const sd0 = signedDistanceToMesh(center, box.neighborMesh, bvh, pseudonormals, box.label);
     let nx = sd0.closest[0] - center[0];
     let ny = sd0.closest[1] - center[1];
     let nz = sd0.closest[2] - center[2];
@@ -451,7 +498,7 @@ export function adaptProximalContacts(
     let clampBound = false;
     for (let it = 0; it < PROXIMAL_CONTACT_REFINEMENT_ITERATIONS; it++) {
       const t: Vec3 = [center[0] + n0[0] * travel, center[1] + n0[1] * travel, center[2] + n0[2] * travel];
-      const s = signedDistanceToMesh(t, box.neighborMesh, bvh).signedDistance;
+      const s = signedDistanceToMesh(t, box.neighborMesh, bvh, pseudonormals, box.label).signedDistance;
       travel += s + box.targetPenetrationMm;
       if (travel > maxTravelMm) {
         travel = maxTravelMm;
@@ -484,7 +531,7 @@ export function adaptProximalContacts(
     // GENUINE measurement on the ADAPTED positions (closest-point vs the
     // neighbour mesh — never a re-read of the prescribed displacement).
     const measureAt = (v: number): number =>
-      signedDistanceToMesh([positions[v * 3]!, positions[v * 3 + 1]!, positions[v * 3 + 2]!], box.neighborMesh, bvh).signedDistance;
+      signedDistanceToMesh([positions[v * 3]!, positions[v * 3 + 1]!, positions[v * 3 + 2]!], box.neighborMesh, bvh, pseudonormals, box.label).signedDistance;
     const achievedSignedDistanceMm = measureAt(colIdx[drivenK]!);
     let faceMin = achievedSignedDistanceMm;
     for (const v of colIdx) {

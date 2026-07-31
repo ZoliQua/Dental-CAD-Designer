@@ -50,6 +50,7 @@ import {
   toLoop,
   toSeamEdges,
   toVec3,
+  MeshIndexOutOfBoundsError,
   type BridgeConnectorInput,
   type BridgeUnitInput,
   type MeshDataInput,
@@ -190,6 +191,10 @@ interface CrownValidateQcBody {
   contacts: ContactResidualInput[];
   contactClampWarning: boolean;
   marginExclusionMm?: number;
+  /** The journaled morph→shell heal @errorBound (mm) — SUMMED onto each contact
+   * residual by the gate; the server uses the exact client value (invariant 6
+   * riding param), never re-measures it. */
+  healErrorBoundMm?: number;
   marginFitThresholdMm?: number;
   seatingInterferenceVolumeToleranceMm3?: number;
   contactToleranceMm?: number;
@@ -300,6 +305,7 @@ function reconstructCrownQcInput(b: CrownValidateQcBody): RunCrownQcInput {
     connectorAreaTargetMm2: b.connectorAreaTargetMm2,
     contacts: b.contacts,
     contactClampWarning: b.contactClampWarning,
+    healErrorBoundMm: b.healErrorBoundMm,
     marginExclusionMm: b.marginExclusionMm,
     marginFitThresholdMm: b.marginFitThresholdMm,
     seatingInterferenceVolumeToleranceMm3: b.seatingInterferenceVolumeToleranceMm3,
@@ -861,7 +867,8 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
           error instanceof BridgeQcInputError ||
           error instanceof MarginFitInputError ||
           error instanceof MinWallThicknessInputError ||
-          error instanceof NonCavityRestorationTypeError
+          error instanceof NonCavityRestorationTypeError ||
+          error instanceof MeshIndexOutOfBoundsError
         ) {
           reply.code(400);
           return { error: 'qc-invalid-input' as const, errorName: error.name, message: error.message };

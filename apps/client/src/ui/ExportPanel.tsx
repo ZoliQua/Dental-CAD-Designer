@@ -19,6 +19,7 @@ import { useTranslation } from 'react-i18next';
 import type { ExportFormat, QcGateResult, Restoration } from '@dqcad/shared-types';
 import { exportGateVerdict } from '../engine/exportWorkflow';
 import { EXPORT_REFUSAL_I18N_KEY } from '../engine/exportWorkflow';
+import { formatMm } from '../engine/formatMm';
 import { handoffController } from '../engine/handoff';
 import { RELEASE_FAILURE_I18N_KEY } from '../engine/handoff';
 import { useCaseStore } from '../state/caseStore';
@@ -160,6 +161,15 @@ function ExportWorkflow({ restoration }: { restoration: Restoration }) {
   );
 }
 
+/** Displays a gate's measured value per the project mm+µm convention: `mm`
+ * values route through the shared `formatMm` helper (so a sub-mm gap shows its
+ * whole-µm figure at the 1 µm resolution — CLAUDE.md "display formats µm where
+ * clinically meaningful"); any other unit (deg, mm², mm³, edges…) keeps its raw
+ * 3-decimal + unit form (µm conversion would be meaningless there). */
+function formatGateValueDisplay(value: number, unit: string): string {
+  return unit === 'mm' ? formatMm(value) : `${value.toFixed(3)} ${unit}`;
+}
+
 function GateRow({ gate }: { gate: QcGateResult }) {
   const { t } = useTranslation();
   const label = gate.passed
@@ -172,7 +182,7 @@ function GateRow({ gate }: { gate: QcGateResult }) {
       <td>{gate.gate}</td>
       <td>
         {label}
-        {gate.value !== null && gate.unit ? ` (${gate.value.toFixed(3)} ${gate.unit})` : ''}
+        {gate.value !== null && gate.unit ? ` (${formatGateValueDisplay(gate.value, gate.unit)})` : ''}
       </td>
     </tr>
   );

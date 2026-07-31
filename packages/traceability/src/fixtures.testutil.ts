@@ -86,6 +86,11 @@ export function releaseInputFixture(): ReleaseTraceabilityInput {
       journalOperationCount: 12,
       exportOperationId: 'export-op-1',
     },
+    // This synthetic crown fixture carries NO contact gate in FIXTURE_GATES, so
+    // its client-attested set is empty — the release document therefore carries
+    // no `gates-client-attested` disclosure and stays byte-identical to the
+    // pre-disclosure shape (the serialization byte pin does not move).
+    clientAttestedGates: [],
     reimportMeshHash: fakeHash('ee'),
     f32Narrowing: { maxAbsCoordinateMm: 12.5, halfUlpBoundMm: 4.76837158203125e-7 },
   };

@@ -272,6 +272,24 @@ describe('measureWallThickness', () => {
     expect(t.minThicknessMm).toBeGreaterThan(0.2);
     console.log(`[thickness] thin 0.3mm dome -> measured min ${(t.minThicknessMm * 1000).toFixed(0)} µm (flagged < 500 µm)`);
   }, 120000);
+
+  it('M3: ZERO surviving samples is a MEASUREMENT FAILURE (fail-closed), not infinitely thick', async () => {
+    const inner = await buildIntaglio();
+    const outer = outerDome(1.0);
+    // A margin band that swallows the WHOLE surface (huge exclusion radius) →
+    // every grid sample is excluded → sampleCount 0. Pre-fix this pinned
+    // minThicknessMm to Infinity, which PASSES a `min >= threshold` min-wall
+    // gate (Infinity ≥ anything) — a thin crown sneaking through. Post-fix the
+    // measurement is flagged failed and the value is a fail-closed 0 sentinel.
+    const marginLoop: Vec3[] = [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]];
+    const t = measureWallThickness(inner, outer, { insertionAxis: AXIS, marginLoop, marginExclusionMm: 1000 });
+    expect(t.sampleCount).toBe(0);
+    expect(t.measured).toBe(false);
+    expect(t.minThicknessMm).toBe(0); // NOT Infinity
+    // The consequence the gate relies on: 0 FAILS any positive threshold.
+    expect(t.minThicknessMm >= 0.5).toBe(false);
+    console.log('[thickness] all-excluded -> measured=false, minThicknessMm=0 (fail-closed, was Infinity)');
+  }, 120000);
 });
 
 describe('autoThickenOuter', () => {

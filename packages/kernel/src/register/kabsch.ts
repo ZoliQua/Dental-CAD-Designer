@@ -330,7 +330,7 @@ export function coarseAlignFromPointTriples(
   // eigenvectors for distinct eigenvalues to machine precision; this is a
   // defensive Gram-Schmidt pass for the near-equal-eigenvalue edge case).
   const v2orth = sub(v2raw, scale(v1, dot(v2raw, v1)));
-  const v2 = scale(v2orth, 1 / norm(v2orth));
+  const v2 = scale(v2orth, 1 / (norm(v2orth) || 1));
   const v3 = cross(v1, v2);
 
   const u1 = scale(matVec(h, v1), 1 / sigma1);

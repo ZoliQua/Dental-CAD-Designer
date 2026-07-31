@@ -89,6 +89,24 @@ describe('POST /api/restorations/:id/validate-qc — input-shaped errors map to 
     expect(String(json.message)).toContain('marginFitGate');
   }, 120_000);
 
+  it('crown branch: an out-of-range triangle index (schema-valid) → 400, never 500 (bounds-check)', async () => {
+    // The `indices` schema pins non-negative integers but CANNOT express the
+    // cross-field upper bound (index < positions.length/3). An out-of-range
+    // index would otherwise reach the kernel gates as an OOB typed-array read
+    // (NaN gate values / uncaught throw → 500). `toIndexedMesh` now refuses it.
+    const solid = crownBody.crownSolid as { positions: number[]; indices: number[] };
+    const vertexCount = Math.floor(solid.positions.length / 3);
+    const poisoned = {
+      ...crownBody,
+      crownSolid: { positions: solid.positions, indices: [...solid.indices, vertexCount + 1000] },
+    };
+    const { statusCode, json } = await post(poisoned);
+    expect(statusCode).toBe(400);
+    expect(json.error).toBe('qc-invalid-input');
+    expect(json.errorName).toBe('MeshIndexOutOfBoundsError');
+    expect(String(json.message)).toContain('out of bounds');
+  }, 120_000);
+
   it('a schema-INVALID body still gets the plain AJV 400 (the oneOf rejection is untouched)', async () => {
     const { statusCode, json } = await post({ restorationType: 'bridge' });
     expect(statusCode).toBe(400);

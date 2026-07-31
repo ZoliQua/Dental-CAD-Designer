@@ -45,7 +45,7 @@ import { parsePlyAsciiBody } from './ascii.ts';
 import { GrowableUint32Array } from './growable-uint32-array.ts';
 import { readFaceRow, readVertexRow, skipRow } from './binary.ts';
 import type { ByteCursor } from './binary.ts';
-import { assertPlausibleElementCount } from './element-count-guard.ts';
+import { assertPlausibleElementCount, assertSkippableElement } from './element-count-guard.ts';
 import { HEADER_SEARCH_LIMIT_BYTES, parsePlyHeader } from './header.ts';
 import { planPlyHeader } from './plan.ts';
 import type { PlyFormat, PlyHeader, PlyMesh } from './types.ts';
@@ -303,6 +303,14 @@ export async function parsePlyStream(
       indices = growable.toArray();
       faceCount = rowCount;
     } else {
+      // Guard BEFORE the loop — the streaming skip path had NO count guard at
+      // all (unlike the vertex/face branches above), so a huge count spun the
+      // loop, and a zero-property element made `readRowWithRetry` consume zero
+      // bytes per row and never drain the reader: an uncancellable-on-drain
+      // 100% CPU hang. Rejecting up front closes both. (The per-row
+      // `checkCancelled(signal)` below still keeps a legitimately large skip
+      // cancellable on a bounded, per-row cadence once a signal is threaded in.)
+      assertSkippableElement(element);
       for (let r = 0; r < element.count; r++) {
         checkCancelled(signal);
         const capturedR = r;

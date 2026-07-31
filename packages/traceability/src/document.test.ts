@@ -7,10 +7,12 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
+  CLIENT_ATTESTED_GATES_LIMITATION_CODE,
   OUTER_ENVELOPE_LIMITATION,
   ReleaseTraceabilityInputError,
   buildPreviewTraceabilityDocument,
   buildReleaseTraceabilityDocument,
+  clientAttestedGatesLimitation,
   serializeTraceabilityDocument,
 } from './document.ts';
 import { fakeHash, previewInputFixture, releaseInputFixture } from './fixtures.testutil.ts';
@@ -69,7 +71,35 @@ describe('buildReleaseTraceabilityDocument', () => {
     // (mandatory finalMesh persistence + the step-10.5 assertion), so it no
     // longer carries the outer-envelope-not-certified disclosure.
     expect(doc.certification.outerEnvelopeCertified).toBe(true);
+    // The synthetic crown fixture attests no gate (no contact gate) → no
+    // limitation (this is what keeps the byte pin unmoved).
     expect(doc.certification.limitations).toEqual([]);
+  });
+
+  it('discloses the client-attested gates as the release\'s SOLE limitation (H1 fix)', () => {
+    const base = releaseInputFixture();
+    // Empty attested set ⇒ NO limitation (the pre-disclosure, byte-pinned shape).
+    expect(buildReleaseTraceabilityDocument(base).certification.limitations).toEqual([]);
+
+    // A bridge-style non-empty set ⇒ exactly one `gates-client-attested`
+    // limitation whose record text NAMES each attested gate, in order. The
+    // outer envelope is still certified (this is a release).
+    const doc = buildReleaseTraceabilityDocument({
+      ...base,
+      clientAttestedGates: ['connectorCrossSection', 'ponticRelief'],
+    });
+    expect(doc.certification.outerEnvelopeCertified).toBe(true);
+    expect(doc.certification.limitations).toEqual([
+      clientAttestedGatesLimitation(['connectorCrossSection', 'ponticRelief']),
+    ]);
+    expect(doc.certification.limitations[0]?.code).toBe(CLIENT_ATTESTED_GATES_LIMITATION_CODE);
+    expect(doc.certification.limitations[0]?.statement).toContain(
+      'connectorCrossSection, ponticRelief',
+    );
+    // The disclosure survives the deterministic serialization (JSON legible).
+    const json = serializeTraceabilityDocument(doc);
+    expect(json).toContain('connectorCrossSection');
+    expect(json).toContain('ponticRelief');
   });
 
   it('derives the PLY lossless relation and requires null narrowing/headerText for PLY', () => {

@@ -53,6 +53,7 @@ interface ExportOkBody {
   qcReport: QcReport;
   traceabilityJsonPath: string;
   traceabilityHtmlPath: string;
+  clientAttestedGates: string[];
 }
 
 function sha256Hex(text: string): string {
@@ -189,7 +190,17 @@ describe('QC traceability document — server generation, storage, routes', () =
     // it no longer carries the outer-envelope-not-certified disclosure.
     expect(document.schemaVersion).toBe(2);
     expect(document.certification.outerEnvelopeCertified).toBe(true);
-    expect(document.certification.limitations).toEqual([]);
+    // H1 disclosure: a crown release consumes the client-attested `contact`
+    // measurement (the server cannot recompute it from the mill bytes), so the
+    // document carries the `gates-client-attested` limitation naming it — and
+    // NOTHING else (the outer envelope IS certified).
+    expect(stlRelease.clientAttestedGates).toEqual(['contact']);
+    expect(document.certification.limitations.map((l) => l.code)).toEqual([
+      'gates-client-attested',
+    ]);
+    for (const gate of stlRelease.clientAttestedGates) {
+      expect(document.certification.limitations[0]?.statement).toContain(gate);
+    }
 
     // The stored string IS the canonical serialization (byte-stable core).
     expect(row.traceabilityJson).toBe(serializeTraceabilityDocument(document));
@@ -269,6 +280,10 @@ describe('QC traceability document — server generation, storage, routes', () =
     // The row's releasedAt appears ONLY as the labeled non-hashed envelope.
     expect(html).toContain(row.releasedAt.toISOString());
     expect(html).toMatch(/not part of the hashed document/i);
+    // H1 disclosure is rendered prominently in the certification section: the
+    // translated notice + the record text naming the client-attested gate.
+    expect(html).toMatch(/client-attested/i);
+    expect(html).toContain('re-verified by the server: contact');
   });
 
   it('GET traceability.html?lang renders all four locales; an unknown lang is a 400', async () => {
@@ -573,6 +588,12 @@ describe('QC traceability document — server generation, storage, routes', () =
         exportOperationId: 'golden-export-op',
       },
       reimportMeshHash: row.reimportMeshHash,
+      // Fixed EMPTY attested set — like the synthetic identity/journal constants
+      // above, this isolates the determinism pin from the client-attested-gates
+      // disclosure (whose falsifiable coverage lives in the content tests + the
+      // acceptance suite). Empty ⇒ no `gates-client-attested` limitation, so the
+      // pinned bytes are unaffected by the H1 disclosure.
+      clientAttestedGates: [],
       f32Narrowing: storedDocument.errorBounds!.f32Narrowing!,
     });
     assertValidTraceabilityDocument(pinned);

@@ -40,6 +40,7 @@ interface ExportOkBody {
   reimportMeshHash: string;
   downloadPath: string;
   qcReport: QcReport;
+  clientAttestedGates: string[];
 }
 
 describe('export dual-validation — P6 bridge fixture', () => {
@@ -115,6 +116,25 @@ describe('export dual-validation — P6 bridge fixture', () => {
     expect(row.restorationType).toBe('bridge');
     expect(JSON.parse(row.teethJson)).toEqual([...BRIDGE_TEETH]);
     expect(row.reimportMeshHash).toBe(body.reimportMeshHash);
+
+    // H1 fix (server code-review): the fracture-critical connector gate and the
+    // pontic-relief gate consume CLIENT-MEASURED scalars the server cannot
+    // recompute from the mill bytes (the connector frame/profiles + the pontic↔
+    // gingiva relation are design-time context). They must NOT release as a
+    // silent full-authority server-verified pass — the release RECORD discloses
+    // them as client-attested (mirroring the archive `importedUnverified`).
+    expect(body.clientAttestedGates).toEqual(
+      expect.arrayContaining(['connectorCrossSection', 'ponticRelief']),
+    );
+    const connGate = body.qcReport.gates.find((g) => g.gate === 'connectorCrossSection');
+    expect(connGate?.passed).toBe(true); // reported pass …
+    expect(body.clientAttestedGates).toContain('connectorCrossSection'); // … but explicitly NOT full-authority
+    // The SOLID-CONSUMING gates ARE server-recomputed → never listed as attested.
+    expect(body.clientAttestedGates).not.toContain('watertight');
+    expect(body.clientAttestedGates).not.toContain('manifold');
+    expect(body.clientAttestedGates.some((g) => g.startsWith('marginFit'))).toBe(false);
+    // The ledger row persists the same provenance (never hashed content).
+    expect(JSON.parse(row.attestedGatesJson ?? 'null')).toEqual(body.clientAttestedGates);
   }, 300_000);
 
   it('PLY: full loop — lossless re-import (reimportMeshHash === meshContentHash), bit-identical report', async () => {

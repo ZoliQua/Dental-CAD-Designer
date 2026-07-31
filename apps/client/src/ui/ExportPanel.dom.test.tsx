@@ -511,7 +511,9 @@ describe('ExportPanel — QC recap rendering branches', () => {
     await selectRestoration(id);
     const ack = screen.getByTestId('export-qc-gate-minWallThickness');
     expect(ack.getAttribute('data-acknowledged')).toBe('true');
-    expect(ack.textContent).toContain('mm'); // the measured value·unit rendered
+    // The measured value·unit renders per the project mm+µm convention (1 µm
+    // resolution): 0.42 mm → "0.420 mm (420 µm)", not a bare "0.420 mm".
+    expect(ack.textContent).toContain('0.420 mm (420 µm)');
     // An all-acknowledged report authorizes export (verdict allowed).
     expect((screen.getByTestId('export-run-button') as HTMLButtonElement).disabled).toBe(false);
   });

@@ -64,6 +64,7 @@ export {
   ProximalColumnNotOnPatchError,
   ProximalColumnOverlapError,
   ProximalNeighborMeshError,
+  ProximalDegenerateNeighborError,
   ProximalBandTooWideError,
   type ProximalAdaptationInput,
   type ProximalContactOptions,

@@ -40,8 +40,14 @@
 // CONTACT loci the morph drove to target) is displaced from the morph's surface
 // by at most `errorBoundMm`, so the contacts the morph achieved shift by at
 // most this bound. The heal does NOT re-measure contacts; the morph's reported
-// residuals are the contact truth and this bound is the additional
-// remesh-induced shift, reported honestly alongside them.
+// residuals are the contact truth and this bound is an ADDITIONAL remesh-induced
+// shift ON TOP OF them. The downstream contact/interpenetration gate MUST SUM the
+// two — the true post-heal deviation of a contact from its target is bounded by
+// `morphContactResidualMm + errorBoundMm`, NOT by either alone: a contact the
+// morph drove to within sub-µm can be up to `pitchMm / 2` (tens of µm at a coarse
+// pitch) off after the remesh. Treating this heal bound as a separate outer-shape
+// figure rather than adding it to the morph residual would understate the
+// post-heal contact error.
 //
 // Deterministic: `offsetMesh` is deterministic (same mesh + pitch + manifold-3d
 // version ⇒ byte-identical output — offsetMesh.test.ts pins this), so the heal

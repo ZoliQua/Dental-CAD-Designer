@@ -137,6 +137,11 @@ class ExportFlowEngine {
   private testPool: RunnablePool | null = null;
   private testFinalMeshSource: FinalMeshSource | null = null;
   private held = new Map<string, HeldExport>();
+  /** The case id the current `held` entries belong to. When a document publish
+   * carries a DIFFERENT id (a case switch/close), `held` is cleared so
+   * multi-MB export buffers never accumulate across cases (see
+   * `onDocumentChange`). */
+  private heldCaseId: string | null = null;
 
   private pool(): RunnablePool {
     return this.testPool ?? getPool();
@@ -158,6 +163,7 @@ class ExportFlowEngine {
     this.testPool = null;
     this.testFinalMeshSource = null;
     this.held.clear();
+    this.heldCaseId = null;
     useExportStore.getState().reset();
   }
 
@@ -374,6 +380,18 @@ class ExportFlowEngine {
    * the exact exported state returns (deterministic, no event flags).
    */
   onDocumentChange(document: CaseDocument): void {
+    if (document.id !== this.heldCaseId) {
+      // The ACTIVE CASE changed (openCase/createCase installed a different
+      // case's document). The previous case's held exports each retain the full
+      // serialized bytes + base64 (multi-MB) keyed by restoration UUID; without
+      // this, a session that opens several cases and exports in each
+      // accumulates every case's export bytes in memory for the whole session.
+      // Release them all on the case switch/close. (An in-case restoration
+      // DELETE keeps the SAME case id and is handled by the stale cascade
+      // below, which flips its export to a VISIBLE `stale` status.)
+      this.held.clear();
+      this.heldCaseId = document.id;
+    }
     for (const [restorationId, held] of this.held) {
       const restoration = document.restorations.find((r) => r.id === restorationId);
       const stale = isExportRecordStale(restoration, held);

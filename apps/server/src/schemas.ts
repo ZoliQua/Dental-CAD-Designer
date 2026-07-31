@@ -716,6 +716,11 @@ export const crownValidateQcBodySchema = {
     contacts: { type: 'array', items: contactResidualInputSchema },
     contactClampWarning: { type: 'boolean' },
     marginExclusionMm: { type: 'number' },
+    // The journaled morph→shell heal @errorBound (mm) — a RIDING param the
+    // contact gate SUMS onto each residual (see cad-pipeline `contact.ts`). It
+    // only TIGHTENS the gate (never a loosening free-knob), so it rides into
+    // the export context too (NOT in EXPORT_CONTEXT_FORBIDDEN_KNOBS). Absent ⇒ 0.
+    healErrorBoundMm: { type: 'number' },
     marginFitThresholdMm: { type: 'number' },
     seatingInterferenceVolumeToleranceMm3: { type: 'number' },
     contactToleranceMm: { type: 'number' },
@@ -1245,6 +1250,7 @@ export const exportResponseSchema = {
       'releasedAt',
       'alreadyStored',
       'qcReport',
+      'clientAttestedGates',
     ],
     additionalProperties: false,
     properties: {
@@ -1274,6 +1280,19 @@ export const exportResponseSchema = {
       alreadyStored: { type: 'boolean' },
       /** The SERVER-recomputed report (the authoritative copy). */
       qcReport: qcReportSchema,
+      /** H1 fix (server code-review) — the gate names in `qcReport.gates` whose
+       * MEASURED value the server did NOT recompute at release: their
+       * design-time inputs (connector frame/profiles, pontic↔gingiva relation,
+       * contact morph residuals) are recoverable from neither the exported mill
+       * bytes nor the release request, so the re-validation consumed the
+       * CLIENT-ATTESTED scalar. The solid-consuming gates (watertight, manifold,
+       * self-intersection, min-wall, marginFit, seating) ARE recomputed on the
+       * re-imported bytes (invariant 6 stays literal for them); the gates listed
+       * here rest on attested measurements and MUST NOT be read as a
+       * full-authority server-verified pass. Empty ⇒ every reported gate was
+       * server-recomputed. Mirrors the archive `importedUnverified` provenance
+       * disclosure. */
+      clientAttestedGates: { type: 'array', items: { type: 'string' } },
     },
   },
   400: exportErrorSchema,
