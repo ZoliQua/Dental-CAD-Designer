@@ -16,6 +16,7 @@ import {
   auditRoutes,
   collectRouteRecords,
   routeKey,
+  QUERY_READING_ROUTES,
   type RouteRecord,
 } from './route-audit.js';
 
@@ -88,6 +89,33 @@ describe('route-schema enumeration guard', () => {
     expect(violations.some((v) => v.includes('POST /api/bogus-unschemad'))).toBe(true);
     // And specifically catches BOTH the missing body and the missing response.
     expect(violations.filter((v) => v.includes('/api/bogus-unschemad')).length).toBe(2);
+  });
+
+  // --- Falsifiability: the guard MUST flag a query-reading route that drops
+  //     its querystring schema (server code-review LOW #4) ---
+
+  it('the real query-reading routes are all registered AND carry query schemas', () => {
+    const byKey = new Map(records.map((r) => [routeKey(r.method, r.url), r]));
+    for (const key of QUERY_READING_ROUTES) {
+      const rec = byKey.get(key);
+      expect(rec, `expected live query-reading route ${key}`).toBeDefined();
+      expect(rec!.hasQuerySchema, `${key} must carry a querystring schema`).toBe(true);
+    }
+    // And the real set is clean (no query violation among the live routes).
+    expect(auditRoutes(records).filter((v) => v.includes('querystring'))).toEqual([]);
+  });
+
+  it('FLAGS a query-reading route (QUERY_READING_ROUTES) that has NO querystring schema', () => {
+    // Take a real query-reading route and simulate it losing its query schema.
+    const target = [...QUERY_READING_ROUTES][0]!;
+    const seeded: RouteRecord[] = records.map((r) =>
+      routeKey(r.method, r.url) === target ? { ...r, hasQuerySchema: false } : r,
+    );
+    const violations = auditRoutes(seeded);
+    expect(
+      violations.some((v) => v.includes(target) && v.includes('querystring')),
+      violations.join('\n'),
+    ).toBe(true);
   });
 
   it('FLAGS a seeded schema-less route registered through a REAL Fastify onRoute', async () => {

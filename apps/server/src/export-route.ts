@@ -200,6 +200,7 @@ import {
   toLoop,
   toSeamEdges,
   toVec3,
+  MeshIndexOutOfBoundsError,
   type BridgeConnectorInput,
   type BridgeUnitInput,
   type MeshDataInput,
@@ -282,6 +283,65 @@ function contextBranch(ctx: ExportQcContext): 'crown' | 'cavity' | 'bridge' {
   if ('units' in ctx) return 'bridge';
   if ('fitSurfaceMesh' in ctx) return 'cavity';
   return 'crown';
+}
+
+// --- H1 fix (server code-review): the client-attested gate disclosure ------
+//
+// The export re-validation re-measures the SOLID-CONSUMING gates on the
+// re-imported mill bytes (watertight, manifold, self-intersection, min-wall,
+// marginFit, seating — invariant 6, literally). THREE gates instead consume a
+// client-MEASURED scalar the server cannot recompute from the delivered bytes:
+//   - `connectorCrossSection` (bridge): `connectors[i].minAreaMm2`. The kernel
+//     `measureConnectorMinArea(mesh, frame, profileA, profileB)` needs the
+//     design-time connector FRAME (axis/origin/span from the per-unit solid
+//     centroids) and the 2D connector PROFILES (default ellipse OR the editable
+//     per-connector profiles) — NONE of which is carried in the export request
+//     or recoverable from the fused assembled solid alone. Not tractable to
+//     recompute server-side.
+//   - `ponticRelief` (bridge): `maxAbsDeviationMm`. `measurePonticRelief` needs
+//     the design-time GINGIVA mesh + the pontic-base acceptance patch — neither
+//     in the request nor the mill bytes.
+//   - `contact` (crown/cavity): `contactResidualMm`/`regionResidualMm`. These
+//     are the Task-6 morph residuals against the antagonist/neighbour meshes —
+//     design-time context, never in the deliverable.
+//
+// DECISION (ADR-017 extension): recompute is NOT tractable for any of the three,
+// so the HONEST MINIMUM applies — the release RECORD (this response + the Export
+// ledger row) explicitly marks these gates CLIENT-ATTESTED, mirroring the
+// archive `importedUnverified` provenance. The gate's `passed:true` is therefore
+// never presented as a full-authority server-verified pass: a consumer can
+// always distinguish a fully-recomputed release from one whose fracture/relief/
+// contact gates rest on attested measurements. See the module doc's RIDING
+// class — the boundary is unchanged; what changes is that the trust is now
+// DISCLOSED, not silent.
+const CLIENT_ATTESTED_GATE_NAMES = {
+  connectorCrossSection: 'connectorCrossSection',
+  ponticRelief: 'ponticRelief',
+  contact: 'contact',
+} as const;
+
+/**
+ * The gate names in `report` whose MEASURED value the server consumed from the
+ * client rather than recomputing from the re-imported solid. Computed by
+ * intersecting the branch's known client-measured gate set with the gates that
+ * ACTUALLY appear in the server report (so e.g. a crown's N/A connector stub —
+ * which trusts no client scalar — is never listed, and the single-crown path
+ * lists only `contact`). Deterministic; order follows the report's gate order.
+ */
+function clientAttestedGates(ctx: ExportQcContext, report: QcReport): string[] {
+  const branch = contextBranch(ctx);
+  const measured = new Set<string>();
+  if (branch === 'bridge') {
+    const b = ctx as BridgeExportQcContext;
+    // A bridge always spans ≥1 connector; list it only when real connectors are
+    // supplied (the gate consumes their `minAreaMm2`), never the N/A stub.
+    if (b.connectors.length > 0) measured.add(CLIENT_ATTESTED_GATE_NAMES.connectorCrossSection);
+    measured.add(CLIENT_ATTESTED_GATE_NAMES.ponticRelief);
+  } else {
+    // crown + cavity: the contact gate consumes the client morph residuals.
+    measured.add(CLIENT_ATTESTED_GATE_NAMES.contact);
+  }
+  return report.gates.map((g) => g.gate).filter((name) => measured.has(name));
 }
 
 /** The report metadata + acknowledged-gate set every export QC run derives
@@ -631,7 +691,8 @@ export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps
             error instanceof BridgeQcInputError ||
             error instanceof MarginFitInputError ||
             error instanceof MinWallThicknessInputError ||
-            error instanceof NonCavityRestorationTypeError
+            error instanceof NonCavityRestorationTypeError ||
+            error instanceof MeshIndexOutOfBoundsError
           ) {
             throw new ExportRejectionError('qc-invalid-input', 400, error.message, {
               errorName: error.name,
@@ -707,6 +768,15 @@ export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps
           };
         }
 
+        // 13.5. H1 fix: the client-attested gate disclosure. Reaching here the
+        // server report PASSED (every solid-consuming gate recomputed on the
+        // re-imported bytes). These gates' MEASURED value could not be
+        // recomputed from the delivered bytes (see clientAttestedGates' doc) —
+        // record them so the release is never presented as a full-authority
+        // server-verified pass for them (invariant 6 disclosure, mirroring the
+        // archive `importedUnverified` provenance).
+        const attestedGates = clientAttestedGates(qcContext, serverReport);
+
         // 14. Release: content-addressed immutable storage + ledger row +
         // the Task 5 traceability document (built from the SERVER's report
         // and the VERIFIED request bindings, schema-validated at generation,
@@ -773,6 +843,8 @@ export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps
             qcReportJson: JSON.stringify(serverReport),
             acknowledgmentsJson: JSON.stringify(exportRequest.acknowledgments),
             traceabilityJson: traceability.json,
+            // H1 fix: provenance of the client-attested gates (never hashed).
+            attestedGatesJson: JSON.stringify(attestedGates),
           },
         });
 
@@ -794,6 +866,7 @@ export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps
           releasedAt: row.releasedAt.toISOString(),
           alreadyStored: stored.alreadyExisted,
           qcReport: serverReport,
+          clientAttestedGates: attestedGates,
         };
       } catch (error) {
         if (error instanceof ExportRejectionError) {

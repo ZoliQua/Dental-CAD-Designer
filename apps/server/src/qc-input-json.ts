@@ -58,12 +58,56 @@ export interface QcReportDifference {
   client: unknown;
 }
 
+/**
+ * Thrown when a client-supplied mesh's triangle index set references a vertex
+ * that does not exist (index ≥ vertex count, or a positions buffer whose length
+ * is not a multiple of 3). The JSON schema pins `indices` to non-negative
+ * integers but CANNOT express the cross-field upper bound (an index must be <
+ * `positions.length / 3`), so an out-of-range index would otherwise reach the
+ * kernel gates as an out-of-bounds typed-array read → `NaN` gate values or an
+ * uncaught throw → a 500. Reconstruction refuses first, so the route maps it to
+ * a typed 400 (the advisory validate-qc path) / `qc-invalid-input` (export),
+ * never a 500 and never a silent `NaN` measurement.
+ */
+export class MeshIndexOutOfBoundsError extends Error {
+  readonly index: number;
+  readonly position: number;
+  readonly vertexCount: number;
+  constructor(index: number, position: number, vertexCount: number) {
+    super(
+      `mesh triangle index ${index} at indices[${position}] is out of bounds for a mesh with ` +
+        `${vertexCount} vertices (valid range 0..${vertexCount - 1})`,
+    );
+    this.name = 'MeshIndexOutOfBoundsError';
+    this.index = index;
+    this.position = position;
+    this.vertexCount = vertexCount;
+  }
+}
+
 /** Rebuilds a kernel `IndexedMesh` (Float64 positions, Uint32 indices — the
  * Float64 invariant holds; no Float32 anywhere) from the JSON number arrays.
  * JSON round-trips a Float64 exactly, so this is bit-identical to the mesh the
- * client hashed/measured. */
+ * client hashed/measured.
+ *
+ * BOUNDS-CHECKED (server code-review LOW #5): every triangle index is validated
+ * against the reconstructed vertex count BEFORE the mesh reaches any kernel gate
+ * — an out-of-range index is a typed `MeshIndexOutOfBoundsError`, not a
+ * downstream `NaN`/500. */
 export function toIndexedMesh(data: MeshDataInput): IndexedMesh {
-  return { positions: new Float64Array(data.positions), indices: Uint32Array.from(data.indices) };
+  const positions = new Float64Array(data.positions);
+  // A positions buffer whose length is not a multiple of 3 has no well-defined
+  // vertex count — treat it as malformed (the same typed refusal, reported at
+  // the first index).
+  const vertexCount = Math.floor(positions.length / 3);
+  const wellFormed = positions.length % 3 === 0;
+  for (let i = 0; i < data.indices.length; i++) {
+    const idx = data.indices[i]!;
+    if (!wellFormed || idx >= vertexCount) {
+      throw new MeshIndexOutOfBoundsError(idx, i, vertexCount);
+    }
+  }
+  return { positions, indices: Uint32Array.from(data.indices) };
 }
 
 export function toVec3(a: readonly number[]): Vec3 {

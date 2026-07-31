@@ -28,11 +28,13 @@ import { runCrownQc, type RunCrownQcInput } from '@dqcad/cad-pipeline';
 import type { CaseDocument, QcReport } from '@dqcad/shared-types';
 import { STANDARD_ZIRCONIA_PROFILE } from '@dqcad/clinical-profiles';
 import { hashCaseJournal } from '@dqcad/kernel-workers/journal-hash';
+import { KERNEL_VERSION } from '@dqcad/kernel';
 import { buildApp } from './app.js';
 import { buildCrownQcInput, toValidateQcBody, TOOTH } from './crown-qc-fixture.testutil.js';
 import { buildExportHarness, toExportQcContext, type ExportHarness } from './export-request.testutil.js';
 import { hashMesh } from './journal-replay.js';
-import { CaseArchiveError, parseCaseArchive } from './case-archive.js';
+import { buildCaseArchive, CaseArchiveError, parseCaseArchive, type CaseArchiveInputEntry } from './case-archive.js';
+import { createEmptyCaseDocument } from './case-document.js';
 
 /** Two isolated app instances (source + fresh import target), each with its own
  * temp stores. The import target shares the SAME test.db (globalSetup migrates
@@ -294,5 +296,120 @@ describe('case archive export/import — round-trip identity (Phase 7 Task 6 Par
     });
     expect(res.statusCode).toBe(400);
     expect((res.json() as { error: string }).error).toBe('archive-invalid');
+  });
+
+  // --- MEDIUM #2 hardening: import-integrity (crafted, integrity-VALID,
+  //     unsigned archives). An adversary who rewrites the whole archive
+  //     recomputes every hash, so the DQCA manifest gives integrity, not
+  //     authenticity — these two write-path gaps are closed regardless. ---
+
+  /** Serializes an entry payload the way the import path consumes it (JSON;
+   * import always `JSON.parse`s these entries). */
+  function jsonEntry(name: string, kind: CaseArchiveInputEntry['kind'], value: unknown): CaseArchiveInputEntry {
+    return { name, kind, bytes: new TextEncoder().encode(JSON.stringify(value)) };
+  }
+
+  /** A minimal, plausibly-complete archived Export ledger row keyed to `caseId`. */
+  function archivedExportRow(id: string, caseId: string): Record<string, unknown> {
+    return {
+      id,
+      caseId,
+      restorationId: 'resto-x',
+      restorationType: 'crown',
+      teethJson: '[11]',
+      format: 'stl',
+      bytesSha256: 'a'.repeat(64),
+      byteLength: 1,
+      meshContentHash: 'b'.repeat(64),
+      reimportMeshHash: 'c'.repeat(64),
+      headerText: null,
+      exportOperationId: 'op-x',
+      caseJournalHash: 'd'.repeat(64),
+      journalOperationCount: 1,
+      kernelVersion: KERNEL_VERSION,
+      profileId: 'standard-zirconia',
+      profileVersion: '1.0.0',
+      profileChecksum: 'e'.repeat(64),
+      qcReportJson: '{}',
+      acknowledgmentsJson: '[]',
+      traceabilityJson: null,
+      importedUnverified: null,
+      attestedGatesJson: null,
+      releasedAt: '2026-01-01T00:00:00.000Z',
+    };
+  }
+
+  it('Defect B — rejects an import whose reconstructed case-document violates the schema (400, names the failure)', async () => {
+    const badDocId = `sec-doc-${Date.now()}`;
+    // A structurally-plausible document with an ILLEGAL schemaVersion (const 2)
+    // + an extra field — exactly what PUT /api/cases/:id would reject.
+    const badDoc = {
+      ...createEmptyCaseDocument(badDocId, '2026-01-01T00:00:00.000Z'),
+      schemaVersion: 99,
+      hacked: true,
+    };
+    const archive = buildCaseArchive(
+      { id: badDocId, name: 'malformed', schemaVersion: 99, kernelVersion: KERNEL_VERSION },
+      [jsonEntry('case-document', 'case-document', badDoc)],
+    );
+    const res = await target.app.inject({
+      method: 'POST',
+      url: '/api/archives/import',
+      headers: { 'content-type': 'application/octet-stream' },
+      payload: Buffer.from(archive),
+    });
+    expect(res.statusCode, res.body).toBe(400);
+    const body = res.json() as { error: string; message: string; entryName?: string };
+    expect(body.error).toBe('archive-invalid');
+    expect(body.entryName).toBe('case-document');
+    expect(body.message).toContain('case-document schema');
+    // Nothing was persisted for the malformed id (the write-path was blocked).
+    expect(await target.prisma.case.findUnique({ where: { id: badDocId } })).toBeNull();
+  });
+
+  it('a WELL-FORMED crafted archive still imports (positive control — the validator does not over-reject)', async () => {
+    const okId = `sec-ok-${Date.now()}`;
+    const doc = createEmptyCaseDocument(okId, '2026-01-01T00:00:00.000Z');
+    const archive = buildCaseArchive(
+      { id: okId, name: 'clean', schemaVersion: 2, kernelVersion: KERNEL_VERSION },
+      [jsonEntry('case-document', 'case-document', doc)],
+    );
+    const res = await target.app.inject({
+      method: 'POST',
+      url: '/api/archives/import',
+      headers: { 'content-type': 'application/octet-stream' },
+      payload: Buffer.from(archive),
+    });
+    expect(res.statusCode, res.body).toBe(201);
+    expect((res.json() as { caseId: string }).caseId).toBe(okId);
+  });
+
+  it('Defect A — rejects an archive whose export-row is keyed to a DIFFERENT case (cross-case ledger injection)', async () => {
+    const importId = `sec-inj-${Date.now()}`;
+    const victimId = `sec-victim-${Date.now()}`;
+    const doc = createEmptyCaseDocument(importId, '2026-01-01T00:00:00.000Z');
+    // The document imports `importId`, but the ledger row targets `victimId`.
+    const archive = buildCaseArchive(
+      { id: importId, name: 'injector', schemaVersion: 2, kernelVersion: KERNEL_VERSION },
+      [
+        jsonEntry('case-document', 'case-document', doc),
+        jsonEntry('export-row/forged-1', 'export-row', archivedExportRow('forged-1', victimId)),
+      ],
+    );
+    const res = await target.app.inject({
+      method: 'POST',
+      url: '/api/archives/import',
+      headers: { 'content-type': 'application/octet-stream' },
+      payload: Buffer.from(archive),
+    });
+    expect(res.statusCode, res.body).toBe(400);
+    const body = res.json() as { error: string; message: string };
+    expect(body.error).toBe('archive-invalid');
+    expect(body.message).toContain(victimId);
+    // The forged row was NOT injected into ANY case's ledger, and the importing
+    // case itself was not created (the whole import was refused).
+    expect(await target.prisma.export.findUnique({ where: { id: 'forged-1' } })).toBeNull();
+    expect(await target.prisma.export.findFirst({ where: { caseId: victimId } })).toBeNull();
+    expect(await target.prisma.case.findUnique({ where: { id: importId } })).toBeNull();
   });
 });

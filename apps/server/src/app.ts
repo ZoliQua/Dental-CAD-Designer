@@ -50,6 +50,7 @@ import {
   toLoop,
   toSeamEdges,
   toVec3,
+  MeshIndexOutOfBoundsError,
   type BridgeConnectorInput,
   type BridgeUnitInput,
   type MeshDataInput,
@@ -861,7 +862,8 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
           error instanceof BridgeQcInputError ||
           error instanceof MarginFitInputError ||
           error instanceof MinWallThicknessInputError ||
-          error instanceof NonCavityRestorationTypeError
+          error instanceof NonCavityRestorationTypeError ||
+          error instanceof MeshIndexOutOfBoundsError
         ) {
           reply.code(400);
           return { error: 'qc-invalid-input' as const, errorName: error.name, message: error.message };

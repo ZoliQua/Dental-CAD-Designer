@@ -64,6 +64,7 @@ interface ExportOkBody {
   releasedAt: string;
   alreadyStored: boolean;
   qcReport: QcReport;
+  clientAttestedGates: string[];
 }
 
 describe('POST /api/restorations/:id/export — crown fixture (pass loop + falsifiable rejections)', () => {
@@ -165,6 +166,15 @@ describe('POST /api/restorations/:id/export — crown fixture (pass loop + falsi
     expect(row.exportOperationId).toBe(harness.exportOp.id);
     expect(row.kernelVersion).toBe(KERNEL_VERSION);
     expect(JSON.parse(row.qcReportJson)).toEqual(JSON.parse(JSON.stringify(standinReport)));
+
+    // H1 fix (server code-review): a crown's `contact` gate consumes the client
+    // morph residuals (design-time context, not recoverable from the mill
+    // bytes), so the release RECORD discloses it as client-attested rather than
+    // presenting a full-authority server-verified pass. The connector gate is
+    // the single-crown N/A stub (trusts no client scalar) → NOT attested.
+    expect(body.clientAttestedGates).toEqual(['contact']);
+    expect(body.clientAttestedGates).not.toContain('connectorCrossSection');
+    expect(JSON.parse(row.attestedGatesJson ?? 'null')).toEqual(['contact']);
 
     // Download: the EXACT stored bytes, byte-identical to the request bytes.
     const dl = await app.inject({ method: 'GET', url: body.downloadPath });

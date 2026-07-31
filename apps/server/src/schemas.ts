@@ -1245,6 +1245,7 @@ export const exportResponseSchema = {
       'releasedAt',
       'alreadyStored',
       'qcReport',
+      'clientAttestedGates',
     ],
     additionalProperties: false,
     properties: {
@@ -1274,6 +1275,19 @@ export const exportResponseSchema = {
       alreadyStored: { type: 'boolean' },
       /** The SERVER-recomputed report (the authoritative copy). */
       qcReport: qcReportSchema,
+      /** H1 fix (server code-review) — the gate names in `qcReport.gates` whose
+       * MEASURED value the server did NOT recompute at release: their
+       * design-time inputs (connector frame/profiles, pontic↔gingiva relation,
+       * contact morph residuals) are recoverable from neither the exported mill
+       * bytes nor the release request, so the re-validation consumed the
+       * CLIENT-ATTESTED scalar. The solid-consuming gates (watertight, manifold,
+       * self-intersection, min-wall, marginFit, seating) ARE recomputed on the
+       * re-imported bytes (invariant 6 stays literal for them); the gates listed
+       * here rest on attested measurements and MUST NOT be read as a
+       * full-authority server-verified pass. Empty ⇒ every reported gate was
+       * server-recomputed. Mirrors the archive `importedUnverified` provenance
+       * disclosure. */
+      clientAttestedGates: { type: 'array', items: { type: 'string' } },
     },
   },
   400: exportErrorSchema,
