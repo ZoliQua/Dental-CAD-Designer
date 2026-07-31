@@ -24,7 +24,7 @@
 import { IoWriteRangeError, TruncatedFileError, MalformedSyntaxError } from '../types.ts';
 import type { ParseDiagnostics } from '../types.ts';
 import { GrowableUint32Array } from './growable-uint32-array.ts';
-import { assertPlausibleElementCount } from './element-count-guard.ts';
+import { assertPlausibleElementCount, assertSkippableElement } from './element-count-guard.ts';
 import { plyColorNormalizationDivisor, plyScalarByteSize, readPlyScalar, writePlyScalar } from './scalars.ts';
 import type { PlyScalarType } from './scalars.ts';
 import type { FacePlan, PlyPlan, VertexPlan } from './plan.ts';
@@ -76,7 +76,23 @@ function skipListField(
   littleEndian: boolean,
   context: string,
 ): void {
+  const countStart = cursor.pos;
   const count = readScalarAdvance(bytes, view, cursor, countType, littleEndian, `${context} list count`);
+  // A signed count-type (int8/int16/int32) can decode to a NEGATIVE value; a
+  // float count-type can decode to a non-integer. Either makes `need` below
+  // nonsensical — a negative `need` in particular slips PAST `requireBytes`
+  // (which only checks the UPPER bound) and rewinds `cursor.pos` BACKWARD, so
+  // a later field read lands at a negative absolute DataView offset and throws
+  // an UNTYPED RangeError, breaking this package's IoParseError contract.
+  // Reject it up front as malformed — mirrors ascii.ts's `readListField`
+  // (`count < 0` check) and this file's own `readAndFanTriangulateFace`
+  // (`n < 3` check).
+  if (!Number.isInteger(count) || count < 0) {
+    throw new MalformedSyntaxError(
+      `${context} list count is ${count} — a PLY list count must be a non-negative integer`,
+      { byteOffset: countStart },
+    );
+  }
   const itemSize = plyScalarByteSize(itemType);
   const need = count * itemSize;
   requireBytes(bytes, cursor, need, `${context} list items (count=${count})`);
@@ -380,6 +396,11 @@ function skipElement(
   element: PlyElementSpec,
   littleEndian: boolean,
 ): void {
+  // Guard BEFORE the loop — a skipped element's declared count was previously
+  // trusted verbatim (the plausibility ceiling was only ever applied to the
+  // vertex/face elements), so a huge count or a zero-property "zero-byte row"
+  // element turned this into an unbounded CPU spin. See assertSkippableElement.
+  assertSkippableElement(element);
   for (let r = 0; r < element.count; r++) {
     skipRow(bytes, view, cursor, element, littleEndian, r);
   }

@@ -34,7 +34,8 @@
 // and only implausible-on-their-face counts are rejected here, before any
 // allocation.
 
-import { TruncatedFileError } from '../types.ts';
+import { MalformedSyntaxError, TruncatedFileError } from '../types.ts';
+import type { PlyElementSpec } from './types.ts';
 
 /** Comfortably above this project's largest expected real scan (PLAN.md's
  * ~5M-triangle full-arch ceiling) while still bounding a single element's
@@ -65,6 +66,42 @@ export function assertPlausibleElementCount(
       `element "${elementName}" declares ${declaredCount} row(s), which exceeds this parser's sanity ` +
         `ceiling of ${ceiling} row(s) for a single element — this looks like a corrupted or adversarial ` +
         'header rather than a genuinely large real file',
+    );
+  }
+}
+
+/**
+ * Full pre-loop guard for ANY element the parser is about to iterate row by
+ * row — the vertex/face readers additionally have this ceiling applied
+ * directly (they always carry x/y/z etc. properties, so the second check
+ * below can never fire for them), but SKIPPED elements had no guard at all
+ * before, which is the exact gap the parser-DoS blocker exploited.
+ *
+ * Two distinct hostile-header shapes are rejected here, both BEFORE the
+ * row-skip loop runs even once (so neither can turn into an
+ * uncancellable CPU spin):
+ *
+ *   1. An implausibly huge declared count (`assertPlausibleElementCount`) —
+ *      a skipped element declaring, say, `Number.MAX_SAFE_INTEGER` rows.
+ *
+ *   2. A "zero-byte row" element: a nonzero declared count paired with ZERO
+ *      properties. Every real PLY property consumes at least one body byte
+ *      per row (the smallest scalar is 1 byte; a list field always reads its
+ *      count-type first), so a legitimate element's row ALWAYS advances the
+ *      byte cursor. An element with no properties advances it by nothing, so
+ *      `for (r < count) skipRow()` becomes a pure no-op spin of up to `count`
+ *      iterations that never runs out of bytes to trip `requireBytes` — a
+ *      DoS pattern regardless of whether `count` is under the ceiling above.
+ *      No real file needs to declare a positive row count for a
+ *      property-less element, so this is rejected outright as malformed.
+ */
+export function assertSkippableElement(element: PlyElementSpec): void {
+  assertPlausibleElementCount(element.name, element.count);
+  if (element.count > 0 && element.properties.length === 0) {
+    throw new MalformedSyntaxError(
+      `element "${element.name}" declares ${element.count} row(s) but has zero properties — each such ` +
+        'row consumes zero body bytes, so a positive row count here is an unbounded no-op "spin" ' +
+        'pattern rather than a legitimate element (every real PLY element consumes at least one byte per row)',
     );
   }
 }

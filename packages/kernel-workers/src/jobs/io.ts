@@ -16,6 +16,7 @@
 // CLAUDE.md's "Import extension convention".
 import {
   iterateInFixedChunks,
+  IoStreamCancelledError,
   parsePlyStream,
   parseStlStream,
   type ParseFormat,
@@ -125,6 +126,13 @@ export type ParseMeshFileResult = StlSoupResult | PlyMeshResult;
 
 const DEFAULT_CHUNK_BYTES = 1 << 20; // 1 MiB — see ParseMeshFilePayload's doc.
 
+/** How often (ms) the PLY parse path polls `ctx.cancelled()` to drive the
+ * AbortSignal it threads into `parsePlyStream` — see the "signal threading"
+ * note in `parseMeshFile`. Small enough to cancel a wedged/slow parse
+ * promptly, large enough that the (possibly Comlink-proxied, async)
+ * `ctx.cancelled()` call isn't hammered. */
+const CANCEL_POLL_INTERVAL_MS = 25;
+
 /** Re-slices `bytes` into `chunkBytes`-sized `AsyncIterable<Uint8Array>`
  * chunks (zero-copy `subarray` views — see packages/io's
  * `iterateInFixedChunks`), checking `ctx.cancelled()` once per chunk (this
@@ -181,10 +189,42 @@ export const parseMeshFile = async (
     return result;
   }
 
-  const mesh = await parsePlyStream(chunks, {
-    totalBytes: payload.bytes.byteLength,
-    onProgress: ctx.progress,
-  });
+  // Signal threading (parser-DoS defense-in-depth): pass parsePlyStream an
+  // AbortSignal so a slow OR wedged PLY parse stays cancellable on a bounded,
+  // per-row cadence — NOT only when `chunkStream` is next pulled. Once the
+  // re-sliced source drains, `chunkStream` is never pulled again, so its
+  // per-chunk `ctx.cancelled()` check can't fire; stream.ts's per-row
+  // `checkCancelled(signal)` can, but only if a signal is actually threaded
+  // in (it previously was not). `ctx.cancelled()` is the (possibly async,
+  // Comlink-proxied) cancellation flag, so it's polled on a bounded interval
+  // to drive the signal. io reports an aborted stream as `IoStreamCancelledError`
+  // (it has no dependency on kernel-workers — see chunkStream's doc); it's
+  // translated back to `JobCancelledError`, the type pool.ts recognizes, so
+  // both cancellation routes (chunkStream-throw and signal-abort) surface
+  // identically to the caller.
+  const abort = new AbortController();
+  const cancelPoll = setInterval(() => {
+    void Promise.resolve(ctx.cancelled()).then((isCancelled) => {
+      if (isCancelled) {
+        abort.abort();
+      }
+    });
+  }, CANCEL_POLL_INTERVAL_MS);
+  let mesh;
+  try {
+    mesh = await parsePlyStream(chunks, {
+      totalBytes: payload.bytes.byteLength,
+      onProgress: ctx.progress,
+      signal: abort.signal,
+    });
+  } catch (error) {
+    if (error instanceof IoStreamCancelledError) {
+      throw new JobCancelledError();
+    }
+    throw error;
+  } finally {
+    clearInterval(cancelPoll);
+  }
   const result: PlyMeshResult = {
     kind: 'ply-mesh',
     fileHash,
