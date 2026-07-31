@@ -15,6 +15,7 @@
 import {
   constructShell,
   autoThickenOuter,
+  healOuterAnatomy,
   measureWallThickness,
   type IndexedMesh,
   type Vec3,
@@ -34,6 +35,16 @@ export interface ConstructShellPayload {
    * exclusion + the auto-thicken feather guard. Optional. */
   marginLoop?: Float64Array;
   marginExclusionMm?: number;
+  /** When set, SDF-re-mesh the CLOSED morphed outer (`healOuterAnatomy`) to a
+   * guaranteed-clean, self-intersection-free 2-manifold BEFORE stitching —
+   * mirrors `runShellStage`'s `healOuterPitchMm`. Only the OUTER is healed; the
+   * intaglio (and its ≤10 µm seal) is never touched. Absent ⇒ no heal ⇒
+   * byte-identical to a direct `constructShell` (the shellJob byte-identity
+   * pin holds). The remesh shifts the outer (and thus the morph's achieved
+   * contacts) by at most `healOuterErrorBoundMm`, surfaced below so the
+   * downstream contact gate SUMS it (see `contact.ts`'s `outerShiftBoundMm`
+   * + the kernel `healOuterAnatomy` @errorBound doc). */
+  healOuterPitchMm?: number;
   /** Bounded outward auto-thicken BEFORE stitching (user-invoked). */
   autoThicken?: boolean;
   autoThickenMinThicknessMm?: number;
@@ -60,6 +71,12 @@ export interface ConstructShellResultPayload {
   autoThickenDisplacedVertexCount: number;
   autoThickenClampedVertexCount: number;
   autoThickenMaxAppliedMm: number;
+  /** The morph→shell heal remesh @errorBound (mm) when `healOuterPitchMm` was
+   * applied — the max distance the outer (and thus each achieved contact)
+   * shifted. `undefined` when no heal ran. Journaled by the engine and threaded
+   * into the contact QC input (`RunCrownQcInput.healErrorBoundMm`) so the
+   * contact gate honestly SUMS it onto every contact residual. */
+  healOuterErrorBoundMm?: number;
   /** Per-inner-vertex thickness heatmap (mm). */
   thicknessHeatmap: Float64Array;
 }
@@ -91,6 +108,17 @@ export const constructShellJob = async (
   let outerMesh: IndexedMesh = { positions: payload.outerPositions, indices: payload.outerIndices };
   const marginLoop = rebuildLoop(payload.marginLoop);
   const marginExclusionMm = payload.marginExclusionMm ?? 0;
+
+  // --- morph→shell HEAL (mirrors runShellStage): SDF re-mesh the closed morphed
+  // outer to a clean 2-manifold before shelling. Only when a pitch is supplied;
+  // absent ⇒ byte-identical to the pre-heal job. Its @errorBound is surfaced so
+  // the contact gate can SUM it (an under-reported residual otherwise).
+  let healOuterErrorBoundMm: number | undefined;
+  if (payload.healOuterPitchMm !== undefined) {
+    const healed = await healOuterAnatomy(outerMesh, { pitchMm: payload.healOuterPitchMm });
+    outerMesh = healed.mesh;
+    healOuterErrorBoundMm = healed.errorBoundMm;
+  }
 
   let autoThickenApplied = false;
   let autoThickenDisplacedVertexCount = 0;
@@ -159,6 +187,7 @@ export const constructShellJob = async (
     autoThickenDisplacedVertexCount,
     autoThickenClampedVertexCount,
     autoThickenMaxAppliedMm,
+    ...(healOuterErrorBoundMm !== undefined ? { healOuterErrorBoundMm } : {}),
     thicknessHeatmap: thickness.perInnerVertexMm,
   };
 };

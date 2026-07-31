@@ -228,6 +228,21 @@ describe('bridgeDesign — the happy path (stage hashes + ONE coalesced op per s
     }
   });
 
+  it('W2: exportQcContext ALWAYS supplies each connector targetMm2 (never the global fallback)', async () => {
+    const id = setupBridgeCase();
+    await driveToQc(id);
+    const ctx = bridgeDesignEngine.exportQcContext(id);
+    expect(ctx).not.toBeNull();
+    expect(ctx!.connectors).toHaveLength(2);
+    // Every riding connector carries its per-connector positional target — so
+    // the server connectorCrossSection gate enforces/reports the per-connector
+    // target, never falling back to the global threshold.
+    for (const c of ctx!.connectors) {
+      expect(c.targetMm2).toBe(9); // posterior positional target
+      expect(Object.prototype.hasOwnProperty.call(c, 'targetMm2')).toBe(true);
+    }
+  });
+
   it('the connector readouts carry the posterior positional target (9 mm²) + gate verdict', async () => {
     const id = setupBridgeCase();
     bridgeDesignEngine.start(id, geometry());

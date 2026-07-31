@@ -237,6 +237,11 @@ export interface CrownExportQcContext {
   contacts: ContactResidualInput[];
   contactClampWarning: boolean;
   marginExclusionMm?: number;
+  /** The client's journaled morph→shell heal @errorBound (mm) — a RIDING param
+   * the server cannot recompute from the delivered bytes (the pre-heal outer is
+   * design-time), SUMMED by the contact gate exactly as the client did so the
+   * client-attested contact verdict agrees. Omitted ⇒ 0. */
+  healErrorBoundMm?: number;
 }
 
 export interface InlayExportQcContext {
@@ -435,6 +440,7 @@ async function runExportQc(
     connectorAreaTargetMm2: k.connectorAreaTargetMm2,
     contacts: k.contacts,
     contactClampWarning: k.contactClampWarning,
+    healErrorBoundMm: k.healErrorBoundMm,
     marginExclusionMm: k.marginExclusionMm,
     ...meta,
   };

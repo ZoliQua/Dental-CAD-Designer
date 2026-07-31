@@ -294,6 +294,7 @@ export function toValidateQcBody(
     connectorAreaTargetMm2: input.connectorAreaTargetMm2,
     contacts: input.contacts.map((c) => ({ ...c })),
     contactClampWarning: input.contactClampWarning,
+    ...(input.healErrorBoundMm !== undefined ? { healErrorBoundMm: input.healErrorBoundMm } : {}),
     kernelVersion: input.kernelVersion,
     profileVersion: input.profileVersion,
     journalHash: input.journalHash,

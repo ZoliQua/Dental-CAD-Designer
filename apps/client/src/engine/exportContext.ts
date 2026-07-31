@@ -72,6 +72,11 @@ export interface CrownExportQcContext {
   contacts: ExportContactJson[];
   contactClampWarning: boolean;
   marginExclusionMm?: number;
+  /** The shell stage's journaled morph→shell heal @errorBound (mm), riding with
+   * the request so the server's contact gate SUMS the same value the client did
+   * (a journaled PARAM, never a server re-measurement — invariant 6). Omitted
+   * when the outer was not healed ⇒ 0 both sides ⇒ byte-identical report. */
+  healErrorBoundMm?: number;
 }
 
 export interface InlayExportQcContext {

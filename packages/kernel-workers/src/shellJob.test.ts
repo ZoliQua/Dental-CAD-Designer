@@ -118,6 +118,28 @@ describe('constructShell worker job', () => {
     expect(hash(job.positions, job.indices)).toBe(hash(direct.mesh.positions, direct.mesh.indices));
   }, 120000);
 
+  it('W1: surfaces healOuterErrorBoundMm ONLY when the outer is healed (~pitch/2)', async () => {
+    // The heal (`healOuterAnatomy`) needs a CLOSED morphed outer; constructShell
+    // then trims it to an open dome at the margin — the real "closed morphed
+    // tooth → watertight crown shell" path (both caps + a margin loop).
+    const inner = await intaglio();
+    const closed = buildFrustum(MARGIN_R + 0.7, TOP_R + 0.7, MARGIN_Z, TOP_Z + 0.7, 96, true, true);
+    const margin = marginFlat(MARGIN_R, MARGIN_Z, 240);
+    const base = { outerPositions: closed.positions, outerIndices: closed.indices, innerPositions: inner.positions, innerIndices: inner.indices, insertionAxis: AXIS, marginLoop: margin };
+
+    // No heal (default): the bound is undefined (⇒ 0 downstream).
+    const noHeal = await constructShellJob(base, NOOP_CTX);
+    expect(noHeal.healOuterErrorBoundMm).toBeUndefined();
+    expect(noHeal.watertight).toBe(true);
+
+    // With a heal pitch: the morph→shell heal runs and surfaces its @errorBound
+    // (~pitch/2) — the value the engine journals + threads into the contact QC.
+    const healed = await constructShellJob({ ...base, healOuterPitchMm: 0.1 }, NOOP_CTX);
+    expect(healed.healOuterErrorBoundMm).toBeGreaterThan(0.05 - 1e-9);
+    expect(healed.healOuterErrorBoundMm!).toBeLessThan(0.1);
+    expect(healed.watertight).toBe(true);
+  }, 120000);
+
   it('reports monotonic progress ending at 1', async () => {
     const inner = await intaglio();
     const o = outer(0.7);

@@ -155,6 +155,13 @@ interface Session {
   morphHeatmap: Float64Array | null;
   shell: DerivedMesh | null;
   shellThicknessHeatmap: Float64Array | null;
+  /** The shell stage's journaled morph→shell heal @errorBound (mm), captured
+   * from the `constructShell` worker result when the outer was healed; `null`
+   * when no heal ran. Threaded into the contact QC input (`healErrorBoundMm`)
+   * so the contact gate SUMS it onto every contact residual — the same
+   * journaled param the server export re-validation receives, keeping the
+   * client-attested contact verdict in agreement. */
+  shellHealErrorBoundMm: number | null;
 }
 
 function nowIso(): string {
@@ -235,6 +242,7 @@ class CrownDesignEngine {
       morphHeatmap: null,
       shell: null,
       shellThicknessHeatmap: null,
+      shellHealErrorBoundMm: null,
     };
     caseStore.setSelectedRestorationId(restorationId);
     this.publish({ restorationId, active: true, error: null, errorStage: null });
@@ -812,6 +820,12 @@ class CrownDesignEngine {
       const contentHash = await this.hashMesh(result.positions, result.indices);
       session.shell = { positions: result.positions, indices: result.indices, contentHash };
       session.shellThicknessHeatmap = result.thicknessHeatmap;
+      // The morph→shell heal @errorBound (mm) when the outer was healed —
+      // captured here, journaled on the shell op, and SUMMED onto every contact
+      // residual by the contact gate (runQc + the export re-validation both
+      // receive it, so the client-attested contact verdict stays in agreement).
+      // `undefined` on the no-heal path ⇒ 0 ⇒ byte-identical contact residuals.
+      session.shellHealErrorBoundMm = result.healOuterErrorBoundMm ?? null;
       this.commitStage(
         'shell',
         'finalMesh',
@@ -824,6 +838,9 @@ class CrownDesignEngine {
           volumeMm3: result.volumeMm3,
           autoThickenApplied: result.autoThickenApplied,
           autoThickenMaxAppliedMm: result.autoThickenMaxAppliedMm,
+          ...(result.healOuterErrorBoundMm !== undefined
+            ? { healOuterErrorBoundMm: result.healOuterErrorBoundMm }
+            : {}),
         },
         [session.morphOuter.contentHash, session.inner.contentHash],
       );
@@ -961,6 +978,10 @@ class CrownDesignEngine {
         marginExclusionMm: STANDARD_ZIRCONIA_PROFILE.marginExclusionMm,
         contacts: session.morphContacts,
         contactClampWarning: session.morphContacts.some((c) => c.clampBound),
+        // The journaled morph→shell heal @errorBound — SUMMED onto each contact
+        // residual so the gate is honest; the export re-validation gets the same
+        // value. `null` (no heal) ⇒ undefined ⇒ 0 ⇒ pre-heal-identical.
+        healErrorBoundMm: session.shellHealErrorBoundMm ?? undefined,
         kernelVersion: KERNEL_VERSION,
         profileVersion,
         journalHash: session.shell.contentHash,
@@ -1016,6 +1037,9 @@ class CrownDesignEngine {
         marginExclusionMm: STANDARD_ZIRCONIA_PROFILE.marginExclusionMm,
         contacts: session.morphContacts,
         contactClampWarning: session.morphContacts.some((c) => c.clampBound),
+        // Same journaled heal @errorBound as runQc — re-supplied on the ack
+        // re-run so the acknowledged report's contact residual is unchanged.
+        healErrorBoundMm: session.shellHealErrorBoundMm ?? undefined,
         kernelVersion: KERNEL_VERSION,
         profileVersion,
         journalHash: session.shell.contentHash,
@@ -1102,6 +1126,13 @@ class CrownDesignEngine {
       contacts: [...session.morphContacts],
       contactClampWarning: session.morphContacts.some((c) => c.clampBound),
       marginExclusionMm: STANDARD_ZIRCONIA_PROFILE.marginExclusionMm,
+      // The journaled heal @errorBound rides with the export request (a
+      // journaled PARAM, not a re-measurement) so the server's independent
+      // contact gate SUMS the exact same value — the client-attested contact
+      // residual matches field-for-field. Omitted (no heal) ⇒ 0 both sides.
+      ...(session.shellHealErrorBoundMm !== null
+        ? { healErrorBoundMm: session.shellHealErrorBoundMm }
+        : {}),
     };
   }
 

@@ -716,6 +716,11 @@ export const crownValidateQcBodySchema = {
     contacts: { type: 'array', items: contactResidualInputSchema },
     contactClampWarning: { type: 'boolean' },
     marginExclusionMm: { type: 'number' },
+    // The journaled morph→shell heal @errorBound (mm) — a RIDING param the
+    // contact gate SUMS onto each residual (see cad-pipeline `contact.ts`). It
+    // only TIGHTENS the gate (never a loosening free-knob), so it rides into
+    // the export context too (NOT in EXPORT_CONTEXT_FORBIDDEN_KNOBS). Absent ⇒ 0.
+    healErrorBoundMm: { type: 'number' },
     marginFitThresholdMm: { type: 'number' },
     seatingInterferenceVolumeToleranceMm3: { type: 'number' },
     contactToleranceMm: { type: 'number' },
