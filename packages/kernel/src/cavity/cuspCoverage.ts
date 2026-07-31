@@ -131,12 +131,14 @@ export interface ExtendOutlineOverCuspResult {
   /** The extended (onlay) outline — a closed on-mesh vertex ring. */
   readonly extendedOutline: Vec3[];
   /** The covered-cusp surface triangle indices (union'd across selections),
-   * sorted — the region-scoped `cuspCoverageMinThicknessMm` footprint. */
+   * sorted — the region-scoped `cuspCoverageMinThicknessMm` footprint. THIS is
+   * the region-split currency a min-wall gate must use to classify covered-cusp
+   * (1.5 mm) vs body (1.0 mm) samples. */
   readonly coveredCuspTriangleIndices: Uint32Array;
-  /** Buccolingual/axis-perpendicular footprint of the covered cusp surface,
-   * projected along the axis: the min/max signed offset along the direction from
-   * the cavity centroid toward the covered cusp (closed-form region-split
-   * currency). */
+  /** A 0/1 FLAG: `1` iff at least one covered-cusp surface triangle was found
+   * (`covered.size > 0`), else `0`. NOT a coverage extent or footprint measure —
+   * it says only WHETHER any cusp was covered; the actual covered surface is
+   * `coveredCuspTriangleIndices`. */
   readonly coveredCuspCount: number;
 }
 

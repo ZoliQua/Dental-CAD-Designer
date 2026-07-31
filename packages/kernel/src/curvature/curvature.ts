@@ -140,9 +140,12 @@ export interface CurvatureResult {
   k1: Float64Array;
   /** Smaller principal curvature, mm^-1. 0 at a boundary/isolated vertex. */
   k2: Float64Array;
-  /** `1` for a boundary OR isolated vertex (see this file's "Boundary
-   * policy" doc), `0` otherwise — `Uint8Array` (not `boolean[]`), matching
-   * this kernel's typed-array convention for per-vertex arrays. */
+  /** `1` for a boundary OR isolated vertex, a bowtie vertex, a vertex with no
+   * well-defined one-ring area, OR a vertex whose area-weighted normal cancels
+   * to all-zero (an undefined mean-curvature sign — see this file's "Boundary
+   * policy" doc and `computeVertexNormals`' all-zero contract); `0` otherwise —
+   * `Uint8Array` (not `boolean[]`), matching this kernel's typed-array
+   * convention for per-vertex arrays. */
   isBoundary: Uint8Array;
   /** Mixed Voronoi area per vertex, mm^2 (mixedArea.ts's
    * `computeMixedVoronoiAreas`) — exposed for callers/tests that need it
@@ -267,6 +270,17 @@ export function computeCurvature(mesh: IndexedMesh, hm: HalfedgeMesh = buildHalf
     const nx = normals[v * 3]!;
     const ny = normals[v * 3 + 1]!;
     const nz = normals[v * 3 + 2]!;
+    if (nx === 0 && ny === 0 && nz === 0) {
+      // `computeVertexNormals` (normals.ts) returns [0,0,0] when the incident
+      // face normals cancel exactly (a symmetric pinch/saddle) — its documented
+      // "undefined direction" contract. Without a normal the mean-curvature SIGN
+      // (`H = -0.5 * dot(L, n)`) is undefined, so H would collapse to 0 and k1/k2
+      // would be emitted as if trustworthy. Honour the contract: flag-and-exclude
+      // this vertex exactly like a boundary/degenerate-area one (H/K/k1/k2 stay 0,
+      // isBoundary = 1), never a silently-trusted 0.
+      isBoundary[v] = 1;
+      continue;
+    }
     const meanH = -0.5 * (lx * nx + ly * ny + lz * nz);
     const gaussK = (2 * Math.PI - angleSum[v]!) / area;
     const discriminant = Math.max(0, meanH * meanH - gaussK);

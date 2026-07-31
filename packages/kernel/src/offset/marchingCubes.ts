@@ -63,14 +63,15 @@ import { MESH_WELD_EPSILON_MM } from '../intake/weld.ts';
 import { CORNER_OFFSETS, EDGE_CORNERS, EDGE_TABLE, TRI_TABLE } from './mcTables.ts';
 
 /** Hard floor on `pitchMm` accepted anywhere in this module — see
- * `PitchTooSmallError`'s doc for why. Three orders of magnitude below this
- * project's clinical default (`DEFAULT_OFFSET_VOXEL_PITCH_MM`,
- * `clinical-profiles/`, 0.02 mm / 20 µm) and two below the point
- * (`4 * MESH_WELD_EPSILON_MM = 8e-6` mm) at which `muClampEpsilon`'s second
- * term alone would reach 0.5 and invert the valid `[eps, 1-eps]` clamp
- * range — so this floor rejects a misconfigured/degenerate `pitchMm` with a
- * clear typed error well before the clamp math itself would start silently
- * misbehaving, not right at the edge of where it does. */
+ * `PitchTooSmallError`'s doc for why. About 2.3 orders of magnitude (200×)
+ * below this project's clinical default (`DEFAULT_OFFSET_VOXEL_PITCH_MM`,
+ * `clinical-profiles/`, 0.02 mm / 20 µm), and about 1.1 orders of magnitude
+ * (12.5×) ABOVE the point (`4 * MESH_WELD_EPSILON_MM = 8e-6` mm) at which
+ * `muClampEpsilon`'s second term alone would reach 0.5 and invert the valid
+ * `[eps, 1-eps]` clamp range — so this floor rejects a misconfigured/degenerate
+ * `pitchMm` with a clear typed error a modest margin before the clamp math
+ * itself would start silently misbehaving, not right at the edge of where it
+ * does. */
 export const MIN_PITCH_MM = 1e-4;
 
 /** Thrown by `muClampEpsilon` (and therefore every entry point that calls

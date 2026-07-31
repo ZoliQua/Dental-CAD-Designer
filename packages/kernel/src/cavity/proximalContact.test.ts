@@ -34,6 +34,7 @@ import {
   ProximalBandTooWideError,
   type ProximalAdaptationInput,
 } from './proximalContact.ts';
+import { NonWatertightMeshError } from '../sdf/pseudonormals.ts';
 import { buildBvh } from '../bvh/build.ts';
 import { closestPoint } from '../bvh/closestPoint.ts';
 import type { IndexedMesh } from '../mesh/types.ts';
@@ -433,6 +434,20 @@ describe('adaptProximalContacts — typed errors + option validation', () => {
     const bad = good();
     const b0 = { ...bad[0]!, neighborMesh: { positions: new Float64Array(0), indices: new Uint32Array(0) } };
     expect(() => adaptProximalContacts(patch.mesh, [b0, bad[1]!])).toThrow(ProximalNeighborMeshError);
+  });
+
+  it('M1: REJECTS a non-watertight neighbour (no well-defined inside/outside for the sign)', () => {
+    // An OPEN neighbour (single triangle, boundary edges) has no consistent
+    // "inside" — deriving a penetration sign against it is meaningless. Pre-fix
+    // it was measured anyway (indices.length !== 0 passed); post-fix the
+    // pseudonormal precompute rejects it, so an over-penetrating design can no
+    // longer slip through the interpenetration gate on a raw-scan neighbour.
+    const bad = good();
+    const openMesh: IndexedMesh = {
+      positions: new Float64Array([-3, -1, 2, -3, 1, 2, -3, 0, 4]),
+      indices: Uint32Array.from([0, 1, 2]),
+    };
+    expect(() => adaptProximalContacts(patch.mesh, [{ ...bad[0]!, neighborMesh: openMesh }, bad[1]!])).toThrow(NonWatertightMeshError);
   });
 
   it('rejects two adaptations claiming the same column (overlapping movable sets)', () => {

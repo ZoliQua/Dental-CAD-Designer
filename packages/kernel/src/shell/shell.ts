@@ -639,8 +639,17 @@ export interface WallThicknessOptions {
 
 export interface WallThicknessResult {
   /** Minimum wall thickness (mm) over all INCLUDED samples, both directions —
-   * a conservative lower bound of the true through-material thickness. */
+   * a conservative lower bound of the true through-material thickness. When
+   * `measured` is `false` (ZERO surviving samples — see `measured`), this is a
+   * fail-closed sentinel `0`, NOT a real thickness: a min-wall gate comparing
+   * `minThicknessMm >= threshold` therefore FAILs, never passes. */
   readonly minThicknessMm: number;
+  /** `true` iff at least one wall sample survived the margin-band exclusion.
+   * `false` means the measurement FAILED (every grid sample was excluded, or an
+   * over-cropped surface left nothing to sample) — the caller/min-wall gate MUST
+   * treat this as a hard FAIL (fail-closed), never "infinitely thick". Mirrors
+   * `seamDihedral.ts`'s explicit zero-samples-is-a-failure contract. */
+  readonly measured: boolean;
   /** Minimum over occlusal-classified samples (Infinity if none). */
   readonly minOcclusalThicknessMm: number;
   /** Minimum over axial-classified samples (Infinity if none). */
@@ -765,12 +774,21 @@ export function measureWallThickness(
   sampleSurface(innerMesh, outerMesh, bvhOuter);
   sampleSurface(outerMesh, innerMesh, bvhInner);
 
-  if (sampleCount === 0) {
-    minThicknessMm = Infinity;
+  // Fail-closed: a measurement over ZERO surviving samples is NOT "infinitely
+  // thick" — it is a MEASUREMENT FAILURE (every grid sample excluded by the
+  // margin band, or an over-cropped surface). Reporting `Infinity` would let a
+  // thin/over-excluded crown PASS a `minThicknessMm >= threshold` min-wall gate
+  // (Infinity ≥ anything). Instead `measured` is false and `minThicknessMm` is
+  // pinned to a fail-closed `0` sentinel that FAILS any positive threshold —
+  // matching seamDihedral.ts's explicit zero-samples-is-a-failure contract.
+  const measured = sampleCount > 0;
+  if (!measured) {
+    minThicknessMm = 0;
   }
 
   return {
     minThicknessMm,
+    measured,
     minOcclusalThicknessMm,
     minAxialThicknessMm,
     minPoint,

@@ -183,3 +183,28 @@ describe('computeCurvature — torus R=5,r=2 (K sign split outer/inner, spot val
     }
   });
 });
+
+// M2: `computeVertexNormals` (normals.ts) documents it may return an all-zero
+// "undefined direction" when incident face normals cancel. `computeCurvature`'s
+// consumer must honour that contract — flag-and-exclude such a vertex, never emit
+// meanH=0 + principal curvatures as if trustworthy with isBoundary=0.
+describe('computeCurvature — M2 all-zero vertex-normal guard', () => {
+  it('flags an interior vertex whose area-weighted normal cancels to zero (not a silent trusted 0)', () => {
+    // C=(0,0,0) is an INTERIOR vertex (closed 3-triangle umbrella). Its one-ring
+    // vertices P0,P1,P2 are COLLINEAR (on y=1), so the outer one-ring polygon has
+    // zero area and C's area-weighted face normals cancel EXACTLY to [0,0,0],
+    // while each incident triangle has real area (mixedArea(C) = 0.75 > 0). The
+    // mean-curvature SIGN is therefore undefined at C.
+    const mesh = {
+      positions: new Float64Array([0, 0, 0, -1, 1, 0, 0, 1, 0, 1, 1, 0]),
+      indices: Uint32Array.from([0, 1, 2, 0, 2, 3, 0, 3, 1]),
+    };
+    const result = computeCurvature(mesh);
+    // Pre-fix: isBoundary[0] stayed 0 and H/k1/k2 were emitted as trustworthy 0.
+    expect(result.mixedArea[0]).toBeGreaterThan(0); // real area — NOT the area==0 branch
+    expect(result.isBoundary[0]).toBe(1); // flagged as undefined (the fix)
+    expect(result.H[0]).toBe(0);
+    expect(result.k1[0]).toBe(0);
+    expect(result.k2[0]).toBe(0);
+  });
+});
