@@ -157,6 +157,9 @@ class FakePayloadStore implements RecoveryPayloadStore {
   async write(checksum: string, json: string) {
     this.map.set(checksum, json);
   }
+  async delete(checksum: string) {
+    this.map.delete(checksum);
+  }
   async prune(keep: string | null) {
     for (const key of [...this.map.keys()]) if (keep === null || key !== keep) this.map.delete(key);
   }

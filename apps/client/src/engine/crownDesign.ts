@@ -726,16 +726,26 @@ class CrownDesignEngine {
    */
   async previewMorphStrengths(strengths: MorphStrengthsUi): Promise<void> {
     const session = this.requireSession();
-    if (!session.morphPlanId) {
-      throw new CrownStageOrderError('morph', 'anatomyIncomplete');
-    }
     this.publish({ strengths, morphBusy: true });
-    const result = await this.pool().run(
-      'resolveMorph',
-      { planId: session.morphPlanId, strengths, computeHeatmaps: true },
-      { affinityKey: session.morphPlanId },
-    );
-    await this.applyMorphResult(session, result, strengths, false);
+    // Fire-and-forget on every slider move (CrownDesignPanel), so a worker
+    // rejection here is swallowed by the UI's `run()` wrapper. Without this
+    // try/catch a reject would leave `morphBusy` stuck true forever (the
+    // "updating…" indicator sticks on) and hide the error. `failStage` clears
+    // `morphBusy` AND surfaces the error, matching `commitMorphStrengths`.
+    try {
+      if (!session.morphPlanId) {
+        throw new CrownStageOrderError('morph', 'anatomyIncomplete');
+      }
+      const result = await this.pool().run(
+        'resolveMorph',
+        { planId: session.morphPlanId, strengths, computeHeatmaps: true },
+        { affinityKey: session.morphPlanId },
+      );
+      await this.applyMorphResult(session, result, strengths, false);
+    } catch (error) {
+      this.failStage('morph', error);
+      throw error;
+    }
   }
 
   /**
@@ -847,13 +857,19 @@ class CrownDesignEngine {
    */
   async applySculptStroke(stroke: { center: Vec3; radiusMm: number; strength: number; brush: SculptBrushType }): Promise<void> {
     const session = this.requireSession();
-    this.assertRunnable('freeform');
-    if (!session.shell || !session.inner) {
-      throw new CrownStageOrderError('freeform', 'shellIncomplete');
-    }
-    const unlock = !useCrownStore.getState().outerLock;
     this.publish({ busyStage: 'freeform', progress: 0, error: null, errorStage: null });
+    // P7-T1 fix round (19b class): the sync order check + session-shape check
+    // live INSIDE the try — post-reload the freeform gate passes from the
+    // persisted stages.finalMesh hash while `session.shell`/`session.inner` are
+    // null; a pre-try throw would escape `failStage` and leave the sculpt click
+    // a fully silent no-op (button enabled, nothing happens). Matches the
+    // runQc/runMorph/constructShell siblings.
     try {
+      this.assertRunnable('freeform');
+      if (!session.shell || !session.inner) {
+        throw new CrownStageOrderError('freeform', 'shellIncomplete');
+      }
+      const unlock = !useCrownStore.getState().outerLock;
       const result = await this.pool().run('applySculptStroke', {
         shellPositions: session.shell.positions,
         shellIndices: session.shell.indices,

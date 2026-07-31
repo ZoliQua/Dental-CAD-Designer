@@ -414,6 +414,28 @@ describe('exportRestoration — stale-after-edit invalidation', () => {
     expect(status(id).state).toBe('stale');
     await expect(exportFlowEngine.buildExportRequest(id)).rejects.toThrow(/no longer exists/);
   });
+
+  // MEDIUM: a case SWITCH/close (a document publish carrying a DIFFERENT case
+  // id) must release the previous case's held export buffers — each retains the
+  // full serialized bytes + base64 (multi-MB) keyed by restoration UUID, so
+  // without this a session opening several cases and exporting in each leaks
+  // every case's bytes for the whole session. Falsifiable via `buildExportRequest`:
+  // once the held buffer is released, it reports "nothing has been exported yet"
+  // (pre-fix the buffer lingers and it instead reports "no longer exists").
+  it('releases held export buffers on a case switch (no multi-MB cross-case leak)', async () => {
+    const id = seedRestoration('crown', qcReport([gate({ gate: 'watertight' })], FINAL.contentHash));
+    await exportFlowEngine.exportRestoration(id, { format: 'stl' });
+    expect(status(id).state).toBe('done');
+    // Sanity: while the case is open, the held bytes assemble a request.
+    await expect(exportFlowEngine.buildExportRequest(id)).resolves.toBeDefined();
+
+    // A case switch/close: openCase/createCase install a DIFFERENT case's
+    // document (new id). Reproduced here with a bare loadDocument of another
+    // case id.
+    caseStore.loadDocument({ ...caseStore.getDocument(), id: 'another-case', restorations: [] });
+
+    await expect(exportFlowEngine.buildExportRequest(id)).rejects.toThrow(/nothing has been exported yet/);
+  });
 });
 
 // ---------------------------------------------------------------------------
