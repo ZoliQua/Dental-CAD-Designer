@@ -13,7 +13,12 @@
 // disabled-gate build) simply yields no token, and mutations proceed unauthed
 // (the server gate is likewise disabled in that configuration).
 
-const BOOTSTRAP_PATH = '/api/auth/bootstrap';
+// Path RELATIVE to `apiBase` (which is already `/api`) — mirrors persistence.ts's
+// `API_BASE` + `/cases` convention. Must NOT itself start with `/api`, or the
+// bootstrap URL doubles to `/api/api/auth/bootstrap` (a real 404 that silently
+// disabled the default-on gate for every real-UI run until it was caught by the
+// Phase 8 Task 7 auth-enabled e2e — see docs/demos/phase-8.md).
+const BOOTSTRAP_PATH = '/auth/bootstrap';
 
 let cachedToken: string | null = null;
 /** The single in-flight/settled bootstrap. `null` until `initAuth()` runs — so

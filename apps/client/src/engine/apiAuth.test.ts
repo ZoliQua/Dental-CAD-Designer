@@ -27,6 +27,17 @@ describe('client apiAuth seam', () => {
     expect(await authHeaders()).toEqual({ authorization: 'Bearer local-cap-token' });
   });
 
+  it('bootstraps the CORRECT same-origin URL (no doubled /api prefix)', async () => {
+    // Regression (Phase 8 Task 7): initAuth()'s default apiBase is `/api`, so the
+    // bootstrap PATH must be relative (`/auth/bootstrap`) — a path that itself
+    // starts with `/api` produces `/api/api/auth/bootstrap`, a 404 that yields no
+    // token and silently disables the default-on gate for every real-UI run.
+    const fetchSpy = vi.fn(async () => new Response(JSON.stringify({ token: 't' }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchSpy);
+    await initAuth();
+    expect(fetchSpy).toHaveBeenCalledWith('/api/auth/bootstrap');
+  });
+
   it('bootstraps at most once (idempotent)', async () => {
     const fetchSpy = vi.fn(async () => new Response(JSON.stringify({ token: 't' }), { status: 200 }));
     vi.stubGlobal('fetch', fetchSpy);
