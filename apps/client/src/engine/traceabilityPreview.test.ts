@@ -122,6 +122,15 @@ describe('buildTraceabilityPreviewDocument', () => {
     expect(doc.reimportVerification).toBeNull();
     expect(doc.errorBounds).toBeNull();
     expect(doc.versions.manifoldVersion).toBeNull();
+    // Safe-by-construction invariant (the reason the client preview renders
+    // WITHOUT an ajv schema check — see traceabilityPreview.ts's module doc): a
+    // preview certifies NOTHING and always carries the outer-envelope
+    // disclosure. The builder hardcodes these, so no invariant-violating preview
+    // shape is reachable to render.
+    expect(doc.certification.outerEnvelopeCertified).toBe(false);
+    expect(doc.certification.limitations.map((l) => l.code)).toContain(
+      'outer-envelope-not-certified',
+    );
   });
 
   it('resolves the material profile identity like the export request does (settings id, zirconia fallback)', () => {

@@ -108,6 +108,8 @@ const en = {
     'CERTIFIED: the delivered solid’s outer envelope. The release resolved the persisted final-design mesh and confirmed the delivered export geometry is that exact solid (up to the documented format narrowing); a moved or tampered vertex that no QC gate could see is caught by this byte-provenance check.',
   'limitation.outer-envelope-not-certified':
     'NOT CERTIFIED: the delivered solid’s outer envelope. The release certifies the QC gate results measured on the re-imported export bytes and their agreement with the client report; no gate compares the delivered outer shape against the designed source mesh.',
+  'limitation.gates-client-attested':
+    'NOT INDEPENDENTLY SERVER-VERIFIED: the QC results for the gates named in the record text below were CLIENT-ATTESTED at release. The server recomputed the solid-consuming gates on the re-imported export bytes but could not re-measure these — their design-time inputs are not carried in the delivered bytes. A signer must NOT read them as a full-authority server-verified pass.',
   certRecordText: 'Record text',
 
   releasedAtLabel: 'Released at (server record field — not part of the hashed document)',
@@ -210,6 +212,8 @@ const hu: Record<TraceabilityStringKey, string> = {
     'TANÚSÍTOTT: a kiadott test külső burkolata. A kiadás feloldotta a szerveren tárolt végleges tervhálót, és igazolta, hogy a kiadott export-geometria pontosan ez a test (a dokumentált formátumszűkítés erejéig); egy elmozdított vagy meghamisított csúcsot, amelyet egyetlen QC-kapu sem látna, ez a bájt-eredetiség ellenőrzés kiszűr.',
   'limitation.outer-envelope-not-certified':
     'NEM TANÚSÍTOTT: a kiadott test külső burkolata. A kiadás az újraimportált export-bájtokon mért QC-kapueredményeket és azok kliens-jelentéssel való egyezését tanúsítja; egyetlen kapu sem veti össze a kiadott külső formát a tervezett forráshálóval.',
+  'limitation.gates-client-attested':
+    'A SZERVER NEM ELLENŐRIZTE FÜGGETLENÜL: az alábbi jegyzőkönyvi szövegben megnevezett kapuk QC-eredményeit a kliens TANÚSÍTOTTA a kiadáskor. A szerver a testből számítható kapukat újraszámolta az újraimportált export-bájtokon, de ezeket nem tudta újramérni — tervezési idejű bemeneteik nincsenek benne a kiadott bájtokban. Az aláíró ezeket NEM tekintheti teljes jogú, szerver által ellenőrzött megfelelésnek.',
   certRecordText: 'Jegyzőkönyvi szöveg',
 
   releasedAtLabel:
@@ -304,6 +308,8 @@ const de: Record<TraceabilityStringKey, string> = {
     'ZERTIFIZIERT: die Außenhülle des gelieferten Körpers. Die Freigabe hat das serverseitig gespeicherte finale Designnetz aufgelöst und bestätigt, dass die gelieferte Export-Geometrie exakt dieser Körper ist (bis auf die dokumentierte Format-Verengung); ein verschobener oder manipulierter Vertex, den kein QK-Gate sehen könnte, wird von dieser Byte-Herkunftsprüfung erkannt.',
   'limitation.outer-envelope-not-certified':
     'NICHT ZERTIFIZIERT: die Außenhülle des gelieferten Körpers. Die Freigabe zertifiziert die auf den reimportierten Export-Bytes gemessenen QK-Gate-Ergebnisse und deren Übereinstimmung mit dem Client-Bericht; kein Gate vergleicht die gelieferte Außenform mit dem entworfenen Quellnetz.',
+  'limitation.gates-client-attested':
+    'NICHT UNABHÄNGIG SERVERSEITIG VERIFIZIERT: die QK-Ergebnisse der im Protokolltext unten genannten Gates wurden bei der Freigabe CLIENT-ATTESTIERT. Der Server hat die körperbasierten Gates auf den reimportierten Export-Bytes neu berechnet, konnte diese jedoch nicht neu messen — ihre Entwurfszeit-Eingaben sind in den gelieferten Bytes nicht enthalten. Ein Unterzeichner darf sie NICHT als vollwertig serverseitig verifizierte Bestätigung lesen.',
   certRecordText: 'Protokolltext',
 
   releasedAtLabel: 'Freigegeben am (Server-Protokollfeld — nicht Teil des gehashten Dokuments)',
@@ -397,6 +403,8 @@ const es: Record<TraceabilityStringKey, string> = {
     'CERTIFICADO: la envolvente exterior del sólido entregado. La liberación resolvió la malla de diseño final almacenada en el servidor y confirmó que la geometría de exportación entregada es ese sólido exacto (hasta el estrechamiento de formato documentado); un vértice movido o manipulado que ninguna puerta QC podría ver es detectado por esta verificación de procedencia de bytes.',
   'limitation.outer-envelope-not-certified':
     'NO CERTIFICADO: la envolvente exterior del sólido entregado. La liberación certifica los resultados de las puertas QC medidos sobre los bytes de exportación reimportados y su concordancia con el informe del cliente; ninguna puerta compara la forma exterior entregada con la malla fuente diseñada.',
+  'limitation.gates-client-attested':
+    'NO VERIFICADO INDEPENDIENTEMENTE POR EL SERVIDOR: los resultados QC de las puertas nombradas en el texto del registro siguiente fueron ATESTIGUADOS POR EL CLIENTE en la liberación. El servidor recalculó las puertas dependientes del sólido sobre los bytes de exportación reimportados, pero no pudo volver a medir estas — sus entradas de tiempo de diseño no están en los bytes entregados. Un firmante NO debe leerlas como una aprobación verificada por el servidor con plena autoridad.',
   certRecordText: 'Texto del registro',
 
   releasedAtLabel:

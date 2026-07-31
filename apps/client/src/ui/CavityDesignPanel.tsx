@@ -260,7 +260,7 @@ function PatchStage({ busy }: { busy: boolean }) {
         {t('cavity.patchRun')}
       </button>
       {patch && (
-        <p className={patch.seamDihedralMaxDeg < patch.seamDihedralBoundDeg ? 'cavity-stage__readout cavity-seam--ok' : 'cavity-stage__readout cavity-seam--warn'} data-testid="cavity-patch-seam">
+        <p className={patch.seamWithinBound ? 'cavity-stage__readout cavity-seam--ok' : 'cavity-stage__readout cavity-seam--warn'} data-testid="cavity-patch-seam">
           {t('cavity.patchSeamReadout', {
             max: patch.seamDihedralMaxDeg.toFixed(2),
             bound: patch.seamDihedralBoundDeg.toFixed(1),

@@ -819,6 +819,12 @@ export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps
           profile: exportRequest.materialProfile,
           serverReport,
           acknowledgments: exportRequest.acknowledgments,
+          // H1 fix: thread the client-attested gate list (computed at step 13.5,
+          // also stored as `attestedGatesJson`) INTO the traceability document
+          // so the regulatory record discloses them (a `gates-client-attested`
+          // limitation). The regeneration path reads the same list from the
+          // stored column, so release + regeneration build byte-identical docs.
+          clientAttestedGates: attestedGates,
         };
         const traceability = buildReleaseTraceability(releaseRecord, reimport.mesh.positions);
         const row = await prisma.export.create({

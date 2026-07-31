@@ -66,6 +66,14 @@ export interface TraceabilityReleaseRecord {
   /** The SERVER-recomputed report (the authoritative copy). */
   serverReport: QcReport;
   acknowledgments: readonly ExportAcknowledgment[];
+  /** The gate names the server marked CLIENT-ATTESTED at release (the export
+   * route's `clientAttestedGates` — the gates whose measured value could not be
+   * recomputed from the delivered bytes). Threaded through so the traceability
+   * document DISCLOSES them (a `gates-client-attested` limitation). Empty ⇒ no
+   * disclosure. On the regeneration path this is the stored
+   * `Export.attestedGatesJson` provenance; both paths therefore build the SAME
+   * document (byte-identical release + regeneration). */
+  clientAttestedGates: readonly string[];
 }
 
 /** The Export ledger row fields this module reads (a structural subset of
@@ -89,6 +97,12 @@ export interface ExportRowLike {
   profileChecksum: string;
   qcReportJson: string;
   acknowledgmentsJson: string;
+  /** JSON array of the client-attested gate names (the H1-fix provenance
+   * column). `null` on rows predating the column — treated as "no gate was
+   * marked attested" (those releases pre-date the disclosure; nothing to
+   * disclose is the honest reading, and it keeps their regenerated document
+   * byte-identical to what was stored). */
+  attestedGatesJson: string | null;
 }
 
 /**
@@ -126,6 +140,10 @@ export function rowToTraceabilityRecord(row: ExportRowLike): TraceabilityRelease
     profile: { id: row.profileId, version: row.profileVersion, checksum: row.profileChecksum },
     serverReport: JSON.parse(row.qcReportJson) as QcReport,
     acknowledgments: JSON.parse(row.acknowledgmentsJson) as ExportAcknowledgment[],
+    clientAttestedGates:
+      row.attestedGatesJson === null
+        ? []
+        : (JSON.parse(row.attestedGatesJson) as string[]),
   };
 }
 
@@ -167,6 +185,7 @@ export function buildReleaseTraceability(
     },
     serverReport: record.serverReport,
     acknowledgments: record.acknowledgments,
+    clientAttestedGates: record.clientAttestedGates,
     materialProfile: record.profile,
     manifoldVersion: installedManifoldVersion(),
     exportFile: {

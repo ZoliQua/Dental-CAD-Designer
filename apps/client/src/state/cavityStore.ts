@@ -57,6 +57,14 @@ export interface CavityPatchSummary {
   seamDihedralMaxDeg: number;
   seamDihedralMeanDeg: number;
   seamDihedralBoundDeg: number;
+  /** The AUTHORITATIVE seam pass/fail verdict, computed by the engine with the
+   * SAME predicate the seam-dihedral gate uses
+   * (`packages/cad-pipeline/src/gates/seamDihedral.ts`): `sampleCount > 0 AND
+   * maxDeg < boundDeg`. The panel READS this boolean — it must NOT re-derive
+   * `maxDeg < boundDeg` itself, because that raw compare paints the zero-sample
+   * case (an empty/mis-partitioned seam, `maxDeg === 0`) GREEN even though the
+   * gate treats it as a hard FAILURE. */
+  seamWithinBound: boolean;
   patchTriangleCount: number;
   proximalFaceCount: number;
 }

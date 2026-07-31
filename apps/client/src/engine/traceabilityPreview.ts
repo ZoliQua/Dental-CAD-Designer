@@ -16,6 +16,21 @@
 // Pure, side-effect-free (no worker, no store) — node-lane testable like
 // exportWorkflow.ts. Layer rule: engine → traceability/shared-types is an
 // allowed edge (eslint.config.js).
+//
+// SAFE-BY-CONSTRUCTION (code-review CLIENT-UI finding 3 — DECIDED here): the
+// client preview builds-then-renders with NO `assertValidTraceabilityDocument`
+// in between, because the ajv validator is deliberately a subpath kept out of
+// the client bundle (validate.ts's module doc) and adding it back would defeat
+// that. This is safe by construction, not by luck: `buildPreviewTraceability-
+// Document` hardcodes the invariant-critical preview constants
+// (`documentKind: 'preview'`, `outerEnvelopeCertified: false`, all four
+// release-evidence sections `null`, the mandatory outer-envelope disclosure),
+// so no schema-invalid preview shape is reachable to render — enforced by the
+// builder-invariant assertions in traceabilityPreview.test.ts + the package's
+// document.test.ts. The RELEASE path (the trustworthy copy) IS ajv-validated
+// server-side at generation and re-validated on every read; the preview is a
+// watermarked, clearly-labeled "nothing has been released" rendering that makes
+// no certification claim, so an un-validated preview cannot mislead a signer.
 import type { CaseDocument, QcTraceabilityDocument } from '@dqcad/shared-types';
 import {
   buildPreviewTraceabilityDocument,
