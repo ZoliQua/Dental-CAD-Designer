@@ -8,16 +8,21 @@ A DQ ökoszisztéma része; önállóan fut, és úgy készül, hogy később mo
 
 > **Vezérelv: pontosság a sebesség előtt.** Minden geometriai eredménynek klinikailag megbízhatónak kell lennie. Egy hosszú számítás folyamatjelzővel elfogadható; egy csendben hibás preparációs határvonal nem.
 
+> **Állapot: MVP-szinten funkcionálisan kész és béta-kész.** A [`PLAN.md`](./PLAN.md) összes tervezett fázisa (0–8) elkészült — a teljes út a szken importjától a restaurátum megtervezésén és a QC-n át a gyártási átadásig, plusz egy megszilárdító fázis. A repóban minden eredmény **fixture-alapon bizonyított**: az átvétel szintetikus, zárt alakú fixture-ökön van igazolva. A valós intraorális szkeneken való certifikáció, egy élő többanyagos anyagválasztó és egy technikus-béta a nyitott, folyamatban lévő tételek. Ez nem minősített orvostechnikai eszköz (lásd [Jogi nyilatkozat](#jogi-nyilatkozat)).
+
 ## Funkciók
 
-- **Import / export** — STL (bináris + ASCII) és PLY (bináris LE/BE + ASCII), mesh-előfeldolgozó pipeline-nal (csúcspont-összevonás, degenerált háromszögek eltávolítása, orientáció-javítás, statisztikák) és kötelező mértékegység-megerősítéssel (az STL nem hordoz mértékegységet)
-- **Teljes 3D nézegető** — forgatás/mozgatás/nagyítás, szabványos nézetek, árnyalási módok, drótváz, kijelölés, jelenetfa
+- **Import** — STL (bináris + ASCII) és PLY (bináris LE/BE + ASCII), mesh-előfeldolgozó pipeline-nal (csúcspont-összevonás, degenerált háromszögek eltávolítása, orientáció-javítás, statisztikák), kötelező mértékegység-megerősítéssel (az STL nem hordoz mértékegységet), és egy megkeményített parserrel, amely a hibás/rosszindulatú fájlokat elutasítja ahelyett, hogy lefagyna vagy összeomlana
+- **Teljes 3D nézegető** — forgatás/mozgatás/nagyítás, szabványos nézetek, árnyalási módok, drótváz, kijelölés, jelenetfa; a render-only decimált LOD-másolatok reszponzívan tartják a felületet anélkül, hogy valaha a Float64 mérvadó adathoz nyúlnának
 - **Elemzőeszközök** — pont-pont mérések (BVH-gyorsítással), felület-felület távolság-hőtérképek, keresztmetszetek kitöltött záró felületekkel és SVG-exporttal
 - **Mesh-javítás** — komponensek eltávolítása, non-manifold élek szétválasztása, kis lyukak tömése — mindig kifejezett felhasználói megerősítéssel, soha nem csendben
-- **Geometriai kernel** — halfedge topológia, diszkrét görbület (átlag-, Gauss-, főgörbületek), geodetikus utak, a mesh felületére illesztett köbös spline-ok (preparációs határvonal szerkesztése)
-- **Restaurátum-tervezés** *(folyamatban)* — preparációs határvonal, behelyezési tengely + alámenős területek elemzése, korona/inlay/onlay/híd tervezés verziózott klinikai anyagprofilok alapján
-- **Gyártási export** — vízzáró bináris STL géppel olvasható QC-riporttal; a szerver minden exportot függetlenül újravalidál
-- **Esetmentés** — teljes tervezésilépés-napló (visszavonás/újra, bármely lépésnél újranyitható), tartalomcímzett, megváltoztathatatlan szkentárolás
+- **Geometriai kernel** — halfedge topológia, diszkrét görbület (átlag-, Gauss-, főgörbületek), geodetikus utak, a mesh felületére illesztett köbös spline-ok, SDF-offszetek, marching cubes, és garantáltan manifold boole-műveletek
+- **Restaurátum-tervezés** — eset-előkészítés FDI-fogtérképpel; preparációs határvonal (κ2 gerinc automatikus felismerése + teljes kézi szerkesztő); behelyezési tengely élő alámenős-hőtérképpel; és a teljes tervezési pipeline **koronákra, inlay/onlay betétekre és hidakra** (belső/cementrés-felület, anatómia-elhelyezés, RBF-morfolás, héj-boole, szabadkézi szobrászat; hidaknál per-pillér illeszkedés, pontic ínyi felület és terület-kapuzott összekötők) — mind verziózott, checksummal ellenőrzött klinikai anyagprofilok alapján
+- **QC-kapuk** — vízzáróság, manifoldság, önátmetszések, minimális falvastagság, széli záródás eltérése, beültetési penetráció, összekötő-keresztmetszet, pontic ínytávolság, csúcslefedettség, varrat-diéderszög. A kapuk blokkolják az exportot; a szerkezeti kapuk (vízzáróság/manifoldság/önátmetszés) soha nem vehetők tudomásul, a lágy kapuk tudomásulvétele pedig naplózott — sosem csendes megkerülés
+- **Gyártási export és átadás** — determinisztikus vízzáró bináris STL (topológiából igazolt kifelé mutató normálisok, dokumentált Float32-szűkítési korlát) és opcionális PLY; egy **QC-nyomonkövethetőségi dokumentum** (sémaellenőrzött JSON + PDF-kész HTML négy nyelven), amely rögzíti minden kapu eredményét, a paramétereket, a profilverziót, a kernelverziót és a napló-hasht; valamint egyfájlos **eset-archívum** (szkenek + napló + beállítások) integritás-manifesttel, támogatáshoz és labor-közti átadáshoz
+- **Független szerveroldali újravalidálás** — a backend újraparse-olja **pontosan az exportált bájtokat**, a Node-kernellel újrafuttatja az összes QC-kaput a szerveroldalon feloldott (registry-hez rögzített) küszöbökkel, és csak tiszta átmenetre adja ki a fájlt; bármely kliens/szerver eltérés kemény hiba diagnosztikai csomaggal. Azokat a kapukat, amelyeket a szerver nem tud a bájtokból újraszámolni, *kliens-attesztáltként* jelöli — sosem teljes tekintélyű átmenetként
+- **Esetmentés és helyreállítás** — teljes tervezésilépés-napló (visszavonás/újra, bármely lépésnél újranyitható), tartalomcímzett, megváltoztathatatlan szkentárolás, és összeomlás-biztos helyi automatikus mentés állapot-azonos helyreállítással tisztátalan leállás után
+- **Produktivitás és robusztusság** — billentyűparancsok + parancspaletta egyetlen akció-regiszteren, első indítású bevezető túra, telemetria-mentes / PHI-mentes helyi hibajelentő csomag, és helyi egyfelhasználós hitelesítés minden módosító útvonalra
 
 ## Architektúra
 
@@ -85,25 +90,30 @@ A fixture-ök a `test-fixtures/` mappában élnek (Git LFS). Ha a golden tesztek
 - **Float64 mindenhol a kernelben.** Float32 csak a render-másolatokban létezik. A preparált csonkok ~10 mm-es objektumok 50 µm-es részletekkel; a láncolt Float32-műveletek látható hibát halmoznak fel.
 - **Determinizmus.** Azonos bemenetek + paraméterek + kernelverzió ⇒ bitre azonos kimenetek. Nincs seed nélküli véletlenszerűség, nincs óraidő a számításokban.
 - **Naplózott műveletek.** Minden destruktív művelet rögzítésre kerül (név, paraméterek, bemeneti/kimeneti hash-ek); a napló visszajátszása azonos hash-eket ad — CI ellenőrzi.
-- **A QC-kapuk blokkolják az exportot.** Vízzáróság, manifoldság, önátmetszések, minimális falvastagság, összekötő-keresztmetszet, széli záródás eltérése, beültetési penetráció. A kapuk naplózott figyelmeztetéssel tudomásul vehetők — csendben soha nem kerülhetők meg.
-- **Kettős validálás.** A szerver a Node-kernellel újrafuttatja az összes QC-kaput pontosan az exportált bájtokon, mielőtt bármilyen fájlt kiadna.
-- **Dokumentált hibakorlátok.** Minden közelítő algoritmus (SDF-offszetek, marching cubes) dokumentálja a hibakorlátját, és megjeleníti a QC-riportban.
+- **A QC-kapuk blokkolják az exportot.** Vízzáróság, manifoldság, önátmetszések, minimális falvastagság, összekötő-keresztmetszet, széli záródás eltérése, beültetési penetráció, pontic ínytávolság, csúcslefedettség, varrat-diéderszög. A lágy kapuk naplózott figyelmeztetéssel tudomásul vehetők; a szerkezeti kapuk soha nem — és semmit nem kerülünk meg csendben.
+- **Kettős validálás pontosan a bájtokon.** A szerver újraparse-olja az exportált fájlt, a Node-kernellel újrafuttatja az összes QC-kaput a registry-hez rögzített küszöbökkel, és csak tiszta átmenetre adja ki; az eltérés kemény hiba. Bármely, a bájtokból nem újraszámolható kaput *kliens-attesztáltként* jelöl — sosem teljes tekintélyű átmenetként.
+- **Dokumentált hibakorlátok.** Minden közelítő algoritmus (SDF-offszetek, marching cubes) dokumentálja a hibakorlátját, és megjeleníti a QC-riportban; a mérési hibák „fail closed" módon buknak (egy érvényes minta nélküli kapu bukik, sosem megy át egy segédértéken).
+- **Nincs csendes adatmódosítás vagy adatvesztés.** A mértékegység-átskálázás, mesh-javítás és normális-átfordítás kifejezett megerősítést és naplóbejegyzést igényel; az automatikus mentés/helyreállítás és az esetmentés védve van a keresztezett-eset felülírás és a tisztátalan leállás okozta vesztés ellen.
 
 Lásd a [`PLAN.md`](./PLAN.md)-t a fázisokhoz, átvételi kritériumokhoz és a klinikai adatmodellhez, valamint a [`CLAUDE.md`](./CLAUDE.md)-t a teljes mérnöki invariánsokhoz.
 
 ## Ütemterv
 
+Az összes tervezett fázis elkészült; az alkalmazás MVP-szinten funkcionálisan kész és béta-kész.
+
 | Fázis | Tartalom | Állapot |
 |---|---|---|
 | 0 | Alapozás: monorepo, nézegető héj, szerver, worker pool, manifold WASM, CI | ✅ kész |
 | 1 | Import és nézegető (M1 „Megbízható nézegető") | ✅ kész |
-| 2 | Geometriai kernel mag: hash-elés, halfedge, görbület, geodetikus utak, spline-ok, offszetek | 🔨 folyamatban |
-| 3 | Eset-előkészítés, preparációs határvonal, behelyezési tengely | ⏳ tervezett |
-| 4 | Koronatervezés | ⏳ tervezett |
-| 5 | Inlay / onlay | ⏳ tervezett |
-| 6 | Híd | ⏳ tervezett |
-| 7 | Export és gyártási átadás | ⏳ tervezett |
-| 8 | Csiszolás és megszilárdítás | ⏳ tervezett |
+| 2 | Geometriai kernel mag: hash-elés, halfedge, görbület, geodetikus utak, spline-ok, offszetek | ✅ kész |
+| 3 | Eset-előkészítés, preparációs határvonal, behelyezési tengely (M3 „Határvonal-mester") | ✅ kész |
+| 4 | Koronatervezés (M4 „Első korona") | ✅ kész |
+| 5 | Inlay / onlay | ✅ kész |
+| 6 | Híd (M6 „Többtagú") | ✅ kész |
+| 7 | Export és gyártási átadás (M7 „Átadás") | ✅ kész |
+| 8 | Csiszolás és megszilárdítás | ✅ kész |
+
+**Nyitott, folyamatban lévő tételek:** certifikáció valós intraorális szkeneken (retrakciós-fonalas korona, kavitás, többpilléres híd), élő többanyagos anyagválasztó, valódi geometriai önátmetszés-kapu (jelenleg manifold-topológiai proxy, dokumentálva), és egy 2–3 fős technikus-béta.
 
 ## Nyelvi támogatás
 

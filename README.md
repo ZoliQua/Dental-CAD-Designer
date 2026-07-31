@@ -8,16 +8,21 @@ Part of the DQ ecosystem; runs standalone and is designed to be later integrated
 
 > **Guiding principle: accuracy over speed.** Every geometric result must be clinically trustworthy. A long computation with a progress bar is acceptable; a silently wrong margin line is not.
 
+> **Status: MVP feature-complete and beta-ready.** All planned phases (0–8) of [`PLAN.md`](./PLAN.md) are implemented — the full path from importing a scan through designing a restoration, running QC, and handing off to manufacturing, plus a hardening pass. Every result in this repository is **fixture-proven**: acceptance is demonstrated on synthetic, closed-form fixtures. Certification on real intraoral scans, a live multi-material picker, and a technician beta are the standing follow-ups. This is not a certified medical device (see [Disclaimer](#disclaimer)).
+
 ## Features
 
-- **Import / export** — STL (binary + ASCII) and PLY (binary LE/BE + ASCII), with a mesh intake pipeline (vertex welding, degenerate-triangle removal, orientation fixing, statistics) and mandatory unit confirmation (STL carries no units)
-- **Full 3D viewer** — orbit/pan/zoom, standard views, shading modes, wireframe, selection, scene tree
+- **Import** — STL (binary + ASCII) and PLY (binary LE/BE + ASCII), with a mesh intake pipeline (vertex welding, degenerate-triangle removal, orientation fixing, statistics), mandatory unit confirmation (STL carries no units), and a hardened parser that rejects hostile/malformed files rather than hanging or crashing
+- **Full 3D viewer** — orbit/pan/zoom, standard views, shading modes, wireframe, selection, scene tree; render-only decimated LOD copies keep the UI responsive without ever touching the Float64 data of record
 - **Analysis tools** — point-to-point measurements (BVH-accelerated), surface-to-surface distance heatmaps, cross-sections with filled caps and SVG export
 - **Mesh repair** — remove components, split non-manifold edges, fill small holes — always with explicit user confirmation, never silently
-- **Geometry kernel** — halfedge topology, discrete curvature (mean, Gaussian, principal), geodesic paths, cubic splines constrained to the mesh surface (margin-line editing)
-- **Restoration design** *(in progress)* — margin line, insertion axis + undercut analysis, crown/inlay/onlay/bridge design driven by versioned clinical material profiles
-- **Manufacturing export** — watertight binary STL plus a machine-readable QC report; the server re-validates every export independently
-- **Case persistence** — full design-step journal (undo/redo, reopen at any step), content-addressed immutable scan storage
+- **Geometry kernel** — halfedge topology, discrete curvature (mean, Gaussian, principal), geodesic paths, cubic splines constrained to the mesh surface, SDF offsets, marching cubes, and manifold-guaranteed booleans
+- **Restoration design** — case setup with FDI charting; margin line (κ2 ridge auto-detection + a full manual editor); insertion axis with a live undercut heatmap; and the full design pipeline for **crowns, inlays/onlays, and bridges** (intaglio/cement-gap surface, anatomy placement, RBF morphing, shell boolean, freeform sculpting; per-abutment fit, pontic gingival interface, and area-gated connectors for bridges) — all driven by versioned, checksum-verified clinical material profiles
+- **QC gates** — watertightness, manifoldness, self-intersections, minimum wall thickness, margin-fit deviation, seating penetration, connector cross-section, pontic relief, cusp coverage, seam dihedral. Gates block export; structural gates (watertight/manifold/self-intersection) can never be acknowledged away, and any soft-gate acknowledgment is journaled — never a silent bypass
+- **Manufacturing export & handoff** — deterministic watertight binary STL (topology-verified outward normals, documented Float32 narrowing bound) and optional PLY; a **QC traceability document** (schema-validated JSON + PDF-ready HTML in four languages) recording every gate result, parameter, profile version, kernel version and journal hash; and a single-file **case archive** (scans + journal + settings) with an integrity manifest for support and inter-lab transfer
+- **Independent server re-validation** — the backend re-parses the **exact exported bytes**, re-runs every QC gate with the Node kernel against server-resolved (registry-pinned) thresholds, and releases the file only on a clean pass; any client/server mismatch is a hard failure with a diagnostic bundle. Gates the server cannot recompute from the delivered bytes are disclosed as *client-attested*, never presented as a full-authority pass
+- **Case persistence & recovery** — full design-step journal (undo/redo, reopen at any step), content-addressed immutable scan storage, and crash-safe local autosave with state-identical recovery after an unclean shutdown
+- **Productivity & robustness** — keyboard shortcuts + a command palette on a single action registry, a first-run onboarding tour, a telemetry-free / PHI-free local error-report bundle, and local single-user authentication gating every mutating route
 
 ## Architecture
 
@@ -85,25 +90,30 @@ Fixtures live in `test-fixtures/` (Git LFS). If golden tests fail with a "Git LF
 - **Float64 everywhere in the kernel.** Float32 exists only in render copies. Prep dies are ~10 mm objects with 50 µm features; chained Float32 operations accumulate visible error.
 - **Determinism.** Same inputs + parameters + kernel version ⇒ bit-identical outputs. No unseeded randomness, no wall-clock time in computations.
 - **Journaled operations.** Every destructive operation is recorded (name, parameters, input/output hashes); replaying the journal reproduces identical hashes, verified in CI.
-- **QC gates block export.** Watertightness, manifoldness, self-intersections, minimum wall thickness, connector cross-section, margin-fit deviation, seating penetration. Gates can be acknowledged with a journaled warning — never silently bypassed.
-- **Dual validation.** The server re-runs all QC gates on the exact exported bytes with the Node kernel before releasing any file.
-- **Documented error bounds.** Every approximating algorithm (SDF offsets, marching cubes) documents its error bound and surfaces it in the QC report.
+- **QC gates block export.** Watertightness, manifoldness, self-intersections, minimum wall thickness, connector cross-section, margin-fit deviation, seating penetration, pontic relief, cusp coverage, seam dihedral. Soft gates can be acknowledged with a journaled warning; structural gates can never be acknowledged away — and nothing is ever silently bypassed.
+- **Dual validation on the exact bytes.** The server re-parses the exported file, re-runs all QC gates with the Node kernel against registry-resolved thresholds, and releases only on a clean pass; a mismatch is a hard failure. Any gate not recomputable from the delivered bytes is disclosed as *client-attested*, never a full-authority pass.
+- **Documented error bounds.** Every approximating algorithm (SDF offsets, marching cubes) documents its error bound and surfaces it in the QC report; measurement failures fail closed (a gate with no valid samples fails, it never passes on a sentinel).
+- **No silent data mutation or data loss.** Unit rescale, mesh repair and normal flips require explicit confirmation and a journal entry; autosave/recovery and case saves are guarded against cross-case overwrite and unclean-shutdown loss.
 
 See [`PLAN.md`](./PLAN.md) for phases, acceptance criteria and the clinical data model, and [`CLAUDE.md`](./CLAUDE.md) for the full engineering invariants.
 
 ## Roadmap
 
+All planned phases are complete; the application is MVP feature-complete and beta-ready.
+
 | Phase | Scope | Status |
 |---|---|---|
 | 0 | Foundation: monorepo, viewer shell, server, worker pool, manifold WASM, CI | ✅ done |
 | 1 | Import & viewer (M1 "Trustworthy viewer") | ✅ done |
-| 2 | Geometry kernel core: hashing, halfedge, curvature, geodesics, splines, offsets | 🔨 in progress |
-| 3 | Case setup, margin line, insertion axis | ⏳ planned |
-| 4 | Crown design | ⏳ planned |
-| 5 | Inlay / onlay | ⏳ planned |
-| 6 | Bridge | ⏳ planned |
-| 7 | Export & manufacturing handoff | ⏳ planned |
-| 8 | Polish & hardening | ⏳ planned |
+| 2 | Geometry kernel core: hashing, halfedge, curvature, geodesics, splines, offsets | ✅ done |
+| 3 | Case setup, margin line, insertion axis (M3 "Margin master") | ✅ done |
+| 4 | Crown design (M4 "First crown") | ✅ done |
+| 5 | Inlay / onlay | ✅ done |
+| 6 | Bridge (M6 "Multi-unit") | ✅ done |
+| 7 | Export & manufacturing handoff (M7 "Handoff") | ✅ done |
+| 8 | Polish & hardening | ✅ done |
+
+**Standing follow-ups (not yet done):** certification on real intraoral scans (retraction-cord crown, cavity, multi-abutment bridge), a live multi-material picker, a true geometric self-intersection gate (currently a manifold-topology proxy, documented), and a 2–3 technician beta.
 
 ## Internationalization
 
