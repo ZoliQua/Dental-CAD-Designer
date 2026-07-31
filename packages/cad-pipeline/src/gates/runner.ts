@@ -63,6 +63,16 @@
 // failure — this is the ONE place a failing gate can still let the overall
 // report read "passed" (matching CLAUDE.md's exact phrase), and it requires
 // an explicit, journaled, per-gate opt-in — never a global bypass switch.
+//
+// ## HARD gates: acknowledgment is REJECTED (never bypassed)
+//
+// A subset of gates — {@link NON_ACKNOWLEDGEABLE_GATES}: watertight, manifold,
+// selfIntersection — are STRUCTURAL: a mesh that fails one is not manufacturable
+// (unmillable/unprintable, not even booleanable). Invariant 4 permits
+// acknowledge-with-warning for SOFT clinical misses (margin fit, wall thickness,
+// seating, contact, ...), but a hard structural failure has no "proceed with a
+// warning" — so an attempt to acknowledge a FAILING hard gate throws
+// {@link HardGateAcknowledgmentError} rather than silently honouring the bypass.
 import type { QcGateResult, QcReport } from '@dqcad/shared-types';
 
 /** A single QC gate — pure, deterministic, synchronous. See this file's
@@ -80,6 +90,45 @@ export interface RunQcGatesOptions {
   /** Gate names the user has explicitly (and, per CLAUDE.md, journaled-ly)
    * acknowledged — see this file's module doc, "Acknowledgment". */
   readonly acknowledgedGates?: ReadonlySet<string> | readonly string[];
+}
+
+/**
+ * The HARD (non-acknowledgeable) structural gates. A failure of one of these
+ * cannot be acknowledged past — the mesh is simply NOT manufacturable
+ * (unmillable/unprintable) and cannot even be booleaned, so there is no
+ * clinical scenario in which a user proceeds "with a warning". Distinct from
+ * the soft gates (marginFit, minWallThickness, seating, contact, seamDihedral,
+ * cuspCoverage, connectorCrossSection, ponticRelief) that CLAUDE.md invariant 4
+ * permits to be acknowledged-with-a-journaled-warning.
+ *
+ * These string literals MIRROR the gate-name constants `WATERTIGHT_GATE_NAME`,
+ * `MANIFOLD_GATE_NAME` (watertight.ts) and `SELF_INTERSECTION_GATE_NAME`
+ * (selfIntersection.ts). They are duplicated here as literals — rather than
+ * imported — to keep the generic runner free of a value dependency on the
+ * concrete gate modules; `runner.test.ts` asserts this set equals those
+ * constants, so any drift is caught at test time, not silently.
+ *
+ * `selfIntersection` IS included: a geometrically self-intersecting solid is
+ * likewise not a valid manufacturable body (invariant 4 names it a mandatory
+ * gate); acknowledging it away would export a self-penetrating part.
+ */
+export const NON_ACKNOWLEDGEABLE_GATES: ReadonlySet<string> = new Set(['watertight', 'manifold', 'selfIntersection']);
+
+/** Thrown when a caller attempts to ACKNOWLEDGE a failing HARD gate
+ * ({@link NON_ACKNOWLEDGEABLE_GATES}). A watertight/manifold/self-intersection
+ * failure can never be acknowledged past (the mesh is not manufacturable), so
+ * an acknowledgment of one is a programming/authorization bug — a loud, typed
+ * error, never a silent bypass (CLAUDE.md invariant 4). */
+export class HardGateAcknowledgmentError extends Error {
+  readonly gate: string;
+  constructor(gate: string) {
+    super(
+      `runQcGates: gate "${gate}" is a HARD (non-acknowledgeable) structural gate — a failure of it cannot be ` +
+        `acknowledged past (the mesh is not manufacturable/booleanable). Remove it from acknowledgedGates and repair the mesh.`,
+    );
+    this.name = 'HardGateAcknowledgmentError';
+    this.gate = gate;
+  }
 }
 
 /** Thrown when two gates in the SAME `gates` array produce the same
@@ -123,6 +172,13 @@ export function runQcGates<C>(
       throw new DuplicateGateNameError(raw.gate);
     }
     seen.add(raw.gate);
+    // A HARD structural gate can NEVER be acknowledged past — reject the attempt
+    // loudly rather than silently honouring a bypass of an unmanufacturable mesh
+    // (CLAUDE.md invariant 4). Only a genuine FAILURE that is being acknowledged
+    // is rejected (acknowledging a PASSING gate stays the documented no-op).
+    if (!raw.passed && acknowledged.has(raw.gate) && NON_ACKNOWLEDGEABLE_GATES.has(raw.gate)) {
+      throw new HardGateAcknowledgmentError(raw.gate);
+    }
     const isAcknowledged = !raw.passed && acknowledged.has(raw.gate);
     return { ...raw, acknowledged: isAcknowledged };
   });

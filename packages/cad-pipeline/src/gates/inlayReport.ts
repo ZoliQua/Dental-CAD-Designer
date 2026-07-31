@@ -87,6 +87,30 @@ export class NonCavityRestorationTypeError extends Error {
   }
 }
 
+/**
+ * Thrown when an ONLAY reaches `runInlayQc` WITHOUT its `coverage` input — a
+ * hard, LOUD failure, never a silently-missing required gate. An onlay COVERS a
+ * cusp, so its covered cusp MUST be judged against the coverage minimum
+ * (`cuspCoverageMinThicknessMm`, 0.7 zirconia / 1.5 e.max) via the
+ * `cuspCoverageThickness` gate — stricter than the isthmus minimum
+ * (`onlayMinThicknessMm`, 0.5 / 1.0) the body min-wall gate uses. Dropping the
+ * gate would judge the covered cusp only against the LAX isthmus minimum, and
+ * because dual validation re-uses the client-supplied `coverage`, the server
+ * would omit the SAME gate and the two reports would MATCH — a weakening of the
+ * "dual validation stays dual" invariant that this throw closes. Mirrors
+ * `selectInlayMinThicknessMm`'s fail-loud typed error for the wrong restoration
+ * type. Explicit field + body assignment (Node worker strip-only-TS closure). */
+export class OnlayCoverageRequiredError extends Error {
+  constructor() {
+    super(
+      `runInlayQc: an onlay was given NO 'coverage' input — the covered-cusp thickness gate (cuspCoverageThickness) ` +
+        `would be silently absent, judging the covered cusp only against the lax isthmus minimum. The onlay coverage ` +
+        `divider + cuspCoverageMinThicknessMm (from the profile) are REQUIRED for an onlay QC report.`,
+    );
+    this.name = 'OnlayCoverageRequiredError';
+  }
+}
+
 /** The profile-resolved cavity thickness minimums (mm), passed IN by the caller
  * from the resolved material profile — NEVER defaulted here (CLAUDE.md invariant
  * 7). */
@@ -145,11 +169,12 @@ export interface RunInlayQcInput {
   /** Profile-resolved cavity thickness minimums (the selection input). */
   readonly thicknessMinimums: CavityThicknessMinimums;
 
-  /** ONLAY covered-cusp coverage (T7). When present AND `restorationType ===
-   * 'onlay'`, the region-scoped `cuspCoverageThickness` gate runs: the covered
-   * cusp (the half-space on the `coverageDivider`'s positive side) must meet
-   * `cuspCoverageMinThicknessMm` (from the profile). Omitted for an inlay (no
-   * covered cusp) — the gate is then not in the set. */
+  /** ONLAY covered-cusp coverage (T7). REQUIRED for an onlay (a missing coverage
+   * throws `OnlayCoverageRequiredError` — the covered-cusp gate must never be
+   * silently dropped); the region-scoped `cuspCoverageThickness` gate then runs:
+   * the covered cusp (the half-space on the `coverageDivider`'s positive side)
+   * must meet `cuspCoverageMinThicknessMm` (from the profile). Omitted for an
+   * inlay (no covered cusp) — the gate is then not in the set. */
   readonly coverage?: {
     readonly coverageDivider: CoverageDivider;
     readonly cuspCoverageMinThicknessMm: number;
@@ -175,6 +200,11 @@ export interface RunInlayQcInput {
   /** T5 proximal box contact residuals (mapped to the contact-gate currency). */
   readonly contacts: readonly ContactResidualInput[];
   readonly contactClampWarning: boolean;
+  /** The morph→shell HEAL error bound (mm), SUMMED onto each contact residual by
+   * the contact gate — see `contact.ts`'s `outerShiftBoundMm` + the kernel
+   * `healOuterAnatomy` doc. Omitted/0 when the cavity outer was not healed
+   * (byte-identical to the pre-heal report). */
+  readonly healErrorBoundMm?: number;
 
   // --- optional gate-tolerance / measurement overrides ---
   readonly marginFitThresholdMm?: number;
@@ -206,10 +236,18 @@ interface InlayQcContext {
  * affects NO computed value. See this module's doc.
  *
  * @throws {NonCavityRestorationTypeError} if `restorationType` is not a cavity.
+ * @throws {OnlayCoverageRequiredError} if an onlay is given no `coverage` input
+ * (the covered-cusp gate must never be silently absent).
  * @throws propagates each gate's own typed errors (e.g. `SeamEdgeNotOnMeshError`).
  */
 export async function runInlayQc(input: RunInlayQcInput, onProgress?: (fraction: number) => void): Promise<QcReport> {
   onProgress?.(0);
+  // An onlay MUST carry its covered-cusp coverage — a missing coverage input is
+  // a hard LOUD failure, never a silently-dropped required gate (see
+  // `OnlayCoverageRequiredError`). Checked BEFORE any measurement.
+  if (input.restorationType === 'onlay' && input.coverage === undefined) {
+    throw new OnlayCoverageRequiredError();
+  }
   const minThicknessMm = selectInlayMinThicknessMm(input.restorationType, input.thicknessMinimums);
   const stats = analyzeMesh(input.inlaySolid);
   onProgress?.(0.1);
@@ -251,7 +289,13 @@ export async function runInlayQc(input: RunInlayQcInput, onProgress?: (fraction:
         thresholdDeg: c.input.seamDihedralThresholdDeg,
       }),
     (c) => seatingGate({ measurement: c.seating, interferenceVolumeToleranceMm3: c.input.seatingInterferenceVolumeToleranceMm3 }),
-    (c) => contactGate({ contacts: c.input.contacts, contactClampWarning: c.input.contactClampWarning, toleranceMm: c.input.contactToleranceMm }),
+    (c) =>
+      contactGate({
+        contacts: c.input.contacts,
+        contactClampWarning: c.input.contactClampWarning,
+        toleranceMm: c.input.contactToleranceMm,
+        outerShiftBoundMm: c.input.healErrorBoundMm,
+      }),
   ];
 
   // T7: the ONLAY covered-cusp region-scoped gate runs directly AFTER the body

@@ -3,7 +3,14 @@
 // "no gates beyond the runner + a trivial test gate") — this directory
 // gains watertight/manifold/margin-fit/thickness/seating/... gates starting
 // Phase 4 Task 4/7/9.
-export { runQcGates, DuplicateGateNameError, type QcGate, type RunQcGatesOptions } from './runner.ts';
+export {
+  runQcGates,
+  DuplicateGateNameError,
+  HardGateAcknowledgmentError,
+  NON_ACKNOWLEDGEABLE_GATES,
+  type QcGate,
+  type RunQcGatesOptions,
+} from './runner.ts';
 export {
   marginFitGate,
   measureMarginFit,
@@ -91,6 +98,7 @@ export {
   runInlayQc,
   selectInlayMinThicknessMm,
   NonCavityRestorationTypeError,
+  OnlayCoverageRequiredError,
   type RunInlayQcInput,
   type CavityThicknessMinimums,
 } from './inlayReport.ts';

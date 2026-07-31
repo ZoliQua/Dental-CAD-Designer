@@ -145,12 +145,23 @@ export function connectorCrossSectionGate(input: ConnectorCrossSectionGateInput)
       worstOffenderTarget = target;
     }
   }
+  // Report the threshold ACTUALLY ENFORCED against the binding (worst-offender)
+  // connector — its per-connector positional `targetMm2` — not the global
+  // `connectorAreaTargetMm2` (cad-pipeline review LOW #5). When a connector
+  // carries its own positional target (the real bridge path always does, via
+  // `connectorPositionalTargetMm2`) the reported `threshold` would otherwise
+  // disagree with the target the pass/fail used: e.g. a posterior connector
+  // (needs 9) under an anterior global (7) would headline "threshold 7" while
+  // being judged — correctly — against 9. Reporting the enforced per-connector
+  // target keeps the headline honest. When every connector shares the global
+  // target (uniform bridge), `worstOffenderTarget === connectorAreaTargetMm2`,
+  // so this is a no-op for those callers (their reports are byte-identical).
   return {
     gate: CONNECTOR_CROSS_SECTION_GATE_NAME,
     passed,
     acknowledged: false,
     value: minAreaMm2,
-    threshold: input.connectorAreaTargetMm2,
+    threshold: worstOffenderTarget,
     unit: 'mm²',
     message: passed
       ? `min connector cross-section ${minAreaMm2.toFixed(2)} mm² ≥ target (${connectors.length} connector(s))`

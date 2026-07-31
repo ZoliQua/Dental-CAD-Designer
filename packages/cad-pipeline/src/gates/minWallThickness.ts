@@ -113,8 +113,10 @@ export interface MinWallThicknessMeasurement extends WallThicknessResult {
    * achieved sample spacing (the fail-safe sampling margin — see this file's
    * doc). This, not the raw measured min, is compared to the threshold. */
   readonly conservativeMinThicknessMm: number;
-  /** True iff every occlusal sample ≥ occlusal min AND every axial sample ≥
-   * axial min, each after subtracting the sampling margin. */
+  /** True iff a wall sample survived (`measured`) AND every occlusal sample ≥
+   * occlusal min AND every axial sample ≥ axial min, each after subtracting the
+   * sampling margin. `measured===false` (zero surviving samples) is an explicit
+   * hard FAIL — never "infinitely thick" (kernel fold-in 516a283). */
   readonly passed: boolean;
   /** The THINNEST wall among the EXCLUDED (margin-band) inner vertices — i.e.
    * how thin the excluded feather/wedge actually got. `Infinity` when nothing
@@ -178,7 +180,15 @@ export function measureMinWallThickness(input: MinWallThicknessGateInput): MinWa
   // A region with no samples (Infinity) trivially satisfies its threshold.
   const occlusalOk = !Number.isFinite(m.minOcclusalThicknessMm) || consOcclusal >= occlusalMin;
   const axialOk = !Number.isFinite(m.minAxialThicknessMm) || consAxial >= axialMin;
-  const passed = m.sampleCount > 0 && occlusalOk && axialOk;
+  // Fold-in from the kernel gate-feeder fix (516a283): a measurement over ZERO
+  // surviving samples is a MEASUREMENT FAILURE, not "infinitely thick".
+  // `measureWallThickness` now sets `measured=false` (+ a fail-closed
+  // `minThicknessMm=0` sentinel) when no wall sample survived — every grid
+  // sample fell inside the margin band, or a degenerate/over-cropped surface
+  // left nothing to gate. This gate treats `measured===false` as an EXPLICIT
+  // hard FAIL (never relying only on the `0 >= threshold` sentinel): the pass
+  // predicate REQUIRES `m.measured`, and the message says so plainly.
+  const passed = m.measured && occlusalOk && axialOk;
   const conservativeMinThicknessMm = m.minThicknessMm - margin;
 
   // Governing threshold: whichever region's deficit is worst (for the reported
@@ -228,7 +238,10 @@ export function measureMinWallThickness(input: MinWallThicknessGateInput): MinWa
  */
 export function minWallThicknessGate(input: MinWallThicknessGateInput): QcGateResult {
   const m = measureMinWallThickness(input);
-  const value = Number.isFinite(m.minThicknessMm) ? m.minThicknessMm : null;
+  // A measurement FAILURE (`measured===false`) reports a NULL value, not the
+  // kernel's fail-closed `0` sentinel — the report must read "unmeasurable",
+  // never a spurious "0 mm thick" figure that could be misread as a real value.
+  const value = m.measured && Number.isFinite(m.minThicknessMm) ? m.minThicknessMm : null;
   // Effective per-region minimums for the message — equal to the standing
   // minimums in full-contour (byte-identical message), the single framework
   // minimum in framework mode.
@@ -241,24 +254,46 @@ export function minWallThicknessGate(input: MinWallThicknessGateInput): QcGateRe
   // marginFit concern, and the min-wall figure is a whole-restoration statement
   // only when the band does not dominate). Surfaces the MAX EXCLUDED THINNESS
   // (how thin the excluded feather got) and a dominance warning.
+  // The un-missable disclosure (cad-pipeline review MEDIUM): when the gate
+  // PASSES on the included core BUT the margin band excluded a wall thinner than
+  // the governing minimum, that sub-minimum region is NOT gated here (it is
+  // marginFit's concern). On a shallow cavity a thin pulpal FLOOR can fall
+  // entirely inside the (~restoration-thickness) exclusion band while a thicker
+  // central island keeps the gate passing — a silent clean pass would then hide
+  // an ungated thin region. This annotation makes that consequence load-bearing
+  // in the report (a DISCLOSURE, never a pass/fail change — never weaken the
+  // gate). Guarded on `m.passed`: a FAILING gate is already blocked, so there is
+  // no hidden pass to surface. A crown's ~0.2 mm feather stays above the wall
+  // minimum, so it does NOT trigger (only the cavity's wide cavosurface band
+  // does) — see the band-width contrast in this file's doc.
+  const ungatedThinFloorWarning =
+    m.passed && Number.isFinite(m.minExcludedThicknessMm) && m.minExcludedThicknessMm < m.governingThresholdMm
+      ? `; WARNING: the excluded band contains a wall as thin as ${um(m.minExcludedThicknessMm)} (< the ${um(m.governingThresholdMm)} minimum) that is NOT gated here (governed by marginFit) — confirm it is a marginal feather, not an ungated structural floor`
+      : '';
   const excludedDetail =
     m.excludedCount > 0
       ? ` — excluded ${m.excludedCount} sample(s) down to ${um(m.minExcludedThicknessMm)} (marginal feather/wedge, governed by marginFit)` +
         (m.excludedFraction > EXCLUDED_DOMINANCE_FRACTION
           ? `; WARNING: excluded ${(m.excludedFraction * 100).toFixed(0)}% of samples dominates the measurement (> ${(EXCLUDED_DOMINANCE_FRACTION * 100).toFixed(0)}% — verify the marginExclusion band is geometry-appropriate)`
-          : '')
+          : '') +
+        ungatedThinFloorWarning
       : '';
-  const message =
-    m.sampleCount === 0
-      ? `min wall thickness UNMEASURABLE (no samples — inner/outer surfaces do not face each other)`
-      : m.passed
-        ? `min wall thickness ${um(m.minThicknessMm)} (conservative ${um(m.conservativeMinThicknessMm)} after −${um(m.sampleSpacingMm)} sampling margin) >= ${um(m.governingThresholdMm)} ` +
-          `(axial ${um(m.minAxialThicknessMm)}, occlusal ${um(m.minOcclusalThicknessMm)}; ${m.excludedCount} margin sample(s) excluded)` +
-          excludedDetail
-        : `min wall thickness ${um(m.minThicknessMm)} (conservative ${um(m.conservativeMinThicknessMm)} after −${um(m.sampleSpacingMm)} sampling margin) BELOW minimum ` +
-          `(axial ${um(m.minAxialThicknessMm)} vs ${um(axialMin)}, occlusal ${um(m.minOcclusalThicknessMm)} vs ${um(occlusalMin)}) ` +
-          `— thin wall; thicken (autoThicken) or acknowledge` +
-          excludedDetail;
+  const message = !m.measured
+    ? // Fold-in hard FAIL (516a283): zero surviving wall samples is a measurement
+      // FAILURE, never a pass. Distinguish the two causes so the report is clear.
+      `min wall thickness MEASUREMENT FAILED — HARD FAIL (fail-closed): ${
+        m.excludedCount > 0
+          ? `every wall sample (${m.excludedCount}) fell inside the marginExclusion band — NO structural sample was gated; the wall is entirely within the marginFit-governed feather (verify the band width, or re-gate the floor)`
+          : `zero wall samples (inner/outer surfaces do not face each other, or a degenerate/over-cropped surface)`
+      } — not manufacturable`
+    : m.passed
+      ? `min wall thickness ${um(m.minThicknessMm)} (conservative ${um(m.conservativeMinThicknessMm)} after −${um(m.sampleSpacingMm)} sampling margin) >= ${um(m.governingThresholdMm)} ` +
+        `(axial ${um(m.minAxialThicknessMm)}, occlusal ${um(m.minOcclusalThicknessMm)}; ${m.excludedCount} margin sample(s) excluded)` +
+        excludedDetail
+      : `min wall thickness ${um(m.minThicknessMm)} (conservative ${um(m.conservativeMinThicknessMm)} after −${um(m.sampleSpacingMm)} sampling margin) BELOW minimum ` +
+        `(axial ${um(m.minAxialThicknessMm)} vs ${um(axialMin)}, occlusal ${um(m.minOcclusalThicknessMm)} vs ${um(occlusalMin)}) ` +
+        `— thin wall; thicken (autoThicken) or acknowledge` +
+        excludedDetail;
   return {
     gate: MIN_WALL_THICKNESS_GATE_NAME,
     passed: m.passed,

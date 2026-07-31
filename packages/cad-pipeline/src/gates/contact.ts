@@ -74,6 +74,21 @@ export interface ContactGateInput {
   readonly contactClampWarning: boolean;
   /** Override the achievement tolerance (default `CONTACT_GATE_DEFAULT_TOLERANCE_MM`). */
   readonly toleranceMm?: number;
+  /**
+   * The morph→shell HEAL error bound (mm) — the shell stage's
+   * `healOuterErrorBoundMm` (kernel `healOuterAnatomy`'s `pitchMm/2` remesh
+   * shift), or 0/absent when the outer was not healed. The kernel documents
+   * (healOuterAnatomy.ts) that the TRUE post-heal deviation of a contact from
+   * its target is bounded by `morphContactResidualMm + healBound`, NOT by either
+   * alone: the SDF re-mesh shifts every contact locus (which the morph drove to
+   * target) by up to this bound ON TOP OF the morph's own residual. This gate
+   * therefore ADDS this bound to each contact's conservative residual before
+   * comparing to the tolerance — the consumer summation the kernel doc requires.
+   * Default 0 ⇒ byte-identical to the pre-heal gate (an un-healed crown / a
+   * cavity restoration that is never healed). REQUIRED (non-zero) whenever the
+   * shell was healed, else the gate would understate the post-heal contact error.
+   */
+  readonly outerShiftBoundMm?: number;
 }
 
 /** Conservative per-contact residual: the larger of the single-vertex and the
@@ -90,6 +105,10 @@ function conservativeResidual(c: ContactResidualInput): number {
  */
 export function contactGate(input: ContactGateInput): QcGateResult {
   const tolerance = input.toleranceMm ?? CONTACT_GATE_DEFAULT_TOLERANCE_MM;
+  // The morph→shell heal remesh shift (kernel `healOuterAnatomy` @errorBound) is
+  // SUMMED onto every contact's residual — see `outerShiftBoundMm`'s doc. 0 when
+  // the outer was not healed (byte-identical to the pre-heal gate).
+  const healBound = input.outerShiftBoundMm ?? 0;
 
   if (input.contacts.length === 0) {
     // No contacts to evaluate is unverifiable — fail-safe (a crown that made no
@@ -110,7 +129,9 @@ export function contactGate(input: ContactGateInput): QcGateResult {
   let worstKind = input.contacts[0]!.kind;
   const clamped: string[] = [];
   for (const c of input.contacts) {
-    const r = conservativeResidual(c);
+    // The conservative per-contact residual PLUS the heal remesh shift — the
+    // true post-heal deviation bound the kernel doc requires the consumer to sum.
+    const r = conservativeResidual(c) + healBound;
     if (r > worst) {
       worst = r;
       worstKind = c.kind;
@@ -123,9 +144,12 @@ export function contactGate(input: ContactGateInput): QcGateResult {
 
   const um = (mm: number): string => `${(mm * 1000).toFixed(1)} µm`;
   const clampNote = clamped.length > 0 ? ` | CLAMP WARNING: contact(s) [${clamped.join(', ')}] did NOT reach target (unachieved)` : '';
+  // Disclose the summed heal bound ONLY when it is non-zero — so an un-healed
+  // restoration's message is byte-identical to the pre-heal gate.
+  const healNote = healBound > 0 ? ` (incl. +${um(healBound)} morph→shell heal shift)` : '';
   const message = passed
-    ? `contacts achieved — worst residual ${um(worst)} (${worstKind}) ≤ ${um(tolerance)} tolerance; no clamped contacts`
-    : `contact residual ${um(worst)} (${worstKind}) ${withinTolerance ? 'within tolerance but' : `exceeds ${um(tolerance)} tolerance;`} ` +
+    ? `contacts achieved — worst residual ${um(worst)} (${worstKind})${healNote} ≤ ${um(tolerance)} tolerance; no clamped contacts`
+    : `contact residual ${um(worst)} (${worstKind})${healNote} ${withinTolerance ? 'within tolerance but' : `exceeds ${um(tolerance)} tolerance;`} ` +
       `${clamped.length > 0 ? 'one or more contacts were not achieved' : 'contact off target'}${clampNote}`;
 
   return {

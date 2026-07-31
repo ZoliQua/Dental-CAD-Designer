@@ -87,7 +87,20 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // Advanced 0.25.0 → 0.26.0 (Phase 6 Task 6): MECHANICAL, metadata-only (the new
   // bridge/bridgeAssembly union op does not touch the cavity chain; kernelVersion in
   // the QcReport, geometry byte-identical to 0.25.0). See CHANGELOG-kernel.md [0.26.0].
-  'cavity-inlay-qc': '77575fc9d460da89297e9df852ae8e9eb75ac5ca4d195a789f3b8c2d9b46582d',
+  //
+  // Advanced (code-review-fixes): DELIBERATE, MESSAGE-ONLY — NO KERNEL_VERSION bump
+  // (the change is a cad-pipeline gate-message hardening, not kernel numeric output;
+  // test-fixtures/golden/kernel-ops.json is untouched, KERNEL_VERSION stays 0.26.0).
+  // `hashQcReport` = sha256(JSON.stringify(report)) embeds every gate MESSAGE. The
+  // cavity `minWallThickness` gate now appends the UNGATED-THIN-FLOOR disclosure
+  // (cad-pipeline review MEDIUM): a wide cavosurface exclusion band (1.3 mm inlay /
+  // 1.8 mm onlay) excludes a sub-minimum feather, which is now surfaced un-missably
+  // ("WARNING: the excluded band contains a wall as thin as … NOT gated here …"). The
+  // five geometry pins above are BYTE-IDENTICAL (verified this run — proof it is a
+  // message-only diff, no numeric drift); every gate's passed/value/threshold is
+  // unchanged. Same in-test pin-advance discipline as the crown-standin-qc Task-8
+  // message hardening. See the fix-cadpipeline report.
+  'cavity-inlay-qc': 'b800cfd29b54859f04b09c3c2aa0623eceb9bcc818e119659da8443d589afa51',
   // --- onlay chain (incl. cuspCoverage.select) ---
   // NOTE: the cuspCoverage pin is BIT-IDENTICAL to the kernel op's committed
   // extended-outline golden (cuspCoverage.test.ts's sha at 0.21.0) — a strong
@@ -103,7 +116,10 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // cavity-inlay-qc above). See CHANGELOG-kernel.md [0.25.0].
   // Advanced 0.25.0 → 0.26.0 (Phase 6 Task 6): MECHANICAL, metadata-only (as
   // cavity-inlay-qc above). See CHANGELOG-kernel.md [0.26.0].
-  'cavity-onlay-qc': '4d9f96516e016fd8e72d24e9ec0df68005b9b680afa23529d25c5bdf5cc535aa',
+  // Advanced (code-review-fixes): DELIBERATE, MESSAGE-ONLY — the ungated-thin-floor
+  // disclosure on the cavity minWallThickness gate (as cavity-inlay-qc above; NO
+  // KERNEL_VERSION bump, geometry byte-identical this run). See the fix report.
+  'cavity-onlay-qc': '85f0c2b310c77bf15f7e2dd7153054c01328bc7cb7e131b12f43903366c8f9ec',
 };
 
 const INLAY_GATE_ORDER = ['watertight', 'manifold', 'selfIntersection', 'minWallThickness', 'marginFit', 'seamDihedral', 'seating', 'contact'];

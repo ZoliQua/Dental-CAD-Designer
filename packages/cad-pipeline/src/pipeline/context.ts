@@ -151,14 +151,26 @@ export interface PipelineContext {
    * shape exactly (same round-trip-from-`Restoration` convention): a crown
    * site carries its mesial + distal neighbour, empty `{}` when none are
    * assigned yet. Each handle is a segmented neighbour tooth mesh (or a local
-   * arch neighbourhood around it) — the stage only reads its vertex positions,
-   * never its topology. Empty/insufficient neighbours is the placement stage's
+   * arch neighbourhood around it). The anatomy-placement stage only reads its
+   * vertex positions, but the CONTACT stages (`morphing` → kernel
+   * `planAnatomyMorph`, `cavityProximalContact` → kernel `adaptProximalContacts`)
+   * now derive a SIGNED distance against each neighbour via the angle-weighted
+   * pseudonormal (kernel fix 516a283), whose inside/outside sign is only
+   * well-defined on a CLOSED mesh: a non-watertight neighbour is REJECTED
+   * (`NonWatertightMeshError`), never silently measured as clearance. The
+   * context-assembly layer (outside cad-pipeline) MUST therefore hand these
+   * stages watertight neighbours — repairing a segmented/open scan through the
+   * intake/repair path (a journaled, user-confirmed mutation, invariant 5) BEFORE
+   * building this context. Empty/insufficient neighbours is the placement stage's
    * OWN gate to enforce (like `antagonist` is for occlusal stages), not this
    * type's. */
   readonly neighbors: Partial<Record<FdiTooth, PipelineMeshHandle>>;
   /** The antagonist (opposing-arch) scan, when available — `null` if none
    * is assigned yet (occlusal-contact-dependent stages, e.g. morphing,
-   * cannot run without one; that is THEIR gate to enforce, not this type's). */
+   * cannot run without one; that is THEIR gate to enforce, not this type's).
+   * Like `neighbors`, when present it is a CONTACT mesh for `planAnatomyMorph`'s
+   * signed-distance and so MUST be watertight (else `NonWatertightMeshError`) —
+   * repaired upstream at context assembly (invariant 5), not here. */
   readonly antagonist: PipelineMeshHandle | null;
   /**
    * BRIDGE-ONLY (Phase 6 Task 1 scaffold): the pontic teeth of a multi-unit

@@ -43,4 +43,27 @@ describe('contactGate', () => {
     expect(r.passed).toBe(false);
     expect(r.value).toBeNull();
   });
+
+  // --- fold-in 3: the morph→shell heal bound is SUMMED onto each residual ------
+
+  it('SUMS the morph→shell heal bound onto each contact residual (kernel healOuterAnatomy contract)', () => {
+    // A contact 40 µm off target — comfortably within the 50 µm tolerance ALONE.
+    const near: ContactResidualInput = { kind: 'antagonist', targetPenetrationMm: 0, achievedSignedDistanceMm: 0.04, contactResidualMm: 0.04, regionResidualMm: 0.04, clampBound: false };
+    // Without the heal bound it PASSES (40 µm ≤ 50 µm).
+    const noHeal = contactGate({ contacts: [near], contactClampWarning: false });
+    expect(noHeal.passed).toBe(true);
+    // A 20 µm heal shift (pitch/2) pushes the TRUE post-heal deviation to 60 µm —
+    // now over tolerance. Pre-fix (bound ignored) this PASSED; the sum makes it FAIL.
+    const healed = contactGate({ contacts: [near], contactClampWarning: false, outerShiftBoundMm: 0.02 });
+    expect(healed.passed).toBe(false);
+    expect(healed.value).toBeCloseTo(0.06, 6); // 40 µm residual + 20 µm heal shift
+    expect(healed.message).toMatch(/heal shift/);
+  });
+
+  it('a zero/absent heal bound is byte-identical to the pre-heal gate (no message churn)', () => {
+    const withZero = contactGate({ contacts: ALL_ON_TARGET, contactClampWarning: false, outerShiftBoundMm: 0 });
+    const absent = contactGate({ contacts: ALL_ON_TARGET, contactClampWarning: false });
+    expect(withZero).toEqual(absent);
+    expect(absent.message).not.toMatch(/heal shift/);
+  });
 });
