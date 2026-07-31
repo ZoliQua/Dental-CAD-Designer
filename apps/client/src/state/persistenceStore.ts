@@ -36,6 +36,15 @@ interface PersistenceState {
   activeCaseId: string | null;
   activeCaseName: string | null;
   lastSavedAt: string | null;
+  /**
+   * Phase 8 Task 4 — ISO timestamp of the most recent CRASH-SAFE LOCAL snapshot
+   * (engine/crashRecovery.ts), or `null` when there is none (cleared once the
+   * server confirms the save, since the server is then the durable copy). This
+   * is DISTINCT from `lastSavedAt` (a confirmed SERVER save) on purpose: it
+   * lets the header show "backed up locally" for un-synced edits WITHOUT ever
+   * misrepresenting a not-yet-server-saved state as `saved` — the local layer
+   * is visible, honestly, alongside (never in place of) the server status. */
+  localBackupAt: string | null;
   cases: CaseSummary[];
   casesLoading: boolean;
   casesError: string | null;
@@ -43,6 +52,7 @@ interface PersistenceState {
   setStatus: (status: SaveStatus, errorMessage?: string | null) => void;
   setActiveCase: (params: { id: string; name: string } | null) => void;
   setLastSavedAt: (lastSavedAt: string | null) => void;
+  setLocalBackupAt: (localBackupAt: string | null) => void;
   setCases: (cases: CaseSummary[]) => void;
   setCasesLoading: (casesLoading: boolean) => void;
   setCasesError: (casesError: string | null) => void;
@@ -55,6 +65,7 @@ export const usePersistenceStore = create<PersistenceState>((set) => ({
   activeCaseId: null,
   activeCaseName: null,
   lastSavedAt: null,
+  localBackupAt: null,
   cases: [],
   casesLoading: false,
   casesError: null,
@@ -63,6 +74,7 @@ export const usePersistenceStore = create<PersistenceState>((set) => ({
   setActiveCase: (params) =>
     set({ activeCaseId: params?.id ?? null, activeCaseName: params?.name ?? null }),
   setLastSavedAt: (lastSavedAt) => set({ lastSavedAt }),
+  setLocalBackupAt: (localBackupAt) => set({ localBackupAt }),
   setCases: (cases) => set({ cases }),
   setCasesLoading: (casesLoading) => set({ casesLoading }),
   setCasesError: (casesError) => set({ casesError }),

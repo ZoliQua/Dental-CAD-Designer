@@ -161,6 +161,7 @@
     "panelTitle": "Mérések",
     "empty": "Még nincs mérés.",
     "deleteButton": "Törlés",
+    "toolError": "A mérés sikertelen: {{message}}",
     "kind": {
       "pointToPoint": "Pont-pont",
       "pointToSurface": "Pont-felület",
@@ -292,6 +293,7 @@
       "unsaved": "Nem mentett változtatások",
       "error": "Mentés sikertelen: {{message}}"
     },
+    "localBackupHint": "Helyileg mentve",
     "picker": {
       "title": "Esetek",
       "closeButton": "Bezárás",
@@ -306,6 +308,24 @@
       "activeLabel": "Aktív",
       "updatedAtLabel": "Frissítve: {{date}}"
     }
+  },
+  "recovery": {
+    "title": "Nem mentett munka helyreállítása?",
+    "body": "Az alkalmazás váratlanul bezárult, és voltak olyan változtatások, amelyek még nem jutottak el a szerverre. Visszaállíthatja őket, vagy elvetheti azokat és megtarthatja a szerverre utoljára mentett változatot.",
+    "caseLabel": "Eset",
+    "savedAtLabel": "Mentve",
+    "savedAtValue": "{{date}}",
+    "operationsLabel": "Tervezési lépések",
+    "operationsValue": "{{count}}",
+    "restoreButton": "Visszaállítás",
+    "restoringButton": "Visszaállítás…",
+    "discardButton": "Elvetés",
+    "restoreFailed": "A visszaállítás sikertelen: {{message}}. A helyi biztonsági mentés megmaradt – megpróbálhatja újra.",
+    "corruptTitle": "A nem mentett munka nem állítható helyre",
+    "corruptBody": "Az előző munkamenetből származó helyi biztonsági mentés megtalálható, de hiányos vagy sérült, ezért nem állítható helyre biztonságosan. A szerverre utoljára mentett változat ettől nem sérül.",
+    "incompleteTitle": "Helyreállítva – néhány szkennelés hiányzik",
+    "incompleteBody": "A munkája helyreáll, de {{count}} szkennelés nem állítható vissza, mert soha nem került mentésre a szerverre. Az eset teljessé tételéhez importálja újra az alább felsorolt szkennelés(eke)t:",
+    "acknowledgeButton": "Rendben"
   },
   "repair": {
     "panelTitle": "Javítás",
@@ -435,6 +455,7 @@
     "restorationLabel": "Restauráció",
     "selectPlaceholder": "Válasszon koronát…",
     "startButton": "Korona tervezés indítása",
+    "startErrorOther": "A koronatervezés nem indítható: {{message}}",
     "cancelButton": "Bezárás",
     "blocked": "Zárolva — {{reason}}",
     "reasonNoTargetScan": "előbb rendeljen hozzá cél (csonk) szkennt",
@@ -510,6 +531,7 @@
     "restorationLabel": "Restauráció",
     "selectPlaceholder": "Válasszon inlay/onlay-t…",
     "startButton": "Kavitás tervezés indítása",
+    "startErrorOther": "A kavitástervezés nem indítható: {{message}}",
     "cancelButton": "Bezárás",
     "blocked": "Zárolva — {{reason}}",
     "reasonNoTargetScan": "előbb rendeljen hozzá cél (fog) szkennt",
@@ -571,6 +593,7 @@
     "restorationLabel": "Restauráció",
     "selectPlaceholder": "Válassz hidat…",
     "startButton": "Hídtervezés indítása",
+    "startErrorOther": "A hídtervezés nem indítható: {{message}}",
     "cancelButton": "Bezárás",
     "blocked": "Letiltva — {{reason}}",
     "reasonNoTargetScan": "előbb rendelj hozzá cél (fogív) szkennt",
@@ -711,5 +734,78 @@
     "archiveImportedProvenance": "{{count}} importált kiadás „importedUnverified” jelölésű — ezt a szerver NEM ellenőrizte újra függetlenül (szerző által igazolt, nem szerver-tanúsított).",
     "archiveError": "Az archívum-művelet sikertelen: {{message}}",
     "archiveDismiss": "Elvetés"
+  },
+  "actions": {
+    "group": {
+      "view": "Nézet",
+      "case": "Eset",
+      "restoration": "Restauráció",
+      "help": "Súgó"
+    },
+    "case": {
+      "save": "Eset mentése"
+    },
+    "export": {
+      "releaseSelected": "Kijelölt restauráció exportálása"
+    },
+    "restoration": {
+      "deleteMarginAnchors": "Kijelölt határvonalpontok törlése"
+    },
+    "help": {
+      "commandPalette": "Parancspaletta",
+      "shortcuts": "Billentyűparancsok"
+    },
+    "tour": {
+      "show": "Bemutató megjelenítése"
+    }
+  },
+  "commandPalette": {
+    "title": "Parancspaletta",
+    "searchLabel": "Parancsok keresése",
+    "searchPlaceholder": "Parancsok keresése…",
+    "empty": "Nincs találat",
+    "unavailable": "Nem elérhető"
+  },
+  "shortcutsHelp": {
+    "title": "Billentyűparancsok",
+    "closeLabel": "Bezárás"
+  },
+  "tour": {
+    "progress": "{{total}} lépésből a(z) {{current}}.",
+    "closeLabel": "Bezárás",
+    "skip": "Kihagyás",
+    "back": "Vissza",
+    "next": "Tovább",
+    "done": "Kezdés",
+    "steps": {
+      "import": {
+        "title": "Szkennek importálása",
+        "body": "Húzz be egy STL- vagy PLY-szkennt, erősítsd meg a mértékegységét, majd add a jelenethez a csonkot, az antagonistát és a szomszédos fogakat."
+      },
+      "design": {
+        "title": "Restauráció tervezése",
+        "body": "Hozz létre restaurációt, állítsd be a behelyezési tengelyt, rajzold meg a preparációs határvonalat, majd formázd meg a koronát, az inlayt/onlayt vagy a hidat."
+      },
+      "qc": {
+        "title": "Minőség ellenőrzése",
+        "body": "Nézd át a minőségi ellenőrzéseket — falvastagság, széli záródás, összekötő keresztmetszete és felülés —, és nyugtázz minden figyelmeztetést az exportálás előtt."
+      },
+      "export": {
+        "title": "Exportálás és átadás",
+        "body": "Exportáld a jóváhagyott restaurációt STL- vagy PLY-formátumban; a szerver a fájl kiadása előtt minden minőségi kaput újra lefuttat a pontos bájtokon."
+      }
+    }
+  },
+  "errorReport": {
+    "title": "Hiba történt",
+    "body": "Az alkalmazás váratlan hibába ütközött. Letölthetsz egy diagnosztikai csomagot, amit megoszthatsz a támogatással — a fájl a számítógépeden marad, amíg úgy nem döntesz, hogy elküldöd, és nem tartalmaz betegadatot.",
+    "downloadButton": "Diagnosztikai csomag letöltése",
+    "downloadingButton": "Előkészítés…",
+    "dismissButton": "Bezárás",
+    "downloadFailed": "A diagnosztikai csomagot nem sikerült létrehozni. Kérlek, próbáld újra.",
+    "boundaryTitle": "Ez a panel nem jeleníthető meg",
+    "boundaryBody": "A(z) {{region}} hibába ütközött. Az alkalmazás többi része továbbra is használható.",
+    "regionSidebar": "tervezőpanel",
+    "regionViewport": "3D nézet"
   }
 }

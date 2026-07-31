@@ -100,9 +100,13 @@ export function standardViewOffset(view: StandardView, jawContext: JawContext): 
   return jawContext === 'upperJaw' ? OCCLUSAL_UPPER_OFFSET : OCCLUSAL_LOWER_OFFSET;
 }
 
-/** Numeric-key shortcut order (1-6) for the standard-view toolbar —
- * arbitrary but fixed and documented here as the single source of truth for
- * both the toolbar's key-hint labels and SceneManager's keydown handler. */
+/** Numeric-key shortcut order (1-6) for the standard-view toolbar — arbitrary
+ * but fixed, and the single source of truth for both the toolbar's key-hint
+ * labels and the digit→view mapping. Phase 8 Task 2: the action registry
+ * (`ui/actions/registry.ts`) derives the `view.*` chords by indexing this
+ * array (digit = index + 1); the former `standardViewForDigitKey` helper was
+ * removed as dead code once its only consumer (SceneManager's keydown handler)
+ * was consolidated into the registry — this array stays the one mapping. */
 export const STANDARD_VIEW_KEY_ORDER: readonly StandardView[] = [
   'front',
   'buccal',
@@ -111,11 +115,3 @@ export const STANDARD_VIEW_KEY_ORDER: readonly StandardView[] = [
   'distal',
   'occlusal',
 ];
-
-export function standardViewForDigitKey(key: string): StandardView | null {
-  const index = Number(key) - 1;
-  if (!Number.isInteger(index) || index < 0 || index >= STANDARD_VIEW_KEY_ORDER.length) {
-    return null;
-  }
-  return STANDARD_VIEW_KEY_ORDER[index]!;
-}

@@ -161,6 +161,7 @@
     "panelTitle": "Mediciones",
     "empty": "Todavía no hay mediciones.",
     "deleteButton": "Eliminar",
+    "toolError": "La medición falló: {{message}}",
     "kind": {
       "pointToPoint": "Punto a punto",
       "pointToSurface": "Punto a superficie",
@@ -292,6 +293,7 @@
       "unsaved": "Cambios sin guardar",
       "error": "Error al guardar: {{message}}"
     },
+    "localBackupHint": "Copia de seguridad local",
     "picker": {
       "title": "Casos",
       "closeButton": "Cerrar",
@@ -306,6 +308,24 @@
       "activeLabel": "Activo",
       "updatedAtLabel": "Actualizado: {{date}}"
     }
+  },
+  "recovery": {
+    "title": "¿Recuperar el trabajo sin guardar?",
+    "body": "La aplicación se cerró inesperadamente con cambios que aún no habían llegado al servidor. Puede restaurarlos, o descartarlos y conservar la última versión guardada en el servidor.",
+    "caseLabel": "Caso",
+    "savedAtLabel": "Copia de seguridad",
+    "savedAtValue": "{{date}}",
+    "operationsLabel": "Pasos de diseño",
+    "operationsValue": "{{count}}",
+    "restoreButton": "Restaurar",
+    "restoringButton": "Restaurando…",
+    "discardButton": "Descartar",
+    "restoreFailed": "Error al restaurar: {{message}}. La copia de seguridad local se conservó; puede volver a intentarlo.",
+    "corruptTitle": "No se pudo recuperar el trabajo sin guardar",
+    "corruptBody": "Se encontró una copia de seguridad local de la sesión anterior, pero estaba incompleta o dañada y no puede restaurarse de forma segura. La última versión guardada en el servidor no se ve afectada.",
+    "incompleteTitle": "Restaurado: faltan algunos escaneos",
+    "incompleteBody": "Su trabajo se restauró, pero no se pudieron recuperar {{count}} escaneo(s) porque nunca se guardaron en el servidor. Vuelva a importar los escaneos indicados abajo para completar el caso:",
+    "acknowledgeButton": "OK"
   },
   "repair": {
     "panelTitle": "Reparación",
@@ -435,6 +455,7 @@
     "restorationLabel": "Restauración",
     "selectPlaceholder": "Seleccione una corona…",
     "startButton": "Iniciar diseño de corona",
+    "startErrorOther": "No se pudo iniciar el diseño de corona: {{message}}",
     "cancelButton": "Cerrar",
     "blocked": "Bloqueado — {{reason}}",
     "reasonNoTargetScan": "asigne primero un escaneo objetivo (muñón)",
@@ -510,6 +531,7 @@
     "restorationLabel": "Restauración",
     "selectPlaceholder": "Seleccione un inlay/onlay…",
     "startButton": "Iniciar diseño de cavidad",
+    "startErrorOther": "No se pudo iniciar el diseño de cavidad: {{message}}",
     "cancelButton": "Cerrar",
     "blocked": "Bloqueado — {{reason}}",
     "reasonNoTargetScan": "asigne primero un escaneo objetivo (diente)",
@@ -571,6 +593,7 @@
     "restorationLabel": "Restauración",
     "selectPlaceholder": "Selecciona un puente…",
     "startButton": "Iniciar diseño de puente",
+    "startErrorOther": "No se pudo iniciar el diseño de puente: {{message}}",
     "cancelButton": "Cerrar",
     "blocked": "Bloqueado — {{reason}}",
     "reasonNoTargetScan": "asigna primero un escaneo objetivo (arcada)",
@@ -711,5 +734,78 @@
     "archiveImportedProvenance": "{{count}} liberación(es) importada(s) están marcadas como importedUnverified — este servidor NO las revalidó de forma independiente (atestiguadas por el autor, no certificadas por el servidor).",
     "archiveError": "La operación de archivo falló: {{message}}",
     "archiveDismiss": "Descartar"
+  },
+  "actions": {
+    "group": {
+      "view": "Vista",
+      "case": "Caso",
+      "restoration": "Restauración",
+      "help": "Ayuda"
+    },
+    "case": {
+      "save": "Guardar caso"
+    },
+    "export": {
+      "releaseSelected": "Exportar restauración seleccionada"
+    },
+    "restoration": {
+      "deleteMarginAnchors": "Eliminar puntos de línea de margen seleccionados"
+    },
+    "help": {
+      "commandPalette": "Paleta de comandos",
+      "shortcuts": "Atajos de teclado"
+    },
+    "tour": {
+      "show": "Mostrar tour de introducción"
+    }
+  },
+  "commandPalette": {
+    "title": "Paleta de comandos",
+    "searchLabel": "Buscar comandos",
+    "searchPlaceholder": "Buscar comandos…",
+    "empty": "No hay comandos que coincidan",
+    "unavailable": "No disponible"
+  },
+  "shortcutsHelp": {
+    "title": "Atajos de teclado",
+    "closeLabel": "Cerrar"
+  },
+  "tour": {
+    "progress": "Paso {{current}} de {{total}}",
+    "closeLabel": "Cerrar",
+    "skip": "Omitir",
+    "back": "Atrás",
+    "next": "Siguiente",
+    "done": "Empezar",
+    "steps": {
+      "import": {
+        "title": "Importar escaneos",
+        "body": "Arrastra un escaneo STL o PLY, confirma sus unidades y añade el muñón, el antagonista y los dientes adyacentes a la escena."
+      },
+      "design": {
+        "title": "Diseñar la restauración",
+        "body": "Añade una restauración, define el eje de inserción, traza la línea de margen y modela la corona, el inlay/onlay o el puente."
+      },
+      "qc": {
+        "title": "Comprobar la calidad",
+        "body": "Revisa los controles de calidad — grosor de pared, ajuste marginal, sección del conector y asentamiento — y confirma cualquier advertencia antes de exportar."
+      },
+      "export": {
+        "title": "Exportar y entregar",
+        "body": "Exporta la restauración validada como STL o PLY; el servidor vuelve a ejecutar todos los controles de calidad sobre los bytes exactos antes de publicar el archivo."
+      }
+    }
+  },
+  "errorReport": {
+    "title": "Se ha producido un error",
+    "body": "La aplicación ha encontrado un error inesperado. Puedes descargar un paquete de diagnóstico para compartirlo con soporte — permanece en tu ordenador hasta que decidas enviarlo y no contiene datos del paciente.",
+    "downloadButton": "Descargar paquete de diagnóstico",
+    "downloadingButton": "Preparando…",
+    "dismissButton": "Cerrar",
+    "downloadFailed": "No se pudo crear el paquete de diagnóstico. Inténtalo de nuevo.",
+    "boundaryTitle": "No se pudo mostrar este panel",
+    "boundaryBody": "El {{region}} ha encontrado un error. El resto de la aplicación sigue disponible.",
+    "regionSidebar": "panel de diseño",
+    "regionViewport": "vista 3D"
   }
 }

@@ -58,8 +58,11 @@
 import type { CaseDocument, MeshAsset, Restoration } from '@dqcad/shared-types';
 import { createEmptyCaseDocument, useCaseStore } from '../state/caseStore';
 import { type CaseSummary, usePersistenceStore } from '../state/persistenceStore';
+import { authHeaders } from './apiAuth';
 import { caseStore } from './caseStore';
 import { migrateCaseDocumentIfNeeded } from './caseDocumentMigration';
+import { clearLocalSnapshot } from './crashRecovery';
+import { logInfo } from './diagnosticLog';
 import { liveFinalMeshForRestoration, type LiveFinalMeshBuffers } from './finalMeshSource';
 import { getPool, releaseBvhForMesh } from './workers';
 
@@ -78,9 +81,13 @@ function errorMessageOf(error: unknown): string {
 }
 
 async function requestJson<T>(method: string, path: string, body?: unknown): Promise<T> {
+  // Phase 8 Task 6: attach the local single-user auth token to mutating
+  // requests (ADR-020). `authHeaders()` is `{}` for GETs-when-uninitialized and
+  // for a disabled-gate server, so this is inert in dev/tests.
+  const auth = await authHeaders();
   const response = await fetch(`${API_BASE}${path}`, {
     method,
-    headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+    headers: body === undefined ? auth : { 'content-type': 'application/json', ...auth },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!response.ok) {
@@ -115,7 +122,7 @@ async function headFinalMeshExists(contentHash: string): Promise<boolean> {
 async function uploadFinalMeshContainer(expectedContentHash: string, bytes: Uint8Array): Promise<void> {
   const response = await fetch(`${API_BASE}/final-meshes`, {
     method: 'POST',
-    headers: { 'content-type': 'application/octet-stream' },
+    headers: { 'content-type': 'application/octet-stream', ...(await authHeaders()) },
     body: bytes as unknown as BodyInit,
   });
   if (!response.ok) {
@@ -134,7 +141,7 @@ async function uploadFinalMeshContainer(expectedContentHash: string, bytes: Uint
 async function uploadMeshBytes(expectedHash: string, bytes: Uint8Array): Promise<void> {
   const response = await fetch(`${API_BASE}/meshes`, {
     method: 'POST',
-    headers: { 'content-type': 'application/octet-stream' },
+    headers: { 'content-type': 'application/octet-stream', ...(await authHeaders()) },
     // Same TS 5.7+ `ArrayBufferView<ArrayBuffer>`-vs-`ArrayBufferLike`
     // generic-typing gap as kernel-workers/src/hash.ts's `sha256Hex` cast —
     // `bytes` is a real, non-shared-ArrayBuffer-backed Uint8Array at
@@ -180,6 +187,82 @@ function resetMeshRegistryForCaseSwitch(): void {
     releaseBvhForMesh(record.contentHash);
   }
   caseStore.meshStore.clear();
+}
+
+/** A scene-referenced mesh whose geometry could NOT be reconstructed on load
+ * (no durable byte source) — surfaced honestly to the operator by crash
+ * recovery (Phase 8 Task 4 review SF2) rather than dropped with only a
+ * `console.warn`. `name` falls back to the meshId when the `MeshAsset` itself
+ * is missing. */
+export interface UnrecoverableMesh {
+  meshId: string;
+  name: string;
+}
+
+/**
+ * Fetches, parses, welds, and registers every mesh referenced by
+ * `document.scene` that is not already resident — the shared mesh-reconstruction
+ * loop used by BOTH `openCase` (server load) and `restoreFromLocalSnapshot`
+ * (Phase 8 Task 4 crash recovery). Appends each contentHash it NEWLY registers
+ * to `registeredThisAttempt` as it goes (so a caller's `catch` can roll back
+ * even a partial run — see `openCase`'s atomic-swap doc). A mesh with no
+ * `fileHash` (never uploaded — no durable byte source) or an unknown meshId is
+ * SKIPPED (never fabricated) and, so the caller can surface it, recorded in
+ * `unrecoverable` when that array is provided. Throws on a fetch/parse failure,
+ * leaving `registeredThisAttempt` populated up to the failure for rollback.
+ */
+async function reconstructSceneMeshes(
+  document: CaseDocument,
+  registeredThisAttempt: string[],
+  unrecoverable?: UnrecoverableMesh[],
+): Promise<void> {
+  const liveMeshIds = new Set(document.scene.map((node) => node.meshId));
+  for (const meshId of liveMeshIds) {
+    const asset: MeshAsset | undefined = document.meshes.find((mesh) => mesh.contentHash === meshId);
+    if (!asset) {
+      console.warn(`persistence: reconstructSceneMeshes — scene references unknown mesh ${meshId}, skipping`);
+      unrecoverable?.push({ meshId, name: meshId });
+      continue;
+    }
+    if (!asset.fileHash) {
+      console.warn(
+        `persistence: reconstructSceneMeshes — MeshAsset ${asset.contentHash} has no fileHash (never saved), skipping`,
+      );
+      unrecoverable?.push({ meshId: asset.contentHash, name: asset.name });
+      continue;
+    }
+    if (caseStore.meshStore.has(asset.contentHash)) {
+      // Already resident — shared (by contentHash) with the outgoing case, or
+      // left from a rolled-back attempt. Skip the wasted fetch AND keep it OUT
+      // of `registeredThisAttempt` so a later failure won't roll it back out
+      // from under the case still relying on it.
+      continue;
+    }
+    const bytes = await fetchMeshBytes(asset.fileHash);
+    const parsed = await getPool().run(
+      'parseMeshFile',
+      { format: 'stl', bytes },
+      { transfer: [bytes.buffer] },
+    );
+    if (parsed.kind !== 'stl-soup') {
+      throw new Error(`persistence: reconstructSceneMeshes — expected an STL soup, got ${parsed.kind}`);
+    }
+    const welded = await getPool().run(
+      'weldMeshSoup',
+      { positions: parsed.positions },
+      { transfer: [parsed.positions.buffer] },
+    );
+    caseStore.meshStore.register({
+      contentHash: asset.contentHash,
+      name: asset.name,
+      format: 'stl',
+      positions: welded.positions,
+      indices: welded.indices,
+      stats: welded.stats,
+      report: welded.report,
+    });
+    registeredThisAttempt.push(asset.contentHash);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -329,53 +412,7 @@ export async function openCase(id: string, name: string): Promise<void> {
     const previousMeshHashes = new Set(caseStore.meshStore.list().map((record) => record.contentHash));
     const liveMeshIds = new Set(document.scene.map((node) => node.meshId));
 
-    for (const meshId of liveMeshIds) {
-      const asset: MeshAsset | undefined = document.meshes.find((mesh) => mesh.contentHash === meshId);
-      if (!asset) {
-        console.warn(`persistence: openCase — scene references unknown mesh ${meshId}, skipping`);
-        continue;
-      }
-      if (!asset.fileHash) {
-        console.warn(
-          `persistence: openCase — MeshAsset ${asset.contentHash} has no fileHash (never saved), skipping`,
-        );
-        continue;
-      }
-      if (caseStore.meshStore.has(asset.contentHash)) {
-        // Already resident — shared (by contentHash) with the outgoing
-        // case, or left over from a previously rolled-back attempt at this
-        // same case. MeshStore.register is idempotent by contentHash
-        // anyway; this just skips the wasted fetch/parse/weld round trip,
-        // and (just as importantly) keeps it OUT of `registeredThisAttempt`
-        // so a later failure in this loop won't roll it back out from under
-        // the outgoing case that's still actively relying on it.
-        continue;
-      }
-      const bytes = await fetchMeshBytes(asset.fileHash);
-      const parsed = await getPool().run(
-        'parseMeshFile',
-        { format: 'stl', bytes },
-        { transfer: [bytes.buffer] },
-      );
-      if (parsed.kind !== 'stl-soup') {
-        throw new Error(`persistence: openCase — expected an STL soup, got ${parsed.kind}`);
-      }
-      const welded = await getPool().run(
-        'weldMeshSoup',
-        { positions: parsed.positions },
-        { transfer: [parsed.positions.buffer] },
-      );
-      caseStore.meshStore.register({
-        contentHash: asset.contentHash,
-        name: asset.name,
-        format: 'stl',
-        positions: welded.positions,
-        indices: welded.indices,
-        stats: welded.stats,
-        report: welded.report,
-      });
-      registeredThisAttempt.push(asset.contentHash);
-    }
+    await reconstructSceneMeshes(document, registeredThisAttempt);
 
     // Every live mesh the new document needs is now resident — safe to swap
     // atomically. `getRenderNodes()` never observes a dangling `meshId`.
@@ -408,6 +445,13 @@ export async function openCase(id: string, name: string): Promise<void> {
     }
 
     usePersistenceStore.getState().setActiveCase({ id, name });
+    // PHI-free diagnostic breadcrumb (engine/diagnosticLog.ts): the case id (a
+    // UUID) + sizes only — never the case name, patientRef, or any content.
+    logInfo('case.opened', {
+      caseId: id,
+      restorationCount: useCaseStore.getState().document.restorations.length,
+      journalOperationCount: useCaseStore.getState().document.history.length,
+    });
     if (wasMigrated) {
       // See the `lastPersistedDocument` doc above — a migrated document is
       // NOT yet in sync with the server (the server never sees a
@@ -643,6 +687,14 @@ export async function save(): Promise<void> {
       return;
     }
     lastPersistedDocument = documentToSave;
+    // Phase 8 Task 4: the server now durably holds `documentToSave`, so the
+    // crash-safe LOCAL snapshot for this state is redundant — clear it (a crash
+    // after a confirmed server save loses nothing). If a newer mutation landed
+    // while this PUT was in flight, the document is dirty again and the local
+    // debounce (crashRecovery.ts) writes a fresh snapshot for THOSE edits; this
+    // clear only drops the now-server-durable state. Fire-and-forget: it is a
+    // best-effort local cleanup, never gates the save result.
+    void clearLocalSnapshot();
     usePersistenceStore.getState().setActiveCase({ id: summary.id, name: summary.name });
     usePersistenceStore.getState().setLastSavedAt(summary.updatedAt);
     // A mutation may have landed WHILE this save's network calls were in
@@ -685,6 +737,90 @@ useCaseStore.subscribe((state) => {
  * sites read as an explicit user action rather than the autosave path,
  * even though they share one implementation (see this file's module doc). */
 export const saveActiveCase = save;
+
+/**
+ * Phase 8 Task 4 — restores a crash-safe LOCAL snapshot's `CaseDocument` as the
+ * active case (called by engine/recovery.ts on an EXPLICIT user "Restore").
+ * Reconstructs every scene-referenced mesh with a durable `fileHash` (server
+ * fetch → parse → weld → register, the SAME `reconstructSceneMeshes` path
+ * `openCase` uses), then installs the document.
+ *
+ * ## State identity & the un-synced contract
+ *
+ * The document is installed VERBATIM (via `caseStore.loadDocument`), so the
+ * restored state is byte-for-byte the pre-crash state — journal replay
+ * bit-identical, all hashes equal (the P7-T1/T6 "recover honestly, never
+ * fabricate" discipline). A local snapshot exists ONLY for edits the server
+ * never received, so the restored document is by construction NOT yet on the
+ * server: `lastPersistedDocument` is set to `null` and status to `'unsaved'`,
+ * which makes the normal autosave/save path push the recovered work to the
+ * server (visibly — never a silent overwrite; the user's "Restore" click
+ * authorizes syncing their own recovered edits). The local snapshot is
+ * deliberately NOT cleared here: it stays until that server save confirms
+ * (`save()` clears it), so a second crash before the re-sync still recovers.
+ *
+ * ## Incomplete restore is surfaced, not hidden (review SF2)
+ *
+ * A local snapshot can legitimately capture a mesh imported but NEVER uploaded
+ * (the local debounce fires ~2 s after an edit, well before the 30 s server
+ * autosave stamps a `fileHash`), whose bytes therefore exist nowhere durable.
+ * Such a mesh cannot be rebuilt from a document-only snapshot; its scene node
+ * silently vanishes from the render output (`getRenderNodes` skips a node with
+ * no mesh record). Rather than report a clean success, this returns the list of
+ * `unrecoverableMeshes` so the caller (engine/recovery.ts) can TELL the operator
+ * exactly which geometry did not come back — fulfilling the DoD's "if some
+ * element is genuinely unrecoverable, say so and fail visibly, never fabricate"
+ * to the OPERATOR, not just the console.
+ *
+ * On failure (e.g. the server is down and a mesh fetch fails), this THROWS and
+ * rolls back its own partial mesh registrations, leaving the outgoing case and
+ * the local snapshot untouched — the user can retry; nothing is discarded.
+ *
+ * @returns the meshes whose geometry could not be reconstructed (empty on a
+ * fully-complete restore).
+ * @throws on a mesh fetch/parse failure (recovery surfaced as a visible error;
+ * the snapshot is preserved for retry).
+ */
+export async function restoreFromLocalSnapshot(
+  document: CaseDocument,
+  caseId: string,
+  caseName: string,
+): Promise<{ unrecoverableMeshes: UnrecoverableMesh[] }> {
+  const registeredThisAttempt: string[] = [];
+  const unrecoverableMeshes: UnrecoverableMesh[] = [];
+  try {
+    const previousMeshHashes = new Set(caseStore.meshStore.list().map((record) => record.contentHash));
+    const liveMeshIds = new Set(document.scene.map((node) => node.meshId));
+
+    await reconstructSceneMeshes(document, registeredThisAttempt, unrecoverableMeshes);
+
+    // The restored document carries un-synced edits — mark it dirty so the
+    // normal save path re-syncs it to the server (never trusted as "saved").
+    lastPersistedDocument = null;
+    caseStore.loadDocument(document);
+
+    // Release whatever the outgoing (pre-restore) case had that the restored
+    // document doesn't reference — mirrors `openCase`'s post-swap release.
+    for (const oldContentHash of previousMeshHashes) {
+      if (!liveMeshIds.has(oldContentHash)) {
+        caseStore.meshStore.remove(oldContentHash);
+        releaseBvhForMesh(oldContentHash);
+      }
+    }
+
+    usePersistenceStore.getState().setActiveCase({ id: caseId, name: caseName });
+    // Honest status: the recovered state is NOT on the server yet.
+    usePersistenceStore.getState().setStatus('unsaved');
+    return { unrecoverableMeshes };
+  } catch (error) {
+    for (const contentHash of registeredThisAttempt) {
+      caseStore.meshStore.remove(contentHash);
+      releaseBvhForMesh(contentHash);
+    }
+    usePersistenceStore.getState().setStatus('error', errorMessageOf(error));
+    throw error;
+  }
+}
 
 /** TEST-ONLY: resets this module's persistence-tracking state (dirty
  * baseline, in-flight/pending-save flags, pending debounce timer) so tests

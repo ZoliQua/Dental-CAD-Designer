@@ -161,6 +161,7 @@
     "panelTitle": "Messungen",
     "empty": "Noch keine Messungen.",
     "deleteButton": "Löschen",
+    "toolError": "Messung fehlgeschlagen: {{message}}",
     "kind": {
       "pointToPoint": "Punkt zu Punkt",
       "pointToSurface": "Punkt zu Fläche",
@@ -292,6 +293,7 @@
       "unsaved": "Ungespeicherte Änderungen",
       "error": "Speichern fehlgeschlagen: {{message}}"
     },
+    "localBackupHint": "Lokal gesichert",
     "picker": {
       "title": "Fälle",
       "closeButton": "Schließen",
@@ -306,6 +308,24 @@
       "activeLabel": "Aktiv",
       "updatedAtLabel": "Aktualisiert: {{date}}"
     }
+  },
+  "recovery": {
+    "title": "Ungespeicherte Arbeit wiederherstellen?",
+    "body": "Die Anwendung wurde unerwartet geschlossen, während Änderungen den Server noch nicht erreicht hatten. Sie können sie wiederherstellen oder verwerfen und die zuletzt auf dem Server gespeicherte Version behalten.",
+    "caseLabel": "Fall",
+    "savedAtLabel": "Gesichert",
+    "savedAtValue": "{{date}}",
+    "operationsLabel": "Konstruktionsschritte",
+    "operationsValue": "{{count}}",
+    "restoreButton": "Wiederherstellen",
+    "restoringButton": "Wird wiederhergestellt…",
+    "discardButton": "Verwerfen",
+    "restoreFailed": "Wiederherstellung fehlgeschlagen: {{message}}. Die lokale Sicherung wurde behalten – Sie können es erneut versuchen.",
+    "corruptTitle": "Ungespeicherte Arbeit konnte nicht wiederhergestellt werden",
+    "corruptBody": "Eine lokale Sicherung der vorherigen Sitzung wurde gefunden, war aber unvollständig oder beschädigt und kann nicht sicher wiederhergestellt werden. Die zuletzt auf dem Server gespeicherte Version ist nicht betroffen.",
+    "incompleteTitle": "Wiederhergestellt – einige Scans fehlen",
+    "incompleteBody": "Ihre Arbeit wurde wiederhergestellt, aber {{count}} Scan(s) konnten nicht wiederhergestellt werden, da sie nie auf dem Server gespeichert wurden. Importieren Sie die unten aufgeführten Scans erneut, um den Fall zu vervollständigen:",
+    "acknowledgeButton": "OK"
   },
   "repair": {
     "panelTitle": "Reparatur",
@@ -435,6 +455,7 @@
     "restorationLabel": "Restauration",
     "selectPlaceholder": "Krone auswählen…",
     "startButton": "Kronendesign starten",
+    "startErrorOther": "Kronendesign konnte nicht gestartet werden: {{message}}",
     "cancelButton": "Schließen",
     "blocked": "Gesperrt — {{reason}}",
     "reasonNoTargetScan": "zuerst einen Ziel-(Stumpf-)Scan zuweisen",
@@ -510,6 +531,7 @@
     "restorationLabel": "Restauration",
     "selectPlaceholder": "Inlay/Onlay auswählen…",
     "startButton": "Kavitäten-Design starten",
+    "startErrorOther": "Kavitäten-Design konnte nicht gestartet werden: {{message}}",
     "cancelButton": "Schließen",
     "blocked": "Blockiert — {{reason}}",
     "reasonNoTargetScan": "zuerst einen Ziel-(Zahn-)Scan zuweisen",
@@ -571,6 +593,7 @@
     "restorationLabel": "Restauration",
     "selectPlaceholder": "Brücke auswählen…",
     "startButton": "Brückendesign starten",
+    "startErrorOther": "Brückendesign konnte nicht gestartet werden: {{message}}",
     "cancelButton": "Schließen",
     "blocked": "Blockiert — {{reason}}",
     "reasonNoTargetScan": "zuerst einen Ziel-Scan (Kiefer) zuweisen",
@@ -711,5 +734,78 @@
     "archiveImportedProvenance": "{{count}} importierte Freigabe(n) sind als importedUnverified markiert — dieser Server hat sie NICHT unabhängig revalidiert (vom Autor attestiert, nicht server-zertifiziert).",
     "archiveError": "Archivvorgang fehlgeschlagen: {{message}}",
     "archiveDismiss": "Verwerfen"
+  },
+  "actions": {
+    "group": {
+      "view": "Ansicht",
+      "case": "Fall",
+      "restoration": "Restauration",
+      "help": "Hilfe"
+    },
+    "case": {
+      "save": "Fall speichern"
+    },
+    "export": {
+      "releaseSelected": "Ausgewählte Restauration exportieren"
+    },
+    "restoration": {
+      "deleteMarginAnchors": "Ausgewählte Randlinienpunkte löschen"
+    },
+    "help": {
+      "commandPalette": "Befehlspalette",
+      "shortcuts": "Tastenkürzel"
+    },
+    "tour": {
+      "show": "Einführungstour anzeigen"
+    }
+  },
+  "commandPalette": {
+    "title": "Befehlspalette",
+    "searchLabel": "Befehle suchen",
+    "searchPlaceholder": "Befehle suchen…",
+    "empty": "Keine passenden Befehle",
+    "unavailable": "Nicht verfügbar"
+  },
+  "shortcutsHelp": {
+    "title": "Tastenkürzel",
+    "closeLabel": "Schließen"
+  },
+  "tour": {
+    "progress": "Schritt {{current}} von {{total}}",
+    "closeLabel": "Schließen",
+    "skip": "Überspringen",
+    "back": "Zurück",
+    "next": "Weiter",
+    "done": "Loslegen",
+    "steps": {
+      "import": {
+        "title": "Scans importieren",
+        "body": "Ziehe einen STL- oder PLY-Scan hinein, bestätige seine Einheiten und füge Stumpf, Antagonist und Nachbarzähne zur Szene hinzu."
+      },
+      "design": {
+        "title": "Restauration konstruieren",
+        "body": "Lege eine Restauration an, bestimme die Einschubachse, zeichne die Präparationsgrenze und modelliere Krone, Inlay/Onlay oder Brücke."
+      },
+      "qc": {
+        "title": "Qualität prüfen",
+        "body": "Prüfe die QK-Kriterien — Wandstärke, Randschluss, Verbinderquerschnitt und Sitz — und bestätige alle Warnungen vor dem Export."
+      },
+      "export": {
+        "title": "Exportieren und übergeben",
+        "body": "Exportiere die geprüfte Restauration als STL oder PLY; der Server führt vor der Freigabe alle QK-Kriterien erneut auf den exakten Bytes aus."
+      }
+    }
+  },
+  "errorReport": {
+    "title": "Es ist ein Fehler aufgetreten",
+    "body": "In der Anwendung ist ein unerwarteter Fehler aufgetreten. Sie können ein Diagnosepaket herunterladen, um es mit dem Support zu teilen — es verbleibt auf Ihrem Computer, bis Sie es senden, und enthält keine Patientendaten.",
+    "downloadButton": "Diagnosepaket herunterladen",
+    "downloadingButton": "Wird vorbereitet…",
+    "dismissButton": "Schließen",
+    "downloadFailed": "Das Diagnosepaket konnte nicht erstellt werden. Bitte versuchen Sie es erneut.",
+    "boundaryTitle": "Dieses Panel konnte nicht angezeigt werden",
+    "boundaryBody": "Im {{region}} ist ein Fehler aufgetreten. Der Rest der Anwendung ist weiterhin nutzbar.",
+    "regionSidebar": "Design-Panel",
+    "regionViewport": "3D-Ansicht"
   }
 }

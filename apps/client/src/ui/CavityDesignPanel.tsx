@@ -68,7 +68,13 @@ export function CavityDesignPanel() {
     try {
       cavityDesignEngine.start(pendingId);
     } catch (error) {
-      setStartError(error instanceof Error ? error.message : String(error));
+      // Wrap the raw engine message (developer-facing English) in a translated
+      // frame so a HU/DE/ES dentist sees localized chrome + the technical
+      // detail — same "translated frame, dynamic content" pattern the sibling
+      // panels use (AlignmentPanel/AxisPanel/MarginPanel `startErrorOther`).
+      setStartError(
+        t('cavity.startErrorOther', { message: error instanceof Error ? error.message : String(error) }),
+      );
     }
   }
 

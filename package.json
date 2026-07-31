@@ -24,6 +24,7 @@
     "test:e2e": "playwright test",
     "test:perf-large": "npm run fixtures:generate-large && RUN_LARGE_FIXTURE=1 vitest run --project io src/stl/large-fixture.perf.test.ts",
     "test:perf-halfedge": "npm run fixtures:generate-large && npm run fixtures:generate-large-5m && RUN_LARGE_FIXTURE=1 vitest run --project golden test/golden/halfedge-intake.perf.test.ts",
+    "test:perf": "RUN_PERF=1 vitest run --project golden test/golden/perf-harness.perf.test.ts",
     "test:offset-acceptance": "RUN_OFFSET_ACCEPTANCE=1 vitest run --project kernel packages/kernel/src/offset/offsetMesh.test.ts",
     "fixtures:generate": "tsx scripts/generate-fixtures.ts",
     "fixtures:generate-large": "tsx scripts/generate-large-fixture.ts",

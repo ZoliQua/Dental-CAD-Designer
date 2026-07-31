@@ -161,6 +161,7 @@
     "panelTitle": "Measurements",
     "empty": "No measurements yet.",
     "deleteButton": "Delete",
+    "toolError": "Measurement failed: {{message}}",
     "kind": {
       "pointToPoint": "Point to point",
       "pointToSurface": "Point to surface",
@@ -292,6 +293,7 @@
       "unsaved": "Unsaved changes",
       "error": "Save failed: {{message}}"
     },
+    "localBackupHint": "Backed up locally",
     "picker": {
       "title": "Cases",
       "closeButton": "Close",
@@ -306,6 +308,24 @@
       "activeLabel": "Active",
       "updatedAtLabel": "Updated {{date}}"
     }
+  },
+  "recovery": {
+    "title": "Recover unsaved work?",
+    "body": "The app closed unexpectedly with changes that had not yet reached the server. You can restore them, or discard them and keep the last version saved to the server.",
+    "caseLabel": "Case",
+    "savedAtLabel": "Backed up",
+    "savedAtValue": "{{date}}",
+    "operationsLabel": "Design steps",
+    "operationsValue": "{{count}}",
+    "restoreButton": "Restore",
+    "restoringButton": "Restoring…",
+    "discardButton": "Discard",
+    "restoreFailed": "Restore failed: {{message}}. The local backup was kept — you can try again.",
+    "corruptTitle": "Unsaved work could not be recovered",
+    "corruptBody": "A local backup from the previous session was found, but it was incomplete or damaged and cannot be safely restored. The last version saved to the server is unaffected.",
+    "incompleteTitle": "Restored — some scans are missing",
+    "incompleteBody": "Your work was restored, but {{count}} scan(s) could not be recovered because they had never been saved to the server. Re-import the scan(s) listed below to complete the case:",
+    "acknowledgeButton": "OK"
   },
   "repair": {
     "panelTitle": "Repair",
@@ -435,6 +455,7 @@
     "restorationLabel": "Restoration",
     "selectPlaceholder": "Select a crown…",
     "startButton": "Start crown design",
+    "startErrorOther": "Could not start crown design: {{message}}",
     "cancelButton": "Close",
     "blocked": "Blocked — {{reason}}",
     "reasonNoTargetScan": "assign a target (prep) scan first",
@@ -510,6 +531,7 @@
     "restorationLabel": "Restoration",
     "selectPlaceholder": "Select an inlay/onlay…",
     "startButton": "Start cavity design",
+    "startErrorOther": "Could not start cavity design: {{message}}",
     "cancelButton": "Close",
     "blocked": "Blocked — {{reason}}",
     "reasonNoTargetScan": "assign a target (tooth) scan first",
@@ -571,6 +593,7 @@
     "restorationLabel": "Restoration",
     "selectPlaceholder": "Select a bridge…",
     "startButton": "Start bridge design",
+    "startErrorOther": "Could not start bridge design: {{message}}",
     "cancelButton": "Close",
     "blocked": "Blocked — {{reason}}",
     "reasonNoTargetScan": "assign a target (arch) scan first",
@@ -711,5 +734,78 @@
     "archiveImportedProvenance": "{{count}} imported release(s) are marked importedUnverified — this server did NOT independently re-validate them (author-attested, not server-certified).",
     "archiveError": "Archive operation failed: {{message}}",
     "archiveDismiss": "Dismiss"
+  },
+  "actions": {
+    "group": {
+      "view": "View",
+      "case": "Case",
+      "restoration": "Restoration",
+      "help": "Help"
+    },
+    "case": {
+      "save": "Save case"
+    },
+    "export": {
+      "releaseSelected": "Export selected restoration"
+    },
+    "restoration": {
+      "deleteMarginAnchors": "Delete selected margin anchors"
+    },
+    "help": {
+      "commandPalette": "Command palette",
+      "shortcuts": "Keyboard shortcuts"
+    },
+    "tour": {
+      "show": "Show onboarding tour"
+    }
+  },
+  "commandPalette": {
+    "title": "Command palette",
+    "searchLabel": "Search commands",
+    "searchPlaceholder": "Search commands…",
+    "empty": "No matching commands",
+    "unavailable": "Unavailable"
+  },
+  "shortcutsHelp": {
+    "title": "Keyboard shortcuts",
+    "closeLabel": "Close"
+  },
+  "tour": {
+    "progress": "Step {{current}} of {{total}}",
+    "closeLabel": "Close",
+    "skip": "Skip",
+    "back": "Back",
+    "next": "Next",
+    "done": "Get started",
+    "steps": {
+      "import": {
+        "title": "Import scans",
+        "body": "Drag and drop an STL or PLY scan, confirm its units, and add the prep/die, antagonist, and adjacent teeth to the scene."
+      },
+      "design": {
+        "title": "Design the restoration",
+        "body": "Add a restoration, set the insertion axis, trace the margin line, and shape the crown, inlay/onlay, or bridge."
+      },
+      "qc": {
+        "title": "Check quality",
+        "body": "Review the QC gates — wall thickness, marginal fit, connector cross-section, and seating — and acknowledge any warnings before export."
+      },
+      "export": {
+        "title": "Export and hand off",
+        "body": "Export the validated restoration as STL or PLY; the server re-runs every QC gate on the exact bytes before releasing the file."
+      }
+    }
+  },
+  "errorReport": {
+    "title": "Something went wrong",
+    "body": "The app hit an unexpected error. You can download a diagnostic bundle to share with support — it stays on your computer until you choose to send it, and it contains no patient data.",
+    "downloadButton": "Download diagnostic bundle",
+    "downloadingButton": "Preparing…",
+    "dismissButton": "Dismiss",
+    "downloadFailed": "The diagnostic bundle could not be created. Please try again.",
+    "boundaryTitle": "This panel could not be displayed",
+    "boundaryBody": "The {{region}} ran into an error. The rest of the app is still usable.",
+    "regionSidebar": "design panel",
+    "regionViewport": "3D viewport"
   }
 }

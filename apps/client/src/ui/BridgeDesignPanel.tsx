@@ -101,7 +101,11 @@ export function BridgeDesignPanel() {
     try {
       bridgeDesignEngine.start(pendingId, buildBridgeFixture());
     } catch (error) {
-      setStartError(error instanceof Error ? error.message : String(error));
+      // Translated frame around the raw engine message — see CavityDesignPanel
+      // (sibling-panel `startErrorOther` pattern); never show bare English.
+      setStartError(
+        t('bridge.startErrorOther', { message: error instanceof Error ? error.message : String(error) }),
+      );
     }
   }
 
