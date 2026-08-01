@@ -143,7 +143,11 @@ body {
 
 .app-body {
   display: grid;
-  grid-template-columns: 220px 1fr;
+  /* 18rem sidebar: wide enough that the quadrant-correct 2×16 FDI tooth chart
+     (FdiToothChart) fits all 16 columns legibly. At the previous 220px the
+     row (16 × minmax(1.1rem,1fr) + gaps ≈ 19rem) overflowed the ~196px
+     content box and clipped teeth 23–28 / 33–38, making them unselectable. */
+  grid-template-columns: 18rem 1fr;
   min-height: 0;
 }
 
@@ -1378,7 +1382,11 @@ body {
 
 .fdi-chart__row {
   display: grid;
-  grid-template-columns: repeat(16, minmax(1.1rem, 1fr));
+  /* minmax(0, 1fr) — NOT minmax(1.1rem, …): a hard rem minimum forces the
+     16 columns wider than the sidebar and clips the distal teeth. A 0 minimum
+     lets the 16 equal columns always fit the container width; the sidebar
+     (18rem) is sized so each cell still comfortably holds a 2-digit label. */
+  grid-template-columns: repeat(16, minmax(0, 1fr));
   gap: 0.1rem;
 }
 
