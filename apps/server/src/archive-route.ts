@@ -294,9 +294,22 @@ export function registerArchiveRoutes(app: FastifyInstance, deps: ArchiveRouteDe
       // preserved) and validate their case-scoping BEFORE any write, so a
       // hostile archive persists NOTHING.
       const exportRowEntries = [...parsed.entries.entries()].filter(([, e]) => e.kind === 'export-row');
-      const exportRows: ArchivedExportRow[] = exportRowEntries.map(
-        ([, e]) => JSON.parse(new TextDecoder().decode(e.bytes)) as ArchivedExportRow,
-      );
+      // A non-JSON export-row entry is a malformed archive (400), not a 500 —
+      // mirror the case-document parse guard above (the sibling parse this same
+      // hardening commit left unwrapped).
+      const exportRows: ArchivedExportRow[] = [];
+      for (const [name, e] of exportRowEntries) {
+        try {
+          exportRows.push(JSON.parse(new TextDecoder().decode(e.bytes)) as ArchivedExportRow);
+        } catch (error) {
+          reply.code(400);
+          return {
+            error: 'archive-invalid',
+            message: `an export-row entry is not parseable JSON: ${(error as Error).message}`,
+            entryName: name,
+          };
+        }
+      }
 
       // MEDIUM #2 Defect A — cross-case ledger injection. A crafted (integrity-
       // valid, unsigned) archive can carry `export-row` entries whose `caseId`

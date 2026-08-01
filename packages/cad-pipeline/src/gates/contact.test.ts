@@ -66,4 +66,16 @@ describe('contactGate', () => {
     expect(withZero).toEqual(absent);
     expect(absent.message).not.toMatch(/heal shift/);
   });
+
+  it('CLAMPS a negative heal bound to 0 — a negative value can never subtract from a residual / loosen the gate', () => {
+    // Pre-fix (`residual + healBound`, unclamped): a negative bound would make
+    // r = 0.17 + (-5) = -4.83 ≤ tolerance → the OFF contact would PASS. The clamp
+    // makes a negative bound behave exactly like 0, so the off contact still FAILS.
+    const off: ContactResidualInput = { kind: 'proximalDistal', targetPenetrationMm: 0.02, achievedSignedDistanceMm: 0.15, contactResidualMm: 0.17, regionResidualMm: 0.17, clampBound: false };
+    const withNegative = contactGate({ contacts: [off], contactClampWarning: false, outerShiftBoundMm: -5 });
+    const withZero = contactGate({ contacts: [off], contactClampWarning: false, outerShiftBoundMm: 0 });
+    expect(withNegative).toEqual(withZero);
+    expect(withNegative.passed).toBe(false);
+    expect(withNegative.value).toBeCloseTo(0.17, 5);
+  });
 });

@@ -108,7 +108,12 @@ export function contactGate(input: ContactGateInput): QcGateResult {
   // The morph→shell heal remesh shift (kernel `healOuterAnatomy` @errorBound) is
   // SUMMED onto every contact's residual — see `outerShiftBoundMm`'s doc. 0 when
   // the outer was not healed (byte-identical to the pre-heal gate).
-  const healBound = input.outerShiftBoundMm ?? 0;
+  // Clamp to ≥ 0: this bound only ever WIDENS the residual (tightens the gate).
+  // A negative value would subtract from residuals and could loosen a failing
+  // gate to pass — never allowed regardless of caller (the gate runs client-side
+  // too, where no request schema guards the input). Byte-identical for every
+  // legitimate input (heal shift is always ≥ 0; default 0).
+  const healBound = Math.max(0, input.outerShiftBoundMm ?? 0);
 
   if (input.contacts.length === 0) {
     // No contacts to evaluate is unverifiable — fail-safe (a crown that made no

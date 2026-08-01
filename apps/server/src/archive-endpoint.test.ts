@@ -412,4 +412,29 @@ describe('case archive export/import — round-trip identity (Phase 7 Task 6 Par
     expect(await target.prisma.export.findFirst({ where: { caseId: victimId } })).toBeNull();
     expect(await target.prisma.case.findUnique({ where: { id: importId } })).toBeNull();
   });
+
+  it('rejects an archive whose export-row entry is not parseable JSON (400 archive-invalid, not a 500)', async () => {
+    const importId = `sec-badrow-${Date.now()}`;
+    const doc = createEmptyCaseDocument(importId, '2026-01-01T00:00:00.000Z');
+    const archive = buildCaseArchive(
+      { id: importId, name: 'bad-export-row', schemaVersion: 2, kernelVersion: KERNEL_VERSION },
+      [
+        jsonEntry('case-document', 'case-document', doc),
+        // A non-JSON export-row entry: pre-fix this threw out of the unguarded
+        // `.map(JSON.parse)` → a 500 instead of the intended typed 400.
+        { name: 'export-row/broken', kind: 'export-row', bytes: new TextEncoder().encode('{ this is not, json ]') },
+      ],
+    );
+    const res = await target.app.inject({
+      method: 'POST',
+      url: '/api/archives/import',
+      headers: { 'content-type': 'application/octet-stream' },
+      payload: Buffer.from(archive),
+    });
+    expect(res.statusCode, res.body).toBe(400);
+    const body = res.json() as { error: string; message: string };
+    expect(body.error).toBe('archive-invalid');
+    expect(body.message).toMatch(/export-row entry is not parseable JSON/);
+    expect(await target.prisma.case.findUnique({ where: { id: importId } })).toBeNull();
+  });
 });
