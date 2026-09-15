@@ -8,6 +8,7 @@
 // browser lane). Mirrors state/axisStore.test.ts's node-lane + the browser
 // lane split.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { EMAX_LITHIUM_DISILICATE_PROFILE, STANDARD_ZIRCONIA_PROFILE } from '@dqcad/clinical-profiles';
 import type { MeshStats } from './repair';
 import { caseStore } from './caseStore';
 import { createRestoration } from './restorations';
@@ -570,5 +571,57 @@ describe('crownDesign controller — HONEST failure surfacing', () => {
     await expect(crownDesignEngine.runQc()).rejects.toBeInstanceOf(CrownStageOrderError);
     // No fake "passing" report was fabricated.
     expect(currentRestoration().qc).toBeNull();
+  });
+});
+
+describe('crownDesign controller — material profile wiring (Feature #3)', () => {
+  async function runToShell(): Promise<void> {
+    crownDesignEngine.start(restorationId);
+    await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
+    await crownDesignEngine.placeAnatomy(anatomyInput());
+    await crownDesignEngine.runMorph();
+    await crownDesignEngine.constructShell();
+  }
+
+  function lastRunQcPayload(): Record<string, unknown> {
+    const call = [...fake.calls].reverse().find((c) => c.job === 'runQc');
+    if (!call) throw new Error('no runQc call captured');
+    return call.payload as Record<string, unknown>;
+  }
+
+  it('the DEFAULT (unset material) case runs QC + exports with ZIRCONIA thresholds', async () => {
+    await runToShell();
+    await crownDesignEngine.runQc();
+    expect(lastRunQcPayload().occlusalMinWallThicknessMm).toBe(
+      STANDARD_ZIRCONIA_PROFILE.occlusalMinWallThicknessMm,
+    );
+    expect(crownDesignEngine.exportQcContext(restorationId)!.occlusalMinWallThicknessMm).toBe(
+      STANDARD_ZIRCONIA_PROFILE.occlusalMinWallThicknessMm,
+    );
+  });
+
+  it('choosing e.max makes QC + the export context use e.max thresholds/version (round-trips server pinning with NO 409)', async () => {
+    await runToShell();
+    // The picker's action: switch the case material to e.max.
+    caseStore.setMaterialProfile(EMAX_LITHIUM_DISILICATE_PROFILE.id);
+    await crownDesignEngine.runQc();
+
+    // 1. The QC run used e.max's DIVERGENT occlusal minimum (1.0, not 0.5)...
+    const payload = lastRunQcPayload();
+    expect(payload.occlusalMinWallThicknessMm).toBe(EMAX_LITHIUM_DISILICATE_PROFILE.occlusalMinWallThicknessMm);
+    expect(payload.occlusalMinWallThicknessMm).toBe(1.0);
+    // ...stamped with e.max's version (the QC/export profile-version agreement).
+    expect(payload.profileVersion).toBe(EMAX_LITHIUM_DISILICATE_PROFILE.version);
+
+    // 2. The export request context carries e.max's threshold values, so they
+    //    equal the values the SERVER resolves from e.max@version (export-profile.ts
+    //    verifyProfileThresholds) — i.e. no export-profile-threshold-mismatch (409).
+    const ctx = crownDesignEngine.exportQcContext(restorationId)!;
+    expect(ctx.occlusalMinWallThicknessMm).toBe(EMAX_LITHIUM_DISILICATE_PROFILE.occlusalMinWallThicknessMm);
+    expect(ctx.connectorAreaTargetMm2).toBe(EMAX_LITHIUM_DISILICATE_PROFILE.connectorAreaMm2.anteriorMm2);
+    expect(ctx.marginExclusionMm).toBe(EMAX_LITHIUM_DISILICATE_PROFILE.marginExclusionMm);
+    // The crown wall minimum stays the SAVED restoration parameter (the server's
+    // crown authority), independent of the profile.
+    expect(ctx.minWallThicknessMm).toBe(currentRestoration().params.minWallThicknessMm);
   });
 });

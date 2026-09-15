@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { CaseDocument } from '@dqcad/shared-types';
 import { EMAX_LITHIUM_DISILICATE_PROFILE, STANDARD_ZIRCONIA_PROFILE } from '@dqcad/clinical-profiles';
-import { resolveMaterialProfile, resolveProfileVersion } from './materialProfile';
+import {
+  KNOWN_PROFILES,
+  MATERIAL_PROFILE_OPTIONS,
+  resolveFullMaterialProfile,
+  resolveMaterialProfile,
+  resolveProfileVersion,
+} from './materialProfile';
 
 function docWithSettings(materialProfileId: string, profileVersion = ''): CaseDocument {
   return {
@@ -44,5 +50,47 @@ describe('resolveMaterialProfile / resolveProfileVersion', () => {
     expect(resolveProfileVersion(docWithSettings('no-such-profile'))).toBe(
       STANDARD_ZIRCONIA_PROFILE.version,
     );
+  });
+});
+
+describe('resolveFullMaterialProfile', () => {
+  it('returns the FULL zirconia profile for the empty-settings default', () => {
+    expect(resolveFullMaterialProfile(docWithSettings(''))).toBe(STANDARD_ZIRCONIA_PROFILE);
+  });
+
+  it('returns the FULL e.max profile when selected — its divergent thresholds are the ones the gates use', () => {
+    const profile = resolveFullMaterialProfile(docWithSettings(EMAX_LITHIUM_DISILICATE_PROFILE.id));
+    expect(profile).toBe(EMAX_LITHIUM_DISILICATE_PROFILE);
+    // The fields that actually differ from zirconia (PLAN.md §3) — the reason a
+    // material change must invalidate QC.
+    expect(profile.occlusalMinWallThicknessMm).toBe(1.0);
+    expect(profile.restorationParams.minWallThicknessMm).toBe(0.8);
+    expect(profile.inlayMinThicknessMm).toBe(1.0);
+    expect(profile.frameworkMinThicknessMm).toBe(1.0);
+  });
+
+  it('falls back to the full zirconia profile for an unknown id', () => {
+    expect(resolveFullMaterialProfile(docWithSettings('no-such-profile'))).toBe(
+      STANDARD_ZIRCONIA_PROFILE,
+    );
+  });
+});
+
+describe('MATERIAL_PROFILE_OPTIONS (the picker registry)', () => {
+  it('lists every shipped KNOWN_PROFILES entry by its canonical id + registry label (no hardcoded labels)', () => {
+    expect(MATERIAL_PROFILE_OPTIONS).toEqual(
+      KNOWN_PROFILES.map((profile) => ({ id: profile.id, label: profile.label })),
+    );
+    // Both shipped materials are offered, zirconia first (the effective default).
+    expect(MATERIAL_PROFILE_OPTIONS.map((option) => option.id)).toEqual([
+      STANDARD_ZIRCONIA_PROFILE.id,
+      EMAX_LITHIUM_DISILICATE_PROFILE.id,
+    ]);
+  });
+
+  it('every option id resolves back to its full profile (the picker can never offer an unresolvable material)', () => {
+    for (const option of MATERIAL_PROFILE_OPTIONS) {
+      expect(resolveFullMaterialProfile(docWithSettings(option.id)).id).toBe(option.id);
+    }
   });
 });

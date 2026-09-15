@@ -8,6 +8,7 @@
 // pipeline is proven in ui/BridgeDesignPanel.dom.test.tsx's browser lane).
 // Mirrors engine/cavityDesign.test.ts.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { EMAX_LITHIUM_DISILICATE_PROFILE, STANDARD_ZIRCONIA_PROFILE } from '@dqcad/clinical-profiles';
 import type { MeshStats } from './repair';
 import { caseStore } from './caseStore';
 import { createRestoration } from './restorations';
@@ -254,6 +255,22 @@ describe('bridgeDesign — the happy path (stage hashes + ONE coalesced op per s
     for (const c of connectors.connectors) {
       expect(c.targetMm2).toBe(9); // posterior (any tooth position ≥ 4)
       expect(c.passed).toBe(true); // 11.3 ≥ 9
+    }
+  });
+
+  it('Feature #3: the connector target rides from the SELECTED profile (e.max), byte-identical to zirconia today', async () => {
+    const id = setupBridgeCase();
+    // Choose e.max BEFORE building connectors, so the captured per-connector
+    // target is resolved from the e.max profile.
+    caseStore.setMaterialProfile(EMAX_LITHIUM_DISILICATE_PROFILE.id);
+    await driveToQc(id);
+    const ctx = bridgeDesignEngine.exportQcContext(id)!;
+    for (const c of ctx.connectors) {
+      // Resolved from the SELECTED (e.max) profile's posterior connector area...
+      expect(c.targetMm2).toBe(EMAX_LITHIUM_DISILICATE_PROFILE.connectorAreaMm2.posteriorMm2);
+      // ...which equals zirconia's today (identical registry field) — so the
+      // rewire is byte-identical for the current registry (no golden move).
+      expect(c.targetMm2).toBe(STANDARD_ZIRCONIA_PROFILE.connectorAreaMm2.posteriorMm2);
     }
   });
 });

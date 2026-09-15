@@ -112,6 +112,27 @@ describe('verifyProfileThresholds — crown', () => {
     expect(() => verifyProfileThresholds(req('crown'), ctx(), ZR, RESTO)).not.toThrow();
   });
 
+  it('e.max round-trips: an e.max-material crown resolves + passes threshold pinning (no 409)', () => {
+    const EX = EMAX_LITHIUM_DISILICATE_PROFILE;
+    // Step 1+2: the client-sent identity resolves + checksum verifies.
+    expect(resolveExportMaterialProfile({ id: EX.id, version: EX.version, checksum: EX.checksum })).toBe(EX);
+    // Step 3: the crown context the client emits under e.max (occlusal 1.0, not
+    // zirconia's 0.5) equals the values the server resolves from e.max — the
+    // exact fields ui.MaterialPicker -> crownDesign.exportQcContext produces.
+    const emaxCtx = ctx({
+      occlusalMinWallThicknessMm: EX.occlusalMinWallThicknessMm,
+      connectorAreaTargetMm2: EX.connectorAreaMm2.anteriorMm2,
+      marginExclusionMm: EX.marginExclusionMm,
+    });
+    expect(() => verifyProfileThresholds(req('crown'), emaxCtx, EX, RESTO)).not.toThrow();
+    // Guard: had the client left the zirconia occlusal (0.5) riding under an
+    // e.max profile, THAT would 409 — proving the wiring is load-bearing.
+    const staleCtx = ctx({ occlusalMinWallThicknessMm: ZR.occlusalMinWallThicknessMm });
+    expect(rejectionOf(() => verifyProfileThresholds(req('crown'), staleCtx, EX, RESTO)).code).toBe(
+      'export-profile-threshold-mismatch',
+    );
+  });
+
   it('accepts an ABSENT optional marginExclusionMm (both sides use the gate default — never a loosening)', () => {
     expect(() =>
       verifyProfileThresholds(req('crown'), ctx({ marginExclusionMm: undefined }), ZR, RESTO),

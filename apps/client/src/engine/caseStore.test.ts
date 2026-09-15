@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { IntakeReport, MeshStats } from '@dqcad/kernel-workers';
-import type { Measurement, Operation, Restoration } from '@dqcad/shared-types';
+import type { Measurement, Operation, QcReport, Restoration } from '@dqcad/shared-types';
+import { EMAX_LITHIUM_DISILICATE_PROFILE, STANDARD_ZIRCONIA_PROFILE } from '@dqcad/clinical-profiles';
 import { useCaseStore } from '../state/caseStore';
 import { caseStore } from './caseStore';
 
@@ -673,5 +674,74 @@ describe('caseStore.addRestoration / updateRestoration / removeRestoration', () 
       caseStore.removeRestoration('never-existed', fixtureOp('restoration-delete')),
     ).not.toThrow();
     expect(useCaseStore.getState().document.history).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setMaterialProfile (Feature #3 — live multi-material picker)
+// ---------------------------------------------------------------------------
+
+function passingQc(journalHash: string): QcReport {
+  return {
+    gates: [
+      { gate: 'watertight', passed: true, acknowledged: false, value: null, threshold: null, unit: null, message: 'ok' },
+    ],
+    passed: true,
+    kernelVersion: '0.0.0',
+    profileVersion: STANDARD_ZIRCONIA_PROFILE.version,
+    journalHash,
+  };
+}
+
+describe('caseStore.setMaterialProfile', () => {
+  it('writes materialProfileId + profileVersion from the resolved registry profile (consistent, never free-typed)', () => {
+    caseStore.setMaterialProfile(EMAX_LITHIUM_DISILICATE_PROFILE.id);
+    const settings = useCaseStore.getState().document.settings;
+    expect(settings.materialProfileId).toBe(EMAX_LITHIUM_DISILICATE_PROFILE.id);
+    expect(settings.profileVersion).toBe(EMAX_LITHIUM_DISILICATE_PROFILE.version);
+  });
+
+  it('switches both directions (zirconia -> e.max -> zirconia)', () => {
+    caseStore.setMaterialProfile(EMAX_LITHIUM_DISILICATE_PROFILE.id);
+    expect(useCaseStore.getState().document.settings.materialProfileId).toBe(EMAX_LITHIUM_DISILICATE_PROFILE.id);
+    caseStore.setMaterialProfile(STANDARD_ZIRCONIA_PROFILE.id);
+    const settings = useCaseStore.getState().document.settings;
+    expect(settings.materialProfileId).toBe(STANDARD_ZIRCONIA_PROFILE.id);
+    expect(settings.profileVersion).toBe(STANDARD_ZIRCONIA_PROFILE.version);
+  });
+
+  it('INVALIDATES every existing restoration QC (a different material means different thresholds — the prior report is no longer authoritative)', () => {
+    const withQc = fixtureRestoration({ id: 'r-qc', stages: { finalMesh: 'mesh-1' }, qc: passingQc('mesh-1') });
+    caseStore.addRestoration(withQc, fixtureOp('restoration-create'));
+    expect(useCaseStore.getState().document.restorations[0]!.qc).not.toBeNull();
+
+    caseStore.setMaterialProfile(EMAX_LITHIUM_DISILICATE_PROFILE.id);
+    // QC cleared -> the design panel returns to its "run QC" state (visible,
+    // never a stale green banner for the wrong material's thresholds).
+    expect(useCaseStore.getState().document.restorations[0]!.qc).toBeNull();
+  });
+
+  it('leaves the geometry/journal untouched — only settings + qc change (no new Operation; settings ride with the document, not the journal)', () => {
+    const withQc = fixtureRestoration({ id: 'r-keep', stages: { finalMesh: 'mesh-1' }, qc: passingQc('mesh-1') });
+    caseStore.addRestoration(withQc, fixtureOp('restoration-create'));
+    const historyBefore = useCaseStore.getState().document.history.length;
+
+    caseStore.setMaterialProfile(EMAX_LITHIUM_DISILICATE_PROFILE.id);
+    const doc = useCaseStore.getState().document;
+    expect(doc.history).toHaveLength(historyBefore); // NOT journaled
+    expect(doc.restorations[0]!.stages).toEqual({ finalMesh: 'mesh-1' }); // geometry intact
+  });
+
+  it('is a no-op (keeps the passing QC) when the same material is re-selected', () => {
+    caseStore.setMaterialProfile(EMAX_LITHIUM_DISILICATE_PROFILE.id);
+    const withQc = fixtureRestoration({ id: 'r-noop', stages: { finalMesh: 'mesh-1' }, qc: passingQc('mesh-1') });
+    caseStore.addRestoration(withQc, fixtureOp('restoration-create'));
+
+    caseStore.setMaterialProfile(EMAX_LITHIUM_DISILICATE_PROFILE.id); // same material
+    expect(useCaseStore.getState().document.restorations[0]!.qc).not.toBeNull();
+  });
+
+  it('throws on an unknown profile id (the picker only ever offers registry ids — an unknown id is a caller bug, never a silent fallback)', () => {
+    expect(() => caseStore.setMaterialProfile('no-such-material')).toThrow(/unknown material profile/);
   });
 });

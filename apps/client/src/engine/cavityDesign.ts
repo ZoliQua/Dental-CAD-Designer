@@ -28,10 +28,10 @@
 // inferred payload type without importing the nominal kernel type name — the
 // same layer-boundary convention crownDesign.ts documents).
 import { KERNEL_VERSION, type JobName, type JobPayloadMap, type JobResultMap, type RunJobOptions } from '@dqcad/kernel-workers';
-import { DEFAULT_OFFSET_VOXEL_PITCH_MM, STANDARD_ZIRCONIA_PROFILE } from '@dqcad/clinical-profiles';
+import { DEFAULT_OFFSET_VOXEL_PITCH_MM, type MaterialProfile } from '@dqcad/clinical-profiles';
 import type { FdiTooth, Operation, QcReport, Restoration, RestorationParams, Vec3 } from '@dqcad/shared-types';
 import { caseStore } from './caseStore';
-import { resolveProfileVersion } from './materialProfile';
+import { resolveFullMaterialProfile, resolveProfileVersion } from './materialProfile';
 import {
   type CavityStage,
   canRunCavityStage,
@@ -88,16 +88,23 @@ const CAVITY_FIT_BLEND_WIDTH_MM = 0.3;
  * PHASE 6 TASK 1 — the reviewer item is now DONE: these bands are PROMOTED into
  * `clinical-profiles` as dedicated `inlayMarginExclusionMm` (1.3) /
  * `onlayMarginExclusionMm` (1.8) fields (versioned + checksummed, the T1
- * discipline). This helper now READS THOSE PROFILE FIELDS instead of hardcoding
- * 1.3/1.8 — bit-identical values (the live UI defaults to zirconia, whose profile
- * carries exactly 1.3/1.8), so the cavity QC payloads and acceptance goldens do
- * NOT move. The bands are geometry-derived (material-independent), so the same
- * values ride on every profile.
+ * discipline).
+ *
+ * FEATURE #3: the band rides into `runInlayQc` + the export context (the server
+ * re-derives it from `profile.inlay/onlayMarginExclusionMm`), so it is a
+ * per-material GATE field and comes from the SELECTED profile — not hardcoded
+ * zirconia. Both shipped profiles happen to carry identical 1.3/1.8 bands today
+ * (the bands are geometry-derived, hence currently material-independent), so
+ * this is bit-identical for the current registry and the acceptance goldens do
+ * NOT move; the picker still makes it material-correct for any future profile.
  */
-export function cavityMarginExclusionMm(restorationType: 'inlay' | 'onlay'): number {
+export function cavityMarginExclusionMm(
+  restorationType: 'inlay' | 'onlay',
+  profile: MaterialProfile,
+): number {
   return restorationType === 'onlay'
-    ? STANDARD_ZIRCONIA_PROFILE.onlayMarginExclusionMm
-    : STANDARD_ZIRCONIA_PROFILE.inlayMarginExclusionMm;
+    ? profile.onlayMarginExclusionMm
+    : profile.inlayMarginExclusionMm;
 }
 
 /** The proximal-contact NEIGHBOUR gap (mm) for the synthetic reference boxes —
@@ -749,10 +756,17 @@ class CavityDesignEngine {
 
   // ---- stage: QC --------------------------------------------------------
 
-  private cavityMinimums(): { inlayMinThicknessMm: number; onlayMinThicknessMm: number } {
+  /** The inlay/onlay minimum-thickness gate targets from the SELECTED material
+   * profile (Feature #3): e.max's 1.0/1.0 mm minimums differ from zirconia's
+   * 0.5/0.5 — choosing e.max feeds e.max's minimums to the gate. Defaults to
+   * zirconia for the empty/unset-material case (bit-identical to before). */
+  private cavityMinimums(profile: MaterialProfile): {
+    inlayMinThicknessMm: number;
+    onlayMinThicknessMm: number;
+  } {
     return {
-      inlayMinThicknessMm: STANDARD_ZIRCONIA_PROFILE.inlayMinThicknessMm,
-      onlayMinThicknessMm: STANDARD_ZIRCONIA_PROFILE.onlayMinThicknessMm,
+      inlayMinThicknessMm: profile.inlayMinThicknessMm,
+      onlayMinThicknessMm: profile.onlayMinThicknessMm,
     };
   }
 
@@ -762,11 +776,15 @@ class CavityDesignEngine {
     }
     const document = caseStore.getDocument();
     const profileVersion = resolveProfileVersion(document);
+    // The SELECTED material profile (Feature #3) — its thickness minimums and
+    // cusp-coverage minimum drive the gates (e.max ≠ zirconia); zirconia
+    // fallback for the unset-material default.
+    const profile = resolveFullMaterialProfile(document);
     const coverage =
       session.restorationType === 'onlay' && session.coverage
         ? {
             coverageDivider: { pointMm: session.coverage.pointMm, normalMm: session.coverage.normalMm },
-            cuspCoverageMinThicknessMm: STANDARD_ZIRCONIA_PROFILE.cuspCoverageMinThicknessMm,
+            cuspCoverageMinThicknessMm: profile.cuspCoverageMinThicknessMm,
           }
         : undefined;
     return {
@@ -781,10 +799,10 @@ class CavityDesignEngine {
       cavityOutline: session.outlineFlat,
       insertionAxis: session.insertionAxis,
       restorationType: session.restorationType,
-      thicknessMinimums: this.cavityMinimums(),
+      thicknessMinimums: this.cavityMinimums(profile),
       // The type-branched cavity band (NOT the crown 0.2 feather) — see
       // cavityMarginExclusionMm: inlay 1.3 (T6), onlay 1.8 (T7).
-      marginExclusionMm: cavityMarginExclusionMm(session.restorationType),
+      marginExclusionMm: cavityMarginExclusionMm(session.restorationType, profile),
       ...(coverage ? { coverage } : {}),
       seamEdges: session.patch.seamEdges,
       cavityTriangleIndices: session.patch.cavityTriangleIndices,
@@ -903,6 +921,9 @@ class CavityDesignEngine {
     ) {
       return null;
     }
+    // Same resolved profile the export request's `materialProfile` names — the
+    // riding minimums equal the server-resolved profile's (no export 409).
+    const profile = resolveFullMaterialProfile(caseStore.getDocument());
     const coverage =
       session.restorationType === 'onlay' && session.coverage
         ? {
@@ -910,7 +931,7 @@ class CavityDesignEngine {
               pointMm: [...session.coverage.pointMm],
               normalMm: [...session.coverage.normalMm],
             },
-            cuspCoverageMinThicknessMm: STANDARD_ZIRCONIA_PROFILE.cuspCoverageMinThicknessMm,
+            cuspCoverageMinThicknessMm: profile.cuspCoverageMinThicknessMm,
           }
         : undefined;
     return {
@@ -919,8 +940,8 @@ class CavityDesignEngine {
       toothWithCavitySolid: meshJson(session.toothPositions, session.toothIndices),
       cavityOutlineResampledPoints: loopJson(session.outlineFlat),
       insertionAxis: [...session.insertionAxis],
-      thicknessMinimums: this.cavityMinimums(),
-      marginExclusionMm: cavityMarginExclusionMm(session.restorationType),
+      thicknessMinimums: this.cavityMinimums(profile),
+      marginExclusionMm: cavityMarginExclusionMm(session.restorationType, profile),
       ...(coverage ? { coverage } : {}),
       seamEdges: session.patch.seamEdges.map((e) => ({ a: [...e.a], b: [...e.b], segment: e.segment })),
       cavityTriangleIndices: indicesJson(session.patch.cavityTriangleIndices),

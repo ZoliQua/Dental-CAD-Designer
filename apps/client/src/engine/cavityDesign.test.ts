@@ -8,10 +8,11 @@
 // pipeline is proven in ui/CavityDesignPanel.dom.test.tsx's browser lane).
 // Mirrors engine/crownDesign.test.ts.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { EMAX_LITHIUM_DISILICATE_PROFILE, STANDARD_ZIRCONIA_PROFILE } from '@dqcad/clinical-profiles';
 import type { MeshStats } from './repair';
 import { caseStore } from './caseStore';
 import { createRestoration } from './restorations';
-import { cavityDesignEngine, CavityNoSessionError, CavityStageOrderError, NonCavityRestorationError, type RunnablePool } from './cavityDesign';
+import { cavityDesignEngine, cavityMarginExclusionMm, CavityNoSessionError, CavityStageOrderError, NonCavityRestorationError, type RunnablePool } from './cavityDesign';
 import { marginCircleVecs } from './crownGeometry';
 import { canRunCavityStage } from './cavityWorkflow';
 import { useCavityStore } from '../state/cavityStore';
@@ -481,5 +482,27 @@ describe('cavityDesign controller — HONEST failure surfacing', () => {
     expect(currentRestoration().stages.finalMesh).toBeUndefined();
     await expect(cavityDesignEngine.runQc()).rejects.toBeInstanceOf(CavityStageOrderError);
     expect(currentRestoration().qc).toBeNull();
+  });
+});
+
+describe('cavityMarginExclusionMm — resolves from the SELECTED profile (Feature #3)', () => {
+  it('reads the passed profile\'s type-branched band (inlay vs onlay)', () => {
+    expect(cavityMarginExclusionMm('inlay', EMAX_LITHIUM_DISILICATE_PROFILE)).toBe(
+      EMAX_LITHIUM_DISILICATE_PROFILE.inlayMarginExclusionMm,
+    );
+    expect(cavityMarginExclusionMm('onlay', EMAX_LITHIUM_DISILICATE_PROFILE)).toBe(
+      EMAX_LITHIUM_DISILICATE_PROFILE.onlayMarginExclusionMm,
+    );
+    expect(cavityMarginExclusionMm('onlay', STANDARD_ZIRCONIA_PROFILE)).toBe(
+      STANDARD_ZIRCONIA_PROFILE.onlayMarginExclusionMm,
+    );
+  });
+
+  it('is byte-identical across the current registry (both profiles carry the same geometry-derived bands today)', () => {
+    for (const type of ['inlay', 'onlay'] as const) {
+      expect(cavityMarginExclusionMm(type, EMAX_LITHIUM_DISILICATE_PROFILE)).toBe(
+        cavityMarginExclusionMm(type, STANDARD_ZIRCONIA_PROFILE),
+      );
+    }
   });
 });

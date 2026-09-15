@@ -16,6 +16,7 @@ import { CurvaturePanel } from './CurvaturePanel';
 import { ExportPanel } from './ExportPanel';
 import { ImportPanel } from './ImportPanel';
 import { MarginPanel } from './MarginPanel';
+import { MaterialPicker } from './MaterialPicker';
 import { MeasurementPanel } from './MeasurementPanel';
 import { RepairPanel } from './RepairPanel';
 import { RestorationWizard } from './RestorationWizard';
@@ -44,6 +45,7 @@ export function Sidebar() {
           ))}
         </ul>
       )}
+      <MaterialPicker />
       <RestorationWizard />
       <MarginPanel />
       <AxisPanel />

@@ -20,6 +20,9 @@
     "opacityLabel": "Átlátszatlanság",
     "removeButton": "Eltávolítás"
   },
+  "material": {
+    "label": "Anyag"
+  },
   "statusBar": {
     "engineReady": "Motor: kész",
     "engineInitializing": "Motor: inicializálás…",

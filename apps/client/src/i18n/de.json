@@ -20,6 +20,9 @@
     "opacityLabel": "Deckkraft",
     "removeButton": "Entfernen"
   },
+  "material": {
+    "label": "Material"
+  },
   "statusBar": {
     "engineReady": "Engine: bereit",
     "engineInitializing": "Engine: wird initialisiert…",

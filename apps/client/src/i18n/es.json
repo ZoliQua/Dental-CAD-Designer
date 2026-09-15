@@ -20,6 +20,9 @@
     "opacityLabel": "Opacidad",
     "removeButton": "Eliminar"
   },
+  "material": {
+    "label": "Material"
+  },
   "statusBar": {
     "engineReady": "Motor: listo",
     "engineInitializing": "Motor: inicializando…",

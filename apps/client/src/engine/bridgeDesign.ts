@@ -42,10 +42,10 @@
 // inferred payload type — the same layer-boundary convention crown/cavityDesign
 // document).
 import { KERNEL_VERSION, type JobName, type JobPayloadMap, type JobResultMap, type RunJobOptions } from '@dqcad/kernel-workers';
-import { STANDARD_ZIRCONIA_PROFILE } from '@dqcad/clinical-profiles';
+import { STANDARD_ZIRCONIA_PROFILE, type MaterialProfile } from '@dqcad/clinical-profiles';
 import type { Operation, QcReport, Restoration, Vec3 } from '@dqcad/shared-types';
 import { caseStore } from './caseStore';
-import { resolveProfileVersion } from './materialProfile';
+import { resolveFullMaterialProfile, resolveProfileVersion } from './materialProfile';
 import {
   type BridgeStage,
   canRunBridgeStage,
@@ -121,12 +121,18 @@ const PONTIC_RELIEF_TOLERANCE_MM = 0.02;
 
 /** The FDI positional rule (mirrors cad-pipeline's `connectorPositionalTargetMm2`):
  * a connector is POSTERIOR (the stricter target) iff EITHER unit's FDI position
- * digit is ≥ 4 (premolar/molar), else anterior. */
-function connectorTargetMm2(teeth: readonly [number, number]): number {
+ * digit is ≥ 4 (premolar/molar), else anterior. The target area is a per-material
+ * GATE threshold (it rides into `runBridgeQc`'s `connectors[].targetMm2` and the
+ * export context, where the server re-derives it from `profile.connectorAreaMm2`),
+ * so it comes from the SELECTED material profile — not hardcoded zirconia. Both
+ * shipped profiles happen to carry identical connector areas today (9/7 mm²), so
+ * this is byte-identical for the current registry; the picker still makes it
+ * material-correct for any future profile that diverges. */
+function connectorTargetMm2(teeth: readonly [number, number], profile: MaterialProfile): number {
   const posterior = teeth[0] % 10 >= 4 || teeth[1] % 10 >= 4;
   return posterior
-    ? STANDARD_ZIRCONIA_PROFILE.connectorAreaMm2.posteriorMm2
-    : STANDARD_ZIRCONIA_PROFILE.connectorAreaMm2.anteriorMm2;
+    ? profile.connectorAreaMm2.posteriorMm2
+    : profile.connectorAreaMm2.anteriorMm2;
 }
 
 /** A closed elliptical connector profile as flat (u,v) pairs — the client-side
@@ -520,6 +526,7 @@ class BridgeDesignEngine {
     const result = await this.pool().run('bridgeConnectors', this.connectorPayload(semiAxisByLabel), {
       onProgress: (f) => this.publish({ progress: f }),
     });
+    const profile = resolveFullMaterialProfile(caseStore.getDocument());
     const committed: CommittedConnector[] = session.geometry.connectors.map((c, i) => {
       const measured = result.connectors[i]!;
       const decision = persisted.find((p) => p.label === c.label)!;
@@ -528,7 +535,7 @@ class BridgeDesignEngine {
         teeth: c.teeth,
         semiAxisMm: decision.semiAxisMm,
         minAreaMm2: measured.minAreaMm2,
-        targetMm2: connectorTargetMm2(c.teeth),
+        targetMm2: connectorTargetMm2(c.teeth, profile),
         positions: measured.positions,
         indices: measured.indices,
       };
@@ -782,10 +789,11 @@ class BridgeDesignEngine {
     semiAxisByLabel: Readonly<Record<string, number>>,
   ): BridgeConnectorReadout[] {
     const session = this.requireSession();
+    const profile = resolveFullMaterialProfile(caseStore.getDocument());
     return session.geometry.connectors.map((c, i) => {
       const measured = result.connectors[i]!;
       const semiAxisMm = semiAxisByLabel[c.label] ?? c.semiAxisMm;
-      const targetMm2 = connectorTargetMm2(c.teeth);
+      const targetMm2 = connectorTargetMm2(c.teeth, profile);
       return {
         label: c.label,
         teeth: c.teeth,
@@ -839,6 +847,7 @@ class BridgeDesignEngine {
         onProgress: (f) => this.publish({ progress: f }),
       });
       const readouts = this.connectorReadouts(result, semiAxisByLabel);
+      const profile = resolveFullMaterialProfile(caseStore.getDocument());
       const committed: CommittedConnector[] = session.geometry.connectors.map((c, i) => {
         const measured = result.connectors[i]!;
         return {
@@ -846,7 +855,7 @@ class BridgeDesignEngine {
           teeth: c.teeth,
           semiAxisMm: semiAxisByLabel[c.label] ?? c.semiAxisMm,
           minAreaMm2: measured.minAreaMm2,
-          targetMm2: connectorTargetMm2(c.teeth),
+          targetMm2: connectorTargetMm2(c.teeth, profile),
           positions: measured.positions,
           indices: measured.indices,
         };
@@ -888,6 +897,15 @@ class BridgeDesignEngine {
     this.assertRunnable('framework');
     this.publish({ busyStage: 'framework', progress: 0, error: null, errorStage: null, errorKey: null, errorDetail: null });
     try {
+      // INTENTIONAL BOUNDARY (Feature #3): the framework veneering space + taper
+      // band are DISCLOSURE/journal/UI values (they ride into neither the QC
+      // payload nor the export context — the stage marker is `framework:${mode}`,
+      // a pure function of the mode), and threading a profile through this
+      // geometry-decision path is out of scope. They stay registry constants,
+      // guarded by materialProfileParity.test.ts, which asserts every KNOWN_PROFILE
+      // AGREES on `veneeringSpaceMm`/`marginExclusionMm` — so a FUTURE profile that
+      // diverges fails CI LOUDLY here (never bakes a silently-wrong value), which
+      // is when these get wired to the selected profile.
       const veneeringSpaceMm = mode === 'framework' ? STANDARD_ZIRCONIA_PROFILE.veneeringSpaceMm : null;
       const taperBandMm = mode === 'framework' ? STANDARD_ZIRCONIA_PROFILE.marginExclusionMm : null;
       session.frameworkMode = mode;
@@ -969,6 +987,13 @@ class BridgeDesignEngine {
     }
     const document = caseStore.getDocument();
     const profileVersion = resolveProfileVersion(document);
+    // The SELECTED material profile (Feature #3) — its axial/occlusal wall
+    // minimums and framework minimum drive the gates (e.max's 0.8/1.0/1.0 mm ≠
+    // zirconia's 0.5/0.5/0.5). Zirconia fallback for the unset-material default.
+    // Per-connector `targetMm2` and the pontic relief captured at geometry time
+    // ride as-is: those profile values are identical across both shipped
+    // profiles, so they equal the server-resolved authority regardless.
+    const profile = resolveFullMaterialProfile(document);
     return {
       assembledPositions: session.assembled.positions,
       assembledIndices: session.assembled.indices,
@@ -987,11 +1012,11 @@ class BridgeDesignEngine {
         .filter((u) => u.die)
         .map((u) => ({ positions: u.die!.positions, indices: u.die!.indices })),
       connectors: session.connectors.map((c) => ({ label: c.label, minAreaMm2: c.minAreaMm2, teeth: c.teeth, targetMm2: c.targetMm2 })),
-      minWallThicknessMm: STANDARD_ZIRCONIA_PROFILE.restorationParams.minWallThicknessMm,
-      occlusalMinWallThicknessMm: STANDARD_ZIRCONIA_PROFILE.occlusalMinWallThicknessMm,
-      connectorAreaTargetMm2: STANDARD_ZIRCONIA_PROFILE.connectorAreaMm2.posteriorMm2,
+      minWallThicknessMm: profile.restorationParams.minWallThicknessMm,
+      occlusalMinWallThicknessMm: profile.occlusalMinWallThicknessMm,
+      connectorAreaTargetMm2: profile.connectorAreaMm2.posteriorMm2,
       frameworkMode: session.frameworkMode === 'framework',
-      frameworkMinThicknessMm: STANDARD_ZIRCONIA_PROFILE.frameworkMinThicknessMm,
+      frameworkMinThicknessMm: profile.frameworkMinThicknessMm,
       ponticRelief: {
         maxAbsDeviationMm: session.pontic.maxAbsDeviationMm,
         style: session.pontic.style,
@@ -1121,6 +1146,10 @@ class BridgeDesignEngine {
     ) {
       return null;
     }
+    // Same resolved profile the export request's `materialProfile` names — the
+    // riding wall/framework minimums equal the server-resolved profile's (no
+    // export 409).
+    const profile = resolveFullMaterialProfile(caseStore.getDocument());
     return {
       units: session.geometry.units.map((u) => ({
         label: u.label,
@@ -1155,11 +1184,11 @@ class BridgeDesignEngine {
         // conditional omit removes the latent fallback-to-global dependency.
         targetMm2: c.targetMm2,
       })),
-      minWallThicknessMm: STANDARD_ZIRCONIA_PROFILE.restorationParams.minWallThicknessMm,
-      occlusalMinWallThicknessMm: STANDARD_ZIRCONIA_PROFILE.occlusalMinWallThicknessMm,
-      connectorAreaTargetMm2: STANDARD_ZIRCONIA_PROFILE.connectorAreaMm2.posteriorMm2,
+      minWallThicknessMm: profile.restorationParams.minWallThicknessMm,
+      occlusalMinWallThicknessMm: profile.occlusalMinWallThicknessMm,
+      connectorAreaTargetMm2: profile.connectorAreaMm2.posteriorMm2,
       frameworkMode: session.frameworkMode === 'framework',
-      frameworkMinThicknessMm: STANDARD_ZIRCONIA_PROFILE.frameworkMinThicknessMm,
+      frameworkMinThicknessMm: profile.frameworkMinThicknessMm,
       ponticRelief: {
         maxAbsDeviationMm: session.pontic.maxAbsDeviationMm,
         style: session.pontic.style,

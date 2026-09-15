@@ -20,6 +20,9 @@
     "opacityLabel": "Opacity",
     "removeButton": "Remove"
   },
+  "material": {
+    "label": "Material"
+  },
   "statusBar": {
     "engineReady": "Engine: ready",
     "engineInitializing": "Engine: initializing…",

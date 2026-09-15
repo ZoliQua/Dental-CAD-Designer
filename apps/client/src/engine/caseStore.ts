@@ -23,6 +23,7 @@ import type {
 } from '@dqcad/shared-types';
 import type { MeshStats } from '@dqcad/kernel-workers';
 import { createEmptyCaseDocument, useCaseStore } from '../state/caseStore';
+import { KNOWN_PROFILES } from './materialProfile';
 import { useLodStore } from '../state/lodStore';
 import { shouldUseLod } from './lodPolicy';
 import { MeshStore, type EngineMeshRecord, type RegisterMeshInput } from './meshStore';
@@ -582,6 +583,66 @@ class CaseStoreEngine {
       ...this.document,
       meshes: this.document.meshes.map((mesh) =>
         mesh.contentHash === contentHash ? { ...mesh, fileHash } : mesh,
+      ),
+    };
+    this.publish();
+  }
+
+  /**
+   * Feature #3 (live multi-material picker): sets the CASE-LEVEL material to the
+   * registry profile named by `profileId`, writing BOTH `settings.materialProfileId`
+   * and `settings.profileVersion` from the resolved registry profile (kept
+   * consistent via `KNOWN_PROFILES` — never a free-typed version, so
+   * `resolveMaterialProfile`/the export request and the server's re-resolution
+   * can never disagree). This is a `settings` change that rides with the saved
+   * CaseDocument (persisted/autosaved like any other document mutation) — NOT a
+   * journal `Operation`: settings are the reproducibility anchor that travels
+   * with the document, whereas the journal replays GEOMETRY (docs/adr/002).
+   *
+   * Because a different material changes which QC thresholds apply (e.max's
+   * occlusal/axial minimums differ from zirconia's — PLAN.md §3), a
+   * previously-computed `QcReport` is no longer authoritative: this INVALIDATES
+   * every existing restoration's `qc` (sets it to `null`), the SAME invalidation
+   * cascade a stage commit uses (crownWorkflow.ts's `downstreamInvalidations`
+   * `clearQc`). The user must re-run QC, which then stamps the new profile's
+   * version and feeds the new profile's thresholds — so the export request the
+   * fresh report authorizes carries e.max's id/version/checksum AND e.max's
+   * riding thresholds, and the server's profile pinning accepts it (no 409).
+   * The invalidation surfaces visibly in each design panel (the QC stage returns
+   * to its "run QC" state) — no silent data mutation (CLAUDE.md invariant 5):
+   * the trigger is the user's explicit picker action, the change persists, and
+   * the consequence is on screen.
+   *
+   * A no-op (no publish, no qc clearing) when the material is already `profileId`
+   * — re-selecting the current material must not needlessly discard passing QC.
+   *
+   * @throws {Error} if `profileId` is not a shipped `KNOWN_PROFILES` id — the
+   *   picker only ever offers registry ids, so an unknown id is a caller
+   *   programming error (same loud-failure stance as `updateRestoration`),
+   *   never a silent fallback that would desync the persisted settings from the
+   *   thresholds actually in force.
+   */
+  setMaterialProfile(profileId: string): void {
+    const profile = KNOWN_PROFILES.find((p) => p.id === profileId);
+    if (!profile) {
+      throw new Error(
+        `setMaterialProfile: unknown material profile id ${profileId} — not in the shipped registry`,
+      );
+    }
+    if (
+      this.document.settings.materialProfileId === profile.id &&
+      this.document.settings.profileVersion === profile.version
+    ) {
+      return;
+    }
+    this.document = {
+      ...this.document,
+      settings: { materialProfileId: profile.id, profileVersion: profile.version },
+      // Invalidate every stale QC report (thresholds may now differ) — the
+      // user re-runs QC against the newly selected profile. Untouched (same
+      // reference) when a restoration already has no report.
+      restorations: this.document.restorations.map((restoration) =>
+        restoration.qc === null ? restoration : { ...restoration, qc: null },
       ),
     };
     this.publish();

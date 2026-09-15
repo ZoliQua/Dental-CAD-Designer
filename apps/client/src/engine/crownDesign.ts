@@ -41,10 +41,10 @@ import {
   type JobResultMap,
   type RunJobOptions,
 } from '@dqcad/kernel-workers';
-import { DEFAULT_OFFSET_VOXEL_PITCH_MM, STANDARD_ZIRCONIA_PROFILE } from '@dqcad/clinical-profiles';
+import { DEFAULT_OFFSET_VOXEL_PITCH_MM } from '@dqcad/clinical-profiles';
 import type { FdiTooth, Operation, QcReport, Restoration, RestorationParams, Vec3 } from '@dqcad/shared-types';
 import { caseStore } from './caseStore';
-import { resolveProfileVersion } from './materialProfile';
+import { resolveFullMaterialProfile, resolveProfileVersion } from './materialProfile';
 import {
   type CrownStage,
   canRunStage,
@@ -955,6 +955,11 @@ class CrownDesignEngine {
       }
       const document = caseStore.getDocument();
       const profileVersion = resolveProfileVersion(document);
+      // The SELECTED material profile (Feature #3) — its occlusal minimum,
+      // connector target and margin-exclusion band drive the gates, so choosing
+      // e.max runs e.max's thresholds. Falls back to zirconia for the
+      // empty/unset-material default (bit-identical to the pre-picker behavior).
+      const profile = resolveFullMaterialProfile(document);
       const { report } = await this.pool().run('runQc', {
         crownPositions: session.shell.positions,
         crownIndices: session.shell.indices,
@@ -967,15 +972,15 @@ class CrownDesignEngine {
         marginLoop: session.marginLoopFlat,
         insertionAxis: session.insertionAxis,
         minWallThicknessMm: session.params.minWallThicknessMm,
-        occlusalMinWallThicknessMm: STANDARD_ZIRCONIA_PROFILE.occlusalMinWallThicknessMm,
-        connectorAreaTargetMm2: STANDARD_ZIRCONIA_PROFILE.connectorAreaMm2.anteriorMm2,
+        occlusalMinWallThicknessMm: profile.occlusalMinWallThicknessMm,
+        connectorAreaTargetMm2: profile.connectorAreaMm2.anteriorMm2,
         // P4 carry-in (closing docs/demos/phase-4.md's open item): the finish-line
         // feather band is excluded from the min-wall gate so it measures the wall
         // bulk, not the marginal feather (governed by marginFit). Sourced from the
         // material profile — the crown's 0.2 mm finish-line feather (invariant 7,
         // never hardcoded in pipeline code); the cavity path uses its own, larger
         // cavosurface-convergence band (see engine/cavityDesign.ts).
-        marginExclusionMm: STANDARD_ZIRCONIA_PROFILE.marginExclusionMm,
+        marginExclusionMm: profile.marginExclusionMm,
         contacts: session.morphContacts,
         contactClampWarning: session.morphContacts.some((c) => c.clampBound),
         // The journaled morph→shell heal @errorBound — SUMMED onto each contact
@@ -1014,6 +1019,7 @@ class CrownDesignEngine {
       const acknowledgedGates = Array.from(new Set([...alreadyAck, gate]));
       const document = caseStore.getDocument();
       const profileVersion = resolveProfileVersion(document);
+      const profile = resolveFullMaterialProfile(document);
       const { report } = await this.pool().run('runQc', {
         crownPositions: session.shell.positions,
         crownIndices: session.shell.indices,
@@ -1026,15 +1032,15 @@ class CrownDesignEngine {
         marginLoop: session.marginLoopFlat,
         insertionAxis: session.insertionAxis,
         minWallThicknessMm: session.params.minWallThicknessMm,
-        occlusalMinWallThicknessMm: STANDARD_ZIRCONIA_PROFILE.occlusalMinWallThicknessMm,
-        connectorAreaTargetMm2: STANDARD_ZIRCONIA_PROFILE.connectorAreaMm2.anteriorMm2,
+        occlusalMinWallThicknessMm: profile.occlusalMinWallThicknessMm,
+        connectorAreaTargetMm2: profile.connectorAreaMm2.anteriorMm2,
         // P4 carry-in (closing docs/demos/phase-4.md's open item): the finish-line
         // feather band is excluded from the min-wall gate so it measures the wall
         // bulk, not the marginal feather (governed by marginFit). Sourced from the
         // material profile — the crown's 0.2 mm finish-line feather (invariant 7,
         // never hardcoded in pipeline code); the cavity path uses its own, larger
         // cavosurface-convergence band (see engine/cavityDesign.ts).
-        marginExclusionMm: STANDARD_ZIRCONIA_PROFILE.marginExclusionMm,
+        marginExclusionMm: profile.marginExclusionMm,
         contacts: session.morphContacts,
         contactClampWarning: session.morphContacts.some((c) => c.clampBound),
         // Same journaled heal @errorBound as runQc — re-supplied on the ack
@@ -1114,6 +1120,10 @@ class CrownDesignEngine {
     ) {
       return null;
     }
+    // Same resolved profile the export request's `materialProfile` identity
+    // names (`resolveMaterialProfile`) — so the riding thresholds and the
+    // server-resolved profile agree field-for-field (no export 409).
+    const profile = resolveFullMaterialProfile(caseStore.getDocument());
     return {
       innerSurfaceMesh: meshJson(session.inner.positions, session.inner.indices),
       outerSurfaceMesh: meshJson(session.morphOuter.positions, session.morphOuter.indices),
@@ -1121,11 +1131,11 @@ class CrownDesignEngine {
       marginResampledPoints: loopJson(session.marginLoopFlat),
       insertionAxis: [...session.insertionAxis],
       minWallThicknessMm: session.params.minWallThicknessMm,
-      occlusalMinWallThicknessMm: STANDARD_ZIRCONIA_PROFILE.occlusalMinWallThicknessMm,
-      connectorAreaTargetMm2: STANDARD_ZIRCONIA_PROFILE.connectorAreaMm2.anteriorMm2,
+      occlusalMinWallThicknessMm: profile.occlusalMinWallThicknessMm,
+      connectorAreaTargetMm2: profile.connectorAreaMm2.anteriorMm2,
       contacts: [...session.morphContacts],
       contactClampWarning: session.morphContacts.some((c) => c.clampBound),
-      marginExclusionMm: STANDARD_ZIRCONIA_PROFILE.marginExclusionMm,
+      marginExclusionMm: profile.marginExclusionMm,
       // The journaled heal @errorBound rides with the export request (a
       // journaled PARAM, not a re-measurement) so the server's independent
       // contact gate SUMS the exact same value — the client-attested contact
