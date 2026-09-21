@@ -55,10 +55,12 @@ const µm = (mm: number): string => `${(mm * 1000).toFixed(3)} µm`;
 // change (bump + changelog), never a silent regen (the WASM union is
 // manifoldVersion-guarded, the crown/cavity-acceptance precedent).
 // ---------------------------------------------------------------------------
-const EXPECTED_KERNEL_VERSION = '0.26.0';
+const EXPECTED_KERNEL_VERSION = '0.27.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 function installedManifoldVersion(): string {
-  const pkg = JSON.parse(readFileSync(join(repoRoot, 'node_modules', 'manifold-3d', 'package.json'), 'utf8')) as { version: string };
+  const pkg = JSON.parse(
+    readFileSync(join(repoRoot, 'node_modules', 'manifold-3d', 'package.json'), 'utf8'),
+  ) as { version: string };
   return pkg.version;
 }
 
@@ -71,19 +73,40 @@ function installedManifoldVersion(): string {
 // expectations) — NEVER a silent regen.
 const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // --- full-contour chain ---
-  'bridge-fullContour-abutmentSurfaces': '217b2b13d6d41e657f9b652009a4efe1d3c285a6c4fa428b0030eb0c5070cc8c|d64954bd314424813eed60441adc74dce985310d225e5a9702499bc633f7261c',
-  'bridge-fullContour-ponticInterface': '33a62fdc617b6a33c1b3e29547bad02af39874129864e7793ae4662cc11fe430|64124f36c092bf29f4734e1d048cdc161bae31bdebc2d3cb6b082e09eec0229a',
-  'bridge-fullContour-connectors': '87fdfd93ad0a7ae8b458cf2464ce83001359ea945ed496867ef4c1af02faea4d|d1d0100a85ee171588af936fd69b51ec23c3d1519ea838ec93c38bbd0e693a77',
-  'bridge-fullContour-framework': 'c33569d42f32dd2066ee979259b5486f754dd509f7f0cd6c309136779586e1ca|33a62fdc617b6a33c1b3e29547bad02af39874129864e7793ae4662cc11fe430|1924382f4133673a8bed9e244e3773974c2ec992af8ff3b249b248b07d672958',
+  'bridge-fullContour-abutmentSurfaces':
+    '217b2b13d6d41e657f9b652009a4efe1d3c285a6c4fa428b0030eb0c5070cc8c|d64954bd314424813eed60441adc74dce985310d225e5a9702499bc633f7261c',
+  'bridge-fullContour-ponticInterface':
+    '33a62fdc617b6a33c1b3e29547bad02af39874129864e7793ae4662cc11fe430|64124f36c092bf29f4734e1d048cdc161bae31bdebc2d3cb6b082e09eec0229a',
+  'bridge-fullContour-connectors':
+    '87fdfd93ad0a7ae8b458cf2464ce83001359ea945ed496867ef4c1af02faea4d|d1d0100a85ee171588af936fd69b51ec23c3d1519ea838ec93c38bbd0e693a77',
+  'bridge-fullContour-framework':
+    'c33569d42f32dd2066ee979259b5486f754dd509f7f0cd6c309136779586e1ca|33a62fdc617b6a33c1b3e29547bad02af39874129864e7793ae4662cc11fe430|1924382f4133673a8bed9e244e3773974c2ec992af8ff3b249b248b07d672958',
   'bridge-fullContour-assembly': 'e90ab9ccdedcdbf34c508b4abf033940b5718b2aa2f74bd1741221bb801108cb',
-  'bridge-fullContour-qc': 'aa34ce1474e451ae1d22f2231737773e8c8bc902bf66a63be498a98b949706e9',
+  // Advanced 0.26.0 → 0.27.0 (Feature #4): DELIBERATE, message+version — the
+  // selfIntersection gate is now a TRUE geometric tri-tri determination (was a
+  // manifold-topology proxy), changing its message; the QcReport also embeds the
+  // bumped kernelVersion. NOT a passed:true→false flip: this file's "EVERY QC
+  // gate passes" assertions stay green for both modes (the scan finds 0
+  // self-intersecting face pairs), and every geometry-stage pin above is
+  // BYTE-IDENTICAL (verified: only the two -qc pins drifted in the 0.27.0 run).
+  // Old hash: aa34ce1474e451ae1d22f2231737773e8c8bc902bf66a63be498a98b949706e9.
+  // See CHANGELOG-kernel.md [0.27.0].
+  'bridge-fullContour-qc': '67a9ea023389489b80cb5a2af34b1d6de3f6357d48e62ec778981379c46d413e',
   // --- framework chain (bridge.framework outputs the cut-back unit hashes) ---
-  'bridge-framework-abutmentSurfaces': '217b2b13d6d41e657f9b652009a4efe1d3c285a6c4fa428b0030eb0c5070cc8c|d64954bd314424813eed60441adc74dce985310d225e5a9702499bc633f7261c',
-  'bridge-framework-ponticInterface': '33a62fdc617b6a33c1b3e29547bad02af39874129864e7793ae4662cc11fe430|64124f36c092bf29f4734e1d048cdc161bae31bdebc2d3cb6b082e09eec0229a',
-  'bridge-framework-connectors': '87fdfd93ad0a7ae8b458cf2464ce83001359ea945ed496867ef4c1af02faea4d|d1d0100a85ee171588af936fd69b51ec23c3d1519ea838ec93c38bbd0e693a77',
-  'bridge-framework-framework': '6d7932a386428e8584b9599a7096d046b1ec78b675fdd071778724271ca1cd5e|7cfcb5def527d11d5234feaaa8ce84b3a3327072561e1bae5b2a5dd88091ba5a|3cac84e76abe26f4f3db514c13d1c10e55e92c4037041897fd64df7ae38016f0',
+  'bridge-framework-abutmentSurfaces':
+    '217b2b13d6d41e657f9b652009a4efe1d3c285a6c4fa428b0030eb0c5070cc8c|d64954bd314424813eed60441adc74dce985310d225e5a9702499bc633f7261c',
+  'bridge-framework-ponticInterface':
+    '33a62fdc617b6a33c1b3e29547bad02af39874129864e7793ae4662cc11fe430|64124f36c092bf29f4734e1d048cdc161bae31bdebc2d3cb6b082e09eec0229a',
+  'bridge-framework-connectors':
+    '87fdfd93ad0a7ae8b458cf2464ce83001359ea945ed496867ef4c1af02faea4d|d1d0100a85ee171588af936fd69b51ec23c3d1519ea838ec93c38bbd0e693a77',
+  'bridge-framework-framework':
+    '6d7932a386428e8584b9599a7096d046b1ec78b675fdd071778724271ca1cd5e|7cfcb5def527d11d5234feaaa8ce84b3a3327072561e1bae5b2a5dd88091ba5a|3cac84e76abe26f4f3db514c13d1c10e55e92c4037041897fd64df7ae38016f0',
   'bridge-framework-assembly': '77a8988146b20582b507cbdedaccde425bce95d3bd67f9d2670e232c1777dde6',
-  'bridge-framework-qc': '3b316a3785d0ed76e18b45561ac2ae11fd65b56086ccceef52997d0f83faea61',
+  // Advanced 0.26.0 → 0.27.0 (Feature #4): DELIBERATE, message+version (as
+  // bridge-fullContour-qc above). Old hash:
+  // 3b316a3785d0ed76e18b45561ac2ae11fd65b56086ccceef52997d0f83faea61. See
+  // CHANGELOG-kernel.md [0.27.0].
+  'bridge-framework-qc': '02a748f9adeae37bbb668db7802368f94eece324baa61eb1079c31780138df10',
 };
 
 const FULL_GATE_ORDER = [
@@ -102,7 +125,9 @@ const FULL_GATE_ORDER = [
 
 function logTable(tag: string, bridge: AssembledBridge, elapsedMs: number): void {
   for (const g of bridge.qcReport.gates) {
-    console.log(`[BRIDGE ACCEPT ${tag}] ${g.gate}: passed=${g.passed} value=${g.value} threshold=${g.threshold} | ${g.message}`);
+    console.log(
+      `[BRIDGE ACCEPT ${tag}] ${g.gate}: passed=${g.passed} value=${g.value} threshold=${g.threshold} | ${g.message}`,
+    );
   }
   const m = bridge.measured;
   console.log(
@@ -154,17 +179,23 @@ describe('bridge acceptance — FULL-CONTOUR (assembled 3-unit posterior; every 
 
   it('per-unit min wall ≥ the profile minimum (full-contour)', () => {
     for (const label of ['14', '15', '16']) {
-      expect(bridge.measured.perUnitMinWallMm[label]!).toBeGreaterThanOrEqual(bridge.measured.minWallThresholdMm);
+      expect(bridge.measured.perUnitMinWallMm[label]!).toBeGreaterThanOrEqual(
+        bridge.measured.minWallThresholdMm,
+      );
     }
     expect(bridge.measured.minWallThresholdMm).toBe(0.5);
     expect(bridge.measured.maxAppliedCutbackMm).toBe(0); // no cutback in full-contour
   });
 
   it('connector area ≥ the posterior target; pontic relief ≤ 20 µm; seating clean', () => {
-    expect(bridge.measured.connectorMinAreaMm2).toBeGreaterThanOrEqual(bridge.measured.connectorThresholdMm2);
+    expect(bridge.measured.connectorMinAreaMm2).toBeGreaterThanOrEqual(
+      bridge.measured.connectorThresholdMm2,
+    );
     expect(bridge.measured.connectorThresholdMm2).toBe(9);
     expect(bridge.measured.ponticReliefMm).toBeLessThanOrEqual(0.02);
-    expect(bridge.measured.seatingValueMm3).toBeLessThanOrEqual(bridge.measured.seatingThresholdMm3);
+    expect(bridge.measured.seatingValueMm3).toBeLessThanOrEqual(
+      bridge.measured.seatingThresholdMm3,
+    );
     expect(bridge.measured.seatingValueMm3).toBeLessThan(1e-6);
   });
 });
@@ -219,7 +250,9 @@ describe('bridge acceptance — falsifiable blocks (gates NOT weakened)', () => 
     resetBridgeCaches();
     const block = await assembleBridgeCase('connector5');
     const g = block.qcReport.gates.find((x) => x.gate === 'connectorCrossSection')!;
-    console.log(`[BRIDGE BLOCK #1] 5 mm² connector → ${g.passed ? 'PASS' : 'BLOCK'}: value=${g.value?.toFixed(4)} mm² (target ${g.threshold}) | report.passed=${block.qcReport.passed}`);
+    console.log(
+      `[BRIDGE BLOCK #1] 5 mm² connector → ${g.passed ? 'PASS' : 'BLOCK'}: value=${g.value?.toFixed(4)} mm² (target ${g.threshold}) | report.passed=${block.qcReport.passed}`,
+    );
     expect(block.measured.connectorMinAreaMm2).toBeLessThan(9);
     expect(g.passed).toBe(false);
     expect(block.qcReport.passed).toBe(false);
@@ -227,9 +260,15 @@ describe('bridge acceptance — falsifiable blocks (gates NOT weakened)', () => 
 
   it('a mis-configured pontic relief (built 1.0 mm, judged vs 2.0 mm) BLOCKS ponticRelief', () => {
     const bad = measureStyleRelief('hygienic', 1.0);
-    console.log(`[BRIDGE BLOCK #2] mis-configured relief → maxAbs=${µm(bad.maxAbsDeviationMm)} (≫ 20 µm)`);
+    console.log(
+      `[BRIDGE BLOCK #2] mis-configured relief → maxAbs=${µm(bad.maxAbsDeviationMm)} (≫ 20 µm)`,
+    );
     expect(bad.maxAbsDeviationMm).toBeGreaterThan(0.02);
-    const gate = ponticReliefGate({ maxAbsDeviationMm: bad.maxAbsDeviationMm, style: 'hygienic', configuredReliefMm: 2.0 });
+    const gate = ponticReliefGate({
+      maxAbsDeviationMm: bad.maxAbsDeviationMm,
+      style: 'hygienic',
+      configuredReliefMm: 2.0,
+    });
     expect(gate.passed).toBe(false);
   });
 });
@@ -241,7 +280,9 @@ describe('bridge acceptance — pontic relief within ±20 µm per configured sty
   for (const style of ['hygienic', 'ridgeLap', 'ovate'] as const) {
     it(`${style}: measured relief matches the configured value within ±20 µm`, () => {
       const m = measureStyleRelief(style);
-      console.log(`[BRIDGE RELIEF ${style}] configured=${m.configuredMm} mm → measured maxAbs=${µm(m.maxAbsDeviationMm)} (min ${µm(m.minDeviationMm)} / mean ${µm(m.meanDeviationMm)}); errorBound ${µm(m.errorBoundMm)}`);
+      console.log(
+        `[BRIDGE RELIEF ${style}] configured=${m.configuredMm} mm → measured maxAbs=${µm(m.maxAbsDeviationMm)} (min ${µm(m.minDeviationMm)} / mean ${µm(m.meanDeviationMm)}); errorBound ${µm(m.errorBoundMm)}`,
+      );
       expect(m.maxAbsDeviationMm).toBeLessThanOrEqual(0.02);
     });
   }
@@ -257,7 +298,8 @@ for (const mode of ['fullContour', 'framework'] as const) {
     beforeAll(async () => {
       resetBridgeCaches();
       recorded = await recordBridgeJournal(mode as BridgeMode);
-      for (const op of recorded.operations) console.log(`[BRIDGE JOURNAL ${mode}] ${op.id} ${op.name} → ${op.outputHashes.join('|')}`);
+      for (const op of recorded.operations)
+        console.log(`[BRIDGE JOURNAL ${mode}] ${op.id} ${op.name} → ${op.outputHashes.join('|')}`);
     }, 300_000);
 
     it('records one content-addressed Operation per stage (all 6)', () => {
@@ -280,24 +322,39 @@ for (const mode of ['fullContour', 'framework'] as const) {
       resetBridgeCaches();
       const failures = await replayBridgeJournal(recorded);
       if (failures.length > 0) {
-        const report = failures.map((f) => `  - ${f.stage}: expected ${f.expectedHash}, got ${f.actualHash}`).join('\n');
-        throw new Error(`bridge ${mode} journal replay: ${failures.length} stage(s) failed to reproduce (a determinism leak — find + fix, do not loosen):\n${report}`);
+        const report = failures
+          .map((f) => `  - ${f.stage}: expected ${f.expectedHash}, got ${f.actualHash}`)
+          .join('\n');
+        throw new Error(
+          `bridge ${mode} journal replay: ${failures.length} stage(s) failed to reproduce (a determinism leak — find + fix, do not loosen):\n${report}`,
+        );
       }
       expect(failures).toHaveLength(0);
     }, 300_000);
 
     it('the recorded stage hashes match the byte-pinned golden (KERNEL_VERSION + manifold-3d guarded)', () => {
-      expect(KERNEL_VERSION, 'KERNEL_VERSION bumped → revisit the byte-pinned bridge-acceptance stage hashes').toBe(EXPECTED_KERNEL_VERSION);
-      expect(installedManifoldVersion(), 'manifold-3d bumped → the WASM-dependent assembly/qc stage hashes may change (deliberate golden update + changelog)').toBe(EXPECTED_MANIFOLD_VERSION);
+      expect(
+        KERNEL_VERSION,
+        'KERNEL_VERSION bumped → revisit the byte-pinned bridge-acceptance stage hashes',
+      ).toBe(EXPECTED_KERNEL_VERSION);
+      expect(
+        installedManifoldVersion(),
+        'manifold-3d bumped → the WASM-dependent assembly/qc stage hashes may change (deliberate golden update + changelog)',
+      ).toBe(EXPECTED_MANIFOLD_VERSION);
       for (const op of recorded.operations) {
-        expect(op.outputHashes.join('|'), `stage ${op.id} drifted from its byte-pinned golden`).toBe(PINNED_STAGE_HASHES[op.id]);
+        expect(
+          op.outputHashes.join('|'),
+          `stage ${op.id} drifted from its byte-pinned golden`,
+        ).toBe(PINNED_STAGE_HASHES[op.id]);
       }
     });
 
     it('the assembled chain is itself deterministic (two records → identical hashes)', async () => {
       resetBridgeCaches();
       const again = await recordBridgeJournal(mode as BridgeMode);
-      expect(again.operations.map((op) => op.outputHashes.join('|'))).toEqual(recorded.operations.map((op) => op.outputHashes.join('|')));
+      expect(again.operations.map((op) => op.outputHashes.join('|'))).toEqual(
+        recorded.operations.map((op) => op.outputHashes.join('|')),
+      );
     }, 300_000);
   });
 }

@@ -48,7 +48,11 @@ describe('captureError', () => {
     captureError(new TypeError('boom'), 'window.onerror');
     const state = useErrorReportStore.getState();
     expect(state.kind).toBe('active');
-    expect(state.current).toMatchObject({ name: 'TypeError', message: 'boom', source: 'window.onerror' });
+    expect(state.current).toMatchObject({
+      name: 'TypeError',
+      message: 'boom',
+      source: 'window.onerror',
+    });
     // The log breadcrumb carries only the event + source + name (no message body).
     const entry = diagnosticLogSnapshot().find((e) => e.event === 'error.captured');
     expect(entry?.fields).toEqual({ source: 'window.onerror', name: 'TypeError' });
@@ -78,7 +82,7 @@ describe('downloadDiagnosticBundleNow', () => {
     expect(dl).toHaveBeenCalledTimes(1);
     const [json] = dl.mock.calls[0]!;
     expect(json).toContain('case-777');
-    expect(json).toContain('"kernelVersion": "0.26.0"');
+    expect(json).toContain('"kernelVersion": "0.27.0"');
     // Not left in a stuck "downloading" state.
     expect(useErrorReportStore.getState().downloading).toBe(false);
   });

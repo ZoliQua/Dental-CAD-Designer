@@ -71,7 +71,7 @@ const bytesOf = (a: Float64Array | Uint32Array): Buffer =>
 // is a DELIBERATE golden change (bump + changelog + regenerate), never a
 // silent regen — same mechanics as crown-acceptance.test.ts.
 // ---------------------------------------------------------------------------
-const EXPECTED_KERNEL_VERSION = '0.26.0';
+const EXPECTED_KERNEL_VERSION = '0.27.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 
 function installedManifoldVersion(): string {

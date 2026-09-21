@@ -311,8 +311,20 @@
  * watertight + single-component self-check guards the pin). The crown/cavity-
  * acceptance QC pins advance MECHANICALLY (kernelVersion embedded in the QcReport
  * JSON — metadata-only churn, every geometry pin byte-identical). See
- * docs/CHANGELOG-kernel.md's `[0.26.0]` entry. */
-export const KERNEL_VERSION = '0.26.0';
+ * docs/CHANGELOG-kernel.md's `[0.26.0]` entry.
+ *
+ * 0.27.0 (Feature #4): NEW op — `intersect/` (`triangleTriangleIntersect`, a
+ * Möller-1997 Float64 tri-tri predicate, + `findSelfIntersections`, a
+ * BVH-accelerated whole-mesh self-intersection scan that excludes
+ * topologically-adjacent face pairs). The `selfIntersection` QC gate is now a
+ * TRUE geometric triangle–triangle determination (was a manifold-topology
+ * PROXY): it passes iff manifold-3d accepts the solid AND the scan finds 0
+ * interpenetrating face pairs — strictly stronger than the proxy. No kernel
+ * GEOMETRY changed, so every geometry + journal-replay pin is byte-identical;
+ * the crown/cavity/bridge acceptance QC pins advance because the QcReport
+ * embeds both kernelVersion AND the selfIntersection gate's new message. See
+ * docs/CHANGELOG-kernel.md's `[0.27.0]` entry. */
+export const KERNEL_VERSION = '0.27.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -399,6 +411,19 @@ export {
   type EulerCharacteristic,
   type HalfedgeMesh,
 } from './halfedge/index.ts';
+
+export {
+  triangleTriangleIntersect,
+  readTriangle,
+  findSelfIntersections,
+  DegenerateTriangleError,
+  TRIANGLE_INTERSECTION_EPSILON,
+  type SelfIntersectionScanResult,
+  type SelfIntersectionScanOptions,
+  type SelfIntersectionLocus,
+  type Vec3 as IntersectVec3,
+  type MutableVec3 as IntersectMutableVec3,
+} from './intersect/index.ts';
 
 export {
   cotangentAtVertex,

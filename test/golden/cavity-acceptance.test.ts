@@ -58,7 +58,7 @@ const µm = (mm: number): string => `${(mm * 1000).toFixed(3)} µm`;
 // golden change (bump + changelog), never a silent regen (the WASM boolean is
 // manifoldVersion-guarded, the crown-acceptance precedent).
 // ---------------------------------------------------------------------------
-const EXPECTED_KERNEL_VERSION = '0.26.0';
+const EXPECTED_KERNEL_VERSION = '0.27.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 function installedManifoldVersion(): string {
   const pkg = JSON.parse(readFileSync(join(repoRoot, 'node_modules', 'manifold-3d', 'package.json'), 'utf8')) as { version: string };
@@ -100,7 +100,15 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // message-only diff, no numeric drift); every gate's passed/value/threshold is
   // unchanged. Same in-test pin-advance discipline as the crown-standin-qc Task-8
   // message hardening. See the fix-cadpipeline report.
-  'cavity-inlay-qc': 'b800cfd29b54859f04b09c3c2aa0623eceb9bcc818e119659da8443d589afa51',
+  // Advanced 0.26.0 → 0.27.0 (Feature #4): DELIBERATE, message+version — the
+  // selfIntersection gate is now a TRUE geometric tri-tri determination (was a
+  // manifold-topology proxy), changing its message; the QcReport also embeds the
+  // bumped kernelVersion. The inlay stays PASS (the scan finds 0 self-intersecting
+  // face pairs across 43666 triangles — NOT a passed:true→false flip); every
+  // geometry pin above BYTE-IDENTICAL (verified). Old hash:
+  // b800cfd29b54859f04b09c3c2aa0623eceb9bcc818e119659da8443d589afa51. See
+  // CHANGELOG-kernel.md [0.27.0].
+  'cavity-inlay-qc': '657cbed85e2d9b5ba747cba82e1722f1b7f0abdc71acea16f9663be4712ffcd3',
   // --- onlay chain (incl. cuspCoverage.select) ---
   // NOTE: the cuspCoverage pin is BIT-IDENTICAL to the kernel op's committed
   // extended-outline golden (cuspCoverage.test.ts's sha at 0.21.0) — a strong
@@ -119,7 +127,13 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // Advanced (code-review-fixes): DELIBERATE, MESSAGE-ONLY — the ungated-thin-floor
   // disclosure on the cavity minWallThickness gate (as cavity-inlay-qc above; NO
   // KERNEL_VERSION bump, geometry byte-identical this run). See the fix report.
-  'cavity-onlay-qc': '85f0c2b310c77bf15f7e2dd7153054c01328bc7cb7e131b12f43903366c8f9ec',
+  // Advanced 0.26.0 → 0.27.0 (Feature #4): DELIBERATE, message+version (as
+  // cavity-inlay-qc above — the geometric selfIntersection gate's new message +
+  // bumped kernelVersion). The onlay stays PASS (the scan finds 0 self-intersecting
+  // face pairs across 74854 triangles — NOT a flip); geometry byte-identical. Old
+  // hash: 85f0c2b310c77bf15f7e2dd7153054c01328bc7cb7e131b12f43903366c8f9ec. See
+  // CHANGELOG-kernel.md [0.27.0].
+  'cavity-onlay-qc': '9e1246238c81f0c416601bea80e09906786987eb8c60e4c61079aedb354fc07b',
 };
 
 const INLAY_GATE_ORDER = ['watertight', 'manifold', 'selfIntersection', 'minWallThickness', 'marginFit', 'seamDihedral', 'seating', 'contact'];

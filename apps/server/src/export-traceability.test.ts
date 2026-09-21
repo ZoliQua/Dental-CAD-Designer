@@ -82,7 +82,13 @@ describe('QC traceability document — server generation, storage, routes', () =
     exportsDataDir = mkdtempSync(join(tmpdir(), 'dqcad-trace-store-'));
     finalMeshDataDir = mkdtempSync(join(tmpdir(), 'dqcad-trace-final-'));
     prisma = new PrismaClient();
-    app = await buildApp({ prisma, meshDataDir, toothLibraryDataDir, exportsDataDir, finalMeshDataDir });
+    app = await buildApp({
+      prisma,
+      meshDataDir,
+      toothLibraryDataDir,
+      exportsDataDir,
+      finalMeshDataDir,
+    });
 
     const base = await buildCrownQcInput('standin');
     standinInput = {
@@ -543,7 +549,7 @@ describe('QC traceability document — server generation, storage, routes', () =
     // Pin preconditions — the pinned values are kernel-derived; a bump moves
     // them ONLY with a deliberate KERNEL_VERSION change + changelog entry
     // (the golden discipline).
-    expect(KERNEL_VERSION).toBe('0.26.0');
+    expect(KERNEL_VERSION).toBe('0.27.0');
     expect(installedManifoldVersion()).toBe('3.5.1');
 
     // Fixed identity/journal constants isolate the pin to the DETERMINISTIC
@@ -609,8 +615,17 @@ describe('QC traceability document — server generation, storage, routes', () =
     // results + hashes are byte-identical; only the schema/certification
     // fields moved. Documented schema evolution, not numerical drift.
     // Previous (v1): 13f5262f68fa1c2995e6dfef47a879f228d15262bde81e287193e898cdb363e8.
+    //
+    // MOVED at KERNEL_VERSION 0.26.0 → 0.27.0 (Feature #4): the pinned document
+    // embeds the crown fixture's REAL gate results — the selfIntersection gate is
+    // now a TRUE geometric tri-tri determination with a new message, and the
+    // document embeds the bumped kernelVersion. NOT a verdict flip: every gate
+    // still passes (the crown-acceptance golden proves the verdicts/values are
+    // unchanged and the geometry pins byte-identical — message+version-only).
+    // Previous (0.26.0): 4e8afb2aabc44202e5a0154b1648b148ab38c9180f645bdd6b4c6278f6ecc6dc.
+    // See CHANGELOG-kernel.md [0.27.0].
     expect(sha256Hex(json)).toBe(
-      '4e8afb2aabc44202e5a0154b1648b148ab38c9180f645bdd6b4c6278f6ecc6dc',
+      '3c5853fac713891f37388b1a13d5a75abc9f58f58d6aab1bfbd861126a362808',
     );
   });
 });

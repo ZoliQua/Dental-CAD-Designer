@@ -15,7 +15,7 @@ flag — investigate, don't regenerate").
 1. A golden fixture's committed hash may change **only** in the same commit
    that bumps `KERNEL_VERSION`.
 2. That commit **must** add an entry below explaining, in terms a reviewer
-   can independently judge, *why* the kernel's numerical output changed
+   can independently judge, _why_ the kernel's numerical output changed
    (a bug fix, a new/adjusted algorithm, a precision improvement, ...) —
    not just "regenerated goldens".
 3. This policy is machine-enforced by TWO layers, not one — each catches a
@@ -59,6 +59,55 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.27.0] — Feature #4: `selfIntersection` is now a true geometric gate — new `intersect/` (`triangleTriangleIntersect` + `findSelfIntersections`)
+
+**No kernel GEOMETRY changed: every geometry stage pin and every journal-replay
+pin is BYTE-IDENTICAL to `[0.26.0]` (verified). `kernel-ops.json` is unchanged
+(the new ops are pure Float64 with no WASM boundary, so they take no
+manifoldVersion-guarded op pin). The crown/cavity/bridge acceptance `*-qc` pins
+advance because the QcReport embeds BOTH `kernelVersion` AND the
+`selfIntersection` gate's message string — and this feature changes both.**
+
+Feature #4 replaces the `selfIntersection` gate's manifold-topology PROXY with a
+genuine geometric determination. Two new pure-Float64 kernel ops under
+`packages/kernel/src/intersect/`:
+
+- `triangleTriangleIntersect` — a Möller-1997 ("A Fast Triangle-Triangle
+  Intersection Test") tri-tri intersection predicate, coplanar case included.
+  `@errorBound`: exact for non-degenerate, non-coplanar Float64 face pairs (every
+  accept/reject is an exactly-evaluated sign test); a single `1e-9` mm on-plane
+  snap (`TRIANGLE_INTERSECTION_EPSILON`) resolves coplanar/near-coplanar configs
+  — 6 orders of magnitude below the 1 µm clinical resolution. Degenerate
+  (zero-area) input throws a typed `DegenerateTriangleError`, never a silent
+  wrong answer.
+- `findSelfIntersections` — a BVH-accelerated (`bvh/build.ts` broad phase +
+  tri-tri narrow phase) whole-mesh self-intersection scan. It EXCLUDES
+  topologically-adjacent pairs (faces sharing ≥1 vertex index meet at that
+  feature by construction — not a self-intersection). Deterministic (fixed
+  traversal-order-independent result: pair count + lexicographically-smallest
+  first locus + degenerate-skipped count); `≈ O(n log n)` for a clean solid.
+  `@errorBound`: inherits the predicate's bound; the broad phase is exact (node
+  AABBs are exact min/max of exact vertices, so no intersecting pair is pruned).
+
+The gate (`cad-pipeline/gates/selfIntersection.ts`) now passes iff
+`manifoldValid` (manifold-3d still runs as a corroborating necessary condition)
+**AND** the scan finds 0 self-intersecting face pairs — strictly STRONGER than
+the proxy. The old blind spot (a topologically-2-manifold, watertight mesh whose
+faces geometrically interpenetrate — e.g. two overlapping closed tetrahedra —
+which manifold-3d ACCEPTS) now FAILS. A FAIL is still always a genuine defect;
+a PASS now means provably free of triangle–triangle self-intersection up to the
+`@errorBound`, not merely "manifold-3d accepts it". The gate message states the
+real determination (no longer "PROXY … deferred"). The measurement also surfaces
+the scan's honest cost metric (`candidatePairsTested` — the narrow-phase
+predicate evaluations the BVH broad phase actually needed) alongside the pair
+count, first locus, degenerate-skipped count, and triangle count.
+
+No fixture's `selfIntersection` verdict FLIPPED `passed:true → false`: every clean
+synthetic acceptance fixture (crown standin, cavity inlay/onlay, bridge
+full-contour/framework) stays PASS — the scan finds 0 pairs — so the `*-qc` pin
+moves are message-and-version-string only, with the geometry pins proving no
+numeric drift.
+
 ## [0.26.0] — Phase 6 Task 6: whole-bridge assembly — `bridge/bridgeAssembly.ts` (`assembleBridge`, units + connectors → one watertight solid)
 
 **`kernel-ops.json` gains ONE new pinned entry (`assembleBridge`) and its
@@ -74,13 +123,14 @@ shared-ring weld: the connectors GENUINELY OVERLAP the unit bodies (they loft in
 the proximal walls; there is no shared boundary loop to weld along), and only a
 union resolves the interior faces buried in the merged material. Repair-before-
 boolean (every input checked watertight up front), output re-validated watertight
-+ manifold + single-component (a disjoint fuse → a typed `BridgeAssemblyError`,
-never a silent multi-body solid). `extractFitPatch` (a pure-Float64 helper) selects
-each abutment intaglio off the fused solid by its known cavity region, so the
-whole-bridge QC RE-MEASURES margin fit on the ASSEMBLED solid (survive-assembly:
-the WASM Float32 boundary touches the rim; the acceptance requires ≤ 10 µm — proven
-0.00016 µm on the fixture). `@errorBound`: the wrapper's shared Float64→Float32
-WASM-boundary bound (`boolean/manifold.ts`).
+
+- manifold + single-component (a disjoint fuse → a typed `BridgeAssemblyError`,
+  never a silent multi-body solid). `extractFitPatch` (a pure-Float64 helper) selects
+  each abutment intaglio off the fused solid by its known cavity region, so the
+  whole-bridge QC RE-MEASURES margin fit on the ASSEMBLED solid (survive-assembly:
+  the WASM Float32 boundary touches the rim; the acceptance requires ≤ 10 µm — proven
+  0.00016 µm on the fixture). `@errorBound`: the wrapper's shared Float64→Float32
+  WASM-boundary bound (`boolean/manifold.ts`).
 
 This op EXERCISES THE WASM BOUNDARY, so — exactly like `union`/`subtract`/
 `intersect` and `constructShell` (`[0.13.0]`) — it gets a `kernel-ops.json` pinned
@@ -689,9 +739,9 @@ minor bump follows the standing "brand-new op ⇒ minor bump + changelog"
 discipline even though no pinned hash moved.
 
 - **`applySculptStroke`** — applies ONE stroke `{center, radiusMm, strength,
-  brush}` to a mesh, displacing only NON-locked (outer) vertices. The RADIAL
+brush}` to a mesh, displacing only NON-locked (outer) vertices. The RADIAL
   FALLOFF is the C1-smooth bump `falloff(t) = (1 − t²)²` for `t = d/radius ∈
-  [0,1]` (value 1/slope 0 at the centre, value 0/slope 0 at the rim — no crease).
+[0,1]` (value 1/slope 0 at the centre, value 0/slope 0 at the rim — no crease).
   With `n_v` the pre-stroke area-weighted UNIT vertex normal (snapshotted ONCE,
   so all displacements in a stroke are computed from the same state and are
   order-independent): **add** displaces `+n_v·strength·falloff`, **remove**
@@ -732,7 +782,7 @@ discipline even though no pinned hash moved.
   an ordered stroke sequence, each to the previous result, with the SAME lock
   frozen throughout (vertex topology is constant so the mask stays valid), and
   re-validates watertight ONCE at the end. Same `(mesh, strokes, locked,
-  options)` ⇒ byte-identical mesh, so replaying the journaled strokes reproduces
+options)` ⇒ byte-identical mesh, so replaying the journaled strokes reproduces
   the sculpt bit-for-bit (CLAUDE.md invariant 2). Overlapping strokes apply in
   journaled order (order-dependent, deterministically). Measured < 3 ms/stroke on
   a ~3.3 k-vertex shell (< 50 ms interactive budget). Consumed by
@@ -822,7 +872,7 @@ modules:
 - **`anatomy/morph.ts`** — `planAnatomyMorph`/`solveAnatomyMorph`/`morphAnatomy`,
   the adaptation/morphing stage: deform the placed library tooth (Task 5) so it
   makes correct **proximal** contacts (penetration = `proximalContactPenetration-
-  Mm`) and an **antagonist** contact (`occlusalContactMm`) — targets from the
+Mm`) and an **antagonist** contact (`occlusalContactMm`) — targets from the
   profile, never hardcoded — while pinning the cervical seal band as fixed
   zero-displacement anchors so Task 4's ≤10 µm marginal seal survives. Contact
   targets are driven to penetration by a FIXED-count root-find (no tolerance
@@ -908,7 +958,7 @@ two new construction stages on top of Task 3's two-zone offset:
 
 1. **Solid undercut blockout (draft-close).** In a frame rotated so the
    insertion axis is `+Z`, the cement-gap field `F(x) = signedDistance(x) −
-   gap(h(x))` is DENSELY sampled (not banded — a draft-fill wall leaves the
+gap(h(x))` is DENSELY sampled (not banded — a draft-fill wall leaves the
    thin offset band, so the running-minimum needs a correctly-signed field
    everywhere in the ROI; accuracy over speed) and draft-closed by a per-column
    running minimum `G[z] = min(F[z], G[z+1])`. The resulting `{G = 0}` surface
@@ -1132,6 +1182,7 @@ residual below). No fixed numeric bound is claimed, same character as
 
 **Measured self-consistency** (this task's report has the full numbers):
 re-scanning the PREVIEW mesh (fresh BVH) along the SAME axis —
+
 - Tilted-cylinder analytic fixture (a=90deg): displaced vertex positions
   match the derived closed-form horizon point to `~1.3e-15` mm.
 - Cone-frustum "prep-die" fixture, tilts 15/20/25/30/45deg beyond its own

@@ -1,49 +1,63 @@
 // packages/cad-pipeline/src/gates/selfIntersection.ts
 //
-// Phase 4 Task 9: the SELF-INTERSECTION QC gate — the §6 "no self-intersections"
-// gate. Per the plan it is evaluated "via manifold status": a mesh that
-// constructs a valid `Manifold` through the `boolean/manifold.ts` wrapper is
-// non-self-intersecting *per manifold-3d's definition of a valid solid*.
+// Phase 4 Task 9 / Feature #4: the SELF-INTERSECTION QC gate — the §6 "no
+// self-intersections" gate. This is now a TRUE geometric determination, not a
+// topology proxy: it runs the kernel's BVH-accelerated triangle–triangle
+// self-intersection scan (`findSelfIntersections`, packages/kernel/src/
+// intersect/) over the restoration solid, and ALSO keeps the manifold-3d
+// construction check as a corroborating necessary condition.
 //
-// ## @errorBound — this is a PROXY, and its limitation is stated honestly
+// ## What the gate now proves (strictly stronger than the old proxy)
 //
-// `@dqcad/kernel`'s `analyzeMesh` (`intake/analyze.ts`) deliberately does NOT
-// test geometric self-intersection — its own doc says a dedicated
-// self-intersection gate is later (this) work, and that the available check is
-// manifold-3d construction. So this gate uses manifold-3d construction (via the
-// wrapper's `volume`, which builds a `Manifold` and rejects invalid input with
-// `NonManifoldInputError`) as the PROXY, and documents the limitation:
+// The gate passes iff BOTH hold:
+//   1. `manifoldValid` — manifold-3d accepts the mesh as a valid solid
+//      (2-manifold topology, finite vertices, orientable) — the same
+//      necessary-condition check as before; and
+//   2. `geometricIntersectionPairs === 0` — the exact Float64 tri-tri scan
+//      finds NO pair of non-adjacent faces that pass through each other.
 //
-//   - manifold-3d's constructor validates 2-manifold TOPOLOGY (every edge shared
-//     by exactly two faces, consistent halfedge structure), finite vertices, and
-//     an orientable/consistent solid. It rejects the classes it can detect
-//     (`NotManifold`, `NonFiniteVertex`, `InvalidConstruction`, …).
-//   - It does NOT run a full triangle–triangle intersection test. A mesh that is
-//     topologically 2-manifold and watertight but whose faces pass THROUGH each
-//     other geometrically can still construct a `Manifold` and therefore PASS
-//     this proxy. That geometric blind spot is the documented error bound of this
-//     gate; a dedicated exact triangle-intersection test is deferred future work.
+// The old gate used (1) alone as a PROXY, and documented its blind spot: a mesh
+// that is topologically 2-manifold and watertight but whose faces geometrically
+// interpenetrate constructs a valid `Manifold` and so PASSED. Condition (2)
+// closes that blind spot exactly. A PASS now means "provably free of
+// triangle–triangle self-intersection up to the scan's @errorBound", not merely
+// "manifold-3d accepts it". A FAIL is still always a genuine defect.
 //
-// Because the proxy is a NECESSARY (not sufficient) condition, a FAIL here is
-// always a genuine defect (manifold-3d could not accept the solid); a PASS means
-// "manifold-3d accepts this as a valid solid", not "provably free of every
-// geometric self-intersection". The gate message says so.
+// ## @errorBound
+//
+// The geometric determination inherits `findSelfIntersections`'s bound
+// (`packages/kernel/src/intersect/`): exact for non-degenerate, non-coplanar
+// Float64 face pairs; a 1e-9 mm on-plane snap for coplanar/near-coplanar
+// configs (6 orders of magnitude below the 1 µm clinical resolution).
+// Topologically-adjacent faces (sharing ≥1 vertex index) are excluded by the
+// scan — they meet at the shared feature by construction and are NOT
+// self-intersections. Degenerate (zero-area) triangles are counted and
+// excluded from pairing (surfaced as `degenerateTrianglesSkipped`), never
+// silently guessed — and an intake-repaired solid has none.
 //
 // ## Pure split (async measure + sync gate), like `seating.ts`
 //
-// The manifold-3d construction is WASM and async, so the measurement
+// manifold-3d construction is WASM and async, so the measurement
 // (`measureSelfIntersection`) is an async function done ONCE by the report
-// assembly; the gate itself (`selfIntersectionGate`) is a pure synchronous
+// assembly; the geometric scan is pure synchronous Float64 kernel code run
+// inside it. The gate itself (`selfIntersectionGate`) stays a pure synchronous
 // `(measurement) => QcGateResult` the deterministic runner can call. DOM/Three-
-// free (invariant 6); WASM determinism = same manifold-3d version.
-import { volume, NonManifoldInputError, type IndexedMesh } from '@dqcad/kernel';
+// free (invariant 6); determinism = same manifold-3d version + the scan's own
+// fixed-order, no-Date.now/no-random guarantee.
+import {
+  volume,
+  NonManifoldInputError,
+  findSelfIntersections,
+  type IndexedMesh,
+} from '@dqcad/kernel';
 import type { QcGateResult } from '@dqcad/shared-types';
 
 /** Stable gate name (QcReport, acknowledgment lookup, UI). */
 export const SELF_INTERSECTION_GATE_NAME = 'selfIntersection';
 
 export interface SelfIntersectionMeasurement {
-  /** True iff manifold-3d accepted the mesh as a valid solid (the proxy). */
+  /** True iff manifold-3d accepted the mesh as a valid solid (necessary
+   * condition; corroborates the geometric scan). */
   readonly manifoldValid: boolean;
   /** The manifold-3d `ErrorStatus` string when construction FAILED, else null.
    * Typed loosely (`string`) to avoid importing manifold-3d into cad-pipeline. */
@@ -51,24 +65,54 @@ export interface SelfIntersectionMeasurement {
   /** The constructed solid's volume (mm³) when valid — surfaced for the report;
    * null when construction failed. */
   readonly volumeMm3: number | null;
+  /** Genuine self-intersecting face pairs found by the exact geometric tri-tri
+   * scan (topologically-adjacent pairs + degenerate triangles excluded). 0 ⇒
+   * provably free of triangle–triangle self-intersection up to the @errorBound. */
+  readonly geometricIntersectionPairs: number;
+  /** The lexicographically-smallest self-intersecting pair (triangle indices)
+   * for the report's diagnostic locus, or null when there are none. */
+  readonly geometricFirstLocus: { readonly triangleA: number; readonly triangleB: number } | null;
+  /** Degenerate (zero-area) triangles the scan excluded from pairing — surfaced
+   * (not silently dropped). Expected 0 for an intake-repaired solid. */
+  readonly degenerateTrianglesSkipped: number;
+  /** Triangles scanned — for the report / cost transparency. */
+  readonly triangleCount: number;
+  /** Narrow-phase tri-tri predicate evaluations actually run — the scan's
+   * honest cost metric (the BVH broad phase's job is to keep this ≪ n²);
+   * surfaced per the scan's module doc, not silently dropped. */
+  readonly candidatePairsTested: number;
 }
 
 /**
- * Probes whether `mesh` constructs a valid manifold-3d solid (the
- * self-intersection proxy — see this file's module doc). Async (WASM);
- * deterministic for a fixed manifold-3d version. Never throws for a clinical
- * failure — a rejected mesh returns `{ manifoldValid: false, rejectionStatus }`.
- * The construction is `repair-before-boolean`-clean: the caller passes the
- * finished, intake/cleanup-repaired crown solid (the same one the other gates
- * see); a non-watertight input is simply reported as invalid here (fail-safe).
+ * Measures self-intersection of `mesh` two independent ways: the exact Float64
+ * geometric tri-tri scan (`findSelfIntersections` — the primary, sufficient
+ * determination) and manifold-3d construction (a corroborating necessary
+ * condition). Async (manifold-3d is WASM); deterministic for a fixed
+ * manifold-3d version + the scan's own determinism guarantee. Never throws for
+ * a clinical failure — a mesh manifold-3d rejects returns `{ manifoldValid:
+ * false, rejectionStatus, ... }` with the geometric fields still populated (the
+ * scan does not require watertightness). The caller passes the finished,
+ * intake/cleanup-repaired restoration solid (the same one the other gates see).
  */
-export async function measureSelfIntersection(mesh: IndexedMesh): Promise<SelfIntersectionMeasurement> {
+export async function measureSelfIntersection(
+  mesh: IndexedMesh,
+): Promise<SelfIntersectionMeasurement> {
+  // Geometric scan first — pure Float64 kernel, independent of manifold-3d and
+  // never dependent on watertightness.
+  const scan = findSelfIntersections(mesh);
+  const geometric = {
+    geometricIntersectionPairs: scan.intersectingPairCount,
+    geometricFirstLocus: scan.firstLocus,
+    degenerateTrianglesSkipped: scan.degenerateTrianglesSkipped,
+    triangleCount: scan.triangleCount,
+    candidatePairsTested: scan.candidatePairsTested,
+  };
   try {
     const v = await volume(mesh);
-    return { manifoldValid: true, rejectionStatus: null, volumeMm3: v };
+    return { manifoldValid: true, rejectionStatus: null, volumeMm3: v, ...geometric };
   } catch (error) {
     if (error instanceof NonManifoldInputError) {
-      return { manifoldValid: false, rejectionStatus: error.status, volumeMm3: null };
+      return { manifoldValid: false, rejectionStatus: error.status, volumeMm3: null, ...geometric };
     }
     throw error;
   }
@@ -76,34 +120,62 @@ export async function measureSelfIntersection(mesh: IndexedMesh): Promise<SelfIn
 
 export interface SelfIntersectionGateInput {
   readonly measurement: SelfIntersectionMeasurement;
-  /** The restoration noun for the message ('crown' / 'inlay' / 'onlay'). The
-   * gate is shared by `runCrownQc` and `runInlayQc`; the crown path omits it
-   * (defaults to 'crown', keeping the crown message byte-identical), while the
-   * cavity path passes its restoration type so the message no longer says "the
-   * crown" for an inlay/onlay (the T6-review copy-artifact fix). */
+  /** The restoration noun for the message ('crown' / 'inlay' / 'onlay' /
+   * 'bridge'). The gate is shared by `runCrownQc`, `runInlayQc`, and the bridge
+   * report; the crown path omits it (defaults to 'crown'). */
   readonly restorationLabel?: string;
 }
 
 /**
- * The self-intersection QC gate — passes iff manifold-3d accepted the
- * restoration solid as a valid `Manifold` (the documented proxy). Boolean gate
- * (no threshold). Pure/deterministic; Node- and worker-callable.
+ * The self-intersection QC gate — passes iff the exact geometric tri-tri scan
+ * found NO self-intersecting face pair AND manifold-3d accepted the restoration
+ * solid (see this module's doc). Boolean gate (no threshold). Pure/deterministic;
+ * Node- and worker-callable.
  */
 export function selfIntersectionGate(input: SelfIntersectionGateInput): QcGateResult {
-  const { manifoldValid, rejectionStatus } = input.measurement;
+  const {
+    manifoldValid,
+    rejectionStatus,
+    geometricIntersectionPairs,
+    geometricFirstLocus,
+    triangleCount,
+  } = input.measurement;
   const noun = input.restorationLabel ?? 'crown';
+  const passed = manifoldValid && geometricIntersectionPairs === 0;
+
+  let message: string;
+  if (passed) {
+    message =
+      `no self-intersection detected — the exact triangle–triangle geometric scan found 0 self-intersecting ` +
+      `face pairs across ${triangleCount} triangles, and manifold-3d accepts the ${noun} as a valid solid ` +
+      '(provably free of triangle–triangle self-intersection up to the gate @errorBound; ' +
+      'topologically-adjacent faces excluded)';
+  } else if (geometricIntersectionPairs > 0) {
+    const locus = geometricFirstLocus
+      ? ` (first at triangles ${geometricFirstLocus.triangleA}↔${geometricFirstLocus.triangleB})`
+      : '';
+    const manifoldNote = manifoldValid
+      ? 'manifold-3d accepted the topology, but the geometry is not a valid solid'
+      : `manifold-3d also rejected it (status ${rejectionStatus ?? 'unknown'})`;
+    message =
+      `self-intersection — the geometric triangle–triangle scan found ${geometricIntersectionPairs} ` +
+      `self-intersecting face pair(s) in the ${noun}${locus}; ${manifoldNote}`;
+  } else {
+    message =
+      `invalid solid — manifold-3d rejected the ${noun} (status ${rejectionStatus ?? 'unknown'}); ` +
+      'the surface is not a valid solid (non-manifold or non-finite geometry), ' +
+      'though the geometric triangle–triangle scan found no interpenetrating face pair';
+  }
+
+  // Boolean gate (no numeric threshold), as before — the pair count lives in
+  // the message + the measurement, so value/threshold/unit stay null.
   return {
     gate: SELF_INTERSECTION_GATE_NAME,
-    passed: manifoldValid,
+    passed,
     acknowledged: false,
     value: null,
     threshold: null,
     unit: null,
-    message: manifoldValid
-      ? `no self-intersection detected — manifold-3d accepts the ${noun} as a valid solid ` +
-        '(PROXY: manifold-3d validates 2-manifold topology + finite geometry, not a full triangle–triangle test; ' +
-        'a topologically-manifold but geometrically self-intersecting mesh could still pass — see gate @errorBound)'
-      : `self-intersection / invalid-solid — manifold-3d rejected the ${noun} (status ${rejectionStatus ?? 'unknown'}); ` +
-        'the surface is not a valid solid (non-manifold, self-intersecting, or non-finite geometry)',
+    message,
   };
 }
