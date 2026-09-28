@@ -810,5 +810,12 @@
     "boundaryBody": "A(z) {{region}} hibába ütközött. Az alkalmazás többi része továbbra is használható.",
     "regionSidebar": "tervezőpanel",
     "regionViewport": "3D nézet"
+  },
+  "serverStatus": {
+    "offlineTitle": "Csak kliens mód — nincs csatlakoztatott szerver.",
+    "offlineBody": "Az importálás, a megjelenítés, az elemzés és a pótlástervezés teljes egészében a böngészőben fut. Az esetekhez, a mentéshez, az archívumokhoz és a szerver által ellenőrzött gyártási exporthoz a helyi DQ Dental CAD szerver szükséges (npm run dev).",
+    "casePickerOffline": "Az esetek a helyi DQ Dental CAD szerveren tárolódnak, amely ebből a telepítésből nem érhető el. Esetek létrehozásához, megnyitásához és mentéséhez futtasd az alkalmazást helyben (npm run dev).",
+    "exportOffline": "Helyi szerver szükséges: minden gyártási fájlt a szerver újraellenőriz a kiadás előtt.",
+    "archiveOffline": "Helyi szerver szükséges: az esetarchívumokat a szerver készíti és importálja."
   }
 }

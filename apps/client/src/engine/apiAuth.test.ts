@@ -3,7 +3,7 @@
 // token from the bootstrap is attached; a disabled-gate / failed bootstrap →
 // no header (mutations proceed, matching a disabled server gate).
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { __resetAuthForTests, authHeaders, initAuth } from './apiAuth';
+import { __resetAuthForTests, authHeaders, initAuth, refreshAuth } from './apiAuth';
 
 afterEach(() => {
   __resetAuthForTests();
@@ -70,5 +70,22 @@ describe('client apiAuth seam', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('nope', { status: 404 })));
     await initAuth();
     expect(await authHeaders()).toEqual({});
+  });
+
+  it('refreshAuth re-bootstraps after a startup bootstrap that found no server (no stale null token)', async () => {
+    // Page loaded before the server was listening: the startup bootstrap fails.
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 502 })));
+    await initAuth();
+    expect(await authHeaders()).toEqual({});
+
+    // The server comes up; the monitor's recovery hook re-runs the bootstrap.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ token: 'late-token' }), { status: 200 })),
+    );
+    await initAuth(); // idempotent — still the stale settled bootstrap
+    expect(await authHeaders()).toEqual({});
+    await refreshAuth();
+    expect(await authHeaders()).toEqual({ authorization: 'Bearer late-token' });
   });
 });

@@ -25,6 +25,7 @@ import { RELEASE_FAILURE_I18N_KEY } from '../engine/handoff';
 import { useCaseStore } from '../state/caseStore';
 import { selectExportStatus, useExportStore } from '../state/exportStore';
 import { selectRelease, useHandoffStore } from '../state/handoffStore';
+import { useServerStatusStore } from '../state/serverStatusStore';
 
 const TRACEABILITY_LOCALES = new Set(['en', 'hu', 'de', 'es']);
 
@@ -92,6 +93,11 @@ function ExportWorkflow({ restoration }: { restoration: Restoration }) {
   const qc = restoration.qc;
 
   const busy = clientStatus.state === 'exporting' || release.state === 'releasing';
+  // A manufacturing file is only ever released after the server re-validates
+  // the exact bytes (CLAUDE.md invariant 6 / ADR-017). With no server (the
+  // static client-only deploy) that can never happen, so the action is
+  // disabled with a visible reason rather than failing after the click.
+  const serverOffline = useServerStatusStore((state) => state.status === 'offline');
 
   return (
     <div className="export-workflow" data-testid="export-workflow">
@@ -148,12 +154,17 @@ function ExportWorkflow({ restoration }: { restoration: Restoration }) {
       <button
         type="button"
         className="export-workflow__run"
-        disabled={busy || !verdict.allowed}
+        disabled={busy || !verdict.allowed || serverOffline}
         onClick={() => fire(() => handoffController.exportAndRelease(restoration.id, format))}
         data-testid="export-run-button"
       >
         {t('exportServer.exportButton')}
       </button>
+      {serverOffline && (
+        <p className="export-workflow__blocked" data-testid="export-offline">
+          {t('serverStatus.exportOffline')}
+        </p>
+      )}
 
       <ClientStatus restorationId={restoration.id} />
       <ReleaseStatus restorationId={restoration.id} />
@@ -354,6 +365,8 @@ function ArchiveSection({ caseId }: { caseId: string }): ReactNode {
   const { t } = useTranslation();
   const archive = useHandoffStore((state) => state.archive);
   const [pendingBytes, setPendingBytes] = useState<Uint8Array | null>(null);
+  // Archives are built and imported by the server — unavailable offline.
+  const serverOffline = useServerStatusStore((state) => state.status === 'offline');
 
   function handlePick(event: React.ChangeEvent<HTMLInputElement>): void {
     const file = event.target.files?.[0];
@@ -373,16 +386,27 @@ function ArchiveSection({ caseId }: { caseId: string }): ReactNode {
       <button
         type="button"
         onClick={() => fire(() => handoffController.exportCaseArchive(caseId))}
-        disabled={archive.state === 'exporting' || archive.state === 'importing'}
+        disabled={archive.state === 'exporting' || archive.state === 'importing' || serverOffline}
         data-testid="archive-export-button"
       >
         {t('exportServer.archiveExportButton')}
       </button>
+      {serverOffline && (
+        <p className="export-workflow__blocked" data-testid="archive-offline">
+          {t('serverStatus.archiveOffline')}
+        </p>
+      )}
       <p className="archive-section__note">{t('exportServer.archiveExportNote')}</p>
 
       <label className="archive-section__import">
         {t('exportServer.archiveImportButton')}
-        <input type="file" accept=".dqca" onChange={handlePick} data-testid="archive-import-input" />
+        <input
+          type="file"
+          accept=".dqca"
+          onChange={handlePick}
+          disabled={serverOffline}
+          data-testid="archive-import-input"
+        />
       </label>
       <p className="archive-section__note">{t('exportServer.archiveImportNote')}</p>
 

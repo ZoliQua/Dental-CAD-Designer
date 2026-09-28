@@ -12,6 +12,9 @@
   --color-text: #f2f2f2;
   --color-text-muted: #a0a0a0;
   --color-accent: #4da3ff;
+  --color-warning: #e0a552;
+  --color-danger: #e05252;
+  --color-success: #5cc97b;
 }
 
 :root[data-theme='light'] {
@@ -21,6 +24,9 @@
   --color-text: #1a1a1a;
   --color-text-muted: #5a5a5a;
   --color-accent: #1a6fd1;
+  --color-warning: #9a5b00;
+  --color-danger: #b3261e;
+  --color-success: #1e7d3a;
 }
 
 * {
@@ -46,7 +52,8 @@ body {
 
 .app-shell {
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  /* header, server-status region (0 px unless offline), body, status bar */
+  grid-template-rows: auto auto 1fr auto;
   height: 100%;
 }
 
@@ -139,6 +146,32 @@ body {
 
 .theme-toggle:hover {
   border-color: var(--color-accent);
+}
+
+.server-status-banner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  align-items: baseline;
+  padding: 0.4rem 1rem;
+  font-size: 0.8rem;
+  background: var(--color-bg-elevated);
+  border-bottom: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-warning);
+}
+
+.server-status-banner__title {
+  color: var(--color-warning);
+}
+
+.server-status-banner__body {
+  color: var(--color-text-muted);
+}
+
+.case-picker__offline {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  margin: 0;
 }
 
 .app-body {
@@ -1748,4 +1781,322 @@ body {
   margin: 0;
   color: var(--color-text-muted);
   font-size: 0.9rem;
+}
+
+/* ---------------------------------------------------------------------------
+   Shared sidebar-panel styles. The material, axis, crown, cavity, bridge,
+   alignment, curvature and export panels shipped with NO base rules, so their
+   headings rendered as browser-default <h2>s (~1.5rem) and — worse — their
+   error/warning banners and QC tables were visually indistinguishable from
+   body text. These group rules give them the established panel look of the
+   margin / measurement / section panels above. Theme tokens only.
+   ------------------------------------------------------------------------- */
+
+.material-picker,
+.axis-panel,
+.crown-panel,
+.cavity-panel,
+.bridge-panel,
+.alignment-panel,
+.curvature-panel,
+.export-panel {
+  border-top: 1px solid var(--color-border);
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  font-size: 0.8rem;
+}
+
+.material-picker__label,
+.restoration-panel__title,
+.axis-panel__title,
+.crown-panel__title,
+.cavity-panel__title,
+.bridge-panel__title,
+.alignment-panel__title,
+.curvature-panel__title,
+.export-panel__title {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  margin: 0 0 0.5rem;
+}
+
+.material-picker__select {
+  width: 100%;
+}
+
+.crown-panel__header,
+.cavity-panel__header,
+.bridge-panel__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.crown-stage__title,
+.cavity-stage__title,
+.bridge-stage__title,
+.export-workflow__subtitle,
+.archive-section__title,
+.axis-panel__ranked-title,
+.curvature-legend__title,
+.bridge-panel__synthetic-banner-title,
+.export-release__mismatch-title,
+.export-release__error-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin: 0.6rem 0 0.3rem;
+}
+
+.margin-panel__empty,
+.axis-panel__empty,
+.crown-panel__empty,
+.cavity-panel__empty,
+.bridge-panel__empty,
+.alignment-panel__empty,
+.curvature-panel__empty,
+.export-panel__empty {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.axis-panel__hint,
+.axis-panel__source,
+.axis-panel__abutment-area-note,
+.axis-panel__blockout-scope-note,
+.alignment-panel__instruction,
+.alignment-panel__confirm-help,
+.crown-stage__note,
+.cavity-stage__note,
+.bridge-stage__note,
+.bridge-qc__scope-note,
+.bridge-qc__synthetic-note,
+.bridge-panel__synthetic-start-note,
+.export-workflow__note,
+.export-release__note,
+.export-panel__disclosure,
+.archive-section__note,
+.archive-section__provenance {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin: 0.25rem 0;
+}
+
+.axis-panel__field,
+.alignment-panel__field,
+.curvature-panel__field,
+.crown-panel__field,
+.cavity-panel__field,
+.bridge-panel__field,
+.crown-stage__field,
+.cavity-stage__field,
+.bridge-stage__field,
+.export-panel__field,
+.export-workflow__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-bottom: 0.4rem;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.axis-panel__checkbox,
+.crown-stage__checkbox,
+.cavity-stage__checkbox,
+.curvature-panel__checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+}
+
+.axis-panel__field-value,
+.crown-stage__field-value,
+.crown-stage__readout,
+.cavity-stage__readout,
+.bridge-stage__readout,
+.axis-panel__blockout-readout,
+.alignment-panel__stats,
+.curvature-panel__stats,
+.export-release__hash {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text);
+}
+
+.export-release__hash {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+  overflow-wrap: anywhere;
+}
+
+.axis-panel__progress,
+.alignment-panel__progress,
+.curvature-panel__progress {
+  position: relative;
+  height: 6px;
+  background: var(--color-border);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 0.4rem 0;
+}
+
+.axis-panel__progress-bar,
+.alignment-panel__progress-bar,
+.curvature-panel__progress-bar {
+  height: 100%;
+  background: var(--color-accent);
+}
+
+/* Errors: always visually distinct from body text (role="alert" banners carry
+   a left rule so they read as a banner, not a sentence). */
+.axis-panel__error,
+.alignment-panel__error,
+.curvature-panel__error,
+.crown-panel__error,
+.cavity-panel__error,
+.bridge-panel__error,
+.export-client__error,
+.export-client__refused,
+.export-release__error,
+.archive-section__error,
+.crown-qc__failed,
+.cavity-qc__failed,
+.bridge-qc__failed,
+.export-qc__failed {
+  color: var(--color-danger);
+  font-weight: 600;
+  margin: 0.3rem 0;
+}
+
+.crown-panel__error-banner,
+.cavity-panel__error-banner,
+.bridge-panel__error-banner,
+.export-release__mismatch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.4rem;
+  margin: 0.5rem 0;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-danger);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--color-danger) 10%, var(--color-bg-elevated));
+  color: var(--color-text);
+}
+
+.crown-panel__warning-banner,
+.cavity-panel__warning-banner,
+.bridge-panel__warning-banner,
+.bridge-panel__synthetic-banner,
+.archive-section__conflict {
+  margin: 0.5rem 0;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-warning);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--color-warning) 10%, var(--color-bg-elevated));
+  color: var(--color-text);
+}
+
+.crown-stage__blocked,
+.cavity-stage__blocked,
+.bridge-stage__blocked,
+.export-workflow__blocked,
+.crown-qc__stale,
+.cavity-qc__stale,
+.bridge-qc__stale,
+.export-client__stale,
+.export-workflow__stale,
+.export-release__superseded,
+.bridge-panel__synthetic-mismatch {
+  color: var(--color-warning);
+  margin: 0.3rem 0;
+}
+
+.crown-stage__done,
+.cavity-stage__done,
+.bridge-stage__done,
+.axis-panel__confirmed,
+.alignment-panel__converged,
+.export-release__ok,
+.archive-section__imported,
+.crown-qc__passed,
+.cavity-qc__passed,
+.bridge-qc__passed,
+.export-qc__passed {
+  color: var(--color-success);
+  font-weight: 600;
+  margin: 0.3rem 0;
+}
+
+.crown-stage__busy,
+.cavity-stage__busy,
+.bridge-stage__busy,
+.axis-panel__heatmap-busy,
+.axis-panel__blockout-busy,
+.export-client__status,
+.export-release__status {
+  color: var(--color-text-muted);
+  font-style: italic;
+  margin: 0.3rem 0;
+}
+
+.crown-qc__table,
+.cavity-qc__table,
+.bridge-qc__table,
+.export-qc__table,
+.cavity-contacts__table,
+.bridge-abutments__table,
+.bridge-connectors__table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.3rem 0 0.5rem;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+:is(
+    .crown-qc__table,
+    .cavity-qc__table,
+    .bridge-qc__table,
+    .export-qc__table,
+    .cavity-contacts__table,
+    .bridge-abutments__table,
+    .bridge-connectors__table
+  )
+  :is(td, th) {
+  padding: 0.2rem 0.3rem;
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+:is(.crown-qc__table, .cavity-qc__table, .bridge-qc__table, .export-qc__table)
+  tr[data-passed='false']
+  td:first-child {
+  box-shadow: inset 3px 0 0 var(--color-danger);
+}
+
+.crown-panel__start,
+.cavity-panel__start,
+.bridge-panel__start,
+.axis-panel__selectors,
+.alignment-panel__selectors,
+.curvature-panel__selectors,
+.bridge-connectors__actions,
+.export-release__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: flex-end;
+  margin: 0.3rem 0;
 }

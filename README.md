@@ -8,7 +8,7 @@ Part of the DQ ecosystem; runs standalone and is designed to be later integrated
 
 > **Guiding principle: accuracy over speed.** Every geometric result must be clinically trustworthy. A long computation with a progress bar is acceptable; a silently wrong margin line is not.
 
-> **Status: MVP feature-complete and beta-ready.** All planned phases (0–8) of [`PLAN.md`](./PLAN.md) are implemented — the full path from importing a scan through designing a restoration, running QC, and handing off to manufacturing, plus a hardening pass. Every result in this repository is **fixture-proven**: acceptance is demonstrated on synthetic, closed-form fixtures. Certification on real intraoral scans, a live multi-material picker, and a technician beta are the standing follow-ups. This is not a certified medical device (see [Disclaimer](#disclaimer)).
+> **Status: MVP feature-complete and beta-ready.** All planned phases (0–8) of [`PLAN.md`](./PLAN.md) are implemented — the full path from importing a scan through designing a restoration, running QC, and handing off to manufacturing, plus a hardening pass. Every result in this repository is **fixture-proven**: acceptance is demonstrated on synthetic, closed-form fixtures. Certification on real intraoral scans and a technician beta are the standing follow-ups. This is not a certified medical device (see [Disclaimer](#disclaimer)).
 
 ## Features
 
@@ -17,8 +17,8 @@ Part of the DQ ecosystem; runs standalone and is designed to be later integrated
 - **Analysis tools** — point-to-point measurements (BVH-accelerated), surface-to-surface distance heatmaps, cross-sections with filled caps and SVG export
 - **Mesh repair** — remove components, split non-manifold edges, fill small holes — always with explicit user confirmation, never silently
 - **Geometry kernel** — halfedge topology, discrete curvature (mean, Gaussian, principal), geodesic paths, cubic splines constrained to the mesh surface, SDF offsets, marching cubes, and manifold-guaranteed booleans
-- **Restoration design** — case setup with FDI charting; margin line (κ2 ridge auto-detection + a full manual editor); insertion axis with a live undercut heatmap; and the full design pipeline for **crowns, inlays/onlays, and bridges** (intaglio/cement-gap surface, anatomy placement, RBF morphing, shell boolean, freeform sculpting; per-abutment fit, pontic gingival interface, and area-gated connectors for bridges) — all driven by versioned, checksum-verified clinical material profiles
-- **QC gates** — watertightness, manifoldness, self-intersections, minimum wall thickness, margin-fit deviation, seating penetration, connector cross-section, pontic relief, cusp coverage, seam dihedral. Gates block export; structural gates (watertight/manifold/self-intersection) can never be acknowledged away, and any soft-gate acknowledgment is journaled — never a silent bypass
+- **Restoration design** — case setup with FDI charting; margin line (κ2 ridge auto-detection + a full manual editor); insertion axis with a live undercut heatmap; and the full design pipeline for **crowns, inlays/onlays, and bridges** (intaglio/cement-gap surface, anatomy placement, RBF morphing, shell boolean, freeform sculpting; per-abutment fit, pontic gingival interface, and area-gated connectors for bridges) — all driven by versioned, checksum-verified clinical material profiles, selectable per case with a live **material picker** (standard zirconia, lithium disilicate / e.max) whose thickness and connector minimums flow straight into the QC gates
+- **QC gates** — watertightness, manifoldness, self-intersections (a true geometric check: BVH-accelerated triangle–triangle intersection over the whole mesh, not a topology proxy), minimum wall thickness, margin-fit deviation, seating penetration, connector cross-section, pontic relief, cusp coverage, seam dihedral. Gates block export; structural gates (watertight/manifold/self-intersection) can never be acknowledged away, and any soft-gate acknowledgment is journaled — never a silent bypass
 - **Manufacturing export & handoff** — deterministic watertight binary STL (topology-verified outward normals, documented Float32 narrowing bound) and optional PLY; a **QC traceability document** (schema-validated JSON + PDF-ready HTML in four languages) recording every gate result, parameter, profile version, kernel version and journal hash; and a single-file **case archive** (scans + journal + settings) with an integrity manifest for support and inter-lab transfer
 - **Independent server re-validation** — the backend re-parses the **exact exported bytes**, re-runs every QC gate with the Node kernel against server-resolved (registry-pinned) thresholds, and releases the file only on a clean pass; any client/server mismatch is a hard failure with a diagnostic bundle. Gates the server cannot recompute from the delivered bytes are disclosed as *client-attested*, never presented as a full-authority pass
 - **Case persistence & recovery** — full design-step journal (undo/redo, reopen at any step), content-addressed immutable scan storage, and crash-safe local autosave with state-identical recovery after an unclean shutdown
@@ -63,8 +63,8 @@ independent export re-validation with the same kernel
 ### Setup
 
 ```bash
-git clone https://github.com/ZoliQua/React-Dental-Designer.git
-cd React-Dental-Designer
+git clone https://github.com/ZoliQua/Dental-CAD-Designer.git
+cd Dental-CAD-Designer
 npm install
 npm run dev
 ```
@@ -84,6 +84,17 @@ npm run lint && npm run typecheck
 ```
 
 Fixtures live in `test-fixtures/` (Git LFS). If golden tests fail with a "Git LFS pointer file" error, run `git lfs pull`. `npm run test:e2e` starts its own `npm run dev` instance unless one is already running on `http://localhost:5173`.
+
+## Deployment (client-only mode)
+
+The client can be deployed on its own as a static site — the repository ships `apps/client/vercel.json` for Vercel (set the project's **Root Directory** to `apps/client`; the install step runs `npm ci` at the repo root so the workspace packages resolve).
+
+A static deployment has **no backend**. At startup the client probes `GET /api/health`; when no server answers it switches to a clearly labelled **client-only mode**:
+
+- **Works fully in the browser:** STL/PLY import and intake, the 3D viewer, measurements, heatmaps, sections, curvature, repair, and restoration design — the Float64 kernel and manifold-3d WASM run in Web Workers.
+- **Disabled, with a visible reason:** cases (open/create/save), case archives, and the manufacturing export — a manufacturing file is only ever released after the server re-validates the exact bytes, so it cannot be released without one.
+
+The server is deliberately **not** deployable to the public internet as-is: it is a loopback-bound, local single-user service whose auth bootstrap hands its token to any caller that can reach it ([ADR-020](docs/adr/020-local-single-user-auth.md)), and it stores patient scans. Hosting it for remote users requires real multi-user authentication first. For the full application, run it locally with `npm run dev`.
 
 ## Engineering principles
 
@@ -113,7 +124,9 @@ All planned phases are complete; the application is MVP feature-complete and bet
 | 7 | Export & manufacturing handoff (M7 "Handoff") | ✅ done |
 | 8 | Polish & hardening | ✅ done |
 
-**Standing follow-ups (not yet done):** certification on real intraoral scans (retraction-cord crown, cavity, multi-abutment bridge), a live multi-material picker, a true geometric self-intersection gate (currently a manifold-topology proxy, documented), and a 2–3 technician beta.
+**Since the MVP:** a live multi-material picker (zirconia / e.max), a true geometric self-intersection QC gate (replacing the former manifold-topology proxy — kernel 0.27.0), and a client-only static deployment mode.
+
+**Standing follow-ups (not yet done):** certification on real intraoral scans (retraction-cord crown, cavity, multi-abutment bridge), a 2–3 technician beta, and multi-user authentication (a prerequisite for any hosted backend).
 
 ## Internationalization
 

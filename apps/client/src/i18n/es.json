@@ -810,5 +810,12 @@
     "boundaryBody": "El {{region}} ha encontrado un error. El resto de la aplicación sigue disponible.",
     "regionSidebar": "panel de diseño",
     "regionViewport": "vista 3D"
+  },
+  "serverStatus": {
+    "offlineTitle": "Modo solo cliente — sin servidor conectado.",
+    "offlineBody": "La importación, la visualización, el análisis y el diseño de restauraciones se ejecutan íntegramente en el navegador. Los casos, el guardado, los archivos y la exportación de fabricación validada por el servidor requieren el servidor local de DQ Dental CAD (npm run dev).",
+    "casePickerOffline": "Los casos se almacenan en el servidor local de DQ Dental CAD, que no es accesible desde este despliegue. Ejecute la aplicación localmente (npm run dev) para crear, abrir y guardar casos.",
+    "exportOffline": "Requiere el servidor local: cada archivo de fabricación es revalidado por el servidor antes de su liberación.",
+    "archiveOffline": "Requiere el servidor local: los archivos de caso se generan e importan en el servidor."
   }
 }

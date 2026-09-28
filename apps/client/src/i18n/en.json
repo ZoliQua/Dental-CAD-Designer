@@ -810,5 +810,12 @@
     "boundaryBody": "The {{region}} ran into an error. The rest of the app is still usable.",
     "regionSidebar": "design panel",
     "regionViewport": "3D viewport"
+  },
+  "serverStatus": {
+    "offlineTitle": "Client-only mode — no server connected.",
+    "offlineBody": "Import, viewing, analysis and restoration design run fully in your browser. Cases, saving, archives and the server-validated manufacturing export need the local DQ Dental CAD server (npm run dev).",
+    "casePickerOffline": "Cases are stored on the local DQ Dental CAD server, which is not reachable from this deployment. Run the app locally (npm run dev) to create, open and save cases.",
+    "exportOffline": "Needs the local server: every manufacturing file is re-validated by the server before release.",
+    "archiveOffline": "Needs the local server: case archives are built and imported server-side."
   }
 }

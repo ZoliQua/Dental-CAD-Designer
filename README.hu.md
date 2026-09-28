@@ -8,7 +8,7 @@ A DQ ökoszisztéma része; önállóan fut, és úgy készül, hogy később mo
 
 > **Vezérelv: pontosság a sebesség előtt.** Minden geometriai eredménynek klinikailag megbízhatónak kell lennie. Egy hosszú számítás folyamatjelzővel elfogadható; egy csendben hibás preparációs határvonal nem.
 
-> **Állapot: MVP-szinten funkcionálisan kész és béta-kész.** A [`PLAN.md`](./PLAN.md) összes tervezett fázisa (0–8) elkészült — a teljes út a szken importjától a restaurátum megtervezésén és a QC-n át a gyártási átadásig, plusz egy megszilárdító fázis. A repóban minden eredmény **fixture-alapon bizonyított**: az átvétel szintetikus, zárt alakú fixture-ökön van igazolva. A valós intraorális szkeneken való certifikáció, egy élő többanyagos anyagválasztó és egy technikus-béta a nyitott, folyamatban lévő tételek. Ez nem minősített orvostechnikai eszköz (lásd [Jogi nyilatkozat](#jogi-nyilatkozat)).
+> **Állapot: MVP-szinten funkcionálisan kész és béta-kész.** A [`PLAN.md`](./PLAN.md) összes tervezett fázisa (0–8) elkészült — a teljes út a szken importjától a restaurátum megtervezésén és a QC-n át a gyártási átadásig, plusz egy megszilárdító fázis. A repóban minden eredmény **fixture-alapon bizonyított**: az átvétel szintetikus, zárt alakú fixture-ökön van igazolva. A valós intraorális szkeneken való certifikáció és egy technikus-béta a nyitott, folyamatban lévő tételek. Ez nem minősített orvostechnikai eszköz (lásd [Jogi nyilatkozat](#jogi-nyilatkozat)).
 
 ## Funkciók
 
@@ -17,8 +17,8 @@ A DQ ökoszisztéma része; önállóan fut, és úgy készül, hogy később mo
 - **Elemzőeszközök** — pont-pont mérések (BVH-gyorsítással), felület-felület távolság-hőtérképek, keresztmetszetek kitöltött záró felületekkel és SVG-exporttal
 - **Mesh-javítás** — komponensek eltávolítása, non-manifold élek szétválasztása, kis lyukak tömése — mindig kifejezett felhasználói megerősítéssel, soha nem csendben
 - **Geometriai kernel** — halfedge topológia, diszkrét görbület (átlag-, Gauss-, főgörbületek), geodetikus utak, a mesh felületére illesztett köbös spline-ok, SDF-offszetek, marching cubes, és garantáltan manifold boole-műveletek
-- **Restaurátum-tervezés** — eset-előkészítés FDI-fogtérképpel; preparációs határvonal (κ2 gerinc automatikus felismerése + teljes kézi szerkesztő); behelyezési tengely élő alámenős-hőtérképpel; és a teljes tervezési pipeline **koronákra, inlay/onlay betétekre és hidakra** (belső/cementrés-felület, anatómia-elhelyezés, RBF-morfolás, héj-boole, szabadkézi szobrászat; hidaknál per-pillér illeszkedés, pontic ínyi felület és terület-kapuzott összekötők) — mind verziózott, checksummal ellenőrzött klinikai anyagprofilok alapján
-- **QC-kapuk** — vízzáróság, manifoldság, önátmetszések, minimális falvastagság, széli záródás eltérése, beültetési penetráció, összekötő-keresztmetszet, pontic ínytávolság, csúcslefedettség, varrat-diéderszög. A kapuk blokkolják az exportot; a szerkezeti kapuk (vízzáróság/manifoldság/önátmetszés) soha nem vehetők tudomásul, a lágy kapuk tudomásulvétele pedig naplózott — sosem csendes megkerülés
+- **Restaurátum-tervezés** — eset-előkészítés FDI-fogtérképpel; preparációs határvonal (κ2 gerinc automatikus felismerése + teljes kézi szerkesztő); behelyezési tengely élő alámenős-hőtérképpel; és a teljes tervezési pipeline **koronákra, inlay/onlay betétekre és hidakra** (belső/cementrés-felület, anatómia-elhelyezés, RBF-morfolás, héj-boole, szabadkézi szobrászat; hidaknál per-pillér illeszkedés, pontic ínyi felület és terület-kapuzott összekötők) — mind verziózott, checksummal ellenőrzött klinikai anyagprofilok alapján, amelyek esetenként egy élő **anyagválasztóval** (standard cirkónia, lítium-diszilikát / e.max) választhatók, és a vastagsági és összekötő-minimumaik közvetlenül a QC-kapukba kerülnek
+- **QC-kapuk** — vízzáróság, manifoldság, önátmetszések (valódi geometriai ellenőrzés: BVH-gyorsított háromszög–háromszög metszésvizsgálat a teljes mesh-en, nem topológiai proxy), minimális falvastagság, széli záródás eltérése, beültetési penetráció, összekötő-keresztmetszet, pontic ínytávolság, csúcslefedettség, varrat-diéderszög. A kapuk blokkolják az exportot; a szerkezeti kapuk (vízzáróság/manifoldság/önátmetszés) soha nem vehetők tudomásul, a lágy kapuk tudomásulvétele pedig naplózott — sosem csendes megkerülés
 - **Gyártási export és átadás** — determinisztikus vízzáró bináris STL (topológiából igazolt kifelé mutató normálisok, dokumentált Float32-szűkítési korlát) és opcionális PLY; egy **QC-nyomonkövethetőségi dokumentum** (sémaellenőrzött JSON + PDF-kész HTML négy nyelven), amely rögzíti minden kapu eredményét, a paramétereket, a profilverziót, a kernelverziót és a napló-hasht; valamint egyfájlos **eset-archívum** (szkenek + napló + beállítások) integritás-manifesttel, támogatáshoz és labor-közti átadáshoz
 - **Független szerveroldali újravalidálás** — a backend újraparse-olja **pontosan az exportált bájtokat**, a Node-kernellel újrafuttatja az összes QC-kaput a szerveroldalon feloldott (registry-hez rögzített) küszöbökkel, és csak tiszta átmenetre adja ki a fájlt; bármely kliens/szerver eltérés kemény hiba diagnosztikai csomaggal. Azokat a kapukat, amelyeket a szerver nem tud a bájtokból újraszámolni, *kliens-attesztáltként* jelöli — sosem teljes tekintélyű átmenetként
 - **Esetmentés és helyreállítás** — teljes tervezésilépés-napló (visszavonás/újra, bármely lépésnél újranyitható), tartalomcímzett, megváltoztathatatlan szkentárolás, és összeomlás-biztos helyi automatikus mentés állapot-azonos helyreállítással tisztátalan leállás után
@@ -63,8 +63,8 @@ független export-újravalidálás ugyanazzal a kernellel
 ### Telepítés
 
 ```bash
-git clone https://github.com/ZoliQua/React-Dental-Designer.git
-cd React-Dental-Designer
+git clone https://github.com/ZoliQua/Dental-CAD-Designer.git
+cd Dental-CAD-Designer
 npm install
 npm run dev
 ```
@@ -84,6 +84,17 @@ npm run lint && npm run typecheck
 ```
 
 A fixture-ök a `test-fixtures/` mappában élnek (Git LFS). Ha a golden tesztek „Git LFS pointer file" hibával buknak, futtasd a `git lfs pull`-t. Az `npm run test:e2e` saját `npm run dev` példányt indít, hacsak nem fut már egy a `http://localhost:5173` címen.
+
+## Telepítés webre (csak kliens mód)
+
+A kliens önállóan, statikus oldalként is telepíthető — a repó tartalmazza az `apps/client/vercel.json` fájlt Vercelhez (a projekt **Root Directory** beállítása legyen `apps/client`; a telepítési lépés a repó gyökerében futtatja az `npm ci`-t, hogy a workspace-csomagok feloldódjanak).
+
+Egy statikus telepítésnek **nincs backendje**. Induláskor a kliens lekérdezi a `GET /api/health` végpontot; ha nem válaszol szerver, egyértelműen jelzett **csak kliens módba** vált:
+
+- **Teljesen a böngészőben működik:** STL/PLY import és előfeldolgozás, a 3D nézegető, mérések, hőtérképek, metszetek, görbület, javítás és restaurátum-tervezés — a Float64 kernel és a manifold-3d WASM Web Workerekben fut.
+- **Letiltva, látható indoklással:** esetek (megnyitás/létrehozás/mentés), eset-archívumok és a gyártási export — gyártási fájl csak azután adható ki, hogy a szerver újraellenőrizte pontosan a kiadott bájtokat, így szerver nélkül nem adható ki.
+
+A szerver szándékosan **nem** telepíthető így a nyilvános internetre: loopbackre kötött, helyi egyfelhasználós szolgáltatás, amelynek hitelesítési bootstrap végpontja bárkinek kiadja a tokent, aki eléri ([ADR-020](docs/adr/020-local-single-user-auth.md)), és betegszkeneket tárol. Távoli felhasználók kiszolgálásához előbb valódi többfelhasználós hitelesítés kell. A teljes alkalmazáshoz futtasd helyben: `npm run dev`.
 
 ## Mérnöki alapelvek
 
@@ -113,7 +124,9 @@ Az összes tervezett fázis elkészült; az alkalmazás MVP-szinten funkcionáli
 | 7 | Export és gyártási átadás (M7 „Átadás") | ✅ kész |
 | 8 | Csiszolás és megszilárdítás | ✅ kész |
 
-**Nyitott, folyamatban lévő tételek:** certifikáció valós intraorális szkeneken (retrakciós-fonalas korona, kavitás, többpilléres híd), élő többanyagos anyagválasztó, valódi geometriai önátmetszés-kapu (jelenleg manifold-topológiai proxy, dokumentálva), és egy 2–3 fős technikus-béta.
+**Az MVP óta:** élő többanyagos anyagválasztó (cirkónia / e.max), valódi geometriai önátmetszés QC-kapu (a korábbi manifold-topológiai proxy helyett — kernel 0.27.0), és csak kliens módú statikus webes telepítés.
+
+**Nyitott, folyamatban lévő tételek:** certifikáció valós intraorális szkeneken (retrakciós-fonalas korona, kavitás, többpilléres híd), egy 2–3 fős technikus-béta, és többfelhasználós hitelesítés (bármilyen hosztolt backend előfeltétele).
 
 ## Nyelvi támogatás
 

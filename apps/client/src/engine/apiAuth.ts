@@ -57,6 +57,18 @@ export async function authHeaders(): Promise<Record<string, string>> {
   return cachedToken ? { authorization: `Bearer ${cachedToken}` } : {};
 }
 
+/**
+ * Re-runs the bootstrap from scratch. For the case where the page loaded before
+ * the server was listening (engine/serverStatus.ts's monitor reports the
+ * recovery): the startup bootstrap then settled with no token, and every
+ * mutation would be rejected by the server's auth gate (401) until a reload.
+ */
+export function refreshAuth(apiBase = '/api'): Promise<void> {
+  bootstrapPromise = null;
+  cachedToken = null;
+  return initAuth(apiBase);
+}
+
 /** Test-only reset of the module singletons. */
 export function __resetAuthForTests(): void {
   cachedToken = null;

@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { initAuth } from './engine/apiAuth';
+import { initAuth, refreshAuth } from './engine/apiAuth';
+import { startServerMonitor } from './engine/serverStatus';
 import { installTestHooksIfDev } from './engine/testHooks';
 import './i18n';
 import './index.css';
@@ -16,6 +17,12 @@ installTestHooksIfDev();
 // awaits this same bootstrap, so an early mutation still waits for the token; a
 // disabled-gate/dev server just yields no token and everything still works.
 void initAuth();
+
+// Detect a static client-only deploy (no server behind /api — e.g. Vercel) so
+// the UI can say so up front; keeps re-probing while offline, and re-runs the
+// auth bootstrap if the server only came up after page load
+// (engine/serverStatus.ts).
+startServerMonitor({ onRecovered: () => void refreshAuth() });
 
 const container = document.getElementById('root');
 if (!container) {

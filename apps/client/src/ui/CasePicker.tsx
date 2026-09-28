@@ -7,6 +7,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createCase, listCases, openCase, renameCase } from '../engine/persistence';
 import { type CaseSummary, usePersistenceStore } from '../state/persistenceStore';
+import { useServerStatusStore } from '../state/serverStatusStore';
 
 export function CasePicker() {
   const { t } = useTranslation();
@@ -15,6 +16,10 @@ export function CasePicker() {
   const casesLoading = usePersistenceStore((state) => state.casesLoading);
   const casesError = usePersistenceStore((state) => state.casesError);
   const activeCaseId = usePersistenceStore((state) => state.activeCaseId);
+  // Cases live on the local server only. In the static client-only deploy
+  // (engine/serverStatus.ts → 'offline') there is nothing to list or create, so
+  // the picker says so instead of issuing requests that can only 404.
+  const serverOffline = useServerStatusStore((state) => state.status === 'offline');
   const [newCaseName, setNewCaseName] = useState('');
   const [creating, setCreating] = useState(false);
   const [openingId, setOpeningId] = useState<string | null>(null);
@@ -23,10 +28,10 @@ export function CasePicker() {
   const [renameError, setRenameError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !serverOffline) {
       void listCases();
     }
-  }, [isOpen]);
+  }, [isOpen, serverOffline]);
 
   if (!isOpen) {
     return null;
@@ -113,75 +118,83 @@ export function CasePicker() {
           </button>
         </div>
 
-        <form className="case-picker__create-form" onSubmit={(event) => void handleCreate(event)}>
-          <input
-            type="text"
-            value={newCaseName}
-            onChange={(event) => setNewCaseName(event.target.value)}
-            placeholder={t('persistence.picker.newCaseNamePlaceholder')}
-            data-testid="case-picker-new-case-name"
-          />
-          <button type="submit" disabled={creating || newCaseName.trim().length === 0}>
-            {t('persistence.picker.createButton')}
-          </button>
-        </form>
-
-        {casesLoading && <p className="case-picker__loading">{t('persistence.picker.loading')}</p>}
-        {casesError && (
-          <p className="case-picker__error">{t('persistence.picker.errorLabel', { message: casesError })}</p>
-        )}
-        {renameError && (
-          <p className="case-picker__error" data-testid="case-picker-rename-error">
-            {t('persistence.picker.renameErrorLabel', { message: renameError })}
+        {serverOffline ? (
+          <p className="case-picker__offline" data-testid="case-picker-offline">
+            {t('serverStatus.casePickerOffline')}
           </p>
-        )}
-        {!casesLoading && cases.length === 0 && !casesError && (
-          <p className="case-picker__empty">{t('persistence.picker.empty')}</p>
-        )}
+        ) : (
+          <>
+            <form className="case-picker__create-form" onSubmit={(event) => void handleCreate(event)}>
+              <input
+                type="text"
+                value={newCaseName}
+                onChange={(event) => setNewCaseName(event.target.value)}
+                placeholder={t('persistence.picker.newCaseNamePlaceholder')}
+                data-testid="case-picker-new-case-name"
+              />
+              <button type="submit" disabled={creating || newCaseName.trim().length === 0}>
+                {t('persistence.picker.createButton')}
+              </button>
+            </form>
 
-        <ul className="case-picker__list">
-          {cases.map((caseSummary) => (
-            <li key={caseSummary.id} className="case-picker__row" data-testid="case-picker-row">
-              {renamingId === caseSummary.id ? (
-                <form
-                  className="case-picker__rename-form"
-                  onSubmit={(event) => void submitRename(event, caseSummary.id)}
-                >
-                  <input
-                    type="text"
-                    value={renameValue}
-                    onChange={(event) => setRenameValue(event.target.value)}
-                    autoFocus
-                    data-testid="case-picker-rename-input"
-                  />
-                  <button type="submit">{t('persistence.picker.renameButton')}</button>
-                </form>
-              ) : (
-                <>
-                  <span className="case-picker__name">
-                    {caseSummary.name}
-                    {caseSummary.id === activeCaseId && (
-                      <span className="case-picker__active-badge">{t('persistence.picker.activeLabel')}</span>
-                    )}
-                  </span>
-                  <span className="case-picker__updated-at">
-                    {t('persistence.picker.updatedAtLabel', { date: caseSummary.updatedAt })}
-                  </span>
-                  <button
-                    type="button"
-                    disabled={openingId !== null}
-                    onClick={() => void handleOpen(caseSummary.id, caseSummary.name)}
-                  >
-                    {t('persistence.picker.openButton')}
-                  </button>
-                  <button type="button" onClick={() => startRename(caseSummary)}>
-                    {t('persistence.picker.renameButton')}
-                  </button>
-                </>
-              )}
-            </li>
-          ))}
-        </ul>
+            {casesLoading && <p className="case-picker__loading">{t('persistence.picker.loading')}</p>}
+            {casesError && (
+              <p className="case-picker__error">{t('persistence.picker.errorLabel', { message: casesError })}</p>
+            )}
+            {renameError && (
+              <p className="case-picker__error" data-testid="case-picker-rename-error">
+                {t('persistence.picker.renameErrorLabel', { message: renameError })}
+              </p>
+            )}
+            {!casesLoading && cases.length === 0 && !casesError && (
+              <p className="case-picker__empty">{t('persistence.picker.empty')}</p>
+            )}
+
+            <ul className="case-picker__list">
+              {cases.map((caseSummary) => (
+                <li key={caseSummary.id} className="case-picker__row" data-testid="case-picker-row">
+                  {renamingId === caseSummary.id ? (
+                    <form
+                      className="case-picker__rename-form"
+                      onSubmit={(event) => void submitRename(event, caseSummary.id)}
+                    >
+                      <input
+                        type="text"
+                        value={renameValue}
+                        onChange={(event) => setRenameValue(event.target.value)}
+                        autoFocus
+                        data-testid="case-picker-rename-input"
+                      />
+                      <button type="submit">{t('persistence.picker.renameButton')}</button>
+                    </form>
+                  ) : (
+                    <>
+                      <span className="case-picker__name">
+                        {caseSummary.name}
+                        {caseSummary.id === activeCaseId && (
+                          <span className="case-picker__active-badge">{t('persistence.picker.activeLabel')}</span>
+                        )}
+                      </span>
+                      <span className="case-picker__updated-at">
+                        {t('persistence.picker.updatedAtLabel', { date: caseSummary.updatedAt })}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={openingId !== null}
+                        onClick={() => void handleOpen(caseSummary.id, caseSummary.name)}
+                      >
+                        {t('persistence.picker.openButton')}
+                      </button>
+                      <button type="button" onClick={() => startRename(caseSummary)}>
+                        {t('persistence.picker.renameButton')}
+                      </button>
+                    </>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
       </div>
     </div>
   );

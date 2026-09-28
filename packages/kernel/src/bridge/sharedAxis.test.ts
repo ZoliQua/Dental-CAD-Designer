@@ -190,7 +190,10 @@ describe('bridge shared insertion axis — falsifiable negative (tilted distal d
       `[bridge][tilt ${TILT_DEG}deg] hemisphere sweep of 256 axes: ${acceptableCount} acceptable; ` +
         `best-case worst-abutment residual = ${bestMaxResidual} undercut tris (never zero).`,
     );
-  });
+    // 256 full undercut assessments: ~8 s alone, but it exceeded the default
+    // 15 s under the full parallel `npm test` load. A wall-clock budget only —
+    // the assertion itself is unchanged.
+  }, 60_000);
 });
 
 describe('bridge shared insertion axis — determinism', () => {

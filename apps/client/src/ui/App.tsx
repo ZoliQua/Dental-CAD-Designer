@@ -11,6 +11,7 @@ import { ErrorReportSurface } from './ErrorReportSurface';
 import { Header } from './Header';
 import { OnboardingTour } from './OnboardingTour';
 import { RecoveryPrompt } from './RecoveryPrompt';
+import { ServerStatusBanner } from './ServerStatusBanner';
 import { ShortcutsHelpOverlay } from './ShortcutsHelpOverlay';
 import { Sidebar } from './Sidebar';
 import { StatusBar } from './StatusBar';
@@ -63,6 +64,7 @@ export function App() {
   return (
     <div className="app-shell">
       <Header />
+      <ServerStatusBanner />
       <div className="app-body">
         <ErrorBoundary regionLabelKey="errorReport.regionSidebar">
           <Sidebar />

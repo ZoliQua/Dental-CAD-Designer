@@ -810,5 +810,12 @@
     "boundaryBody": "Im {{region}} ist ein Fehler aufgetreten. Der Rest der Anwendung ist weiterhin nutzbar.",
     "regionSidebar": "Design-Panel",
     "regionViewport": "3D-Ansicht"
+  },
+  "serverStatus": {
+    "offlineTitle": "Nur-Client-Modus — kein Server verbunden.",
+    "offlineBody": "Import, Anzeige, Analyse und Restaurationsdesign laufen vollständig im Browser. Fälle, Speichern, Archive und der servervalidierte Fertigungsexport benötigen den lokalen DQ-Dental-CAD-Server (npm run dev).",
+    "casePickerOffline": "Fälle werden auf dem lokalen DQ-Dental-CAD-Server gespeichert, der von dieser Bereitstellung aus nicht erreichbar ist. Starten Sie die App lokal (npm run dev), um Fälle anzulegen, zu öffnen und zu speichern.",
+    "exportOffline": "Benötigt den lokalen Server: Jede Fertigungsdatei wird vor der Freigabe vom Server erneut validiert.",
+    "archiveOffline": "Benötigt den lokalen Server: Fallarchive werden serverseitig erstellt und importiert."
   }
 }
