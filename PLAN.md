@@ -236,6 +236,16 @@ The core pipeline. Order of stages is fixed; each stage's output is journaled.
 - Security: local auth (single-user default), backend input validation on every route (Fastify schemas)
 - Beta with 2–3 dental technicians; structured feedback loop
 
+### Phase 9 — Design on the real case geometry (post-MVP, [ADR-022](docs/adr/022-design-inputs-from-the-case-geometry-provenance.md))
+
+- Typed geometry provenance (`case` / `placeholder` / `demo-fixture`) on every QC-relevant input; a gate measured on a non-case input fails closed (acknowledgeable, journaled) — never a silent pass
+- Neighbour and antagonist capture from the case's own arch scans (pick + bounded region, oriented by margin and insertion axis); contact gates measured on them
+- Tooth library anatomy fetched by the client (placeholder fallback, labelled); premolar/molar library assets
+- Bridge built from the case: per-abutment units on the shared axis, pontic against the gingiva scan with a fitted ridge crest, auto-placed connectors; the 14-15-16 fixture kept as an explicit demo mode
+- Bridge/crown/cavity stage ops journal their input hashes
+
+**Acceptance:** no gate can pass on a stand-in; crown contacts measured against captured neighbours on real `arch-case-01`; a real-path 3-unit bridge on a closed-form arch fixture passes all gates; all existing golden files byte-identical. Detailed plan: [`docs/plans/phase-9-real-case-geometry.md`](docs/plans/phase-9-real-case-geometry.md).
+
 ---
 
 ## 5. Repository Layout
@@ -311,6 +321,7 @@ These are non-negotiable invariants. CLAUDE.md repeats them as hard rules.
 | M4 "First crown" | 4 | End-to-end crown passing QC, exportable |
 | M5 "Full restorative set" | 5–6 | Inlay/onlay + bridge |
 | M6 "Lab-ready" | 7–8 | Manufacturing handoff, QC reports, beta feedback |
+| M9 "Case-true" | 9 | Every QC verdict measured on the patient's own geometry, or explicitly not |
 
 Suggested order of implementation inside every phase: kernel/pipeline code + tests first, UI tool second, e2e last.
 
