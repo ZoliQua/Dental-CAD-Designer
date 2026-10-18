@@ -93,6 +93,15 @@ centroid along the insertion-axis-orthogonal mesio-distal direction instead.
 Regression fixture: the MOD cavity translated off-origin (expected output
 hash pinned) — the current code must fail it before the fix.
 
+**Landed (2026-10-19).** `proximalSide` / `mesioDistalDirection`
+(`apps/client/src/engine/cavityDesign.ts`): the face's column centroid,
+taken along world X made orthogonal to the insertion axis and measured
+relative to the outline centroid. The regression runs the real kernel jobs
+(Node WorkerPool) on the MOD fixture translated by (23.5, −11.25, 4) mm:
+before the fix both faces paired with the distal box. Pinned in
+`test-fixtures/regression/cavity-neighbour-side.json`, together with the
+origin-centred hash, which is byte-identical before and after the fix.
+
 ## Task 3 — Neighbour and antagonist capture from arch scans *(new kernel op → KERNEL_VERSION bump)*
 
 - Kernel: `extractNeighbourRegion(mesh, bvh, seed, marginCentroid, axis, opts)`

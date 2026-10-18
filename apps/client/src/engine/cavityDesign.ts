@@ -198,6 +198,45 @@ interface Session {
   shell: DerivedMesh | null;
 }
 
+/**
+ * The mesio-distal reference direction of the cavity frame: world X (the
+ * frame the synthetic neighbour boxes are built in — they flank the outline's
+ * X extent) made orthogonal to the insertion axis. Phase 9 Task 2: the side is
+ * measured along this direction RELATIVE TO THE OUTLINE CENTROID, never by the
+ * sign of a world coordinate (which only held for an origin-centred fixture).
+ * Falls back to world Y when the axis is (anti)parallel to X.
+ */
+export function mesioDistalDirection(insertionAxis: Vec3): Vec3 {
+  const project = (v: Vec3): Vec3 => {
+    const d = v[0] * insertionAxis[0] + v[1] * insertionAxis[1] + v[2] * insertionAxis[2];
+    return [v[0] - d * insertionAxis[0], v[1] - d * insertionAxis[1], v[2] - d * insertionAxis[2]];
+  };
+  let md = project([1, 0, 0]);
+  if (Math.hypot(md[0], md[1], md[2]) < 1e-6) md = project([0, 1, 0]);
+  const n = Math.hypot(md[0], md[1], md[2]);
+  return [md[0] / n, md[1] / n, md[2] / n];
+}
+
+function centroidOf(points: readonly Vec3[]): Vec3 {
+  let x = 0, y = 0, z = 0;
+  for (const p of points) {
+    x += p[0];
+    y += p[1];
+    z += p[2];
+  }
+  const n = points.length || 1;
+  return [x / n, y / n, z / n];
+}
+
+/** Which neighbour a proximal box face adapts to: `mesial` when the face's
+ * column centroid lies on the negative MD side of the outline centroid (the
+ * side the mesial placeholder box is built on), else `distal`. */
+export function proximalSide(columnPoints: readonly Vec3[], outlineCentroid: Vec3, md: Vec3): 'mesial' | 'distal' {
+  const c = centroidOf(columnPoints);
+  const along = (c[0] - outlineCentroid[0]) * md[0] + (c[1] - outlineCentroid[1]) * md[1] + (c[2] - outlineCentroid[2]) * md[2];
+  return along < 0 ? 'mesial' : 'distal';
+}
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -531,7 +570,9 @@ class CavityDesignEngine {
    * placeholder — the client cannot yet segment the real proximal neighbours
    * from an arch scan; mirrors crownDesign's synthetic proximal boxes) from the
    * cavity outline's mesiodistal extent, and pairs each proximal break-through
-   * face to the neighbour on its side. */
+   * face to the neighbour on its side — the side measured along the MD
+   * direction relative to the outline centroid (`proximalSide`; Phase 9 Task 2
+   * fixed the former world-`x < 0` test, wrong for any off-origin scan). */
   private buildAdaptations(session: Session): Array<{
     label: string;
     columnPoints: Float64Array;
@@ -555,8 +596,10 @@ class CavityDesignEngine {
     const distalBox = boxMesh([maxX + NEIGHBOUR_GAP_MM, yMin, zMin], [maxX + NEIGHBOUR_GAP_MM + 2, yMax, zMax]);
     const patch = session.patch;
     if (!patch) return [];
+    const outlineCentroid = centroidOf(pts);
+    const md = mesioDistalDirection(session.insertionAxis);
     return patch.proximalFaces.map((face) => {
-      const side = face.columnPoints.length > 0 && face.columnPoints[0]![0] < 0 ? 'mesial' : 'distal';
+      const side = proximalSide(face.columnPoints, outlineCentroid, md);
       const neighbor = side === 'mesial' ? mesialBox : distalBox;
       return {
         label: side,

@@ -1,0 +1,16 @@
+{
+  "description": "Phase 9 Task 2 regression: the analytic MOD cavity (apps/client/src/engine/modCavityFixture.asset.json) translated off-origin; the contacts stage must pair one mesial and one distal box, and the adapted patch content hash is pinned.",
+  "translationMm": [
+    23.5,
+    -11.25,
+    4
+  ],
+  "fitPitchMm": 0.15,
+  "expectedBoxLabels": [
+    "mesial",
+    "distal"
+  ],
+  "expectedProximalContactsHash": "682a2685de57c0f48ba9f6d2285264a226c938405f25799cb7469a1c5300b6d7",
+  "expectedOriginProximalContactsHash": "09ee8088b75c0ecc918c412d9a197aa156ddebec6d842fe3ac567b05328db401",
+  "preFixResult": "off-origin labels ['distal', 'distal'] (both faces adapted to the distal box); origin hash identical"
+}
