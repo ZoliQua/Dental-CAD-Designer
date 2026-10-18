@@ -274,6 +274,10 @@ const gateResultJsonSchema = {
     threshold: { type: ['number', 'null'] },
     unit: { type: ['string', 'null'] },
     message: { type: 'string' },
+    // ADR-022: optional and ONLY present for a gate measured on non-case
+    // input — additive, so every existing document validates and serializes
+    // unchanged (no schemaVersion bump).
+    inputProvenance: { enum: ['placeholder', 'demo-fixture'] },
   },
 } as const;
 

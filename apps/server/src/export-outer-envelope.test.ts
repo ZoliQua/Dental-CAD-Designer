@@ -31,6 +31,7 @@ import { buildApp } from './app.js';
 import { buildCrownQcInput, toValidateQcBody, TOOTH } from './crown-qc-fixture.testutil.js';
 import { buildExportHarness, toExportQcContext, type ExportHarness } from './export-request.testutil.js';
 import { hashMesh } from './journal-replay.js';
+import { declareStandIns } from './stand-in-provenance.testutil.js';
 
 const STL_HEADER_BYTES = 80;
 const STL_COUNT_OFFSET = 80;
@@ -105,11 +106,11 @@ describe('POST /api/restorations/:id/export — outer-envelope certification (T4
     app = await buildApp({ prisma, meshDataDir, toothLibraryDataDir, exportsDataDir, finalMeshDataDir });
 
     const base = await buildCrownQcInput('standin');
-    standinInput = {
+    standinInput = declareStandIns({
       ...base,
       journalHash: hashMesh(base.crownSolid),
       profileVersion: STANDARD_ZIRCONIA_PROFILE.version,
-    };
+    });
     standinReport = await runCrownQc(standinInput);
     standinContext = toExportQcContext(toValidateQcBody(standinInput), 'crownSolid');
   }, 300_000);

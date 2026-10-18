@@ -43,6 +43,7 @@ import { installedManifoldVersion } from './manifold-version.js';
 import { regenerateReleaseTraceability, rowToTraceabilityRecord } from './export-traceability.js';
 import { hashMesh } from './journal-replay.js';
 import { readMeshBytes } from './mesh-storage.js';
+import { declareStandIns } from './stand-in-provenance.testutil.js';
 
 interface ExportOkBody {
   exportId: string;
@@ -91,19 +92,19 @@ describe('QC traceability document — server generation, storage, routes', () =
     });
 
     const base = await buildCrownQcInput('standin');
-    standinInput = {
+    standinInput = declareStandIns({
       ...base,
       journalHash: hashMesh(base.crownSolid),
       profileVersion: STANDARD_ZIRCONIA_PROFILE.version,
-    };
+    });
     standinReport = await runCrownQc(standinInput);
     standinContext = toExportQcContext(toValidateQcBody(standinInput), 'crownSolid');
     const thinBase = await buildCrownQcInput('thin');
-    thinInput = {
+    thinInput = declareStandIns({
       ...thinBase,
       journalHash: hashMesh(thinBase.crownSolid),
       profileVersion: STANDARD_ZIRCONIA_PROFILE.version,
-    };
+    });
 
     stlHarness = await buildExportHarness({
       app,
@@ -624,8 +625,19 @@ describe('QC traceability document — server generation, storage, routes', () =
     // unchanged and the geometry pins byte-identical — message+version-only).
     // Previous (0.26.0): 4e8afb2aabc44202e5a0154b1648b148ab38c9180f645bdd6b4c6278f6ecc6dc.
     // See CHANGELOG-kernel.md [0.27.0].
+    //
+    // MOVED at ADR-022 (Phase 9 Task 1 — design inputs come from the case):
+    // the export harness's saved case has no scans, so the fixture's neighbour
+    // / antagonist contacts are now DECLARED `placeholder` (an untraceable
+    // `case` claim is refused, 409 export-untraceable-provenance) and the
+    // contact gate fails closed and is acknowledged. The ONLY change in the
+    // pinned document is the `contact` row: passed false, acknowledged true,
+    // the NON-CASE INPUT message prefix, `inputProvenance: 'placeholder'`.
+    // Every other gate, value, hash and version is byte-identical; kernel /
+    // manifold pins unchanged (0.27.0 / 3.5.1). No numerical drift.
+    // Previous (pre-ADR-022): 3c5853fac713891f37388b1a13d5a75abc9f58f58d6aab1bfbd861126a362808.
     expect(sha256Hex(json)).toBe(
-      '3c5853fac713891f37388b1a13d5a75abc9f58f58d6aab1bfbd861126a362808',
+      'd0fe109c92d05e2a15cf3b4ed000f833747d328f2ddc837851fd345bcfb57606',
     );
   });
 });

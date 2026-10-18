@@ -817,5 +817,16 @@
     "casePickerOffline": "Fälle werden auf dem lokalen DQ-Dental-CAD-Server gespeichert, der von dieser Bereitstellung aus nicht erreichbar ist. Starten Sie die App lokal (npm run dev), um Fälle anzulegen, zu öffnen und zu speichern.",
     "exportOffline": "Benötigt den lokalen Server: Jede Fertigungsdatei wird vor der Freigabe vom Server erneut validiert.",
     "archiveOffline": "Benötigt den lokalen Server: Fallarchive werden serverseitig erstellt und importiert."
+  },
+  "provenance": {
+    "title": "Platzhalter-Geometrie",
+    "crownNeighbours": "Die mesialen und distalen Nachbarn sind synthetische Platzhalter-Quader, nicht die Zähne des Patienten. Die Erfassung der Nachbarn aus dem Kieferscan ist noch nicht verfügbar, daher kann das QC-Gate für den Approximalkontakt nicht bestanden werden. Bestätigen Sie es nur, wenn Sie die Kontakte auf anderem Weg geprüft haben.",
+    "cavityNeighbours": "Die approximalen Kästen sind an synthetische Platzhalter-Nachbarn angepasst, nicht an die Zähne des Patienten. Die Erfassung der Nachbarn aus dem Kieferscan ist noch nicht verfügbar, daher kann das QC-Gate für den Approximalkontakt nicht bestanden werden. Bestätigen Sie es nur, wenn Sie die Kontakte auf anderem Weg geprüft haben.",
+    "coverageDivider": "Die Trennebene des überkuppelten Höckers ist eine Platzhalter-Ebene aus der Bounding Box des Kavitätenumrisses, nicht aus der Höckeranatomie des Patienten. Das QC-Gate für die Höckerüberdeckungsstärke kann daher nicht bestanden werden. Bestätigen Sie es nur, wenn Sie die Höckerstärke auf anderem Weg geprüft haben.",
+    "gate": {
+      "placeholder": "an Platzhalter-Geometrie gemessen, nicht an der des Patienten; kann nicht bestehen",
+      "demo-fixture": "am Demonstrations-Fixture gemessen, nicht an diesem Fall; kann nicht bestehen"
+    },
+    "exportPlaceholder": "Einige QC-Gates dieser Restauration wurden an Platzhalter-Geometrie gemessen, nicht an der des Patienten ({{gates}}). Sie können nicht bestehen. Eine Bestätigung wird protokolliert und im Rückverfolgbarkeitsdokument ausgewiesen."
   }
 }

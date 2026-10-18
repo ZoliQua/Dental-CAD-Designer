@@ -42,7 +42,7 @@ import {
   type RunJobOptions,
 } from '@dqcad/kernel-workers';
 import { DEFAULT_OFFSET_VOXEL_PITCH_MM } from '@dqcad/clinical-profiles';
-import type { FdiTooth, Operation, QcReport, Restoration, RestorationParams, Vec3 } from '@dqcad/shared-types';
+import type { FdiTooth, GeometryProvenance, Operation, QcReport, Restoration, RestorationParams, Vec3 } from '@dqcad/shared-types';
 import { caseStore } from './caseStore';
 import { resolveFullMaterialProfile, resolveProfileVersion } from './materialProfile';
 import {
@@ -115,16 +115,25 @@ interface ContactResidualInput {
   contactResidualMm: number;
   regionResidualMm: number;
   clampBound: boolean;
+  /** ADR-022 — where the contacted geometry came from; a non-`case` contact
+   * fails the contact gate closed. */
+  provenance?: GeometryProvenance;
 }
 
 /** Anatomy-placement geometry the anatomy stage consumes — a built-in library
- * tooth (engine/crownGeometry.ts) plus OPTIONAL real neighbour/antagonist
- * scan geometry (a contact is created only for geometry that actually
- * exists — never fabricated). */
+ * tooth (engine/crownGeometry.ts), proximal neighbour references, and the
+ * OPTIONAL antagonist scan. The antagonist is the case's own `antagonist`-role
+ * scan (a contact is created only when that scan exists). The proximal
+ * neighbours are NOT yet captured from the case: `buildAnatomyInput` supplies
+ * synthetic boxes tagged `neighbourProvenance: 'placeholder'` (ADR-022), so
+ * the contact gate fails closed on them instead of passing on fabricated
+ * geometry. */
 export interface AnatomyPlacementInput {
   library: BuiltinLibraryTooth;
   mesialNeighbor?: IndexedBuffers;
   distalNeighbor?: IndexedBuffers;
+  /** Provenance of `mesialNeighbor` / `distalNeighbor` (absent ⇒ `'case'`). */
+  neighbourProvenance?: GeometryProvenance;
   antagonist?: IndexedBuffers;
   /** Manual gizmo override (position/scale/landmark) — present on a manual
    * transform commit, absent on the initial auto-place. */
@@ -486,12 +495,13 @@ class CrownDesignEngine {
     }
     const heightMm = Math.max((dieMaxZ - cz) * 1.3 + 0.5, marginR * 2);
     const library = builtinLibraryTooth(marginR, cz, heightMm, session.params.minWallThicknessMm * 2);
-    // HONEST SCOPE NOTE: the client cannot yet identify the real mesial/distal
-    // neighbour teeth from an arch scan (Phase 5+ segmentation), and the
-    // placement solve requires non-empty neighbour references. Until then,
-    // auto-place uses synthetic proximal reference boxes flanking the margin
-    // in ±MD at a small gap — a documented placeholder, called out as a
-    // reviewer-attention item, not hidden.
+    // HONEST SCOPE NOTE: the client cannot yet capture the real mesial/distal
+    // neighbour teeth from an arch scan (Phase 9 Task 3), and the placement
+    // solve requires non-empty neighbour references. Until then, auto-place
+    // uses synthetic proximal reference boxes flanking the margin in world ±X
+    // at a small gap — tagged `placeholder` (ADR-022): journaled with the
+    // anatomy op, disclosed in the panel, and the contact gate fails closed on
+    // them.
     const gap = 0.1;
     const width = marginR;
     const yMin = -marginR;
@@ -501,7 +511,7 @@ class CrownDesignEngine {
     const antNode = caseStore.getDocument().scene.find((node) => node.role === 'antagonist');
     const antRecord = antNode ? caseStore.getMeshRecord(antNode.meshId) : undefined;
     const antagonist = antRecord ? { positions: antRecord.positions, indices: antRecord.indices } : undefined;
-    return { library, mesialNeighbor, distalNeighbor, antagonist, manualOverride };
+    return { library, mesialNeighbor, distalNeighbor, neighbourProvenance: 'placeholder', antagonist, manualOverride };
   }
 
   /** Auto-places the built-in library tooth (no manual override). */
@@ -558,6 +568,7 @@ class CrownDesignEngine {
           scaleOcclusoGingival: result.scaleOcclusoGingival,
           usedProximalGap: result.usedProximalGap,
           antagonistUsed: result.antagonistUsed,
+          neighbourProvenance: input.neighbourProvenance ?? 'case',
           override: input.manualOverride ?? null,
         },
         session.inner ? [session.inner.contentHash] : [],
@@ -571,6 +582,7 @@ class CrownDesignEngine {
           scaleOcclusoGingival: result.scaleOcclusoGingival,
           usedProximalGap: result.usedProximalGap,
           antagonistUsed: result.antagonistUsed,
+          neighbourProvenance: input.neighbourProvenance ?? 'case',
           manual,
         },
         morph: null,
@@ -621,8 +633,10 @@ class CrownDesignEngine {
 
   /**
    * Runs the initial adaptation/morph on the placed tooth. Contacts are built
-   * ONLY from real neighbour/antagonist scan geometry present in the anatomy
-   * input (never fabricated); with none, the morph just seals the tooth to
+   * from the neighbour/antagonist geometry in the anatomy input — the
+   * antagonist only when the case has that scan, the proximal neighbours from
+   * the (currently `placeholder`) references, whose provenance rides on each
+   * contact into QC (ADR-022); with none, the morph just seals the tooth to
    * the margin. Caches the RBF plan under a deterministic `planId` so
    * `resolveMorph` can re-solve at new strengths in < 500 ms (T6). One
    * coalesced `crown-morph` op.
@@ -674,6 +688,7 @@ class CrownDesignEngine {
     const contentHash = await this.hashMesh(result.positions, result.indices);
     session.morphOuter = { positions: result.positions, indices: result.indices, contentHash };
     session.shell = null;
+    const neighbourProvenance = session.anatomyInput?.neighbourProvenance ?? 'case';
     session.morphContacts = result.contacts.map((c) => ({
       kind: c.kind as MorphContactKind,
       targetPenetrationMm: c.targetPenetrationMm,
@@ -681,6 +696,9 @@ class CrownDesignEngine {
       contactResidualMm: c.contactResidualMm,
       regionResidualMm: c.regionResidualMm,
       clampBound: c.clampBound,
+      // ADR-022: the antagonist is the case's own scan; the proximal
+      // neighbours carry the anatomy input's provenance.
+      provenance: c.kind === 'antagonist' ? 'case' : neighbourProvenance,
     }));
     session.morphHeatmap = result.heatmaps && result.heatmaps.length > 0 ? result.heatmaps[0]!.distances : null;
     if (journal) {

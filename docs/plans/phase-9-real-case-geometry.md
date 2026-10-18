@@ -67,6 +67,25 @@ stays a tracked-pending.
   case ⇒ unchanged); a golden assertion that every existing pin is
   byte-identical; i18n parity.
 
+**Landed (2026-10-19).** As planned, with these recorded decisions:
+- The server's trace rule (`apps/server/src/export-provenance.ts`, ladder
+  step 6.5, 409 `export-untraceable-provenance`): an antagonist `case` claim
+  needs an `antagonist`-role scan in the saved case; a proximal-contact or
+  onlay-divider `case` claim (explicit or by omission) is always refused,
+  because no case-derived source exists until Task 3.
+- The export suites' saved cases have no scans, so their fixture contacts are
+  declared `placeholder` and the contact gate (plus the onlay covered-cusp
+  gate) is acknowledged (`stand-in-provenance.testutil.ts`). The
+  validate-qc dual-validation pins and every kernel / cad-pipeline golden are
+  byte-identical. One server golden moved, and the change is documented:
+  the crown release traceability document, where only the `contact` row
+  changed (acknowledged, `placeholder`).
+- The bridge is `demo-fixture` as a whole in the export banner. Its gates are
+  NOT yet failed closed: that lands with the explicit demo mode in Task 6, so
+  the existing bridge demo flow keeps working until then.
+- The traceability schema gains the optional gate field additively, so
+  `TRACEABILITY_SCHEMA_VERSION` stays 2.
+
 ## Task 2 — Cavity neighbour-side bug
 
 `buildAdaptations` assigns mesial/distal by world `x < 0`. Use the outline

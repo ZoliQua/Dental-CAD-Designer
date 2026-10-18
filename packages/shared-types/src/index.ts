@@ -340,6 +340,19 @@ export interface Operation {
 // QC
 // ---------------------------------------------------------------------------
 
+/**
+ * Where a QC-relevant design input came from (ADR-022). `case` = derived from
+ * this case's own scans / user decisions (a test fixture entered as the case
+ * under test is `case` too); `placeholder` = a documented stand-in for MISSING
+ * case data; `demo-fixture` = a fixed demonstration geometry unrelated to the
+ * case (ADR-014). A gate measured on a non-`case` input never passes.
+ */
+export type GeometryProvenance = 'case' | 'placeholder' | 'demo-fixture';
+
+/** The non-`case` provenances — the only values `QcGateResult.inputProvenance`
+ * ever carries. */
+export type NonCaseProvenance = Exclude<GeometryProvenance, 'case'>;
+
 export interface QcGateResult {
   gate: string;
   passed: boolean;
@@ -349,6 +362,12 @@ export interface QcGateResult {
   threshold: number | null;
   unit: string | null;
   message: string;
+  /**
+   * Set ONLY when the gate was measured against a non-`case` input (ADR-022
+   * Decision 1) — the gate then fails closed. Omitted when every input is
+   * case-derived, so such reports serialize exactly as before the field existed.
+   */
+  inputProvenance?: NonCaseProvenance;
 }
 
 export interface QcReport {

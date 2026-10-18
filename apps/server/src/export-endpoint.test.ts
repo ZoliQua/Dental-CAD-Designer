@@ -40,6 +40,7 @@ import {
 } from './export-request.testutil.js';
 import { hashMesh } from './journal-replay.js';
 import { sha256HexOf } from './mesh-storage.js';
+import { declareStandIns, standInGates } from './stand-in-provenance.testutil.js';
 
 /** Stable, key-sorted JSON — byte-level value equality independent of key
  * order (the dual-validation suites' established canonical compare). */
@@ -95,19 +96,19 @@ describe('POST /api/restorations/:id/export — crown fixture (pass loop + falsi
     // round: the server resolves the profile by id+version and stamps its
     // recomputed report from the verified identity).
     const base = await buildCrownQcInput('standin');
-    standinInput = {
+    standinInput = declareStandIns({
       ...base,
       journalHash: hashMesh(base.crownSolid),
       profileVersion: STANDARD_ZIRCONIA_PROFILE.version,
-    };
+    });
     standinReport = await runCrownQc(standinInput);
     standinContext = toExportQcContext(toValidateQcBody(standinInput), 'crownSolid');
     const thinBase = await buildCrownQcInput('thin');
-    thinInput = {
+    thinInput = declareStandIns({
       ...thinBase,
       journalHash: hashMesh(thinBase.crownSolid),
       profileVersion: STANDARD_ZIRCONIA_PROFILE.version,
-    };
+    });
   }, 300_000);
 
   afterAll(async () => {
@@ -359,8 +360,10 @@ describe('POST /api/restorations/:id/export — crown fixture (pass loop + falsi
     expect(res.statusCode).toBe(409);
     const body = res.json() as { error: string; details: Record<string, unknown> };
     expect(body.error).toBe('export-journal-hash-mismatch');
-    expect(body.details['savedOperationCount']).toBe(0);
-    expect(body.details['requestOperationCount']).toBe(1);
+    // Saved: only the contact-gate ack op (ADR-022 stand-in); the request
+    // also hashes the export op.
+    expect(body.details['savedOperationCount']).toBe(harness.ackOps.length);
+    expect(body.details['requestOperationCount']).toBe(harness.ackOps.length + 1);
   }, 120_000);
 
   it('consistent-adversary journal tamper (export-op bytes hash) → 409 export-journal-verification-failed', async () => {
@@ -376,6 +379,25 @@ describe('POST /api/restorations/:id/export — crown fixture (pass loop + falsi
     const body = res.json() as { error: string; details: { reason: string } };
     expect(body.error).toBe('export-journal-verification-failed');
     expect(body.details.reason).toBe('export-operation-bytes-hash-mismatch');
+  }, 120_000);
+
+  it('ADR-022: a context that drops the stand-in provenance (claiming case by omission) → 409 export-untraceable-provenance, nothing released', async () => {
+    const harness = await standinHarness();
+    const body = cloneBody(harness.body);
+    const ctx = body.qcContext as { contacts: Array<Record<string, unknown>> };
+    ctx.contacts = ctx.contacts.map((c) => {
+      const rest = { ...c };
+      delete rest['provenance'];
+      return rest;
+    });
+    const res = await post(harness, body);
+    expect(res.statusCode).toBe(409);
+    const err = res.json() as { error: string; details: { claims: Array<{ input: string }> } };
+    expect(err.error).toBe('export-untraceable-provenance');
+    expect(err.details.claims.map((c) => c.input)).toEqual(
+      expect.arrayContaining(['contact:proximalMesial', 'contact:proximalDistal', 'contact:antagonist']),
+    );
+    expect(await prisma.export.count({ where: { restorationId: harness.restorationId } })).toBe(0);
   }, 120_000);
 
   it('kernel-version mismatch → 409 export-kernel-version-mismatch (no QC run on an incomparable kernel)', async () => {
@@ -547,7 +569,7 @@ describe('POST /api/restorations/:id/export — crown fixture (pass loop + falsi
     let thinContext: Record<string, unknown>;
 
     beforeAll(async () => {
-      const acked: RunCrownQcInput = { ...thinInput, acknowledgedGates: ['minWallThickness'] };
+      const acked: RunCrownQcInput = { ...thinInput, acknowledgedGates: [...standInGates(thinInput), 'minWallThickness'] };
       thinAckedReport = await runCrownQc(acked);
       expect(thinAckedReport.passed).toBe(true); // acknowledged failure
       thinContext = toExportQcContext(toValidateQcBody(thinInput), 'crownSolid');
@@ -566,8 +588,10 @@ describe('POST /api/restorations/:id/export — crown fixture (pass loop + falsi
 
     it('an acknowledged-with-warning export RELEASES, the acknowledgment journal-verified + recorded', async () => {
       const harness = await thinHarness(thinAckedReport);
-      expect(harness.request.acknowledgments.length).toBe(1);
-      expect(harness.request.acknowledgments[0]!.operationId).toBe(harness.ackOps[0]!.id);
+      // minWallThickness + the ADR-022 stand-in contact gate, each journaled.
+      const ackOpId = (gate: string) => harness.ackOps.find((op) => op.params['acknowledgedGate'] === gate)!.id;
+      expect(harness.request.acknowledgments.map((a) => a.gate)).toEqual(['minWallThickness', 'contact']);
+      expect(harness.request.acknowledgments[0]!.operationId).toBe(ackOpId('minWallThickness'));
       const res = await post(harness);
       expect(res.statusCode).toBe(200);
       const body = res.json() as ExportOkBody;
@@ -577,7 +601,8 @@ describe('POST /api/restorations/:id/export — crown fixture (pass loop + falsi
       const row = await prisma.export.findUniqueOrThrow({ where: { id: body.exportId } });
       const acks = JSON.parse(row.acknowledgmentsJson) as { gate: string; operationId: string }[];
       expect(acks).toEqual([
-        expect.objectContaining({ gate: 'minWallThickness', operationId: harness.ackOps[0]!.id }),
+        expect.objectContaining({ gate: 'minWallThickness', operationId: ackOpId('minWallThickness') }),
+        expect.objectContaining({ gate: 'contact', operationId: ackOpId('contact') }),
       ]);
     }, 120_000);
 

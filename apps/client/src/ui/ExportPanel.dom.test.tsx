@@ -17,7 +17,7 @@
 // diverged) with NO retry-to-green affordance; archive export streams down;
 // archive import surfaces the overwrite CONFLICT as a real confirm; the
 // imported-release provenance (importedUnverified) is shown; the ADR-014
-// synthetic-data disclosure rides over the panel.
+// input-provenance disclosure follows the selected restoration (ADR-022).
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -173,9 +173,37 @@ async function selectRestoration(id: string): Promise<void> {
 }
 
 describe('ExportPanel — export gate recap + server release', () => {
-  it('rides the ADR-014 synthetic-data disclosure over the panel', () => {
+  it('ADR-022: a fully case-derived crown shows NO demo/placeholder disclosure', async () => {
+    const id = seedCrown(qcReport([gate({ gate: 'watertight' }), gate({ gate: 'contact' })]));
     render(<ExportPanel />);
-    expect(screen.getByTestId('export-disclosure')).toBeTruthy();
+    expect(screen.queryByTestId('export-disclosure')).toBeNull();
+    await selectRestoration(id);
+    expect(screen.queryByTestId('export-disclosure')).toBeNull();
+    expect(screen.queryByTestId('export-qc-provenance-contact')).toBeNull();
+  });
+
+  it('ADR-022: a crown whose contact gate ran on placeholder neighbours names that gate in the banner and its row', async () => {
+    const id = seedCrown(
+      qcReport([gate({ gate: 'watertight' }), gate({ gate: 'contact', passed: false, inputProvenance: 'placeholder' })]),
+    );
+    render(<ExportPanel />);
+    await selectRestoration(id);
+    const banner = screen.getByTestId('export-disclosure');
+    expect(banner.getAttribute('data-provenance')).toBe('placeholder');
+    expect(banner.textContent).toContain('contact');
+    expect(screen.getByTestId('export-qc-provenance-contact').textContent).toMatch(/placeholder geometry/);
+    expect(screen.queryByTestId('export-qc-provenance-watertight')).toBeNull();
+    // Fail-closed: the export is blocked until the gate is acknowledged.
+    expect(screen.getByTestId('export-gate-block').textContent).toContain('contact');
+  });
+
+  it('ADR-014/022: a bridge (demo-fixture workflow) rides the demonstration-data disclosure', async () => {
+    const id = seedRestoration('bridge', qcReport([gate({ gate: 'watertight' })]));
+    render(<ExportPanel />);
+    await selectRestoration(id);
+    const banner = screen.getByTestId('export-disclosure');
+    expect(banner.getAttribute('data-provenance')).toBe('demo-fixture');
+    expect(banner.textContent).toMatch(/Demonstration data/);
   });
 
   it('BLOCKS export on a failing unacknowledged gate: shows the failing-gate list, disables the button, sends nothing', async () => {

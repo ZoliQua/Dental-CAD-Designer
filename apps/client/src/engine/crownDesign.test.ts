@@ -49,6 +49,8 @@ class FakePool {
   private hashCounter = 0;
   failShell = false;
   failResolveMorph = false;
+  /** Also return a proximal contact from the morph (ADR-022 provenance tests). */
+  withProximalContact = false;
 
   readonly run: RunnablePool['run'] = (async (job: string, payload: unknown): Promise<unknown> => {
     this.calls.push({ job, payload });
@@ -75,6 +77,9 @@ class FakePool {
           ...tetra(4),
           contacts: [
             { kind: 'antagonist', strength: antStrength, targetPenetrationMm: 0, achievedSignedDistanceMm: -0.01 * antStrength, contactResidualMm: 0.001, regionMinSignedDistanceMm: -0.02, regionMeanSignedDistanceMm: -0.01, regionRmsSignedDistanceMm: 0.01, facingVertexCount: 10, regionResidualMm: 0.001, clampBound: false },
+            ...(this.withProximalContact
+              ? [{ kind: 'proximalMesial', strength: 1, targetPenetrationMm: 0.02, achievedSignedDistanceMm: -0.02, contactResidualMm: 0.001, regionMinSignedDistanceMm: -0.02, regionMeanSignedDistanceMm: -0.01, regionRmsSignedDistanceMm: 0.01, facingVertexCount: 10, regionResidualMm: 0.001, clampBound: false }]
+              : []),
           ],
           maxContactResidualMm: 0.001,
           errorBoundMm: 0.002,
@@ -250,6 +255,37 @@ describe('crownDesign controller — finalMeshForExport (Phase 7 Task 3)', () =>
     expect(mesh!.contentHash).toBe(currentRestoration().stages.finalMesh);
     expect(mesh!.positions).toBeInstanceOf(Float64Array);
     expect(mesh!.indices).toBeInstanceOf(Uint32Array);
+  });
+});
+
+describe('crownDesign controller — neighbour provenance (ADR-022)', () => {
+  it('auto-place tags the synthetic neighbour boxes placeholder: journaled, published, and carried on each proximal contact into QC + export', async () => {
+    fake.withProximalContact = true;
+    crownDesignEngine.start(restorationId);
+    await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
+    await crownDesignEngine.placeAnatomyAuto();
+    const anatomyOp = caseStore.getDocument().history.filter((o) => o.name === 'crown-anatomy').pop()!;
+    expect(anatomyOp.params.neighbourProvenance).toBe('placeholder');
+    expect(useCrownStore.getState().anatomy?.neighbourProvenance).toBe('placeholder');
+
+    await crownDesignEngine.runMorph();
+    await crownDesignEngine.constructShell();
+    await crownDesignEngine.runQc();
+    const qcCall = [...fake.calls].reverse().find((c) => c.job === 'runQc')!;
+    const contacts = (qcCall.payload as { contacts: Array<{ kind: string; provenance?: string }> }).contacts;
+    expect(contacts.find((c) => c.kind === 'proximalMesial')?.provenance).toBe('placeholder');
+    // The antagonist is the case's own antagonist scan.
+    expect(contacts.find((c) => c.kind === 'antagonist')?.provenance).toBe('case');
+    const ctx = crownDesignEngine.exportQcContext(restorationId)!;
+    expect(ctx.contacts.find((c) => c.kind === 'proximalMesial')?.provenance).toBe('placeholder');
+  });
+
+  it('an anatomy input without a neighbour provenance (real geometry supplied) is journaled as case', async () => {
+    crownDesignEngine.start(restorationId);
+    await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
+    await crownDesignEngine.placeAnatomy(anatomyInput());
+    const anatomyOp = caseStore.getDocument().history.filter((o) => o.name === 'crown-anatomy').pop()!;
+    expect(anatomyOp.params.neighbourProvenance).toBe('case');
   });
 });
 

@@ -178,6 +178,37 @@ describe('renderTraceabilityHtml — fallbacks and failing reports', () => {
     expect(html).toContain('0.120 mm (120 µm)');
   });
 
+  it('ADR-022: a gate measured on placeholder input names its provenance beside the status (all locales), and the document validates', () => {
+    const input = previewInputFixture();
+    const doc = buildPreviewTraceabilityDocument({
+      ...input,
+      report: {
+        ...input.report,
+        passed: false,
+        gates: [
+          ...input.report.gates,
+          {
+            gate: 'contact',
+            passed: false,
+            acknowledged: true,
+            value: 0.001,
+            threshold: 0.05,
+            unit: 'mm',
+            message: 'NON-CASE INPUT: measured against placeholder geometry',
+            inputProvenance: 'placeholder',
+          },
+        ],
+      },
+    });
+    expect(doc.qc.gates.at(-1)?.inputProvenance).toBe('placeholder');
+    expect(renderTraceabilityHtml(doc, { locale: 'en' })).toContain('FAIL — acknowledged — measured against PLACEHOLDER geometry, not the patient');
+    expect(renderTraceabilityHtml(doc, { locale: 'hu' })).toContain('HELYETTESÍTŐ geometrián mérve');
+    // Case-derived gates carry no provenance text.
+    const plain = renderTraceabilityHtml(previewDoc(), { locale: 'en' });
+    expect(plain).not.toContain('PLACEHOLDER');
+    expect(plain).not.toContain('DEMONSTRATION fixture');
+  });
+
   it('an unknown gate id falls back to the raw id; an unknown limitation code falls back to its statement', () => {
     const input = releaseInputFixture();
     const doc = {

@@ -195,6 +195,7 @@ export function diffQcReports(server: QcReport, client: QcReport): QcReportDiffe
     'threshold',
     'unit',
     'message',
+    'inputProvenance',
   ];
   for (let i = 0; i < n; i++) {
     const s = server.gates[i]!;

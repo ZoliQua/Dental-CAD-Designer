@@ -15,7 +15,7 @@
 // (state/caseStore.ts) — the panel reads that through `useCaseStore`. THIS store
 // holds only the EPHEMERAL in-progress tool state.
 import { create } from 'zustand';
-import type { QcReport } from '@dqcad/shared-types';
+import type { GeometryProvenance, QcReport } from '@dqcad/shared-types';
 
 /** The seven cavity-design stages (mirrors engine/cavityWorkflow.ts's
  * `CavityStage`). */
@@ -84,6 +84,9 @@ export interface CavityContactsSummary {
    * (the box adaptation must not break the occlusal seam's G1 continuity). */
   seamDihedralMaxBeforeDeg: number;
   seamDihedralMaxAfterDeg: number;
+  /** Provenance of the neighbour references the boxes adapted to (ADR-022) —
+   * `placeholder` until neighbour capture lands (Phase 9 Task 3). */
+  neighbourProvenance: GeometryProvenance;
 }
 
 export interface CavityCoverageSummary {
@@ -91,6 +94,8 @@ export interface CavityCoverageSummary {
    * cusp-coverage thickness gate uses. Onlay only. */
   pointMm: readonly [number, number, number];
   normalMm: readonly [number, number, number];
+  /** ADR-022 — `placeholder` for the bbox default divider. */
+  provenance: GeometryProvenance;
 }
 
 export interface CavityShellSummary {

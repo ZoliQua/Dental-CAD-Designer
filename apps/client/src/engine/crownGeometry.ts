@@ -140,9 +140,11 @@ export function flattenLoop(points: readonly Vec3[]): Float64Array {
   return out;
 }
 
-/** An axis-aligned box, outward-wound. Used for the synthetic antagonist /
- * neighbour contact geometry the morph stage consumes when a real scan of
- * that role is present in the scene. */
+/** An axis-aligned box, outward-wound. Used for the SYNTHETIC proximal
+ * neighbour references (crown and cavity) that stand in for neighbour teeth
+ * the client cannot capture from the case yet — they are NOT case geometry,
+ * and every contact measured against them is tagged `placeholder` (ADR-022)
+ * so the contact gate fails closed. */
 export function boxMesh(min: Vec3, max: Vec3): IndexedBuffers {
   const [x0, y0, z0] = min;
   const [x1, y1, z1] = max;

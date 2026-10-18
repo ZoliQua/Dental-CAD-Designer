@@ -139,7 +139,11 @@ export function renderTraceabilityHtml(
         `<td>${escapeHtml(gateLabel(gate.gate))}</td>` +
         `<td class="num">${escapeHtml(formatGateValue(gate.value, gate.unit, notAvailable))}</td>` +
         `<td class="num">${escapeHtml(formatGateValue(gate.threshold, gate.unit, notAvailable))}</td>` +
-        `<td class="${status.cellClass}">${escapeHtml(t(status.key))}</td>` +
+        `<td class="${status.cellClass}">${escapeHtml(t(status.key))}${
+          // ADR-022: a gate measured on non-case input says so beside its
+          // status; case-derived rows render byte-identically to before.
+          gate.inputProvenance === undefined ? '' : ` — ${escapeHtml(t(`gateProvenance.${gate.inputProvenance}`))}`
+        }</td>` +
         `<td>${escapeHtml(gate.message)}</td>` +
         `</tr>`
       );

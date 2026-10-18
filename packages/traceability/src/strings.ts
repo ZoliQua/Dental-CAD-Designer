@@ -49,6 +49,8 @@ const en = {
   'gateStatus.pass': 'pass',
   'gateStatus.fail': 'FAIL',
   'gateStatus.acknowledged': 'FAIL — acknowledged',
+  'gateProvenance.placeholder': 'measured against PLACEHOLDER geometry, not the patient',
+  'gateProvenance.demo-fixture': 'measured against the DEMONSTRATION fixture, not this case',
   'gate.watertight': 'Watertight',
   'gate.manifold': 'Manifold edges',
   'gate.selfIntersection': 'Self-intersection',
@@ -146,6 +148,8 @@ const hu: Record<TraceabilityStringKey, string> = {
   'gateStatus.pass': 'megfelelt',
   'gateStatus.fail': 'NEM FELELT MEG',
   'gateStatus.acknowledged': 'NEM FELELT MEG — tudomásul véve',
+  'gateProvenance.placeholder': 'HELYETTESÍTŐ geometrián mérve, nem a páciensén',
+  'gateProvenance.demo-fixture': 'a DEMONSTRÁCIÓS mintán mérve, nem ezen az eseten',
   // Review N1, documented DELIBERATE choice: the client itself carries two
   // established Hungarian terms for "watertight" — the import-stats panel
   // says 'Vízhatlan' (hu.json import.stats.watertight) while the crown/
@@ -249,6 +253,8 @@ const de: Record<TraceabilityStringKey, string> = {
   'gateStatus.pass': 'bestanden',
   'gateStatus.fail': 'NICHT BESTANDEN',
   'gateStatus.acknowledged': 'NICHT BESTANDEN — zur Kenntnis genommen',
+  'gateProvenance.placeholder': 'an PLATZHALTER-Geometrie gemessen, nicht am Patienten',
+  'gateProvenance.demo-fixture': 'am DEMONSTRATIONS-Fixture gemessen, nicht an diesem Fall',
   'gate.watertight': 'Wasserdichtigkeit',
   'gate.manifold': 'Mannigfaltigkeitskanten',
   'gate.selfIntersection': 'Selbstdurchdringung',
@@ -344,6 +350,8 @@ const es: Record<TraceabilityStringKey, string> = {
   'gateStatus.pass': 'aprobada',
   'gateStatus.fail': 'FALLIDA',
   'gateStatus.acknowledged': 'FALLIDA — reconocida',
+  'gateProvenance.placeholder': 'medida sobre geometría PROVISIONAL, no la del paciente',
+  'gateProvenance.demo-fixture': 'medida sobre la plantilla de DEMOSTRACIÓN, no este caso',
   'gate.watertight': 'Estanqueidad',
   'gate.manifold': 'Aristas manifold',
   'gate.selfIntersection': 'Autointersección',

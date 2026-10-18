@@ -1880,7 +1880,6 @@ body {
 .bridge-panel__synthetic-start-note,
 .export-workflow__note,
 .export-release__note,
-.export-panel__disclosure,
 .archive-section__note,
 .archive-section__provenance {
   font-size: 0.75rem;
@@ -1993,10 +1992,24 @@ body {
   color: var(--color-text);
 }
 
+.stand-in-disclosure {
+  font-size: 0.8rem;
+}
+
+.stand-in-disclosure__title {
+  color: var(--color-warning);
+}
+
+.qc-gate__provenance {
+  color: var(--color-warning);
+}
+
 .crown-panel__warning-banner,
 .cavity-panel__warning-banner,
 .bridge-panel__warning-banner,
 .bridge-panel__synthetic-banner,
+.stand-in-disclosure,
+.export-panel__disclosure,
 .archive-section__conflict {
   margin: 0.5rem 0;
   padding: 0.45rem 0.6rem;

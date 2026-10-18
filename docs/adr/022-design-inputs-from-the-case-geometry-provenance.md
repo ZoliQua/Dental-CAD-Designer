@@ -1,6 +1,6 @@
 # ADR-022 — Design inputs come from the case: typed geometry provenance, fail-closed QC on stand-ins
 
-**Status:** Proposed (Phase 9 planning)
+**Status:** Accepted (2026-10-18; Phase 9 Task 1 implements Decisions 1, 2 and 6)
 **Date:** 2026-10
 **Relates:** ADR-014 (synthetic demo-fixture disclosure — generalized here),
 ADR-011 (bridge shared insertion axis), ADR-017 (server-authoritative export

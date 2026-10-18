@@ -17,6 +17,7 @@ import { cavityDesignEngine } from '../engine/cavityDesign';
 import { isCavityQcStale } from '../engine/cavityWorkflow';
 import { insertionAxisIsPlaceholder } from '../engine/restorations';
 import { useCaseStore } from '../state/caseStore';
+import { GateProvenanceNote, StandInDisclosure } from './StandInDisclosure';
 import { useCavityStore, type CavityPrerequisiteCode, type CavityStageName } from '../state/cavityStore';
 
 const STAGE_TITLE_KEY: Record<CavityStageName, string> = {
@@ -283,6 +284,9 @@ function ContactsStage({ busy }: { busy: boolean }) {
       </button>
       {contacts && (
         <>
+          {contacts.neighbourProvenance !== 'case' && (
+            <StandInDisclosure messageKey="provenance.cavityNeighbours" testId="cavity-neighbours-placeholder" />
+          )}
           <table className="cavity-contacts__table" data-testid="cavity-contacts-table">
             <tbody>
               {contacts.boxes.map((b) => (
@@ -322,13 +326,18 @@ function CuspCoverageStage({ busy }: { busy: boolean }) {
         {t('cavity.coverageSelect')}
       </button>
       {coverage && (
-        <p className="cavity-stage__readout" data-testid="cavity-coverage-readout">
-          {t('cavity.coverageReadout', {
-            x: coverage.pointMm[0].toFixed(2),
-            y: coverage.pointMm[1].toFixed(2),
-            z: coverage.pointMm[2].toFixed(2),
-          })}
-        </p>
+        <>
+          <p className="cavity-stage__readout" data-testid="cavity-coverage-readout">
+            {t('cavity.coverageReadout', {
+              x: coverage.pointMm[0].toFixed(2),
+              y: coverage.pointMm[1].toFixed(2),
+              z: coverage.pointMm[2].toFixed(2),
+            })}
+          </p>
+          {coverage.provenance !== 'case' && (
+            <StandInDisclosure messageKey="provenance.coverageDivider" testId="cavity-coverage-placeholder" />
+          )}
+        </>
       )}
     </StageShell>
   );
@@ -384,6 +393,7 @@ function QcStage({ busy, restoration }: { busy: boolean; restoration: Restoratio
                   <td>
                     {g.passed ? t('cavity.qcGatePass') : g.acknowledged ? t('cavity.qcAcknowledged') : t('cavity.qcGateFail')}
                     {g.value !== null && g.unit ? ` (${g.value.toFixed(3)} ${g.unit})` : ''}
+                    <GateProvenanceNote gate={g} testId={`cavity-qc-provenance-${g.gate}`} />
                   </td>
                   <td>
                     {!g.passed && !g.acknowledged && (

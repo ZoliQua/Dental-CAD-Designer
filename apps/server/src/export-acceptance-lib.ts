@@ -54,6 +54,7 @@ import {
 import { toExportQcContext } from './export-request.testutil.js';
 import { reimportExportedBytes } from './export-validation.js';
 import { hashMesh } from './journal-replay.js';
+import { declareStandIns } from './stand-in-provenance.testutil.js';
 
 /** A restoration-type-normalized fixture bundle — everything the full-loop
  * driver needs, sourced from the EXISTING P4/P5/P6 fixtures. */
@@ -82,11 +83,11 @@ export interface AcceptanceBundle {
 
 export async function buildCrownBundle(): Promise<AcceptanceBundle> {
   const base = await buildCrownQcInput('standin');
-  const input: RunCrownQcInput = {
+  const input: RunCrownQcInput = declareStandIns({
     ...base,
     journalHash: hashMesh(base.crownSolid),
     profileVersion: STANDARD_ZIRCONIA_PROFILE.version,
-  };
+  });
   const clientReport = await runCrownQc(input);
   return {
     restorationType: 'crown',
@@ -96,18 +97,18 @@ export async function buildCrownBundle(): Promise<AcceptanceBundle> {
     clientReport,
     qcContext: toExportQcContext(toValidateQcBody(input), 'crownSolid'),
     profile: STANDARD_ZIRCONIA_PROFILE,
-    hasAcknowledgedGate: false,
+    hasAcknowledgedGate: true, // ADR-022: the stand-in contact gate
     loosenThreshold: (ctx) => ({ ...ctx, minWallThicknessMm: 0.05 }),
   };
 }
 
 export async function buildInlayBundle(): Promise<AcceptanceBundle> {
   const built = await buildInlay();
-  const input: RunInlayQcInput = {
+  const input: RunInlayQcInput = declareStandIns({
     ...built.qcInput,
     journalHash: hashMesh(built.qcInput.inlaySolid),
     profileVersion: EMAX_LITHIUM_DISILICATE_PROFILE.version,
-  };
+  });
   const clientReport = await runInlayQc(input);
   return {
     restorationType: 'inlay',
@@ -117,18 +118,18 @@ export async function buildInlayBundle(): Promise<AcceptanceBundle> {
     clientReport,
     qcContext: toExportQcContext(toValidateInlayQcBody(input), 'inlaySolid'),
     profile: EMAX_LITHIUM_DISILICATE_PROFILE,
-    hasAcknowledgedGate: false,
+    hasAcknowledgedGate: true, // ADR-022: the stand-in contact gate
     loosenThreshold: (ctx) => loosenCavityThreshold(ctx),
   };
 }
 
 export async function buildOnlayBundle(): Promise<AcceptanceBundle> {
   const built = await buildOnlay();
-  const input: RunInlayQcInput = {
+  const input: RunInlayQcInput = declareStandIns({
     ...built.qcInput,
     journalHash: hashMesh(built.qcInput.inlaySolid),
     profileVersion: EMAX_LITHIUM_DISILICATE_PROFILE.version,
-  };
+  });
   const clientReport = await runInlayQc(input);
   return {
     restorationType: 'onlay',

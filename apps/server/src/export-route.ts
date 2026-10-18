@@ -76,6 +76,8 @@
 //  6. journal verification (export op binding
 //     incl. headerText, restoration/finalMesh,
 //     ack refs; N4: operationId null → refuse)    → 409 (three codes)
+//  6.5 ADR-022: a `case` provenance claim the saved
+//     case cannot back                            → 409 export-untraceable-provenance
 //  7. kernel version                              → 409 export-kernel-version-mismatch
 //  8. material-profile pinning (F1): resolve by
 //     id+version, verify checksum, verify every
@@ -157,6 +159,7 @@ import type { FastifyInstance } from 'fastify';
 import { KERNEL_VERSION } from '@dqcad/kernel';
 import type {
   CaseDocument,
+  GeometryProvenance,
   QcReport,
   QcTraceabilityDocument,
   RestorationExportRequest,
@@ -186,6 +189,7 @@ import {
   type ReimportResult,
 } from './export-validation.js';
 import { readFinalMesh } from './final-mesh-storage.js';
+import { assertTraceableProvenance } from './export-provenance.js';
 import { renderTraceabilityHtml, type TraceabilityLocale } from '@dqcad/traceability';
 import { validateTraceabilityDocument } from '@dqcad/traceability/validate';
 import { resolveExportMaterialProfile, verifyProfileThresholds } from './export-profile.js';
@@ -255,6 +259,7 @@ export interface InlayExportQcContext {
   coverage?: {
     coverageDivider: { pointMm: number[]; normalMm: number[] };
     cuspCoverageMinThicknessMm: number;
+    dividerProvenance?: GeometryProvenance;
   };
   seamEdges: SeamEdgeInput[];
   cavityTriangleIndices: number[];
@@ -416,6 +421,7 @@ async function runExportQc(
               normalMm: toVec3(c.coverage.coverageDivider.normalMm),
             },
             cuspCoverageMinThicknessMm: c.coverage.cuspCoverageMinThicknessMm,
+            ...(c.coverage.dividerProvenance === undefined ? {} : { dividerProvenance: c.coverage.dividerProvenance }),
           }
         : undefined,
       marginExclusionMm: c.marginExclusionMm,
@@ -572,6 +578,11 @@ export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps
         // P6-T8: tampering → refuse). Returns the verified restoration (its
         // saved, schema-bounded params feed the crown threshold authority).
         const restoration = verifyExportJournal(document, exportRequest);
+
+        // 6.5 ADR-022 provenance traceability: a context claiming `case`
+        // provenance for an input the saved case cannot back is refused —
+        // the server never trusts an untraceable "this was the patient".
+        assertTraceableProvenance(qcContext, document);
 
         // 7. Kernel version: a report recomputed on a different kernel is not
         // comparable (determinism is per kernel version) — refuse rather than

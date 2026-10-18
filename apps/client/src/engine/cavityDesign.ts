@@ -29,7 +29,7 @@
 // same layer-boundary convention crownDesign.ts documents).
 import { KERNEL_VERSION, type JobName, type JobPayloadMap, type JobResultMap, type RunJobOptions } from '@dqcad/kernel-workers';
 import { DEFAULT_OFFSET_VOXEL_PITCH_MM, type MaterialProfile } from '@dqcad/clinical-profiles';
-import type { FdiTooth, Operation, QcReport, Restoration, RestorationParams, Vec3 } from '@dqcad/shared-types';
+import type { FdiTooth, GeometryProvenance, Operation, QcReport, Restoration, RestorationParams, Vec3 } from '@dqcad/shared-types';
 import { caseStore } from './caseStore';
 import { resolveFullMaterialProfile, resolveProfileVersion } from './materialProfile';
 import {
@@ -153,12 +153,24 @@ interface ContactResidualInput {
   contactResidualMm: number;
   regionResidualMm: number;
   clampBound: boolean;
+  /** ADR-022 — the neighbour geometry's provenance (fails the gate closed
+   * unless `case`). */
+  provenance: GeometryProvenance;
 }
+
+/**
+ * ADR-022: the proximal neighbours the box adaptation targets are synthetic
+ * boxes, not the patient's teeth (neighbour capture is Phase 9 Task 3) —
+ * journaled, disclosed, and carried into the contact gate, which fails closed.
+ */
+const CAVITY_NEIGHBOUR_PROVENANCE: GeometryProvenance = 'placeholder';
 
 /** Structural mirror of `@dqcad/cad-pipeline`'s `CoverageDivider`. */
 export interface CoverageDivider {
   pointMm: Vec3;
   normalMm: Vec3;
+  /** ADR-022 — where the divider came from (absent ⇒ `'case'`). */
+  provenance?: GeometryProvenance;
 }
 
 interface Session {
@@ -594,6 +606,7 @@ class CavityDesignEngine {
         contactResidualMm: b.contactResidualMm,
         regionResidualMm: b.faceResidualMm,
         clampBound: b.clampBound,
+        provenance: CAVITY_NEIGHBOUR_PROVENANCE,
       }));
       session.contacts = {
         positions: result.positions,
@@ -612,6 +625,7 @@ class CavityDesignEngine {
           clampedBoxes: result.clampedBoxes,
           seamDihedralMaxBeforeDeg: result.seamDihedralMaxBeforeDeg,
           seamDihedralMaxAfterDeg: result.seamDihedralMaxAfterDeg,
+          neighbourProvenance: CAVITY_NEIGHBOUR_PROVENANCE,
         },
         session.patch ? [session.patch.contentHash] : [],
       );
@@ -629,6 +643,7 @@ class CavityDesignEngine {
           clampedBoxes: [...result.clampedBoxes],
           seamDihedralMaxBeforeDeg: result.seamDihedralMaxBeforeDeg,
           seamDihedralMaxAfterDeg: result.seamDihedralMaxAfterDeg,
+          neighbourProvenance: CAVITY_NEIGHBOUR_PROVENANCE,
         },
       });
       this.refreshGates();
@@ -641,9 +656,10 @@ class CavityDesignEngine {
   // ---- stage: cusp coverage (ONLAY only) --------------------------------
 
   /** A default covered-cusp divider derived from the cavity outline bbox — a
-   * plane at the outline's buccal (min-Y) extent, normal pointing outward
-   * (−Y). The UI lets the clinician override it; a real onlay would derive the
-   * covered cusp from segmentation (reviewer item). */
+   * plane at the outline's world min-Y extent, normal fixed at world −Y. It is
+   * NOT derived from the patient's cusp anatomy, so it is tagged `placeholder`
+   * (ADR-022): the covered-cusp gate fails closed on it. A real onlay would
+   * derive the covered cusp from a cusp watershed (not decided by ADR-022). */
   defaultCoverageDivider(): CoverageDivider {
     const pts = this.requireSession().outlinePoints;
     let minY = Infinity, sumX = 0, sumZ = 0;
@@ -653,7 +669,7 @@ class CavityDesignEngine {
       sumZ += p[2];
     }
     const n = pts.length || 1;
-    return { pointMm: [sumX / n, minY, sumZ / n], normalMm: [0, -1, 0] };
+    return { pointMm: [sumX / n, minY, sumZ / n], normalMm: [0, -1, 0], provenance: 'placeholder' };
   }
 
   /**
@@ -679,13 +695,13 @@ class CavityDesignEngine {
         'cuspCoverage',
         marker,
         'inlay-cusp-coverage',
-        { pointMm: divider.pointMm, normalMm: divider.normalMm },
+        { pointMm: divider.pointMm, normalMm: divider.normalMm, dividerProvenance: divider.provenance ?? 'case' },
         session.contacts ? [session.contacts.contentHash] : [],
       );
       this.publish({
         busyStage: null,
         progress: 1,
-        coverage: { pointMm: divider.pointMm, normalMm: divider.normalMm },
+        coverage: { pointMm: divider.pointMm, normalMm: divider.normalMm, provenance: divider.provenance ?? 'case' },
       });
       this.refreshGates();
     } catch (error) {
@@ -785,6 +801,7 @@ class CavityDesignEngine {
         ? {
             coverageDivider: { pointMm: session.coverage.pointMm, normalMm: session.coverage.normalMm },
             cuspCoverageMinThicknessMm: profile.cuspCoverageMinThicknessMm,
+            dividerProvenance: session.coverage.provenance ?? 'case',
           }
         : undefined;
     return {
@@ -932,6 +949,7 @@ class CavityDesignEngine {
               normalMm: [...session.coverage.normalMm],
             },
             cuspCoverageMinThicknessMm: profile.cuspCoverageMinThicknessMm,
+            dividerProvenance: session.coverage.provenance ?? 'case',
           }
         : undefined;
     return {

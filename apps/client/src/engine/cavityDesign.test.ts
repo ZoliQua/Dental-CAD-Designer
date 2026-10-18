@@ -329,6 +329,37 @@ describe('cavityDesign controller — ONLAY cusp coverage', () => {
     expect(coveragePayload.coverage).toBeDefined();
   });
 
+  it('ADR-022: the bbox default divider and the synthetic neighbours are tagged placeholder end to end', async () => {
+    cavityDesignEngine.start(restorationId);
+    await cavityDesignEngine.runFit({ pitchMm: 0.06 });
+    await cavityDesignEngine.runPatch();
+    await cavityDesignEngine.runContacts();
+    const contactsOp = caseStore.getDocument().history.filter((o) => o.name === 'inlay-proximal-contacts').pop()!;
+    expect(contactsOp.params.neighbourProvenance).toBe('placeholder');
+    expect(useCavityStore.getState().contacts?.neighbourProvenance).toBe('placeholder');
+
+    const divider = cavityDesignEngine.defaultCoverageDivider();
+    expect(divider.provenance).toBe('placeholder');
+    await cavityDesignEngine.selectCuspCoverage(divider);
+    const coverageOp = caseStore.getDocument().history.filter((o) => o.name === 'inlay-cusp-coverage').pop()!;
+    expect(coverageOp.params.dividerProvenance).toBe('placeholder');
+    expect(useCavityStore.getState().coverage?.provenance).toBe('placeholder');
+
+    await cavityDesignEngine.constructShell();
+    await cavityDesignEngine.runQc();
+    const payload = fake.calls.filter((c) => c.job === 'runInlayQc').pop()!.payload as {
+      coverage: { dividerProvenance?: string; coverageDivider: Record<string, unknown> };
+      contacts: Array<{ provenance?: string }>;
+    };
+    expect(payload.coverage.dividerProvenance).toBe('placeholder');
+    // The divider geometry itself stays {pointMm, normalMm} (server schema shape).
+    expect(Object.keys(payload.coverage.coverageDivider).sort()).toEqual(['normalMm', 'pointMm']);
+    expect(payload.contacts.every((c) => c.provenance === 'placeholder')).toBe(true);
+    const ctx = cavityDesignEngine.exportQcContext(restorationId)!;
+    expect(ctx.coverage?.dividerProvenance).toBe('placeholder');
+    expect(ctx.contacts.every((c) => c.provenance === 'placeholder')).toBe(true);
+  });
+
   it('the ONLAY QC payload carries the T7-derived 1.8 mm margin-exclusion band (runQc AND the acknowledge re-run)', async () => {
     // Task 9 review fix: the band is BRANCHED on restoration type — a single
     // unconditional 1.3 previously applied to onlays too, narrower than the

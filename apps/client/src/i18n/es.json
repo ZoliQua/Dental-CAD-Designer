@@ -817,5 +817,16 @@
     "casePickerOffline": "Los casos se almacenan en el servidor local de DQ Dental CAD, que no es accesible desde este despliegue. Ejecute la aplicación localmente (npm run dev) para crear, abrir y guardar casos.",
     "exportOffline": "Requiere el servidor local: cada archivo de fabricación es revalidado por el servidor antes de su liberación.",
     "archiveOffline": "Requiere el servidor local: los archivos de caso se generan e importan en el servidor."
+  },
+  "provenance": {
+    "title": "Geometría provisional",
+    "crownNeighbours": "Los vecinos mesial y distal son cajas sintéticas provisionales, no los dientes del paciente. La captura de vecinos a partir del escaneo de la arcada aún no está disponible, por lo que la puerta de QC de contacto proximal no puede superarse. Reconózcala solo después de comprobar los contactos por otra vía.",
+    "cavityNeighbours": "Las cajas proximales se adaptan a vecinos sintéticos provisionales, no a los dientes del paciente. La captura de vecinos a partir del escaneo de la arcada aún no está disponible, por lo que la puerta de QC de contacto proximal no puede superarse. Reconózcala solo después de comprobar los contactos por otra vía.",
+    "coverageDivider": "El plano divisor de la cúspide cubierta es un plano provisional tomado de la caja envolvente del contorno de la cavidad, no de la anatomía cuspídea del paciente. Por ello, la puerta de QC de grosor de la cúspide cubierta no puede superarse. Reconózcala solo después de comprobar el grosor de la cúspide por otra vía.",
+    "gate": {
+      "placeholder": "medido sobre geometría provisional, no la del paciente; no puede superarse",
+      "demo-fixture": "medido sobre la plantilla de demostración, no este caso; no puede superarse"
+    },
+    "exportPlaceholder": "Algunas puertas de QC de esta restauración se midieron sobre geometría provisional, no la del paciente ({{gates}}). No pueden superarse. El reconocimiento queda registrado en el diario y figura en el documento de trazabilidad."
   }
 }

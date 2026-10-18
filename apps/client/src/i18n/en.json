@@ -817,5 +817,16 @@
     "casePickerOffline": "Cases are stored on the local DQ Dental CAD server, which is not reachable from this deployment. Run the app locally (npm run dev) to create, open and save cases.",
     "exportOffline": "Needs the local server: every manufacturing file is re-validated by the server before release.",
     "archiveOffline": "Needs the local server: case archives are built and imported server-side."
+  },
+  "provenance": {
+    "title": "Stand-in geometry",
+    "crownNeighbours": "The mesial and distal neighbours are synthetic placeholder boxes, not the patient's teeth. Capturing neighbours from the arch scan is not available yet, so the proximal-contact QC gate cannot pass. Acknowledge it only after you have checked the contacts another way.",
+    "cavityNeighbours": "The proximal boxes are adapted to synthetic placeholder neighbours, not the patient's teeth. Capturing neighbours from the arch scan is not available yet, so the proximal-contact QC gate cannot pass. Acknowledge it only after you have checked the contacts another way.",
+    "coverageDivider": "The covered-cusp divider is a placeholder plane taken from the cavity outline's bounding box, not from the patient's cusp anatomy. The covered-cusp thickness QC gate therefore cannot pass. Acknowledge it only after you have checked the cusp thickness another way.",
+    "gate": {
+      "placeholder": "measured against placeholder geometry, not the patient's; cannot pass",
+      "demo-fixture": "measured against the demonstration fixture, not this case; cannot pass"
+    },
+    "exportPlaceholder": "Some QC gates of this restoration were measured against placeholder geometry, not the patient's ({{gates}}). They cannot pass. An acknowledgment is journaled and printed in the traceability document."
   }
 }

@@ -294,6 +294,9 @@ export function toValidateInlayQcBody(
               normalMm: [...input.coverage.coverageDivider.normalMm],
             },
             cuspCoverageMinThicknessMm: input.coverage.cuspCoverageMinThicknessMm,
+            ...(input.coverage.dividerProvenance === undefined
+              ? {}
+              : { dividerProvenance: input.coverage.dividerProvenance }),
           },
         }
       : {}),

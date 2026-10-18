@@ -111,6 +111,8 @@ describe('CrownDesignPanel — browser-lane critical path (real WorkerPool, synt
     await waitFor(() => expect(screen.getByTestId('crown-anatomy-readout')).toBeTruthy(), { timeout: 30_000 });
     expect(restoration(id).stages.anatomyPlacement).toBeTypeOf('string');
     expect(historyNames()).toContain('crown-anatomy');
+    // ADR-022: the auto-place neighbours are synthetic boxes — disclosed.
+    expect(screen.getByTestId('crown-neighbours-placeholder')).toBeTruthy();
 
     // Stage 3 — morph.
     await user.click(screen.getByTestId('crown-morph-run'));
@@ -141,6 +143,11 @@ describe('CrownDesignPanel — browser-lane critical path (real WorkerPool, synt
     expect(historyNames()).toContain('crown-qc');
     // The QcReport renders per-gate rows.
     expect(screen.getByTestId('crown-qc-gate-watertight')).toBeTruthy();
+    // ADR-022: the contact gate ran on placeholder neighbours — it fails
+    // closed and its row says why.
+    expect(screen.getByTestId('crown-qc-gate-contact').getAttribute('data-passed')).toBe('false');
+    expect(screen.getByTestId('crown-qc-provenance-contact')).toBeTruthy();
+    expect(screen.queryByTestId('crown-qc-provenance-watertight')).toBeNull();
 
     // CRITICAL fix: a downstream edit (freeform sculpt) after QC invalidates
     // the report — the panel must NOT keep showing the old pass/fail banner.

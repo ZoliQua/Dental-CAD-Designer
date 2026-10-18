@@ -35,6 +35,7 @@ import { buildExportHarness, toExportQcContext, type ExportHarness } from './exp
 import { hashMesh } from './journal-replay.js';
 import { buildCaseArchive, CaseArchiveError, parseCaseArchive, type CaseArchiveInputEntry } from './case-archive.js';
 import { createEmptyCaseDocument } from './case-document.js';
+import { declareStandIns } from './stand-in-provenance.testutil.js';
 
 /** Two isolated app instances (source + fresh import target), each with its own
  * temp stores. The import target shares the SAME test.db (globalSetup migrates
@@ -101,11 +102,11 @@ describe('case archive export/import — round-trip identity (Phase 7 Task 6 Par
     target = await makeServer('dst', true);
 
     const base = await buildCrownQcInput('standin');
-    standinInput = {
+    standinInput = declareStandIns({
       ...base,
       journalHash: hashMesh(base.crownSolid),
       profileVersion: STANDARD_ZIRCONIA_PROFILE.version,
-    };
+    });
     standinReport = await runCrownQc(standinInput);
     standinContext = toExportQcContext(toValidateQcBody(standinInput), 'crownSolid');
   }, 300_000);

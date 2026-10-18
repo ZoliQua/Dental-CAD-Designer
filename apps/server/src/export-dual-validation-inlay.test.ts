@@ -23,6 +23,7 @@ import { buildInlay, buildOnlay, toValidateInlayQcBody, CAVITY_TOOTH } from './i
 import { buildExportHarness, toExportQcContext } from './export-request.testutil.js';
 import { hashMesh } from './journal-replay.js';
 import { sha256HexOf } from './mesh-storage.js';
+import { declareStandIns } from './stand-in-provenance.testutil.js';
 
 function canonical(value: unknown): string {
   return JSON.stringify(value, (_k, v: unknown) => {
@@ -72,7 +73,7 @@ describe('export dual-validation — P5 inlay/onlay fixtures', () => {
 
   it('INLAY (STL): full loop — release, ledger, byte-identical download, bit-identical server report', async () => {
     const built = await buildInlay();
-    const input: RunInlayQcInput = { ...built.qcInput, journalHash: hashMesh(built.qcInput.inlaySolid), profileVersion: EMAX_LITHIUM_DISILICATE_PROFILE.version };
+    const input: RunInlayQcInput = declareStandIns({ ...built.qcInput, journalHash: hashMesh(built.qcInput.inlaySolid), profileVersion: EMAX_LITHIUM_DISILICATE_PROFILE.version });
     const clientReport = await runInlayQc(input);
     expect(clientReport.passed).toBe(true);
 
@@ -116,7 +117,7 @@ describe('export dual-validation — P5 inlay/onlay fixtures', () => {
 
   it('ONLAY (STL, acknowledged seating): the acknowledgment rides journal-verified into the release', async () => {
     const built = await buildOnlay();
-    const input: RunInlayQcInput = { ...built.qcInput, journalHash: hashMesh(built.qcInput.inlaySolid), profileVersion: EMAX_LITHIUM_DISILICATE_PROFILE.version };
+    const input: RunInlayQcInput = declareStandIns({ ...built.qcInput, journalHash: hashMesh(built.qcInput.inlaySolid), profileVersion: EMAX_LITHIUM_DISILICATE_PROFILE.version });
     const clientReport = await runInlayQc(input);
     const seating = clientReport.gates.find((g) => g.gate === 'seating');
     expect(seating?.passed).toBe(false);
@@ -136,9 +137,13 @@ describe('export dual-validation — P5 inlay/onlay fixtures', () => {
       // server-side profile pinning.
       profile: EMAX_LITHIUM_DISILICATE_PROFILE,
     });
-    expect(harness.request.acknowledgments).toEqual([
-      expect.objectContaining({ gate: 'seating', operationId: harness.ackOps[0]!.id }),
-    ]);
+    // seating + the ADR-022 stand-in gates (placeholder divider, placeholder
+    // neighbours), each with its own journaled ack op.
+    const ackOpId = (gate: string) => harness.ackOps.find((op) => op.params['acknowledgedGate'] === gate)!.id;
+    const expectedAcks = ['cuspCoverageThickness', 'seating', 'contact'].map((gate) =>
+      expect.objectContaining({ gate, operationId: ackOpId(gate) }),
+    );
+    expect(harness.request.acknowledgments).toEqual(expectedAcks);
 
     const res = await app.inject({
       method: 'POST',
@@ -152,7 +157,7 @@ describe('export dual-validation — P5 inlay/onlay fixtures', () => {
     // The acknowledgment is journaled into the release record (invariant 4).
     const row = await prisma.export.findUniqueOrThrow({ where: { id: body.exportId } });
     const acks = JSON.parse(row.acknowledgmentsJson) as { gate: string; operationId: string }[];
-    expect(acks).toEqual([expect.objectContaining({ gate: 'seating', operationId: harness.ackOps[0]!.id })]);
+    expect(acks).toEqual(expectedAcks);
 
     const dl = await app.inject({ method: 'GET', url: body.downloadPath });
     expect(dl.rawPayload.equals(Buffer.from(harness.bytes))).toBe(true);

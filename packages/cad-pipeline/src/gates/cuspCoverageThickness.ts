@@ -35,7 +35,8 @@
 // measurements — dual-validation clean (invariant 6), no DOM/Three deps.
 import type { IndexedMesh, Vec3 } from '@dqcad/kernel';
 import { measureWallThickness, distanceToClosedPolyline } from '@dqcad/kernel';
-import type { QcGateResult } from '@dqcad/shared-types';
+import type { GeometryProvenance, QcGateResult } from '@dqcad/shared-types';
+import { failClosedOnNonCaseInput } from './provenance.ts';
 
 /** The gate name (stable — QcReport / acknowledgment / UI). */
 export const CUSP_COVERAGE_THICKNESS_GATE_NAME = 'cuspCoverageThickness';
@@ -62,6 +63,10 @@ export interface CuspCoverageThicknessGateInput {
   /** The covered-cusp minimum wall thickness (mm) — from the profile
    * (`cuspCoverageMinThicknessMm`), NEVER defaulted here (invariant 7). */
   readonly cuspCoverageMinThicknessMm: number;
+  /** Where the coverage divider came from (ADR-022). Absent ⇒ `'case'`. A
+   * non-`case` divider means the "covered cusp" region is not the patient's
+   * cusp — the gate fails closed. */
+  readonly dividerProvenance?: GeometryProvenance;
 }
 
 export interface CuspCoverageThicknessMeasurement {
@@ -126,7 +131,7 @@ export function cuspCoverageThicknessGate(input: CuspCoverageThicknessGateInput)
   const message = m.coverageSampleCount === 0
     ? `no structural covered-cusp sample outside the ${input.marginExclusionMm} mm convergence band — coverage cannot be verified`
     : `covered-cusp min wall ${(m.minCoverageThicknessMm * 1000).toFixed(0)} µm (conservative ${(m.conservativeMinThicknessMm * 1000).toFixed(0)} µm after −${(m.sampleSpacingMm * 1000).toFixed(0)} µm sampling margin) vs ${(m.thresholdMm * 1000).toFixed(0)} µm min; n=${m.coverageSampleCount}`;
-  return {
+  const measured: QcGateResult = {
     gate: CUSP_COVERAGE_THICKNESS_GATE_NAME,
     passed: m.passed,
     acknowledged: false,
@@ -135,4 +140,7 @@ export function cuspCoverageThicknessGate(input: CuspCoverageThicknessGateInput)
     unit: 'mm',
     message,
   };
+  const provenance = input.dividerProvenance;
+  if (provenance === undefined || provenance === 'case') return measured;
+  return failClosedOnNonCaseInput(measured, provenance, 'stand-in coverage divider');
 }

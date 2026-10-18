@@ -10,8 +10,8 @@ import { parseStl, writeStlBinary, type RawTriangleSoup } from '@dqcad/io';
 // REAL UI -- a fully designed crown restoration (import -> margin -> crown
 // design -> QC) is carried into the export panel and:
 //   * the export is BLOCKED while a failing gate is unacknowledged (the honest-
-//     failure surface: a buttonless, i18n'd block, NO retry-to-green) -- ADR-014
-//     synthetic-data disclosure asserted present;
+//     failure surface: a buttonless, i18n'd block, NO retry-to-green) -- the
+//     ADR-022 placeholder-provenance disclosure asserted present;
 //   * the failing gates are acknowledged (the REAL journaled acknowledge flow);
 //   * export -> the client journaled export -> the SERVER independent
 //     re-validation on the exact exported bytes -> a RELEASED file (real
@@ -376,15 +376,19 @@ test.describe.serial('Phase 7 export & manufacturing-handoff workflow (buildable
   test('export panel: BLOCKS export while a failing gate is unacknowledged (honest-failure, no retry-to-green)', async () => {
     await expect(page.getByTestId('export-panel')).toBeVisible();
 
-    // --- ADR-014 DISCLOSURE PROOF: the synthetic-data banner rides the panel ---
-    await expect(page.getByTestId('export-disclosure')).toBeVisible();
-
     // Select the crown restoration (first real option). Capture its label so we
     // can re-select it after reload later if needed.
     const option = page.locator('[data-testid="export-restoration-select"] option').nth(1);
     restorationLabel = (await option.textContent())?.trim() ?? '';
     expect(restorationLabel).toContain('11');
     await page.getByTestId('export-restoration-select').selectOption({ index: 1 });
+
+    // --- ADR-022 DISCLOSURE PROOF: the banner follows the selected crown's
+    // input provenance — its contact gate was measured against the synthetic
+    // placeholder neighbours, so the placeholder banner names it.
+    await expect(page.getByTestId('export-disclosure')).toBeVisible();
+    await expect(page.getByTestId('export-disclosure')).toHaveAttribute('data-provenance', 'placeholder');
+    await expect(page.getByTestId('export-qc-provenance-contact')).toBeVisible();
 
     // The QC recap renders the failing report; the export is BLOCKED.
     await expect(page.getByTestId('export-qc-failed')).toBeVisible();

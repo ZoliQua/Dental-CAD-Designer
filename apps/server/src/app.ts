@@ -7,7 +7,7 @@ import type { Case } from '@prisma/client';
 import Fastify from 'fastify';
 import type { FastifyInstance, onRouteHookHandler } from 'fastify';
 import { KERNEL_VERSION } from '@dqcad/kernel';
-import type { CaseDocument, QcReport, RestorationType } from '@dqcad/shared-types';
+import type { CaseDocument, GeometryProvenance, QcReport, RestorationType } from '@dqcad/shared-types';
 import {
   runBridgeQc,
   runCrownQc,
@@ -224,7 +224,12 @@ interface InlayValidateQcBody {
    * geometry-scoped parameter; the server uses the exact value the client used,
    * and the bit-identical proof catches any divergence). */
   marginExclusionMm: number;
-  coverage?: { coverageDivider: { pointMm: number[]; normalMm: number[] }; cuspCoverageMinThicknessMm: number };
+  coverage?: {
+    coverageDivider: { pointMm: number[]; normalMm: number[] };
+    cuspCoverageMinThicknessMm: number;
+    /** ADR-022 — rides with the request; the server re-runs the gate with it. */
+    dividerProvenance?: GeometryProvenance;
+  };
   seamEdges: SeamEdgeInput[];
   cavityTriangleIndices: number[];
   contacts: ContactResidualInput[];
@@ -334,6 +339,7 @@ function reconstructInlayQcInput(b: InlayValidateQcBody): RunInlayQcInput {
           normalMm: toVec3(b.coverage.coverageDivider.normalMm),
         } satisfies CoverageDivider,
         cuspCoverageMinThicknessMm: b.coverage.cuspCoverageMinThicknessMm,
+        ...(b.coverage.dividerProvenance === undefined ? {} : { dividerProvenance: b.coverage.dividerProvenance }),
       }
     : undefined;
   return {

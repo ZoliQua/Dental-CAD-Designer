@@ -16,6 +16,7 @@ import { crownDesignEngine } from '../engine/crownDesign';
 import { isQcStale } from '../engine/crownWorkflow';
 import { insertionAxisIsPlaceholder } from '../engine/restorations';
 import { useCaseStore } from '../state/caseStore';
+import { GateProvenanceNote, StandInDisclosure } from './StandInDisclosure';
 import {
   useCrownStore,
   type CrownPrerequisiteCode,
@@ -275,6 +276,9 @@ function AnatomyStage({ busy }: { busy: boolean }) {
             {anatomy.usedProximalGap && ` · ${t('crown.anatomyProximalGap')}`}
             {anatomy.antagonistUsed && ` · ${t('crown.anatomyAntagonist')}`}
           </p>
+          {anatomy.neighbourProvenance !== 'case' && (
+            <StandInDisclosure messageKey="provenance.crownNeighbours" testId="crown-neighbours-placeholder" />
+          )}
           <fieldset className="crown-stage__manual">
             <legend>{t('crown.anatomyManualTitle')}</legend>
             <label className="crown-stage__field">
@@ -486,6 +490,7 @@ function QcStage({ busy, restoration }: { busy: boolean; restoration: Restoratio
                   <td>
                     {g.passed ? t('crown.qcGatePass') : g.acknowledged ? t('crown.qcAcknowledged') : t('crown.qcGateFail')}
                     {g.value !== null && g.unit ? ` (${g.value.toFixed(3)} ${g.unit})` : ''}
+                    <GateProvenanceNote gate={g} testId={`crown-qc-provenance-${g.gate}`} />
                   </td>
                   <td>
                     {!g.passed && !g.acknowledged && (

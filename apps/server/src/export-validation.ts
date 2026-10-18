@@ -71,6 +71,7 @@ export type ExportRejectionCode =
   | 'export-journal-hash-mismatch'
   | 'export-journal-verification-failed'
   | 'export-kernel-version-mismatch'
+  | 'export-untraceable-provenance'
   | 'export-unjournaled-acknowledgment'
   | 'export-acknowledgment-invalid'
   | 'export-bytes-parse-failed'

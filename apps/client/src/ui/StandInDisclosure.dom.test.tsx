@@ -1,0 +1,109 @@
+// apps/client/src/ui/StandInDisclosure.dom.test.tsx
+//
+// ADR-022 disclosure pattern — store-seeded render checks (no worker pool):
+// each placeholder input is named in its stage, and a case-derived input is
+// NOT flagged. The real-pipeline flows (CrownDesignPanel / CavityDesignPanel
+// dom tests) assert the same testids end to end.
+import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import '../i18n';
+import { caseStore } from '../engine/caseStore';
+import { cavityDesignEngine } from '../engine/cavityDesign';
+import { crownDesignEngine } from '../engine/crownDesign';
+import { useCavityStore, type CavityContactsSummary } from '../state/cavityStore';
+import { useCrownStore, type AnatomySummary } from '../state/crownStore';
+import { CavityDesignPanel } from './CavityDesignPanel';
+import { CrownDesignPanel } from './CrownDesignPanel';
+
+const CONTACTS: Omit<CavityContactsSummary, 'neighbourProvenance'> = {
+  boxes: [
+    {
+      label: 'mesial',
+      targetPenetrationMm: 0.02,
+      achievedSignedDistanceMm: -0.02,
+      contactResidualMm: 0.001,
+      clampBound: false,
+    },
+  ],
+  clampedBoxes: [],
+  seamDihedralMaxBeforeDeg: 1,
+  seamDihedralMaxAfterDeg: 1,
+};
+
+const ANATOMY: Omit<AnatomySummary, 'neighbourProvenance'> = {
+  scaleMesialDistal: 1,
+  scaleBuccoLingual: 1,
+  scaleOcclusoGingival: 1,
+  usedProximalGap: true,
+  antagonistUsed: false,
+  manual: false,
+};
+
+beforeEach(() => {
+  caseStore.resetForTests();
+  cavityDesignEngine.resetForTests();
+  crownDesignEngine.resetForTests();
+});
+afterEach(() => {
+  cleanup();
+  cavityDesignEngine.resetForTests();
+  crownDesignEngine.resetForTests();
+  caseStore.resetForTests();
+});
+
+describe('crown anatomy stage — neighbour provenance', () => {
+  function seed(neighbourProvenance: AnatomySummary['neighbourProvenance']): void {
+    useCrownStore.setState({
+      active: true,
+      restorationId: 'r-crown',
+      gates: [],
+      anatomy: { ...ANATOMY, neighbourProvenance },
+    });
+  }
+
+  it('discloses placeholder neighbours', () => {
+    seed('placeholder');
+    render(<CrownDesignPanel />);
+    const note = screen.getByTestId('crown-neighbours-placeholder');
+    expect(note.getAttribute('role')).toBe('note');
+    expect(note.textContent).toMatch(/synthetic placeholder boxes/);
+  });
+
+  it('says nothing for case-derived neighbours', () => {
+    seed('case');
+    render(<CrownDesignPanel />);
+    expect(screen.queryByTestId('crown-neighbours-placeholder')).toBeNull();
+  });
+});
+
+describe('cavity stages — neighbour + coverage-divider provenance', () => {
+  it('discloses the placeholder neighbours and the placeholder coverage divider (onlay)', () => {
+    useCavityStore.setState({
+      active: true,
+      restorationId: 'r-onlay',
+      restorationType: 'onlay',
+      gates: [],
+      contacts: { ...CONTACTS, neighbourProvenance: 'placeholder' },
+      coverage: { pointMm: [0, -2, 0], normalMm: [0, -1, 0], provenance: 'placeholder' },
+    });
+    render(<CavityDesignPanel />);
+    expect(screen.getByTestId('cavity-neighbours-placeholder').textContent).toMatch(
+      /placeholder neighbours/,
+    );
+    expect(screen.getByTestId('cavity-coverage-placeholder').textContent).toMatch(/bounding box/);
+  });
+
+  it('says nothing for case-derived inputs', () => {
+    useCavityStore.setState({
+      active: true,
+      restorationId: 'r-onlay',
+      restorationType: 'onlay',
+      gates: [],
+      contacts: { ...CONTACTS, neighbourProvenance: 'case' },
+      coverage: { pointMm: [0, -2, 0], normalMm: [0, -1, 0], provenance: 'case' },
+    });
+    render(<CavityDesignPanel />);
+    expect(screen.queryByTestId('cavity-neighbours-placeholder')).toBeNull();
+    expect(screen.queryByTestId('cavity-coverage-placeholder')).toBeNull();
+  });
+});

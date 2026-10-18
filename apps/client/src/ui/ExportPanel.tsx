@@ -11,9 +11,11 @@
 // refusal/failure is a VISIBLE, i18n'd state (the 19b discipline; no silent
 // no-op, no "retry until it passes" affordance).
 //
-// SYNTHETIC-DATA DISCLOSURE (ADR-014): the QC results recapped here originate
-// from the demonstration design fixtures (Phases 4-6 are fixture-driven until
-// real capture), so an UN-MISSABLE disclosure banner rides over the workflow.
+// INPUT-PROVENANCE DISCLOSURE (ADR-014, generalized by ADR-022 Decision 6):
+// the banner follows the SELECTED restoration's input provenance
+// (engine/provenance.ts) — the ADR-014 demo-data banner for a demo-fixture
+// restoration (the bridge), a placeholder banner naming the gates measured on
+// stand-in input, and nothing for a fully case-derived restoration.
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ExportFormat, QcGateResult, Restoration } from '@dqcad/shared-types';
@@ -22,10 +24,12 @@ import { EXPORT_REFUSAL_I18N_KEY } from '../engine/exportWorkflow';
 import { formatMm } from '../engine/formatMm';
 import { handoffController } from '../engine/handoff';
 import { RELEASE_FAILURE_I18N_KEY } from '../engine/handoff';
+import { restorationInputProvenance } from '../engine/provenance';
 import { useCaseStore } from '../state/caseStore';
 import { selectExportStatus, useExportStore } from '../state/exportStore';
 import { selectRelease, useHandoffStore } from '../state/handoffStore';
 import { useServerStatusStore } from '../state/serverStatusStore';
+import { GateProvenanceNote } from './StandInDisclosure';
 
 const TRACEABILITY_LOCALES = new Set(['en', 'hu', 'de', 'es']);
 
@@ -46,10 +50,6 @@ export function ExportPanel() {
   return (
     <section className="export-panel" data-testid="export-panel">
       <h2 className="export-panel__title">{t('exportServer.panelTitle')}</h2>
-
-      <div className="export-panel__disclosure" role="note" data-testid="export-disclosure">
-        {t('exportServer.disclosure')}
-      </div>
 
       {restorations.length === 0 ? (
         <p className="export-panel__empty" data-testid="export-empty">
@@ -73,6 +73,7 @@ export function ExportPanel() {
         </label>
       )}
 
+      {selected && <ProvenanceBanner restoration={selected} />}
       {selected && <ExportWorkflow restoration={selected} />}
 
       <ArchiveSection caseId={document.id} />
@@ -181,6 +182,26 @@ function formatGateValueDisplay(value: number, unit: string): string {
   return unit === 'mm' ? formatMm(value) : `${value.toFixed(3)} ${unit}`;
 }
 
+function ProvenanceBanner({ restoration }: { restoration: Restoration }) {
+  const { t } = useTranslation();
+  const { provenance, gates } = restorationInputProvenance(restoration);
+  if (provenance === 'demo-fixture') {
+    return (
+      <div className="export-panel__disclosure" role="note" data-testid="export-disclosure" data-provenance="demo-fixture">
+        {t('exportServer.disclosure')}
+      </div>
+    );
+  }
+  if (provenance === 'placeholder') {
+    return (
+      <div className="export-panel__disclosure" role="note" data-testid="export-disclosure" data-provenance="placeholder">
+        {t('provenance.exportPlaceholder', { gates: gates.join(', ') })}
+      </div>
+    );
+  }
+  return null;
+}
+
 function GateRow({ gate }: { gate: QcGateResult }) {
   const { t } = useTranslation();
   const label = gate.passed
@@ -194,6 +215,7 @@ function GateRow({ gate }: { gate: QcGateResult }) {
       <td>
         {label}
         {gate.value !== null && gate.unit ? ` (${formatGateValueDisplay(gate.value, gate.unit)})` : ''}
+        <GateProvenanceNote gate={gate} testId={`export-qc-provenance-${gate.gate}`} />
       </td>
     </tr>
   );

@@ -244,7 +244,9 @@ The core pipeline. Order of stages is fixed; each stage's output is journaled.
 - Bridge built from the case: per-abutment units on the shared axis, pontic against the gingiva scan with a fitted ridge crest, auto-placed connectors; the 14-15-16 fixture kept as an explicit demo mode
 - Bridge/crown/cavity stage ops journal their input hashes
 
-**Acceptance:** no gate can pass on a stand-in; crown contacts measured against captured neighbours on real `arch-case-01`; a real-path 3-unit bridge on a closed-form arch fixture passes all gates; all existing golden files byte-identical. Detailed plan: [`docs/plans/phase-9-real-case-geometry.md`](docs/plans/phase-9-real-case-geometry.md).
+**Status:** Task 1 landed (2026-10-19). Provenance is typed and journaled, the crown/inlay contact and onlay covered-cusp gates fail closed on stand-ins, every stand-in is disclosed in its panel, the export banner and traceability document follow provenance, and the server refuses untraceable `case` claims. Tasks 2–7 are pending.
+
+**Acceptance:** no gate can pass on a stand-in; crown contacts measured against captured neighbours on real `arch-case-01`; a real-path 3-unit bridge on a closed-form arch fixture passes all gates; all existing kernel / pipeline golden files byte-identical (a traceability golden whose release now declares a stand-in moves only with a documented note). Detailed plan: [`docs/plans/phase-9-real-case-geometry.md`](docs/plans/phase-9-real-case-geometry.md).
 
 ---
 

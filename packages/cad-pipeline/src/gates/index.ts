@@ -88,6 +88,7 @@ export {
   type PonticReliefGateInput,
 } from './ponticRelief.ts';
 export { runCrownQc, type RunCrownQcInput } from './report.ts';
+export { NON_CASE_INPUT_MARKER, failClosedOnNonCaseInput, worstProvenance } from './provenance.ts';
 export {
   runBridgeQc,
   BridgeQcInputError,

@@ -817,5 +817,16 @@
     "casePickerOffline": "Az esetek a helyi DQ Dental CAD szerveren tárolódnak, amely ebből a telepítésből nem érhető el. Esetek létrehozásához, megnyitásához és mentéséhez futtasd az alkalmazást helyben (npm run dev).",
     "exportOffline": "Helyi szerver szükséges: minden gyártási fájlt a szerver újraellenőriz a kiadás előtt.",
     "archiveOffline": "Helyi szerver szükséges: az esetarchívumokat a szerver készíti és importálja."
+  },
+  "provenance": {
+    "title": "Helyettesítő geometria",
+    "crownNeighbours": "A meziális és disztális szomszéd szintetikus helyettesítő doboz, nem a páciens foga. A szomszédok rögzítése az ívszkenből még nem érhető el, ezért a proximális kontakt QC-kapu nem mehet át. Csak akkor vegye tudomásul, ha a kontaktokat más módon ellenőrizte.",
+    "cavityNeighbours": "A proximális dobozok szintetikus helyettesítő szomszédokhoz illeszkednek, nem a páciens fogaihoz. A szomszédok rögzítése az ívszkenből még nem érhető el, ezért a proximális kontakt QC-kapu nem mehet át. Csak akkor vegye tudomásul, ha a kontaktokat más módon ellenőrizte.",
+    "coverageDivider": "A fedett csücsök határsíkja a kavitáskontúr befoglaló dobozából vett helyettesítő sík, nem a páciens csücsökanatómiájából származik. Ezért a fedett csücsök vastagsági QC-kapuja nem mehet át. Csak akkor vegye tudomásul, ha a csücsökvastagságot más módon ellenőrizte.",
+    "gate": {
+      "placeholder": "helyettesítő geometrián mérve, nem a páciensén; nem mehet át",
+      "demo-fixture": "a demonstrációs mintán mérve, nem ezen az eseten; nem mehet át"
+    },
+    "exportPlaceholder": "A restauráció néhány QC-kapuját helyettesítő geometrián mérték, nem a páciensén ({{gates}}). Ezek nem mehetnek át. A tudomásulvétel naplózódik, és a nyomonkövetési dokumentumban is megjelenik."
   }
 }

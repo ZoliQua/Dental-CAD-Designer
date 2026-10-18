@@ -19,7 +19,7 @@
 // running, progress/error, per-stage numeric readouts, the morph strength
 // sliders, the brush palette, and overlay-visibility toggles.
 import { create } from 'zustand';
-import type { QcReport } from '@dqcad/shared-types';
+import type { GeometryProvenance, QcReport } from '@dqcad/shared-types';
 
 /** The six crown-design stages (mirrors engine/crownWorkflow.ts's
  * `CrownStage` — identical union, re-declared here per the layer rule). */
@@ -65,6 +65,9 @@ export interface AnatomySummary {
   scaleOcclusoGingival: number;
   usedProximalGap: boolean;
   antagonistUsed: boolean;
+  /** Provenance of the proximal neighbour references (ADR-022) — `placeholder`
+   * until neighbour capture from the arch scan lands (Phase 9 Task 3). */
+  neighbourProvenance: GeometryProvenance;
   /** `true` after a manual gizmo transform, `false` after auto-place. */
   manual: boolean;
 }

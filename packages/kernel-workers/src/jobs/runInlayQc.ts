@@ -14,7 +14,7 @@
 // CLAUDE.md's "Import extension convention".
 import type { SeamEdge, Vec3 } from '@dqcad/kernel';
 import { runInlayQc, type CavityThicknessMinimums, type ContactResidualInput, type CoverageDivider } from '@dqcad/cad-pipeline';
-import type { QcReport, RestorationType } from '@dqcad/shared-types';
+import type { GeometryProvenance, QcReport, RestorationType } from '@dqcad/shared-types';
 import { JobCancelledError, type JobContext } from './context.ts';
 
 export interface RunInlayQcPayload {
@@ -39,7 +39,7 @@ export interface RunInlayQcPayload {
   /** ONLAY covered-cusp coverage (T7) — present for an onlay carrying a coverage
    * selection; drives the region-scoped cusp-coverage thickness gate. Ignored by
    * `runInlayQc` for an inlay (no covered cusp). */
-  coverage?: { coverageDivider: CoverageDivider; cuspCoverageMinThicknessMm: number };
+  coverage?: { coverageDivider: CoverageDivider; cuspCoverageMinThicknessMm: number; dividerProvenance?: GeometryProvenance };
   seamEdges: readonly SeamEdge[];
   cavityTriangleIndices: Uint32Array;
   contacts: readonly ContactResidualInput[];

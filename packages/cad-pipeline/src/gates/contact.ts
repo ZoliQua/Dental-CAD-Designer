@@ -43,7 +43,8 @@
 // not one of those). Overridable per-call.
 //
 // Pure/deterministic; DOM/Three-free (invariant 6).
-import type { QcGateResult } from '@dqcad/shared-types';
+import type { GeometryProvenance, QcGateResult } from '@dqcad/shared-types';
+import { failClosedOnNonCaseInput, worstProvenance } from './provenance.ts';
 
 /** Stable gate name (QcReport, acknowledgment lookup, UI). */
 export const CONTACT_GATE_NAME = 'contact';
@@ -65,6 +66,9 @@ export interface ContactResidualInput {
   readonly regionResidualMm: number;
   /** True iff this contact's root-find hit the travel clamp (target unreached). */
   readonly clampBound: boolean;
+  /** Where the contacted geometry (neighbour / antagonist) came from (ADR-022).
+   * Absent ⇒ `'case'`. Any non-`case` contact fails the gate closed. */
+  readonly provenance?: GeometryProvenance;
 }
 
 export interface ContactGateInput {
@@ -157,7 +161,7 @@ export function contactGate(input: ContactGateInput): QcGateResult {
     : `contact residual ${um(worst)} (${worstKind})${healNote} ${withinTolerance ? 'within tolerance but' : `exceeds ${um(tolerance)} tolerance;`} ` +
       `${clamped.length > 0 ? 'one or more contacts were not achieved' : 'contact off target'}${clampNote}`;
 
-  return {
+  const measured: QcGateResult = {
     gate: CONTACT_GATE_NAME,
     passed,
     acknowledged: false,
@@ -166,4 +170,11 @@ export function contactGate(input: ContactGateInput): QcGateResult {
     unit: 'mm',
     message,
   };
+  // ADR-022: a contact measured against a stand-in (e.g. synthetic neighbour
+  // boxes) is not a contact with the patient's tooth — fail closed. Absent /
+  // 'case' provenance leaves the result byte-identical.
+  const provenance = worstProvenance(input.contacts.map((c) => c.provenance));
+  if (provenance === null) return measured;
+  const standIns = input.contacts.filter((c) => c.provenance !== undefined && c.provenance !== 'case').map((c) => c.kind);
+  return failClosedOnNonCaseInput(measured, provenance, `contact(s) [${standIns.join(', ')}] against stand-in neighbour geometry`);
 }

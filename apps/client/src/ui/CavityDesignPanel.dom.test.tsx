@@ -106,6 +106,7 @@ describe('CavityDesignPanel — browser-lane critical path (real WorkerPool, MOD
     await waitFor(() => expect(screen.getByTestId('cavity-contacts-table')).toBeTruthy(), { timeout: 60_000 });
     expect(restoration(id).stages.proximalContacts).toBeTypeOf('string');
     expect(historyNames()).toContain('inlay-proximal-contacts');
+    expect(screen.getByTestId('cavity-neighbours-placeholder')).toBeTruthy();
 
     // Stage: shell (must be watertight to proceed — the honest gate).
     await user.click(screen.getByTestId('cavity-shell-construct'));
@@ -130,6 +131,9 @@ describe('CavityDesignPanel — browser-lane critical path (real WorkerPool, MOD
     expect(screen.getByTestId('cavity-qc-gate-seamDihedral')).toBeTruthy();
     expect(screen.getByTestId('cavity-qc-gate-watertight')).toBeTruthy();
     expect(screen.getByTestId('cavity-qc-gate-minWallThickness')).toBeTruthy();
+    // ADR-022: the contact gate ran on placeholder neighbours — fails closed.
+    expect(screen.getByTestId('cavity-qc-gate-contact').getAttribute('data-passed')).toBe('false');
+    expect(screen.getByTestId('cavity-qc-provenance-contact')).toBeTruthy();
 
     // Stale-QC guard: a downstream re-run (re-build the fit surface) invalidates
     // the report via the full cascade — the panel must NOT keep showing the

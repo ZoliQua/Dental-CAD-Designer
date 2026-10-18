@@ -228,6 +228,8 @@ const qcGateResultSchema = {
     threshold: { type: ['number', 'null'] },
     unit: { type: ['string', 'null'] },
     message: { type: 'string' },
+    // ADR-022: present only on a gate measured on non-case input.
+    inputProvenance: { type: 'string', enum: ['placeholder', 'demo-fixture'] },
   },
 } as const;
 
@@ -644,6 +646,9 @@ const meshDataInputSchema = {
   },
 } as const;
 
+/** ADR-022 `GeometryProvenance`. */
+const geometryProvenanceSchema = { type: 'string', enum: ['case', 'placeholder', 'demo-fixture'] } as const;
+
 const contactResidualInputSchema = {
   type: 'object',
   required: [
@@ -662,6 +667,10 @@ const contactResidualInputSchema = {
     contactResidualMm: { type: 'number' },
     regionResidualMm: { type: 'number' },
     clampBound: { type: 'boolean' },
+    // ADR-022: where the contacted geometry came from (absent ⇒ 'case'). The
+    // gate fails closed on a non-case contact; the export route additionally
+    // refuses a 'case' claim it cannot trace (export-route.ts).
+    provenance: geometryProvenanceSchema,
   },
 } as const;
 
@@ -778,6 +787,8 @@ const cavityCoverageInputSchema = {
   properties: {
     coverageDivider: coverageDividerInputSchema,
     cuspCoverageMinThicknessMm: { type: 'number' },
+    // ADR-022: the divider's provenance (absent ⇒ 'case'; see contacts).
+    dividerProvenance: geometryProvenanceSchema,
   },
 } as const;
 

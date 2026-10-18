@@ -27,6 +27,8 @@
 // (the design engines' `morphContacts` / `contactInputs` flow into it by
 // structural typing) and travels as plain JSON in the request.
 
+import type { GeometryProvenance } from '@dqcad/shared-types';
+
 /** One measured proximal/antagonist contact — the JSON currency of the QC
  * `contacts` input (structurally the cad-pipeline `ContactResidualInput`). */
 export interface ExportContactJson {
@@ -36,6 +38,9 @@ export interface ExportContactJson {
   readonly contactResidualMm: number;
   readonly regionResidualMm: number;
   readonly clampBound: boolean;
+  /** ADR-022 — the contacted geometry's provenance (absent ⇒ `'case'`). The
+   * server re-runs the gate with it and refuses an untraceable `case` claim. */
+  readonly provenance?: GeometryProvenance;
 }
 
 /** A mesh as the server's `MeshDataInput` (JSON number arrays; JSON round-trips
@@ -90,6 +95,8 @@ export interface InlayExportQcContext {
   coverage?: {
     coverageDivider: { pointMm: number[]; normalMm: number[] };
     cuspCoverageMinThicknessMm: number;
+    /** ADR-022 — the divider's provenance (absent ⇒ `'case'`). */
+    dividerProvenance?: GeometryProvenance;
   };
   seamEdges: SeamEdgeJson[];
   cavityTriangleIndices: number[];

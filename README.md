@@ -124,7 +124,7 @@ All planned phases are complete; the application is MVP feature-complete and bet
 | 7 | Export & manufacturing handoff (M7 "Handoff") | ✅ done |
 | 8 | Polish & hardening | ✅ done |
 
-**Since the MVP:** a live multi-material picker (zirconia / e.max), a true geometric self-intersection QC gate (replacing the former manifold-topology proxy — kernel 0.27.0), and a client-only static deployment mode.
+**Since the MVP:** a live multi-material picker (zirconia / e.max), a true geometric self-intersection QC gate (replacing the former manifold-topology proxy — kernel 0.27.0), and a client-only static deployment mode. Phase 9 Task 1 ([ADR-022](docs/adr/022-design-inputs-from-the-case-geometry-provenance.md)) makes QC inputs carry their provenance. The crown and inlay neighbours and the onlay coverage divider are still synthetic stand-ins, so they are now disclosed, and the proximal-contact and covered-cusp gates fail closed until you acknowledge them. Capturing neighbours from the arch scan comes next.
 
 **Standing follow-ups (not yet done):** certification on real intraoral scans (retraction-cord crown, cavity, multi-abutment bridge), a 2–3 technician beta, and multi-user authentication (a prerequisite for any hosted backend).
 

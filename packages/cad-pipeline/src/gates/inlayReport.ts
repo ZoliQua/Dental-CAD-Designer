@@ -59,7 +59,7 @@
 // Determinism / hash-stability / DOM-free — identical to `runCrownQc` (see
 // report.ts's module doc).
 import { analyzeMesh, type IndexedMesh, type SeamEdge, type Vec3 } from '@dqcad/kernel';
-import type { QcReport, RestorationType } from '@dqcad/shared-types';
+import type { GeometryProvenance, QcReport, RestorationType } from '@dqcad/shared-types';
 import { runQcGates, type QcGate } from './runner.ts';
 import { watertightGate, manifoldGate } from './watertight.ts';
 import { measureSelfIntersection, selfIntersectionGate, type SelfIntersectionMeasurement } from './selfIntersection.ts';
@@ -178,6 +178,9 @@ export interface RunInlayQcInput {
   readonly coverage?: {
     readonly coverageDivider: CoverageDivider;
     readonly cuspCoverageMinThicknessMm: number;
+    /** ADR-022: where the divider came from (absent ⇒ `'case'`); a non-`case`
+     * divider fails the covered-cusp gate closed. */
+    readonly dividerProvenance?: GeometryProvenance;
   };
   /** Cavity min-wall MARGINAL-TRANSITION band width (mm). An inlay closes along
    * its ENTIRE cavity outline (not a single cervical margin), so the fit-surface
@@ -313,6 +316,7 @@ export async function runInlayQc(input: RunInlayQcInput, onProgress?: (fraction:
             marginExclusionMm: c.input.marginExclusionMm,
             coverageDivider: coverage.coverageDivider,
             cuspCoverageMinThicknessMm: coverage.cuspCoverageMinThicknessMm,
+            dividerProvenance: coverage.dividerProvenance,
           }),
         ...baseGates.slice(4), // marginFit, seamDihedral, seating, contact
       ]
