@@ -29,7 +29,17 @@
 // same layer-boundary convention crownDesign.ts documents).
 import { KERNEL_VERSION, type JobName, type JobPayloadMap, type JobResultMap, type RunJobOptions } from '@dqcad/kernel-workers';
 import { DEFAULT_OFFSET_VOXEL_PITCH_MM, type MaterialProfile } from '@dqcad/clinical-profiles';
-import type { FdiTooth, GeometryProvenance, Operation, QcReport, Restoration, RestorationParams, Vec3 } from '@dqcad/shared-types';
+import {
+  NEIGHBOUR_CAPTURE_OP,
+  type FdiTooth,
+  type GeometryProvenance,
+  type NeighbourSide,
+  type Operation,
+  type QcReport,
+  type Restoration,
+  type RestorationParams,
+  type Vec3,
+} from '@dqcad/shared-types';
 import { caseStore } from './caseStore';
 import { resolveFullMaterialProfile, resolveProfileVersion } from './materialProfile';
 import {
@@ -43,6 +53,15 @@ import {
 import { flattenLoop, boxMesh } from './crownGeometry';
 import { indicesJson, loopJson, meshJson, type InlayExportQcContext } from './exportContext';
 import { getPool } from './workers';
+import {
+  adjacentTeeth,
+  captureMatchesDesign,
+  findArchScan,
+  latestNeighbourCapture,
+  runNeighbourCapture,
+  type CapturedNeighbour,
+} from './neighbourCapture';
+import type { CaptureState, CaptureSummary } from '../state/neighbourCaptureStore';
 import { useCavityStore, type CavityStageGateSnapshot } from '../state/cavityStore';
 import { useCaseStore } from '../state/caseStore';
 
@@ -156,14 +175,35 @@ interface ContactResidualInput {
   /** ADR-022 — the neighbour geometry's provenance (fails the gate closed
    * unless `case`). */
   provenance: GeometryProvenance;
+  /** Why a `placeholder` neighbour stands in (Phase 9 Task 3). */
+  standInReason?: 'no-neighbour-geometry' | 'not-captured';
+  /** A captured neighbour's window-border band (mm). */
+  neighbourWindowBandMm?: number;
 }
 
 /**
- * ADR-022: the proximal neighbours the box adaptation targets are synthetic
- * boxes, not the patient's teeth (neighbour capture is Phase 9 Task 3) —
- * journaled, disclosed, and carried into the contact gate, which fails closed.
+ * ADR-022: a proximal box with no neighbour captured from the case's arch
+ * scan adapts to a synthetic box — journaled, disclosed, and carried into the
+ * contact gate, which fails closed on it.
  */
 const CAVITY_NEIGHBOUR_PROVENANCE: GeometryProvenance = 'placeholder';
+
+/** Thrown when a neighbour capture is asked for but the case has no arch
+ * scan of the tooth's jaw. */
+export class CavityCaptureUnavailableError extends Error {
+  constructor() {
+    super('cavityDesign: the case has no arch scan of this jaw to capture a neighbour from');
+    this.name = 'CavityCaptureUnavailableError';
+  }
+}
+
+/** A journaled capture re-run on reload produced a different region hash. */
+export class CavityCaptureReplayMismatchError extends Error {
+  constructor(side: NeighbourSide, journaled: string, replayed: string) {
+    super(`cavityDesign: replaying the journaled ${side} capture gave ${replayed}, not the journaled ${journaled}`);
+    this.name = 'CavityCaptureReplayMismatchError';
+  }
+}
 
 /** Structural mirror of `@dqcad/cad-pipeline`'s `CoverageDivider`. */
 export interface CoverageDivider {
@@ -196,6 +236,8 @@ interface Session {
   contacts: (DerivedMesh & { contactInputs: ContactResidualInput[]; clampWarning: boolean }) | null;
   coverage: CoverageDivider | null;
   shell: DerivedMesh | null;
+  /** Neighbours captured from the case's arch scan (or replayed). */
+  captures: Partial<Record<NeighbourSide, CapturedNeighbour>>;
 }
 
 /**
@@ -303,9 +345,17 @@ class CavityDesignEngine {
       contacts: null,
       coverage: null,
       shell: null,
+      captures: {},
     };
     caseStore.setSelectedRestorationId(restorationId);
-    this.publish({ restorationId, restorationType: restoration.type, active: true, error: null, errorStage: null });
+    this.publish({
+      restorationId,
+      restorationType: restoration.type,
+      active: true,
+      error: null,
+      errorStage: null,
+      capture: this.captureState(),
+    });
     this.refreshGates();
   }
 
@@ -564,15 +614,142 @@ class CavityDesignEngine {
     }
   }
 
+  // ---- neighbour capture (Phase 9 Task 3) -------------------------------
+
+  /** The latest still-valid journaled capture of `side` (scan still in the
+   * scene with the same mesh, cut against the current outline + axis). */
+  private journaledCapture(side: NeighbourSide): Operation | undefined {
+    const session = this.requireSession();
+    const document = caseStore.getDocument();
+    const op = latestNeighbourCapture(document.history, session.restorationId, side);
+    if (!op) return undefined;
+    const node = document.scene.find((n) => n.id === op.params['scanNodeId']);
+    if (!node || node.meshId !== op.inputHashes[0]) return undefined;
+    return captureMatchesDesign(op, session.outlineFlat, session.insertionAxis) ? op : undefined;
+  }
+
+  private captureSummary(side: NeighbourSide): CaptureSummary | null {
+    const live = this.requireSession().captures[side];
+    if (live) {
+      return {
+        capturedTriangleCount: live.capturedTriangleCount,
+        capturedAreaMm2: live.capturedAreaMm2,
+        windowBoundaryBandMm: live.windowBoundaryBandMm,
+      };
+    }
+    const op = this.journaledCapture(side);
+    if (!op) return null;
+    return {
+      capturedTriangleCount: op.params['capturedTriangleCount'] as number,
+      capturedAreaMm2: op.params['capturedAreaMm2'] as number,
+      windowBoundaryBandMm: op.params['windowBoundaryBandMm'] as number,
+    };
+  }
+
+  private captureState(busy: CaptureState['busy'] = null): CaptureState {
+    const session = this.requireSession();
+    return {
+      archScanAvailable: findArchScan(caseStore.getDocument(), session.tooth, session.targetNodeId) !== null,
+      oppositeArchAvailable: false,
+      neighbourTeeth: adjacentTeeth(session.tooth),
+      mesial: this.captureSummary('mesial'),
+      distal: this.captureSummary('distal'),
+      antagonist: null,
+      antagonistSource: null,
+      busy,
+    };
+  }
+
+  /**
+   * Captures the `side` neighbour from the case's arch scan at `pick` (a
+   * Float64 world point on that scan). One journaled `NEIGHBOUR_CAPTURE_OP`;
+   * invalidates the contacts stage onward.
+   */
+  async captureNeighbour(side: NeighbourSide, pick: Vec3): Promise<void> {
+    const session = this.requireSession();
+    const scanNode = findArchScan(caseStore.getDocument(), session.tooth, session.targetNodeId);
+    const record = scanNode ? caseStore.getMeshRecord(scanNode.meshId) : undefined;
+    if (!scanNode || !record) throw new CavityCaptureUnavailableError();
+    this.publish({ capture: this.captureState(side) });
+    try {
+      const capture = await runNeighbourCapture(this.pool(), {
+        side,
+        scanNode,
+        scan: record,
+        seed: pick,
+        marginLoopFlat: session.outlineFlat,
+        insertionAxis: session.insertionAxis,
+      });
+      session.captures[side] = capture;
+      const restoration = this.restoration();
+      const invalidation = cavityDownstreamInvalidations('patch', restoration.type);
+      const stages: Restoration['stages'] = { ...restoration.stages };
+      for (const field of invalidation.stageFields) delete stages[field];
+      const operation: Operation = {
+        id: crypto.randomUUID(),
+        name: NEIGHBOUR_CAPTURE_OP,
+        params: { restorationId: restoration.id, tooth: session.tooth, ...capture.params },
+        inputHashes: [capture.scanMeshId],
+        outputHashes: [capture.contentHash],
+        kernelVersion: KERNEL_VERSION,
+        timestamp: nowIso(),
+      };
+      caseStore.updateRestoration({ ...restoration, stages, qc: invalidation.clearQc ? null : restoration.qc }, operation);
+      this.invalidateDownstream(invalidation);
+      this.publish({ capture: this.captureState() });
+      this.refreshGates();
+    } catch (error) {
+      this.publish({ capture: this.captureState() });
+      this.failStage('contacts', error);
+      throw error;
+    }
+  }
+
+  /** The arch scan a neighbour pick lands on (the viewport raycasts only
+   * this scan), or null without a session / arch scan. */
+  captureScanNodeId(): string | null {
+    if (!this.session) return null;
+    return findArchScan(caseStore.getDocument(), this.session.tooth, this.session.targetNodeId)?.id ?? null;
+  }
+
+  /** Re-derives every still-valid journaled capture missing from the session
+   * (after a reload) by REPLAYING it; the replay must reproduce the journaled
+   * region hash. */
+  private async restoreJournaledCaptures(): Promise<void> {
+    const session = this.requireSession();
+    for (const side of ['mesial', 'distal'] as const) {
+      if (session.captures[side]) continue;
+      const op = this.journaledCapture(side);
+      if (!op) continue;
+      const scanNode = caseStore.getDocument().scene.find((n) => n.id === op.params['scanNodeId'])!;
+      const record = caseStore.getMeshRecord(scanNode.meshId);
+      if (!record) continue;
+      const capture = await runNeighbourCapture(this.pool(), {
+        side,
+        scanNode,
+        scan: record,
+        seed: op.params['seed'] as Vec3,
+        marginLoopFlat: session.outlineFlat,
+        insertionAxis: session.insertionAxis,
+      });
+      if (capture.contentHash !== op.outputHashes[0]) {
+        throw new CavityCaptureReplayMismatchError(side, op.outputHashes[0]!, capture.contentHash);
+      }
+      session.captures[side] = capture;
+    }
+  }
+
   // ---- stage: contacts (Class II proximal box adaptation) ---------------
 
-  /** Builds the flanking synthetic neighbour reference boxes (a documented
-   * placeholder — the client cannot yet segment the real proximal neighbours
-   * from an arch scan; mirrors crownDesign's synthetic proximal boxes) from the
-   * cavity outline's mesiodistal extent, and pairs each proximal break-through
-   * face to the neighbour on its side — the side measured along the MD
-   * direction relative to the outline centroid (`proximalSide`; Phase 9 Task 2
-   * fixed the former world-`x < 0` test, wrong for any off-origin scan). */
+  /** Pairs each proximal break-through face with its neighbour. A face that
+   * looks toward a neighbour captured from the case's arch scan (Phase 9
+   * Task 3 — the capture's approach direction within 60° of the face's
+   * direction from the outline centroid) adapts to that capture and takes its
+   * side. Any other face adapts to a flanking synthetic box built from the
+   * outline's mesiodistal extent (a documented `placeholder`), on the side
+   * measured along the MD direction relative to the outline centroid
+   * (`proximalSide`; Phase 9 Task 2 fixed the former world-`x < 0` test) —
+   * flipped if a capture already took that side. */
   private buildAdaptations(session: Session): Array<{
     label: string;
     columnPoints: Float64Array;
@@ -580,6 +757,7 @@ class CavityDesignEngine {
     neighborPositions: Float64Array;
     neighborIndices: Uint32Array;
     targetPenetrationMm: number;
+    capture: CapturedNeighbour | null;
   }> {
     const pts = session.outlinePoints;
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
@@ -598,16 +776,42 @@ class CavityDesignEngine {
     if (!patch) return [];
     const outlineCentroid = centroidOf(pts);
     const md = mesioDistalDirection(session.insertionAxis);
-    return patch.proximalFaces.map((face) => {
-      const side = proximalSide(face.columnPoints, outlineCentroid, md);
-      const neighbor = side === 'mesial' ? mesialBox : distalBox;
+    const axis = session.insertionAxis;
+    const capturedFor = (columnPoints: readonly Vec3[]): CapturedNeighbour | null => {
+      const fc = centroidOf(columnPoints);
+      const d: Vec3 = [fc[0] - outlineCentroid[0], fc[1] - outlineCentroid[1], fc[2] - outlineCentroid[2]];
+      const da = d[0] * axis[0] + d[1] * axis[1] + d[2] * axis[2];
+      const dp: Vec3 = [d[0] - da * axis[0], d[1] - da * axis[1], d[2] - da * axis[2]];
+      const len = Math.hypot(dp[0], dp[1], dp[2]);
+      if (len === 0) return null;
+      let best: CapturedNeighbour | null = null;
+      let bestCos = 0.5;
+      for (const capture of [session.captures.mesial, session.captures.distal]) {
+        if (!capture) continue;
+        const n = capture.params['approachDirection'] as Vec3;
+        const cos = (n[0] * dp[0] + n[1] * dp[1] + n[2] * dp[2]) / len;
+        if (cos > bestCos) {
+          bestCos = cos;
+          best = capture;
+        }
+      }
+      return best;
+    };
+    const faces = patch.proximalFaces.map((face) => ({ face, capture: capturedFor(face.columnPoints) }));
+    const takenByCapture = new Set(faces.flatMap((f) => (f.capture ? [f.capture.side] : [])));
+    return faces.map(({ face, capture }) => {
+      const geometric = proximalSide(face.columnPoints, outlineCentroid, md);
+      const flipped = geometric === 'mesial' ? 'distal' : 'mesial';
+      const label = capture ? (capture.side as NeighbourSide) : takenByCapture.has(geometric) ? flipped : geometric;
+      const box = geometric === 'mesial' ? mesialBox : distalBox;
       return {
-        label: side,
+        label,
         columnPoints: flattenLoop(face.columnPoints),
         freeRunPoints: flattenLoop(face.freeRunPoints),
-        neighborPositions: neighbor.positions,
-        neighborIndices: neighbor.indices,
+        neighborPositions: capture ? capture.positions : box.positions,
+        neighborIndices: capture ? capture.indices : box.indices,
         targetPenetrationMm: session.params.proximalContactPenetrationMm,
+        capture,
       };
     });
   }
@@ -627,7 +831,24 @@ class CavityDesignEngine {
     try {
       this.assertRunnable('contacts');
       if (!session.patch) throw new CavityStageOrderError('contacts', 'patchIncomplete');
-      const adaptations = this.buildAdaptations(session);
+      await this.restoreJournaledCaptures();
+      const built = this.buildAdaptations(session);
+      const adaptations = built.map((a) => ({
+        label: a.label,
+        columnPoints: a.columnPoints,
+        freeRunPoints: a.freeRunPoints,
+        neighborPositions: a.neighborPositions,
+        neighborIndices: a.neighborIndices,
+        targetPenetrationMm: a.targetPenetrationMm,
+      }));
+      const captureByLabel = new Map(built.map((a) => [a.label, a.capture]));
+      const standInReason =
+        findArchScan(caseStore.getDocument(), session.tooth, session.targetNodeId) !== null
+          ? ('not-captured' as const)
+          : ('no-neighbour-geometry' as const);
+      const regionHashes = built.flatMap((a) => (a.capture ? [a.capture.contentHash] : []));
+      const neighbourProvenance: GeometryProvenance =
+        built.length > 0 && built.every((a) => a.capture !== null) ? 'case' : CAVITY_NEIGHBOUR_PROVENANCE;
       const result = await this.pool().run(
         'cavityProximalContact',
         {
@@ -642,15 +863,20 @@ class CavityDesignEngine {
         { onProgress: (f) => this.publish({ progress: f }) },
       );
       const contentHash = await this.hashMesh(result.positions, result.indices);
-      const contactInputs: ContactResidualInput[] = result.boxes.map((b) => ({
-        kind: b.label === 'mesial' ? 'proximalMesial' : 'proximalDistal',
-        targetPenetrationMm: b.targetPenetrationMm,
-        achievedSignedDistanceMm: b.achievedSignedDistanceMm,
-        contactResidualMm: b.contactResidualMm,
-        regionResidualMm: b.faceResidualMm,
-        clampBound: b.clampBound,
-        provenance: CAVITY_NEIGHBOUR_PROVENANCE,
-      }));
+      const contactInputs: ContactResidualInput[] = result.boxes.map((b) => {
+        const capture = captureByLabel.get(b.label) ?? null;
+        return {
+          kind: b.label === 'mesial' ? 'proximalMesial' : 'proximalDistal',
+          targetPenetrationMm: b.targetPenetrationMm,
+          achievedSignedDistanceMm: b.achievedSignedDistanceMm,
+          contactResidualMm: b.contactResidualMm,
+          regionResidualMm: b.faceResidualMm,
+          clampBound: b.clampBound,
+          ...(capture
+            ? { provenance: 'case' as const, neighbourWindowBandMm: capture.windowBoundaryBandMm }
+            : { provenance: CAVITY_NEIGHBOUR_PROVENANCE, standInReason }),
+        };
+      });
       session.contacts = {
         positions: result.positions,
         indices: result.indices,
@@ -668,9 +894,9 @@ class CavityDesignEngine {
           clampedBoxes: result.clampedBoxes,
           seamDihedralMaxBeforeDeg: result.seamDihedralMaxBeforeDeg,
           seamDihedralMaxAfterDeg: result.seamDihedralMaxAfterDeg,
-          neighbourProvenance: CAVITY_NEIGHBOUR_PROVENANCE,
+          neighbourProvenance,
         },
-        session.patch ? [session.patch.contentHash] : [],
+        [...(session.patch ? [session.patch.contentHash] : []), ...regionHashes],
       );
       this.publish({
         busyStage: null,
@@ -686,7 +912,7 @@ class CavityDesignEngine {
           clampedBoxes: [...result.clampedBoxes],
           seamDihedralMaxBeforeDeg: result.seamDihedralMaxBeforeDeg,
           seamDihedralMaxAfterDeg: result.seamDihedralMaxAfterDeg,
-          neighbourProvenance: CAVITY_NEIGHBOUR_PROVENANCE,
+          neighbourProvenance,
         },
       });
       this.refreshGates();

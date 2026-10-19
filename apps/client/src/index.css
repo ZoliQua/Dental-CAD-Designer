@@ -2004,6 +2004,46 @@ body {
   color: var(--color-warning);
 }
 
+/* Phase 9 Task 3 — neighbour / antagonist capture from the case's scans. */
+.neighbour-capture {
+  margin: 0.5rem 0;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+
+.neighbour-capture__title {
+  margin: 0 0 0.35rem;
+  font-size: 0.8rem;
+}
+
+.neighbour-capture__note {
+  margin: 0;
+  color: var(--color-warning);
+}
+
+.neighbour-capture__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  margin: 0.25rem 0;
+}
+
+.neighbour-capture__label {
+  font-weight: 600;
+}
+
+.neighbour-capture__status--missing {
+  color: var(--color-warning);
+}
+
+.neighbour-capture__hint {
+  flex-basis: 100%;
+  font-style: italic;
+}
+
 .crown-panel__warning-banner,
 .cavity-panel__warning-banner,
 .bridge-panel__warning-banner,

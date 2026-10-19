@@ -8,7 +8,10 @@ import { useTranslation } from 'react-i18next';
 import type { QcGateResult } from '@dqcad/shared-types';
 
 export type StandInMessageKey =
-  'provenance.crownNeighbours' | 'provenance.cavityNeighbours' | 'provenance.coverageDivider';
+  | 'provenance.crownNeighbours'
+  | 'provenance.cavityNeighbours'
+  | 'provenance.noNeighbourGeometry'
+  | 'provenance.coverageDivider';
 
 /** The stage-level banner for a placeholder input. */
 export function StandInDisclosure({

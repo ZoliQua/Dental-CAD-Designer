@@ -582,7 +582,7 @@ export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps
         // 6.5 ADR-022 provenance traceability: a context claiming `case`
         // provenance for an input the saved case cannot back is refused —
         // the server never trusts an untraceable "this was the patient".
-        assertTraceableProvenance(qcContext, document);
+        assertTraceableProvenance(qcContext, document, restoration.id);
 
         // 7. Kernel version: a report recomputed on a different kernel is not
         // comparable (determinism is per kernel version) — refuse rather than

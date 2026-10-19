@@ -820,13 +820,34 @@
   },
   "provenance": {
     "title": "Stand-in geometry",
-    "crownNeighbours": "The mesial and distal neighbours are synthetic placeholder boxes, not the patient's teeth. Capturing neighbours from the arch scan is not available yet, so the proximal-contact QC gate cannot pass. Acknowledge it only after you have checked the contacts another way.",
-    "cavityNeighbours": "The proximal boxes are adapted to synthetic placeholder neighbours, not the patient's teeth. Capturing neighbours from the arch scan is not available yet, so the proximal-contact QC gate cannot pass. Acknowledge it only after you have checked the contacts another way.",
+    "crownNeighbours": "At least one neighbour is a synthetic placeholder box, not the patient's tooth. Capture it on the arch scan above. Until then the proximal-contact QC gate cannot pass. Acknowledge it only after you have checked the contacts another way.",
+    "cavityNeighbours": "At least one proximal box is adapted to a synthetic placeholder neighbour, not the patient's tooth. Capture it on the arch scan above. Until then the proximal-contact QC gate cannot pass. Acknowledge it only after you have checked the contacts another way.",
     "coverageDivider": "The covered-cusp divider is a placeholder plane taken from the cavity outline's bounding box, not from the patient's cusp anatomy. The covered-cusp thickness QC gate therefore cannot pass. Acknowledge it only after you have checked the cusp thickness another way.",
     "gate": {
       "placeholder": "measured against placeholder geometry, not the patient's; cannot pass",
       "demo-fixture": "measured against the demonstration fixture, not this case; cannot pass"
     },
-    "exportPlaceholder": "Some QC gates of this restoration were measured against placeholder geometry, not the patient's ({{gates}}). They cannot pass. An acknowledgment is journaled and printed in the traceability document."
+    "exportPlaceholder": "Some QC gates of this restoration were measured against placeholder geometry, not the patient's ({{gates}}). They cannot pass. An acknowledgment is journaled and printed in the traceability document.",
+    "noNeighbourGeometry": "This case has no arch scan, so there is no neighbour geometry: the neighbours are synthetic placeholder boxes. The proximal-contact QC gate cannot pass. Acknowledge it only after you have checked the contacts another way."
+  },
+  "capture": {
+    "title": "Neighbours from the case's scans",
+    "noArchScan": "This case has no arch scan of this jaw, so there is no neighbour geometry. The proximal contacts are measured against stand-in boxes and their QC gate cannot pass.",
+    "side": {
+      "mesial": "Mesial neighbour ({{tooth}})",
+      "distal": "Distal neighbour ({{tooth}})"
+    },
+    "notCaptured": "not captured; a stand-in box is used",
+    "captured": "captured from the arch scan · window border ≤ {{band}} µm",
+    "busy": "Capturing…",
+    "pick": "Pick on the arch scan",
+    "repick": "Pick again",
+    "picking": "Click the middle of the neighbour tooth on the arch scan.",
+    "cancel": "Cancel",
+    "antagonistTitle": "Antagonist",
+    "antagonistScan": "from the case's antagonist scan",
+    "antagonistOpposite": "captured from the opposite arch scan (confirmed) · window border ≤ {{band}} µm",
+    "useOppositeArch": "Use the opposite arch scan as the antagonist",
+    "noAntagonist": "no antagonist scan in this case"
   }
 }

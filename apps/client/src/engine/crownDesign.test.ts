@@ -46,6 +46,7 @@ interface FakeCall {
 
 class FakePool {
   calls: FakeCall[] = [];
+  extractCalls = 0;
   private hashCounter = 0;
   failShell = false;
   failResolveMorph = false;
@@ -57,9 +58,34 @@ class FakePool {
     switch (job) {
       case 'buildBvh':
         return {};
-      case 'hashMesh':
+      case 'extractNeighbourRegion': {
+        const p = payload as { seed: number[]; options?: { approach?: string } };
+        this.extractCalls += 1;
+        return {
+          ...tetra(20 + p.seed[0]!),
+          capturedTriangleCount: 512,
+          sourceTriangleIndices: Uint32Array.from([1, 2]),
+          seedOnSurface: p.seed,
+          approachDirection: [Math.sign(p.seed[0]!), 0, 0],
+          separatingPlanePoint: [0, 0, 0],
+          capturedAreaMm2: 16,
+          windowBoundaryBandMm: 0.25,
+          foldTrianglesDropped: 0,
+          approach: p.options?.approach ?? 'proximal',
+          radiusMm: 6,
+          minFacingCos: 0.1,
+          cervicalOffsetMm: 0,
+          closureDepthMm: 2,
+        };
+      }
+      case 'hashMesh': {
+        // Deterministic per geometry for the captured regions (replay must
+        // reproduce the journaled hash); a counter for the stage meshes.
+        const first = (payload as { positions: Float64Array }).positions[0]!;
+        if (first >= 15) return { contentHash: `region-${first}` };
         this.hashCounter += 1;
         return { contentHash: `hash-${this.hashCounter}` };
+      }
       case 'innerSurface':
         return { ...tetra(2), stats: STATS, errorBoundMm: 0.005, flatZoneErrorBoundMm: 0.005, patchTriangleCount: 4, skirtTriangleCount: 2, marginVertexCount: 64, marginalGapMm: 0.02, cementGapMm: 0.05, spacerStartMm: 0.8, blendWidthMm: 0.3, pitchMm: 0.1 };
       case 'placeAnatomy':
@@ -286,6 +312,141 @@ describe('crownDesign controller — neighbour provenance (ADR-022)', () => {
     await crownDesignEngine.placeAnatomy(anatomyInput());
     const anatomyOp = caseStore.getDocument().history.filter((o) => o.name === 'crown-anatomy').pop()!;
     expect(anatomyOp.params.neighbourProvenance).toBe('case');
+  });
+});
+
+describe('crownDesign controller — neighbour + antagonist capture (Phase 9 Task 3)', () => {
+  function addScan(contentHash: string, role: 'upperJaw' | 'lowerJaw' | 'antagonist'): string {
+    caseStore.registerImportedMesh({
+      contentHash,
+      name: `${contentHash}.stl`,
+      format: 'stl',
+      positions: Float64Array.from([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1]),
+      indices: Uint32Array.from([0, 2, 1, 0, 1, 3, 1, 2, 3, 0, 3, 2]),
+      stats: STATS,
+      report: REPORT,
+      operations: [],
+    });
+    return caseStore.addSceneNode(contentHash, role).id;
+  }
+
+  function lastOp(name: string) {
+    return caseStore.getDocument().history.filter((o) => o.name === name).pop();
+  }
+
+  async function placeWithMorph(): Promise<void> {
+    fake.withProximalContact = true;
+    await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
+    await crownDesignEngine.placeAnatomyAuto();
+    await crownDesignEngine.runMorph();
+    await crownDesignEngine.constructShell();
+  }
+
+  it('without an arch scan: capture is refused and the stand-in says "no neighbour geometry in this case"', async () => {
+    crownDesignEngine.start(restorationId);
+    expect(useCrownStore.getState().capture.archScanAvailable).toBe(false);
+    await expect(crownDesignEngine.captureNeighbour('mesial', [-3, 0, 1])).rejects.toThrow(/no .*arch scan/i);
+    await placeWithMorph();
+    const mesial = crownDesignEngine.exportQcContext(restorationId)!.contacts.find((c) => c.kind === 'proximalMesial')!;
+    expect(mesial.provenance).toBe('placeholder');
+    expect(mesial.standInReason).toBe('no-neighbour-geometry');
+  });
+
+  it('captures a neighbour from the upper-arch scan: one journaled op (scan hash in, region hash out), downstream invalidated', async () => {
+    const archNode = addScan('upper-arch', 'upperJaw');
+    crownDesignEngine.start(restorationId);
+    expect(useCrownStore.getState().capture.archScanAvailable).toBe(true);
+    expect(useCrownStore.getState().capture.neighbourTeeth).toEqual({ mesial: 21, distal: 12 });
+    await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
+    await crownDesignEngine.placeAnatomyAuto();
+    expect(currentRestoration().stages.anatomyPlacement).toBeTypeOf('string');
+
+    await crownDesignEngine.captureNeighbour('mesial', [-3, 0, 1]);
+    const op = lastOp('neighbour-capture')!;
+    expect(op.params).toMatchObject({ restorationId, side: 'mesial', scanNodeId: archNode, seed: [-3, 0, 1], windowBoundaryBandMm: 0.25 });
+    expect(op.inputHashes).toEqual(['upper-arch']);
+    expect(op.outputHashes).toEqual(['region-17']);
+    expect(currentRestoration().stages.anatomyPlacement).toBeUndefined();
+    expect(currentRestoration().stages.innerSurface).toBeTypeOf('string');
+    expect(useCrownStore.getState().capture.mesial).toMatchObject({ windowBoundaryBandMm: 0.25, capturedTriangleCount: 512 });
+  });
+
+  it('with both sides captured the proximal contacts are case-derived, carry the window band, and the anatomy op proves its inputs', async () => {
+    addScan('upper-arch', 'upperJaw');
+    crownDesignEngine.start(restorationId);
+    await crownDesignEngine.captureNeighbour('mesial', [-3, 0, 1]);
+    await crownDesignEngine.captureNeighbour('distal', [3, 0, 1]);
+    await placeWithMorph();
+    const place = [...fake.calls].reverse().find((c) => c.job === 'placeAnatomy')!.payload as {
+      mesialNeighborPositions: Float64Array;
+      distalNeighborPositions: Float64Array;
+    };
+    expect(place.mesialNeighborPositions[0]).toBe(17); // the captured region (tetra(20 + -3))
+    expect(place.distalNeighborPositions[0]).toBe(23);
+    const anatomyOp = lastOp('crown-anatomy')!;
+    expect(anatomyOp.params.neighbourProvenance).toBe('case');
+    expect(anatomyOp.inputHashes).toEqual(expect.arrayContaining(['region-17', 'region-23']));
+    expect(useCrownStore.getState().anatomy?.neighbourProvenance).toBe('case');
+    const mesial = crownDesignEngine.exportQcContext(restorationId)!.contacts.find((c) => c.kind === 'proximalMesial')!;
+    expect(mesial.provenance).toBe('case');
+    expect(mesial.neighbourWindowBandMm).toBe(0.25);
+    expect(mesial.standInReason).toBeUndefined();
+  });
+
+  it('one side captured: the other stays a placeholder "not yet captured"', async () => {
+    addScan('upper-arch', 'upperJaw');
+    crownDesignEngine.start(restorationId);
+    await crownDesignEngine.captureNeighbour('distal', [3, 0, 1]);
+    await placeWithMorph();
+    expect(lastOp('crown-anatomy')!.params.neighbourProvenance).toBe('placeholder');
+    const mesial = crownDesignEngine.exportQcContext(restorationId)!.contacts.find((c) => c.kind === 'proximalMesial')!;
+    expect(mesial.provenance).toBe('placeholder');
+    expect(mesial.standInReason).toBe('not-captured');
+  });
+
+  it('a reload restores the journaled captures by REPLAYING them (identical region hash), never by trusting a cache', async () => {
+    addScan('upper-arch', 'upperJaw');
+    crownDesignEngine.start(restorationId);
+    await crownDesignEngine.captureNeighbour('mesial', [-3, 0, 1]);
+    await crownDesignEngine.captureNeighbour('distal', [3, 0, 1]);
+    crownDesignEngine.clear();
+    crownDesignEngine.start(restorationId);
+    expect(useCrownStore.getState().capture.mesial).toMatchObject({ windowBoundaryBandMm: 0.25 });
+    const before = fake.extractCalls;
+    await placeWithMorph();
+    expect(fake.extractCalls).toBe(before + 2);
+    expect(lastOp('crown-anatomy')!.params.neighbourProvenance).toBe('case');
+  });
+
+  it('the opposite arch is used as antagonist only after explicit confirmation (journaled, case-derived)', async () => {
+    addScan('upper-arch', 'upperJaw');
+    const lowerNode = addScan('lower-arch', 'lowerJaw');
+    crownDesignEngine.start(restorationId);
+    expect(useCrownStore.getState().capture.oppositeArchAvailable).toBe(true);
+    expect(useCrownStore.getState().capture.antagonistSource).toBeNull();
+    await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
+    await crownDesignEngine.placeAnatomyAuto();
+    let place = [...fake.calls].reverse().find((c) => c.job === 'placeAnatomy')!.payload as { antagonistPositions: Float64Array | null };
+    expect(place.antagonistPositions).toBeNull();
+
+    await crownDesignEngine.confirmOppositeArchAntagonist();
+    const op = lastOp('antagonist-confirm')!;
+    expect(op.params).toMatchObject({ restorationId, scanNodeId: lowerNode, approach: 'occlusal' });
+    // Seeded at the margin centroid (the kernel snaps it onto the scan).
+    expect((op.params.seed as number[])[2]).toBeCloseTo(0.5, 12);
+    expect(op.inputHashes).toEqual(['lower-arch']);
+    expect(useCrownStore.getState().capture.antagonistSource).toBe('oppositeArch');
+    await crownDesignEngine.placeAnatomyAuto();
+    place = [...fake.calls].reverse().find((c) => c.job === 'placeAnatomy')!.payload as { antagonistPositions: Float64Array | null };
+    expect(place.antagonistPositions?.[0]).toBe(20); // the captured occlusal region (tetra(20 + 0))
+    expect(lastOp('crown-anatomy')!.inputHashes).toContain('region-20');
+  });
+
+  it('an antagonist-role scan still wins over the opposite arch (no confirmation needed)', () => {
+    addScan('lower-arch', 'lowerJaw');
+    addScan('ant', 'antagonist');
+    crownDesignEngine.start(restorationId);
+    expect(useCrownStore.getState().capture.antagonistSource).toBe('antagonistScan');
   });
 });
 

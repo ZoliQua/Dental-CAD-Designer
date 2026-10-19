@@ -20,6 +20,9 @@
 // sliders, the brush palette, and overlay-visibility toggles.
 import { create } from 'zustand';
 import type { GeometryProvenance, QcReport } from '@dqcad/shared-types';
+import { INITIAL_CAPTURE, type CaptureState } from './neighbourCaptureStore';
+
+export type { CaptureState, CaptureSummary } from './neighbourCaptureStore';
 
 /** The six crown-design stages (mirrors engine/crownWorkflow.ts's
  * `CrownStage` — identical union, re-declared here per the layer rule). */
@@ -65,8 +68,9 @@ export interface AnatomySummary {
   scaleOcclusoGingival: number;
   usedProximalGap: boolean;
   antagonistUsed: boolean;
-  /** Provenance of the proximal neighbour references (ADR-022) — `placeholder`
-   * until neighbour capture from the arch scan lands (Phase 9 Task 3). */
+  /** Provenance of the proximal neighbour references (ADR-022) — the worse
+   * of the two sides: `case` once both are captured from the arch scan
+   * (Phase 9 Task 3), else `placeholder`. */
   neighbourProvenance: GeometryProvenance;
   /** `true` after a manual gizmo transform, `false` after auto-place. */
   manual: boolean;
@@ -140,6 +144,8 @@ export interface CrownState {
    * only read from the document) so the QC sub-panel re-renders on the same
    * store the rest of the workflow uses; the engine sets both together. */
   qc: QcReport | null;
+  /** Neighbour / antagonist capture from the case's scans (Phase 9 Task 3). */
+  capture: CaptureState;
 
   strengths: MorphStrengthsUi;
   /** `true` while a live `resolveMorph` re-solve is in flight (slider drag) —
@@ -184,6 +190,7 @@ const INITIAL: Omit<CrownState, 'apply' | 'reset'> = {
   shell: null,
   sculpt: null,
   qc: null,
+  capture: INITIAL_CAPTURE,
   strengths: { proximalMesial: 1, proximalDistal: 1, antagonist: 1 },
   morphBusy: false,
   brush: 'add',

@@ -46,6 +46,7 @@ interface FakeCall {
 
 class FakePool {
   calls: FakeCall[] = [];
+  extractCalls = 0;
   private hashCounter = 0;
   failShell = false;
   /** Which gate the fake QC report FAILS (for the acknowledge path). */
@@ -56,9 +57,34 @@ class FakePool {
     switch (job) {
       case 'buildBvh':
         return {};
-      case 'hashMesh':
+      case 'hashMesh': {
+        // Deterministic per geometry for captured regions (replay must
+        // reproduce the journaled hash); a counter for the stage meshes.
+        const first = (payload as { positions: Float64Array }).positions[0]!;
+        if (first >= 15) return { contentHash: `region-${first}` };
         this.hashCounter += 1;
         return { contentHash: `hash-${this.hashCounter}` };
+      }
+      case 'extractNeighbourRegion': {
+        const p = payload as { seed: number[] };
+        this.extractCalls += 1;
+        return {
+          ...tetra(30 + p.seed[0]!),
+          capturedTriangleCount: 300,
+          sourceTriangleIndices: Uint32Array.from([1]),
+          seedOnSurface: p.seed,
+          approachDirection: [Math.sign(p.seed[0]!), 0, 0],
+          separatingPlanePoint: [0, 0, 0],
+          capturedAreaMm2: 9,
+          windowBoundaryBandMm: 0.2,
+          foldTrianglesDropped: 0,
+          approach: 'proximal',
+          radiusMm: 6,
+          minFacingCos: 0.1,
+          cervicalOffsetMm: 0,
+          closureDepthMm: 2,
+        };
+      }
       case 'cavityInnerSurface':
         return { ...tetra(2), stats: STATS, errorBoundMm: 0.006, flatZoneErrorBoundMm: 0.004, patchTriangleCount: 40, skirtTriangleCount: 12, marginVertexCount: 80, marginalGapMm: 0.02, cementGapMm: 0.05, spacerStartMm: 0.8, blendWidthMm: 0.3, pitchMm: 0.06 };
       case 'cavityOcclusalPatch':
@@ -392,6 +418,97 @@ describe('cavityDesign controller — ONLAY cusp coverage', () => {
     await cavityDesignEngine.runPatch();
     await cavityDesignEngine.runContacts();
     await expect(cavityDesignEngine.selectCuspCoverage(cavityDesignEngine.defaultCoverageDivider())).rejects.toBeInstanceOf(CavityStageOrderError);
+  });
+});
+
+describe('cavityDesign controller — neighbour capture (Phase 9 Task 3)', () => {
+  function addArch(): string {
+    caseStore.registerImportedMesh({
+      contentHash: 'upper-arch',
+      name: 'upper.stl',
+      format: 'stl',
+      positions: Float64Array.from([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1]),
+      indices: Uint32Array.from([0, 2, 1, 0, 1, 3, 1, 2, 3, 0, 3, 2]),
+      stats: STATS,
+      report: REPORT,
+      operations: [],
+    });
+    return caseStore.addSceneNode('upper-arch', 'upperJaw').id;
+  }
+
+  async function toContacts(): Promise<void> {
+    await cavityDesignEngine.runFit({ pitchMm: 0.06 });
+    await cavityDesignEngine.runPatch();
+    await cavityDesignEngine.runContacts();
+  }
+
+  function contactsPayload() {
+    return [...fake.calls].reverse().find((c) => c.job === 'cavityProximalContact')!.payload as {
+      adaptations: Array<{ label: string; neighborPositions: Float64Array }>;
+    };
+  }
+
+  it('without an arch scan: refused, and the box stand-ins say "no neighbour geometry in this case"', async () => {
+    cavityDesignEngine.start(restorationId);
+    expect(useCavityStore.getState().capture.archScanAvailable).toBe(false);
+    await expect(cavityDesignEngine.captureNeighbour('mesial', [-8, 0, 6])).rejects.toThrow(/no .*arch scan/i);
+    await toContacts();
+    const inputs = useCavityStore.getState().contacts!;
+    expect(inputs.neighbourProvenance).toBe('placeholder');
+    await cavityDesignEngine.constructShell();
+    const ctx = cavityDesignEngine.exportQcContext(restorationId)!;
+    expect(ctx.contacts.every((c) => c.standInReason === 'no-neighbour-geometry')).toBe(true);
+  });
+
+  it('a captured neighbour replaces its box: paired by approach direction, case-derived, banded, journaled as input', async () => {
+    const archNode = addArch();
+    cavityDesignEngine.start(restorationId);
+    expect(useCavityStore.getState().capture.neighbourTeeth).toEqual({ mesial: 15, distal: 17 });
+    await cavityDesignEngine.captureNeighbour('mesial', [-8, 0, 6]);
+    const op = caseStore.getDocument().history.filter((o) => o.name === 'neighbour-capture').pop()!;
+    expect(op.params).toMatchObject({ restorationId, side: 'mesial', scanNodeId: archNode });
+    expect(op.inputHashes).toEqual(['upper-arch']);
+    expect(op.outputHashes).toEqual(['region-22']);
+    expect(useCavityStore.getState().capture.mesial).toMatchObject({ windowBoundaryBandMm: 0.2 });
+
+    await toContacts();
+    const adaptations = contactsPayload().adaptations;
+    const mesial = adaptations.find((a) => a.label === 'mesial')!;
+    expect(mesial.neighborPositions[0]).toBe(22); // the captured region, not a box
+    const contactsOp = caseStore.getDocument().history.filter((o) => o.name === 'inlay-proximal-contacts').pop()!;
+    expect(contactsOp.inputHashes).toContain('region-22');
+    expect(contactsOp.params.neighbourProvenance).toBe('placeholder'); // distal still a box
+    await cavityDesignEngine.constructShell();
+    const ctx = cavityDesignEngine.exportQcContext(restorationId)!;
+    expect(ctx.contacts.find((c) => c.kind === 'proximalMesial')).toMatchObject({ provenance: 'case', neighbourWindowBandMm: 0.2 });
+    expect(ctx.contacts.find((c) => c.kind === 'proximalDistal')).toMatchObject({ provenance: 'placeholder', standInReason: 'not-captured' });
+  });
+
+  it('both captured ⇒ the contacts stage is case-derived; capturing invalidates contacts onward', async () => {
+    addArch();
+    cavityDesignEngine.start(restorationId);
+    await toContacts();
+    expect(currentRestoration().stages.proximalContacts).toBeTypeOf('string');
+    await cavityDesignEngine.captureNeighbour('mesial', [-8, 0, 6]);
+    expect(currentRestoration().stages.proximalContacts).toBeUndefined();
+    expect(currentRestoration().stages.occlusalPatch).toBeTypeOf('string');
+    await cavityDesignEngine.captureNeighbour('distal', [8, 0, 6]);
+    await cavityDesignEngine.runContacts();
+    expect(useCavityStore.getState().contacts?.neighbourProvenance).toBe('case');
+  });
+
+  it('a reload replays the journaled captures (identical region hashes)', async () => {
+    addArch();
+    cavityDesignEngine.start(restorationId);
+    await cavityDesignEngine.captureNeighbour('mesial', [-8, 0, 6]);
+    await cavityDesignEngine.captureNeighbour('distal', [8, 0, 6]);
+    cavityDesignEngine.clear();
+    cavityDesignEngine.start(restorationId);
+    expect(useCavityStore.getState().capture.distal).toMatchObject({ capturedTriangleCount: 300 });
+    const before = fake.extractCalls;
+    await toContacts();
+    expect(fake.extractCalls).toBe(before + 2);
+    expect(useCavityStore.getState().contacts?.neighbourProvenance).toBe('case');
   });
 });
 

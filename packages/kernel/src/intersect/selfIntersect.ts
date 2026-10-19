@@ -99,6 +99,10 @@ export interface SelfIntersectionScanOptions {
    * lets a caller that has one avoid a rebuild. When omitted, the scan builds
    * its own. */
   readonly bvh?: Bvh;
+  /** Called once per intersecting unordered pair (i < j), in scan order —
+   * for a caller that needs every locus, not only the first (Phase 9 Task 3's
+   * neighbour-region closure repair). Observes only; the result is unchanged. */
+  readonly onIntersectingPair?: (triangleA: number, triangleB: number) => void;
 }
 
 /**
@@ -227,6 +231,7 @@ export function findSelfIntersections(
           candidatePairsTested++;
           if (triangleTriangleIntersect(tri1[0], tri1[1], tri1[2], tri2[0], tri2[1], tri2[2])) {
             intersectingPairCount++;
+            options.onIntersectingPair?.(i, j);
             // Track lexicographically-smallest (i, j) — traversal-order-free.
             if (firstA === -1 || i < firstA || (i === firstA && j < firstB)) {
               firstA = i;

@@ -117,6 +117,44 @@ origin-centred hash, which is byte-identical before and after the fix.
 - **Acceptance (env-gated, real scans):** crown on `arch-case-01` tooth 11
   with captured 12 / 21 neighbours — contact gate measured, bound reported.
 
+**Landed (2026-10-20, kernel 0.28.0).** As planned, with these recorded
+decisions:
+- The op takes the restoration's margin LOOP, not just its centroid (the
+  loop's reach along the approach direction places the separating plane
+  outside the restoration's own footprint). It returns a watertight solid:
+  the morph and cavity contact measurements need one for the exact
+  pseudonormal sign, so the verbatim window is closed by projecting it back
+  along the approach direction. Window rules, closure, fold repair and
+  `@errorBound` (the window-border band) are in
+  `packages/kernel/src/neighbour/extractNeighbourRegion.ts` and the
+  `[0.28.0]` changelog entry.
+- Two findings from the real scan changed the design before landing: the
+  component is chosen by area (the least-depth rule captured 1–2 noise
+  triangles), and a closure fold left by the centroid visibility test is
+  repaired by dropping the implicated triangles (counted and journaled), not
+  refused outright.
+- The antagonist uses the same op with an `occlusal` approach. Its seed is
+  the margin centroid snapped onto the opposite arch, not a ray along the
+  axis (on the anterior teeth that ray passes beside the lower incisors).
+  It is used only after the confirm button (`ANTAGONIST_CONFIRM_OP`); an
+  `antagonist`-role scan still wins without confirmation.
+- Journal: one `NEIGHBOUR_CAPTURE_OP` per pick (scan mesh id in, region
+  hash out, the pick and window in params); it invalidates anatomy onward
+  (crown) or contacts onward (cavity). The anatomy and contacts stage ops
+  list the region hashes in `inputHashes`. After a reload the captures are
+  re-derived by replaying the journal, and the replay must reproduce the
+  journaled hash.
+- A side not captured stays a `placeholder` box; the gate message says
+  "no neighbour geometry in this case" without an arch scan and "not yet
+  captured" with one. A captured contact carries its band, which the
+  contact gate prints. The server accepts a `case` proximal claim only with
+  a capture of that side, for that restoration, from an arch scan still in
+  the case.
+- Acceptance (`RUN_NEIGHBOUR_CAPTURE_REAL=1`): 12 / 21 captured from the
+  upper arch (2178 / 1449 triangles), the antagonist from the lower arch.
+  Placement and morph run on the captured solids, and the contact gate is
+  measured on `case` geometry, with the band ≤ 692 µm disclosed.
+
 ## Task 4 — Tooth library in the client
 
 - Engine fetches anatomy for the restoration's FDI from `/api/tooth-library`

@@ -30,6 +30,7 @@
 //   jobs/offset.ts     offsetMesh (Phase 2 Task 7)
 //   jobs/decimate.ts   decimateMesh (Phase 2 Task 10 — render LODs)
 //   jobs/export.ts     exportRestorationMesh (Phase 7 Task 3 — manufacturing bytes)
+//   jobs/neighbourRegion.ts extractNeighbourRegion (Phase 9 Task 3 — neighbour capture)
 //   jobs/registry.ts   this file — types + runJob + registry assembly
 //
 // This was a PURE MECHANICAL MOVE (plus this same task's worker-side-hashing
@@ -192,6 +193,12 @@ import {
   type CavityOcclusalPatchResult,
 } from './cavityOcclusalPatch.ts';
 export type { CavityOcclusalPatchPayload, CavityOcclusalPatchResult };
+import {
+  extractNeighbourRegionJob,
+  type ExtractNeighbourRegionPayload,
+  type ExtractNeighbourRegionResult,
+} from './neighbourRegion.ts';
+export type { ExtractNeighbourRegionPayload, ExtractNeighbourRegionResult };
 import {
   cavityProximalContactJob,
   type CavityProximalContactPayload,
@@ -467,6 +474,7 @@ export interface JobPayloadMap {
   bridgeAssembly: BridgeAssemblyPayload;
   cavityOcclusalPatch: CavityOcclusalPatchPayload;
   cavityProximalContact: CavityProximalContactPayload;
+  extractNeighbourRegion: ExtractNeighbourRegionPayload;
   placeAnatomy: PlaceAnatomyPayload;
   morphAnatomy: MorphAnatomyPayload;
   resolveMorph: ResolveMorphPayload;
@@ -527,6 +535,7 @@ export interface JobResultMap {
   bridgeAssembly: BridgeAssemblyResultPayload;
   cavityOcclusalPatch: CavityOcclusalPatchResult;
   cavityProximalContact: CavityProximalContactResult;
+  extractNeighbourRegion: ExtractNeighbourRegionResult;
   placeAnatomy: PlaceAnatomyResult;
   morphAnatomy: MorphAnatomyResult;
   resolveMorph: MorphAnatomyResult;
@@ -594,6 +603,7 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   bridgeAssembly: bridgeAssemblyJob,
   cavityOcclusalPatch: cavityOcclusalPatchJob,
   cavityProximalContact: cavityProximalContactJob,
+  extractNeighbourRegion: extractNeighbourRegionJob,
   placeAnatomy: placeAnatomyJob,
   morphAnatomy: morphAnatomyJob,
   resolveMorph: resolveMorphJob,

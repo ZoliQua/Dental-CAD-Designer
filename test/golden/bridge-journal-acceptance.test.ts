@@ -55,7 +55,7 @@ const µm = (mm: number): string => `${(mm * 1000).toFixed(3)} µm`;
 // change (bump + changelog), never a silent regen (the WASM union is
 // manifoldVersion-guarded, the crown/cavity-acceptance precedent).
 // ---------------------------------------------------------------------------
-const EXPECTED_KERNEL_VERSION = '0.27.0';
+const EXPECTED_KERNEL_VERSION = '0.28.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 function installedManifoldVersion(): string {
   const pkg = JSON.parse(
@@ -91,7 +91,11 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // BYTE-IDENTICAL (verified: only the two -qc pins drifted in the 0.27.0 run).
   // Old hash: aa34ce1474e451ae1d22f2231737773e8c8bc902bf66a63be498a98b949706e9.
   // See CHANGELOG-kernel.md [0.27.0].
-  'bridge-fullContour-qc': '67a9ea023389489b80cb5a2af34b1d6de3f6357d48e62ec778981379c46d413e',
+  // Advanced 0.27.0 → 0.28.0 (Phase 9 Task 3): MECHANICAL, metadata-only — the new
+  // neighbour/extractNeighbourRegion op does not touch this chain; hashQcReport tracks
+  // the embedded kernelVersion, every geometry stage pin above BYTE-IDENTICAL to
+  // 0.27.0 (verified). Old hash: 67a9ea023389489b80cb5a2af34b1d6de3f6357d48e62ec778981379c46d413e. See docs/CHANGELOG-kernel.md's [0.28.0] entry.
+  'bridge-fullContour-qc': 'fd334638fc1521e55567934165d4aedf5f8b6760ef84ee3565b818aa00ea7000',
   // --- framework chain (bridge.framework outputs the cut-back unit hashes) ---
   'bridge-framework-abutmentSurfaces':
     '217b2b13d6d41e657f9b652009a4efe1d3c285a6c4fa428b0030eb0c5070cc8c|d64954bd314424813eed60441adc74dce985310d225e5a9702499bc633f7261c',
@@ -106,7 +110,11 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // bridge-fullContour-qc above). Old hash:
   // 3b316a3785d0ed76e18b45561ac2ae11fd65b56086ccceef52997d0f83faea61. See
   // CHANGELOG-kernel.md [0.27.0].
-  'bridge-framework-qc': '02a748f9adeae37bbb668db7802368f94eece324baa61eb1079c31780138df10',
+  // Advanced 0.27.0 → 0.28.0 (Phase 9 Task 3): MECHANICAL, metadata-only — the new
+  // neighbour/extractNeighbourRegion op does not touch this chain; hashQcReport tracks
+  // the embedded kernelVersion, every geometry stage pin above BYTE-IDENTICAL to
+  // 0.27.0 (verified). Old hash: 02a748f9adeae37bbb668db7802368f94eece324baa61eb1079c31780138df10. See docs/CHANGELOG-kernel.md's [0.28.0] entry.
+  'bridge-framework-qc': 'c38239c267b1d580eeb055b4bd02c45517d081f6f84d3a57db4485d758f74686',
 };
 
 const FULL_GATE_ORDER = [

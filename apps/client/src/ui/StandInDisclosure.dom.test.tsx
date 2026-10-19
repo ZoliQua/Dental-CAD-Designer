@@ -61,12 +61,20 @@ describe('crown anatomy stage — neighbour provenance', () => {
     });
   }
 
-  it('discloses placeholder neighbours', () => {
+  it('discloses placeholder neighbours — no arch scan: there is no neighbour geometry', () => {
     seed('placeholder');
     render(<CrownDesignPanel />);
     const note = screen.getByTestId('crown-neighbours-placeholder');
     expect(note.getAttribute('role')).toBe('note');
+    expect(note.textContent).toMatch(/no arch scan, so there is no neighbour geometry/);
     expect(note.textContent).toMatch(/synthetic placeholder boxes/);
+  });
+
+  it('discloses placeholder neighbours — with an arch scan: capture them (Phase 9 Task 3)', () => {
+    seed('placeholder');
+    useCrownStore.setState({ capture: { ...useCrownStore.getState().capture, archScanAvailable: true } });
+    render(<CrownDesignPanel />);
+    expect(screen.getByTestId('crown-neighbours-placeholder').textContent).toMatch(/Capture it on the arch scan/);
   });
 
   it('says nothing for case-derived neighbours', () => {
@@ -88,7 +96,7 @@ describe('cavity stages — neighbour + coverage-divider provenance', () => {
     });
     render(<CavityDesignPanel />);
     expect(screen.getByTestId('cavity-neighbours-placeholder').textContent).toMatch(
-      /placeholder neighbours/,
+      /no neighbour geometry/,
     );
     expect(screen.getByTestId('cavity-coverage-placeholder').textContent).toMatch(/bounding box/);
   });

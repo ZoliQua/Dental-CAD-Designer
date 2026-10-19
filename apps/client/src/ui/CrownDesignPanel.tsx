@@ -17,6 +17,7 @@ import { isQcStale } from '../engine/crownWorkflow';
 import { insertionAxisIsPlaceholder } from '../engine/restorations';
 import { useCaseStore } from '../state/caseStore';
 import { GateProvenanceNote, StandInDisclosure } from './StandInDisclosure';
+import { NeighbourCapture } from './NeighbourCapture';
 import {
   useCrownStore,
   type CrownPrerequisiteCode,
@@ -256,12 +257,19 @@ function AnatomyStage({ busy }: { busy: boolean }) {
   const { t } = useTranslation();
   const gate = useGate('anatomy');
   const anatomy = useCrownStore((state) => state.anatomy);
+  const capture = useCrownStore((state) => state.capture);
   const [tx, setTx] = useState(0);
   const [ty, setTy] = useState(0);
   const [tz, setTz] = useState(0);
   return (
     <StageShell stage="anatomy" title={t('crown.anatomyTitle')} busy={busy}>
       <p className="crown-stage__note">{t('crown.anatomyLibraryNote')}</p>
+      <NeighbourCapture
+        workflow="crown"
+        capture={capture}
+        disabled={busy}
+        onConfirmOppositeArch={() => run(() => crownDesignEngine.confirmOppositeArchAntagonist())}
+      />
       <button type="button" disabled={busy || !gate?.allowed} onClick={() => run(() => crownDesignEngine.placeAnatomyAuto())} data-testid="crown-anatomy-autoplace">
         {t('crown.anatomyAutoPlace')}
       </button>
@@ -277,7 +285,10 @@ function AnatomyStage({ busy }: { busy: boolean }) {
             {anatomy.antagonistUsed && ` · ${t('crown.anatomyAntagonist')}`}
           </p>
           {anatomy.neighbourProvenance !== 'case' && (
-            <StandInDisclosure messageKey="provenance.crownNeighbours" testId="crown-neighbours-placeholder" />
+            <StandInDisclosure
+              messageKey={capture.archScanAvailable ? 'provenance.crownNeighbours' : 'provenance.noNeighbourGeometry'}
+              testId="crown-neighbours-placeholder"
+            />
           )}
           <fieldset className="crown-stage__manual">
             <legend>{t('crown.anatomyManualTitle')}</legend>

@@ -16,6 +16,7 @@
 // holds only the EPHEMERAL in-progress tool state.
 import { create } from 'zustand';
 import type { GeometryProvenance, QcReport } from '@dqcad/shared-types';
+import { INITIAL_CAPTURE, type CaptureState } from './neighbourCaptureStore';
 
 /** The seven cavity-design stages (mirrors engine/cavityWorkflow.ts's
  * `CavityStage`). */
@@ -131,6 +132,9 @@ export interface CavityState {
   shell: CavityShellSummary | null;
   /** Mirror of `Restoration.qc` for the panel's gate table. */
   qc: QcReport | null;
+  /** Neighbour capture from the case's arch scan (Phase 9 Task 3); the
+   * antagonist fields stay unused (no cavity gate consumes an antagonist). */
+  capture: CaptureState;
 
   fitGhostVisible: boolean;
   /** Bumped whenever the engine changes the design mesh, so Viewport re-syncs. */
@@ -157,6 +161,7 @@ const INITIAL: Omit<CavityState, 'apply' | 'reset'> = {
   coverage: null,
   shell: null,
   qc: null,
+  capture: INITIAL_CAPTURE,
   fitGhostVisible: true,
   designGeneration: 0,
 };

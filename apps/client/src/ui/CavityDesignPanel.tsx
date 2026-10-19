@@ -18,6 +18,7 @@ import { isCavityQcStale } from '../engine/cavityWorkflow';
 import { insertionAxisIsPlaceholder } from '../engine/restorations';
 import { useCaseStore } from '../state/caseStore';
 import { GateProvenanceNote, StandInDisclosure } from './StandInDisclosure';
+import { NeighbourCapture } from './NeighbourCapture';
 import { useCavityStore, type CavityPrerequisiteCode, type CavityStageName } from '../state/cavityStore';
 
 const STAGE_TITLE_KEY: Record<CavityStageName, string> = {
@@ -277,15 +278,20 @@ function ContactsStage({ busy }: { busy: boolean }) {
   const { t } = useTranslation();
   const gate = useGate('contacts');
   const contacts = useCavityStore((state) => state.contacts);
+  const capture = useCavityStore((state) => state.capture);
   return (
     <StageShell stage="contacts" title={t('cavity.contactsTitle')} busy={busy}>
+      <NeighbourCapture workflow="cavity" capture={capture} disabled={busy} />
       <button type="button" disabled={busy || !gate?.allowed} onClick={() => run(() => cavityDesignEngine.runContacts())} data-testid="cavity-contacts-run">
         {t('cavity.contactsRun')}
       </button>
       {contacts && (
         <>
           {contacts.neighbourProvenance !== 'case' && (
-            <StandInDisclosure messageKey="provenance.cavityNeighbours" testId="cavity-neighbours-placeholder" />
+            <StandInDisclosure
+              messageKey={capture.archScanAvailable ? 'provenance.cavityNeighbours' : 'provenance.noNeighbourGeometry'}
+              testId="cavity-neighbours-placeholder"
+            />
           )}
           <table className="cavity-contacts__table" data-testid="cavity-contacts-table">
             <tbody>

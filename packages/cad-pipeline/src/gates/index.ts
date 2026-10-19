@@ -73,6 +73,7 @@ export {
   CONTACT_GATE_NAME,
   CONTACT_GATE_DEFAULT_TOLERANCE_MM,
   type ContactResidualInput,
+  type ContactStandInReason,
   type ContactGateInput,
 } from './contact.ts';
 export {

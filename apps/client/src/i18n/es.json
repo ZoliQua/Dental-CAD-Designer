@@ -820,13 +820,34 @@
   },
   "provenance": {
     "title": "Geometría provisional",
-    "crownNeighbours": "Los vecinos mesial y distal son cajas sintéticas provisionales, no los dientes del paciente. La captura de vecinos a partir del escaneo de la arcada aún no está disponible, por lo que la puerta de QC de contacto proximal no puede superarse. Reconózcala solo después de comprobar los contactos por otra vía.",
-    "cavityNeighbours": "Las cajas proximales se adaptan a vecinos sintéticos provisionales, no a los dientes del paciente. La captura de vecinos a partir del escaneo de la arcada aún no está disponible, por lo que la puerta de QC de contacto proximal no puede superarse. Reconózcala solo después de comprobar los contactos por otra vía.",
+    "crownNeighbours": "Al menos un vecino es una caja sintética provisional, no el diente del paciente. Captúrelo arriba en el escaneo de la arcada. Hasta entonces, la puerta de QC de contacto proximal no puede superarse. Reconózcala solo después de comprobar los contactos por otra vía.",
+    "cavityNeighbours": "Al menos una caja proximal se adapta a un vecino sintético provisional, no al diente del paciente. Captúrelo arriba en el escaneo de la arcada. Hasta entonces, la puerta de QC de contacto proximal no puede superarse. Reconózcala solo después de comprobar los contactos por otra vía.",
     "coverageDivider": "El plano divisor de la cúspide cubierta es un plano provisional tomado de la caja envolvente del contorno de la cavidad, no de la anatomía cuspídea del paciente. Por ello, la puerta de QC de grosor de la cúspide cubierta no puede superarse. Reconózcala solo después de comprobar el grosor de la cúspide por otra vía.",
     "gate": {
       "placeholder": "medido sobre geometría provisional, no la del paciente; no puede superarse",
       "demo-fixture": "medido sobre la plantilla de demostración, no este caso; no puede superarse"
     },
-    "exportPlaceholder": "Algunas puertas de QC de esta restauración se midieron sobre geometría provisional, no la del paciente ({{gates}}). No pueden superarse. El reconocimiento queda registrado en el diario y figura en el documento de trazabilidad."
+    "exportPlaceholder": "Algunas puertas de QC de esta restauración se midieron sobre geometría provisional, no la del paciente ({{gates}}). No pueden superarse. El reconocimiento queda registrado en el diario y figura en el documento de trazabilidad.",
+    "noNeighbourGeometry": "Este caso no tiene escaneo de la arcada, por lo que no hay geometría de los vecinos: los vecinos son cajas sintéticas provisionales. La puerta de QC de contacto proximal no puede superarse. Reconózcala solo después de comprobar los contactos por otra vía."
+  },
+  "capture": {
+    "title": "Vecinos a partir de los escaneos del caso",
+    "noArchScan": "Este caso no tiene escaneo de la arcada de este maxilar, por lo que no hay geometría de los vecinos. Los contactos proximales se miden contra cajas provisionales y su puerta de QC no puede superarse.",
+    "side": {
+      "mesial": "Vecino mesial ({{tooth}})",
+      "distal": "Vecino distal ({{tooth}})"
+    },
+    "notCaptured": "sin capturar; se usa una caja provisional",
+    "captured": "capturado del escaneo de la arcada · borde de la ventana ≤ {{band}} µm",
+    "busy": "Capturando…",
+    "pick": "Seleccionar en el escaneo de la arcada",
+    "repick": "Seleccionar de nuevo",
+    "picking": "Haga clic en el centro del diente vecino en el escaneo de la arcada.",
+    "cancel": "Cancelar",
+    "antagonistTitle": "Antagonista",
+    "antagonistScan": "del escaneo antagonista del caso",
+    "antagonistOpposite": "capturado del escaneo de la arcada opuesta (confirmado) · borde de la ventana ≤ {{band}} µm",
+    "useOppositeArch": "Usar el escaneo de la arcada opuesta como antagonista",
+    "noAntagonist": "no hay escaneo antagonista en este caso"
   }
 }

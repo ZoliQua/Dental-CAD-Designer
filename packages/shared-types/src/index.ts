@@ -353,6 +353,27 @@ export type GeometryProvenance = 'case' | 'placeholder' | 'demo-fixture';
  * ever carries. */
 export type NonCaseProvenance = Exclude<GeometryProvenance, 'case'>;
 
+/** The two proximal sides of a restoration (FDI convention: mesial = toward
+ * the arch midline). */
+export type NeighbourSide = 'mesial' | 'distal';
+
+/**
+ * Journal op name of a neighbour captured from the case's own arch scan
+ * (Phase 9 Task 3, ADR-022 Decision 3). `params` carry `restorationId`,
+ * `side` (`NeighbourSide`), `scanNodeId` and the pick; `inputHashes[0]` is
+ * the arch scan's mesh id and `outputHashes[0]` the captured region's hash.
+ * The server traces a proximal contact's `case` claim to such an op.
+ */
+export const NEIGHBOUR_CAPTURE_OP = 'neighbour-capture';
+
+/**
+ * Journal op name of the user's explicit confirmation that the opposite-arch
+ * scan is the restoration's antagonist (no silent role inference — ADR-022
+ * Decision 3). `params` carry `restorationId` and `scanNodeId`;
+ * `inputHashes[0]` is that scan's mesh id.
+ */
+export const ANTAGONIST_CONFIRM_OP = 'antagonist-confirm';
+
 export interface QcGateResult {
   gate: string;
   passed: boolean;

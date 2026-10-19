@@ -101,6 +101,47 @@ describe('contactGate — provenance (ADR-022)', () => {
     expect(r.message).not.toMatch(/antagonist\]/);
     expect(r.value).toBeCloseTo(0.000_5, 6);
   });
+
+  it('says so when the case has no neighbour geometry at all (Phase 9 Task 3)', () => {
+    const r = contactGate({
+      contacts: [
+        { ...onTarget('proximalMesial', 'placeholder'), standInReason: 'no-neighbour-geometry' },
+        { ...onTarget('proximalDistal', 'placeholder'), standInReason: 'no-neighbour-geometry' },
+      ],
+      contactClampWarning: false,
+    });
+    expect(r.passed).toBe(false);
+    expect(r.inputProvenance).toBe('placeholder');
+    expect(r.message).toMatch(/no neighbour geometry in this case/);
+  });
+
+  it('says which neighbours are not yet captured when the case has an arch scan', () => {
+    const r = contactGate({
+      contacts: [
+        { ...onTarget('proximalMesial', 'case'), neighbourWindowBandMm: 0.25 },
+        { ...onTarget('proximalDistal', 'placeholder'), standInReason: 'not-captured' },
+      ],
+      contactClampWarning: false,
+    });
+    expect(r.passed).toBe(false);
+    expect(r.message).toMatch(/not yet captured from the arch scan: contact\(s\) \[proximalDistal\]/);
+  });
+
+  it('a captured (case) neighbour passes on target and discloses the window border band', () => {
+    const r = contactGate({
+      contacts: [
+        { ...onTarget('proximalMesial', 'case'), neighbourWindowBandMm: 0.25 },
+        { ...onTarget('proximalDistal', 'case'), neighbourWindowBandMm: 0.3125 },
+        onTarget('antagonist', 'case'),
+      ],
+      contactClampWarning: false,
+    });
+    expect(r.passed).toBe(true);
+    expect('inputProvenance' in r).toBe(false);
+    expect(r.message).toMatch(/captured neighbour window border band ≤ 312\.5 µm/);
+    // The band is a disclosure, not a residual: value unchanged.
+    expect(r.value).toBeCloseTo(0.000_5, 9);
+  });
 });
 
 function slab(z: number): IndexedMesh {

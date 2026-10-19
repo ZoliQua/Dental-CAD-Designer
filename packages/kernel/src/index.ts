@@ -323,8 +323,20 @@
  * GEOMETRY changed, so every geometry + journal-replay pin is byte-identical;
  * the crown/cavity/bridge acceptance QC pins advance because the QcReport
  * embeds both kernelVersion AND the selfIntersection gate's new message. See
- * docs/CHANGELOG-kernel.md's `[0.27.0]` entry. */
-export const KERNEL_VERSION = '0.27.0';
+ * docs/CHANGELOG-kernel.md's `[0.27.0]` entry.
+ *
+ * 0.28.0 (Phase 9 Task 3, ADR-022 Decision 3): NEW op — `neighbour/
+ * extractNeighbourRegion.ts` (proximal neighbour / antagonist CAPTURE from the
+ * case's own arch scan: a window oriented by the margin centroid + insertion
+ * axis — never world axes — cut from the scan verbatim and closed into a
+ * watertight solid for the exact pseudonormal sign of the contact
+ * measurements; `@errorBound` = the window-border band on missed contact
+ * surface). Pure Float64; no manifold-3d boundary, so no `kernel-ops.json` pin
+ * (regression-pinned by its closed-form box / sphere tests). No existing op
+ * changed: every geometry + journal-replay pin is byte-identical; the
+ * acceptance QC pins advance MECHANICALLY (kernelVersion embedded in the
+ * QcReport JSON). See docs/CHANGELOG-kernel.md's `[0.28.0]` entry. */
+export const KERNEL_VERSION = '0.28.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -975,3 +987,17 @@ export {
   type ShellLockOptions,
   type ShellLockResult,
 } from './sculpt/index.ts';
+
+export {
+  extractNeighbourRegion,
+  NEIGHBOUR_REGION_DEFAULT_RADIUS_MM,
+  NEIGHBOUR_REGION_DEFAULT_MIN_FACING_COS,
+  NEIGHBOUR_REGION_DEFAULT_CERVICAL_OFFSET_MM,
+  NEIGHBOUR_REGION_DEFAULT_CLOSURE_DEPTH_MM,
+  NeighbourSeedTooCloseError,
+  NeighbourRegionEmptyError,
+  NeighbourRegionInvalidError,
+  type NeighbourApproach,
+  type NeighbourRegionOptions,
+  type NeighbourRegionResult,
+} from './neighbour/index.ts';

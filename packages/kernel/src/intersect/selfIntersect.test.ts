@@ -179,6 +179,25 @@ describe('findSelfIntersections — genuinely self-intersecting meshes FAIL', ()
     expect(result.intersectingPairCount).toBeGreaterThan(0);
     expect(result.firstLocus).not.toBeNull();
   });
+
+  it('onIntersectingPair reports every pair (i < j) once and leaves the result unchanged', () => {
+    const cube = unitCube();
+    const positions = Array.from(cube.positions);
+    const base = positions.length / 3;
+    positions.push(-1, 0.5, 0.5, 2, 0.5, 0.5, 0.5, 2, 0.5);
+    const triangles = Array.from(cube.indices);
+    triangles.push(base, base + 1, base + 2);
+    const m = mesh(positions, triangles);
+    const pairs: Array<[number, number]> = [];
+    const observed = findSelfIntersections(m, { onIntersectingPair: (a, b) => pairs.push([a, b]) });
+    const plain = findSelfIntersections(m);
+    expect(observed).toEqual(plain);
+    expect(pairs).toHaveLength(plain.intersectingPairCount);
+    expect(new Set(pairs.map(([a, b]) => `${a},${b}`)).size).toBe(pairs.length);
+    for (const [a, b] of pairs) expect(a).toBeLessThan(b);
+    // The slicing face (the last triangle) is in every pair.
+    for (const pair of pairs) expect(pair).toContain(triangles.length / 3 - 1);
+  });
 });
 
 describe('findSelfIntersections — degenerate handling (counted, not guessed)', () => {

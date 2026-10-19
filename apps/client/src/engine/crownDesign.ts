@@ -42,7 +42,18 @@ import {
   type RunJobOptions,
 } from '@dqcad/kernel-workers';
 import { DEFAULT_OFFSET_VOXEL_PITCH_MM } from '@dqcad/clinical-profiles';
-import type { FdiTooth, GeometryProvenance, Operation, QcReport, Restoration, RestorationParams, Vec3 } from '@dqcad/shared-types';
+import {
+  ANTAGONIST_CONFIRM_OP,
+  NEIGHBOUR_CAPTURE_OP,
+  type FdiTooth,
+  type GeometryProvenance,
+  type NeighbourSide,
+  type Operation,
+  type QcReport,
+  type Restoration,
+  type RestorationParams,
+  type Vec3,
+} from '@dqcad/shared-types';
 import { caseStore } from './caseStore';
 import { resolveFullMaterialProfile, resolveProfileVersion } from './materialProfile';
 import {
@@ -57,8 +68,25 @@ import { boxMesh, builtinLibraryTooth, flattenLoop, type BuiltinLibraryTooth, ty
 import { loopJson, meshJson, type CrownExportQcContext } from './exportContext';
 import type { RenderNode } from './renderNode';
 import { getPool } from './workers';
+import {
+  adjacentTeeth,
+  captureMatchesDesign,
+  findArchScan,
+  findOppositeArchScan,
+  latestNeighbourCapture,
+  runAntagonistCapture,
+  runNeighbourCapture,
+  type CaptureRole,
+  type CapturedNeighbour,
+} from './neighbourCapture';
 import { colorForValue, computeAutoRange, distancesToVertexColors } from './colormap';
-import { useCrownStore, type CrownStageGateSnapshot, type MorphStrengthsUi } from '../state/crownStore';
+import {
+  useCrownStore,
+  type CaptureState,
+  type CaptureSummary,
+  type CrownStageGateSnapshot,
+  type MorphStrengthsUi,
+} from '../state/crownStore';
 import { useCaseStore } from '../state/caseStore';
 
 /** Minimal structural view of a pool that can dispatch a job — `WorkerPool`
@@ -118,23 +146,66 @@ interface ContactResidualInput {
   /** ADR-022 — where the contacted geometry came from; a non-`case` contact
    * fails the contact gate closed. */
   provenance?: GeometryProvenance;
+  /** Why a `placeholder` neighbour stands in (Phase 9 Task 3). */
+  standInReason?: 'no-neighbour-geometry' | 'not-captured';
+  /** A captured contact's window-border band (mm) — the capture's
+   * `@errorBound` on missed contact surface. */
+  neighbourWindowBandMm?: number;
+}
+
+/** Thrown when a capture needs a scan the case does not have. */
+export class CrownCaptureUnavailableError extends Error {
+  constructor(readonly reason: 'noArchScan' | 'noOppositeArch') {
+    super(
+      reason === 'noArchScan'
+        ? 'crownDesign: the case has no arch scan of this jaw to capture a neighbour from'
+        : 'crownDesign: the case has no opposite-arch scan to use as the antagonist',
+    );
+    this.name = 'CrownCaptureUnavailableError';
+  }
+}
+
+/** A journaled capture re-run on reload produced a different region hash —
+ * the capture is not reproducible, so it is refused rather than trusted. */
+export class CrownCaptureReplayMismatchError extends Error {
+  constructor(role: CaptureRole, journaled: string, replayed: string) {
+    super(`crownDesign: replaying the journaled ${role} capture gave ${replayed}, not the journaled ${journaled}`);
+    this.name = 'CrownCaptureReplayMismatchError';
+  }
+}
+
+/** Per-side neighbour reference metadata (Phase 9 Task 3). */
+export interface NeighbourSideInfo {
+  provenance: GeometryProvenance;
+  standInReason?: 'no-neighbour-geometry' | 'not-captured';
+  windowBoundaryBandMm?: number;
 }
 
 /** Anatomy-placement geometry the anatomy stage consumes — a built-in library
  * tooth (engine/crownGeometry.ts), proximal neighbour references, and the
- * OPTIONAL antagonist scan. The antagonist is the case's own `antagonist`-role
- * scan (a contact is created only when that scan exists). The proximal
- * neighbours are NOT yet captured from the case: `buildAnatomyInput` supplies
- * synthetic boxes tagged `neighbourProvenance: 'placeholder'` (ADR-022), so
- * the contact gate fails closed on them instead of passing on fabricated
- * geometry. */
+ * OPTIONAL antagonist. Both come from the case (Phase 9 Task 3, ADR-022):
+ * each proximal neighbour is a region captured from the arch scan at the
+ * user's pick, and the antagonist is the case's `antagonist`-role scan or —
+ * after explicit confirmation — a region captured from the opposite-arch
+ * scan. A side not captured falls back to a synthetic box tagged
+ * `placeholder`, so the contact gate fails closed on it instead of passing
+ * on fabricated geometry. */
 export interface AnatomyPlacementInput {
   library: BuiltinLibraryTooth;
   mesialNeighbor?: IndexedBuffers;
   distalNeighbor?: IndexedBuffers;
-  /** Provenance of `mesialNeighbor` / `distalNeighbor` (absent ⇒ `'case'`). */
+  /** Provenance of `mesialNeighbor` / `distalNeighbor` — the worse of the
+   * two sides (absent ⇒ `'case'`). */
   neighbourProvenance?: GeometryProvenance;
+  /** Per-side metadata (Phase 9 Task 3); absent ⇒ both sides carry
+   * `neighbourProvenance`. */
+  neighbourSides?: Record<NeighbourSide, NeighbourSideInfo>;
   antagonist?: IndexedBuffers;
+  /** The captured antagonist's window-border band (mm), when it is a
+   * capture from the opposite arch. */
+  antagonistWindowBandMm?: number;
+  /** Content hashes of the case-derived regions consumed (journal proof). */
+  inputRegionHashes?: readonly string[];
   /** Manual gizmo override (position/scale/landmark) — present on a manual
    * transform commit, absent on the initial auto-place. */
   manualOverride?: {
@@ -171,6 +242,9 @@ interface Session {
    * journaled param the server export re-validation receives, keeping the
    * client-attested contact verdict in agreement. */
   shellHealErrorBoundMm: number | null;
+  /** Neighbour / antagonist regions captured from the case's scans this
+   * session (or replayed from the journal). */
+  captures: Partial<Record<CaptureRole, CapturedNeighbour>>;
 }
 
 function nowIso(): string {
@@ -252,9 +326,10 @@ class CrownDesignEngine {
       shell: null,
       shellThicknessHeatmap: null,
       shellHealErrorBoundMm: null,
+      captures: {},
     };
     caseStore.setSelectedRestorationId(restorationId);
-    this.publish({ restorationId, active: true, error: null, errorStage: null });
+    this.publish({ restorationId, active: true, error: null, errorStage: null, capture: this.captureState() });
     // Publish the initial gate snapshot so the UI enables/blocks each stage
     // from the first render (without this every stage button stays disabled).
     this.refreshGates();
@@ -460,6 +535,188 @@ class CrownDesignEngine {
     }
   }
 
+  // ---- neighbour / antagonist capture (Phase 9 Task 3) -----------------
+
+  /** The antagonist-role scan node, if the case has one. */
+  private antagonistScanNode() {
+    return caseStore.getDocument().scene.find((node) => node.role === 'antagonist');
+  }
+
+  /** The latest journaled capture for `role` that is still valid: its scan is
+   * still in the scene (same mesh) and it was cut against the current margin
+   * and axis. */
+  private journaledCapture(role: CaptureRole): Operation | undefined {
+    const session = this.requireSession();
+    const document = caseStore.getDocument();
+    let op: Operation | undefined;
+    if (role === 'antagonist') {
+      for (let i = document.history.length - 1; i >= 0 && !op; i--) {
+        const candidate = document.history[i]!;
+        if (candidate.name === ANTAGONIST_CONFIRM_OP && candidate.params['restorationId'] === session.restorationId) op = candidate;
+      }
+    } else {
+      op = latestNeighbourCapture(document.history, session.restorationId, role);
+    }
+    if (!op) return undefined;
+    const node = document.scene.find((n) => n.id === op.params['scanNodeId']);
+    if (!node || node.meshId !== op.inputHashes[0]) return undefined;
+    return captureMatchesDesign(op, session.marginLoopFlat, session.insertionAxis) ? op : undefined;
+  }
+
+  private captureSummary(role: CaptureRole): CaptureSummary | null {
+    const live = this.requireSession().captures[role];
+    if (live) {
+      return {
+        capturedTriangleCount: live.capturedTriangleCount,
+        capturedAreaMm2: live.capturedAreaMm2,
+        windowBoundaryBandMm: live.windowBoundaryBandMm,
+      };
+    }
+    const op = this.journaledCapture(role);
+    if (!op) return null;
+    return {
+      capturedTriangleCount: op.params['capturedTriangleCount'] as number,
+      capturedAreaMm2: op.params['capturedAreaMm2'] as number,
+      windowBoundaryBandMm: op.params['windowBoundaryBandMm'] as number,
+    };
+  }
+
+  private captureState(): CaptureState {
+    const session = this.requireSession();
+    const document = caseStore.getDocument();
+    const antagonist = this.captureSummary('antagonist');
+    return {
+      archScanAvailable: findArchScan(document, session.tooth, session.targetNodeId) !== null,
+      oppositeArchAvailable: findOppositeArchScan(document, session.tooth) !== null,
+      neighbourTeeth: adjacentTeeth(session.tooth),
+      mesial: this.captureSummary('mesial'),
+      distal: this.captureSummary('distal'),
+      antagonist,
+      antagonistSource: this.antagonistScanNode() ? 'antagonistScan' : antagonist ? 'oppositeArch' : null,
+      busy: useCrownStore.getState().capture.busy,
+    };
+  }
+
+  private publishCapture(busy: CaptureState['busy']): void {
+    this.publish({ capture: { ...this.captureState(), busy } });
+  }
+
+  /** Journals a capture as one op and invalidates everything that consumed
+   * the previous neighbour / antagonist references (anatomy onward). */
+  private commitCapture(name: string, capture: CapturedNeighbour): void {
+    const session = this.requireSession();
+    const restoration = this.restoration();
+    const invalidation = downstreamInvalidations('innerSurface');
+    const stages: Restoration['stages'] = { ...restoration.stages };
+    for (const field of invalidation.stageFields) delete stages[field];
+    const operation: Operation = {
+      id: crypto.randomUUID(),
+      name,
+      params: { restorationId: restoration.id, tooth: session.tooth, ...capture.params },
+      inputHashes: [capture.scanMeshId],
+      outputHashes: [capture.contentHash],
+      kernelVersion: KERNEL_VERSION,
+      timestamp: nowIso(),
+    };
+    caseStore.updateRestoration({ ...restoration, stages, qc: invalidation.clearQc ? null : restoration.qc }, operation);
+    this.invalidateDownstream(invalidation);
+    session.anatomyInput = null;
+    this.refreshGates();
+  }
+
+  /**
+   * Captures the `side` neighbour from the case's arch scan at `pick` (a
+   * Float64 world point on that scan — the viewport pick). One journaled
+   * `NEIGHBOUR_CAPTURE_OP`; invalidates anatomy onward.
+   */
+  async captureNeighbour(side: NeighbourSide, pick: Vec3): Promise<void> {
+    const session = this.requireSession();
+    const document = caseStore.getDocument();
+    const scanNode = findArchScan(document, session.tooth, session.targetNodeId);
+    const record = scanNode ? caseStore.getMeshRecord(scanNode.meshId) : undefined;
+    if (!scanNode || !record) throw new CrownCaptureUnavailableError('noArchScan');
+    this.publishCapture(side);
+    try {
+      const capture = await runNeighbourCapture(this.pool(), {
+        side,
+        scanNode,
+        scan: record,
+        seed: pick,
+        marginLoopFlat: session.marginLoopFlat,
+        insertionAxis: session.insertionAxis,
+      });
+      session.captures[side] = capture;
+      this.commitCapture(NEIGHBOUR_CAPTURE_OP, capture);
+      this.publishCapture(null);
+    } catch (error) {
+      this.publishCapture(null);
+      this.failStage('anatomy', error);
+      throw error;
+    }
+  }
+
+  /**
+   * The user's explicit confirmation that the opposite-arch scan is this
+   * crown's antagonist (ADR-022: no silent role inference). Captures the
+   * occlusal region facing the restoration and journals one
+   * `ANTAGONIST_CONFIRM_OP`; invalidates anatomy onward.
+   */
+  async confirmOppositeArchAntagonist(): Promise<void> {
+    const session = this.requireSession();
+    const scanNode = findOppositeArchScan(caseStore.getDocument(), session.tooth);
+    const record = scanNode ? caseStore.getMeshRecord(scanNode.meshId) : undefined;
+    if (!scanNode || !record) throw new CrownCaptureUnavailableError('noOppositeArch');
+    this.publishCapture('antagonist');
+    try {
+      const capture = await runAntagonistCapture(this.pool(), {
+        scanNode,
+        scan: record,
+        marginLoopFlat: session.marginLoopFlat,
+        insertionAxis: session.insertionAxis,
+      });
+      session.captures.antagonist = capture;
+      this.commitCapture(ANTAGONIST_CONFIRM_OP, capture);
+      this.publishCapture(null);
+    } catch (error) {
+      this.publishCapture(null);
+      this.failStage('anatomy', error);
+      throw error;
+    }
+  }
+
+  /** The arch scan a neighbour pick lands on (the viewport raycasts only
+   * this scan), or null without a session / arch scan. */
+  captureScanNodeId(): string | null {
+    if (!this.session) return null;
+    return findArchScan(caseStore.getDocument(), this.session.tooth, this.session.targetNodeId)?.id ?? null;
+  }
+
+  /** Re-derives every still-valid journaled capture missing from the session
+   * (after a reload) by REPLAYING it — the replayed region must hash to the
+   * journaled output, else `CrownCaptureReplayMismatchError`. */
+  private async restoreJournaledCaptures(): Promise<void> {
+    const session = this.requireSession();
+    const document = caseStore.getDocument();
+    for (const role of ['mesial', 'distal', 'antagonist'] as const) {
+      if (session.captures[role]) continue;
+      if (role === 'antagonist' && this.antagonistScanNode()) continue;
+      const op = this.journaledCapture(role);
+      if (!op) continue;
+      const scanNode = document.scene.find((n) => n.id === op.params['scanNodeId'])!;
+      const record = caseStore.getMeshRecord(scanNode.meshId);
+      if (!record) continue;
+      const common = { scanNode, scan: record, marginLoopFlat: session.marginLoopFlat, insertionAxis: session.insertionAxis };
+      const capture =
+        role === 'antagonist'
+          ? await runAntagonistCapture(this.pool(), common)
+          : await runNeighbourCapture(this.pool(), { ...common, side: role, seed: op.params['seed'] as Vec3 });
+      if (capture.contentHash !== op.outputHashes[0]) {
+        throw new CrownCaptureReplayMismatchError(role, op.outputHashes[0]!, capture.contentHash);
+      }
+      session.captures[role] = capture;
+    }
+  }
+
   // ---- stage 2: anatomy placement --------------------------------------
 
   /**
@@ -495,33 +752,72 @@ class CrownDesignEngine {
     }
     const heightMm = Math.max((dieMaxZ - cz) * 1.3 + 0.5, marginR * 2);
     const library = builtinLibraryTooth(marginR, cz, heightMm, session.params.minWallThicknessMm * 2);
-    // HONEST SCOPE NOTE: the client cannot yet capture the real mesial/distal
-    // neighbour teeth from an arch scan (Phase 9 Task 3), and the placement
-    // solve requires non-empty neighbour references. Until then, auto-place
-    // uses synthetic proximal reference boxes flanking the margin in world ±X
-    // at a small gap — tagged `placeholder` (ADR-022): journaled with the
-    // anatomy op, disclosed in the panel, and the contact gate fails closed on
-    // them.
+    // Each proximal side is the region captured from the case's arch scan
+    // (Phase 9 Task 3). A side not captured falls back to a synthetic box
+    // flanking the margin in world ±X at a small gap (the placement solve
+    // needs both references) — tagged `placeholder` (ADR-022): journaled
+    // with the anatomy op, disclosed in the panel, and the contact gate fails
+    // closed on it, naming why ("no neighbour geometry in this case" without
+    // an arch scan, else "not yet captured").
     const gap = 0.1;
     const width = marginR;
     const yMin = -marginR;
     const yMax = marginR;
-    const mesialNeighbor = boxMesh([cx - marginR - gap - width, yMin, cz], [cx - marginR - gap, yMax, dieMaxZ]);
-    const distalNeighbor = boxMesh([cx + marginR + gap, yMin, cz], [cx + marginR + gap + width, yMax, dieMaxZ]);
-    const antNode = caseStore.getDocument().scene.find((node) => node.role === 'antagonist');
+    const hasArchScan = findArchScan(caseStore.getDocument(), session.tooth, session.targetNodeId) !== null;
+    const standInReason = hasArchScan ? ('not-captured' as const) : ('no-neighbour-geometry' as const);
+    const side = (captured: CapturedNeighbour | undefined, box: IndexedBuffers): [IndexedBuffers, NeighbourSideInfo] =>
+      captured
+        ? [
+            { positions: captured.positions, indices: captured.indices },
+            { provenance: 'case', windowBoundaryBandMm: captured.windowBoundaryBandMm },
+          ]
+        : [box, { provenance: 'placeholder', standInReason }];
+    const [mesialNeighbor, mesialInfo] = side(
+      session.captures.mesial,
+      boxMesh([cx - marginR - gap - width, yMin, cz], [cx - marginR - gap, yMax, dieMaxZ]),
+    );
+    const [distalNeighbor, distalInfo] = side(
+      session.captures.distal,
+      boxMesh([cx + marginR + gap, yMin, cz], [cx + marginR + gap + width, yMax, dieMaxZ]),
+    );
+    const neighbourProvenance: GeometryProvenance =
+      mesialInfo.provenance === 'case' && distalInfo.provenance === 'case' ? 'case' : 'placeholder';
+    // The antagonist: the case's antagonist-role scan, else the confirmed
+    // opposite-arch capture, else none.
+    const antNode = this.antagonistScanNode();
     const antRecord = antNode ? caseStore.getMeshRecord(antNode.meshId) : undefined;
-    const antagonist = antRecord ? { positions: antRecord.positions, indices: antRecord.indices } : undefined;
-    return { library, mesialNeighbor, distalNeighbor, neighbourProvenance: 'placeholder', antagonist, manualOverride };
+    const antCapture = antNode ? undefined : session.captures.antagonist;
+    const antagonist = antRecord
+      ? { positions: antRecord.positions, indices: antRecord.indices }
+      : antCapture
+        ? { positions: antCapture.positions, indices: antCapture.indices }
+        : undefined;
+    const inputRegionHashes = [session.captures.mesial, session.captures.distal, antCapture]
+      .filter((c): c is CapturedNeighbour => c !== undefined)
+      .map((c) => c.contentHash);
+    return {
+      library,
+      mesialNeighbor,
+      distalNeighbor,
+      neighbourProvenance,
+      neighbourSides: { mesial: mesialInfo, distal: distalInfo },
+      antagonist,
+      ...(antCapture ? { antagonistWindowBandMm: antCapture.windowBoundaryBandMm } : {}),
+      inputRegionHashes,
+      manualOverride,
+    };
   }
 
   /** Auto-places the built-in library tooth (no manual override). */
   async placeAnatomyAuto(): Promise<void> {
+    await this.restoreJournaledCaptures();
     await this.placeAnatomy(this.buildAnatomyInput());
   }
 
   /** Commits a manual gizmo transform (one coalesced op — the whole drag is
    * one gesture). */
   async commitAnatomyTransform(override: NonNullable<AnatomyPlacementInput['manualOverride']>): Promise<void> {
+    await this.restoreJournaledCaptures();
     await this.placeAnatomy(this.buildAnatomyInput(override));
   }
 
@@ -569,9 +865,10 @@ class CrownDesignEngine {
           usedProximalGap: result.usedProximalGap,
           antagonistUsed: result.antagonistUsed,
           neighbourProvenance: input.neighbourProvenance ?? 'case',
+          ...(input.neighbourSides ? { neighbourSides: input.neighbourSides } : {}),
           override: input.manualOverride ?? null,
         },
-        session.inner ? [session.inner.contentHash] : [],
+        [...(session.inner ? [session.inner.contentHash] : []), ...(input.inputRegionHashes ?? [])],
       );
       this.publish({
         busyStage: null,
@@ -688,18 +985,34 @@ class CrownDesignEngine {
     const contentHash = await this.hashMesh(result.positions, result.indices);
     session.morphOuter = { positions: result.positions, indices: result.indices, contentHash };
     session.shell = null;
-    const neighbourProvenance = session.anatomyInput?.neighbourProvenance ?? 'case';
-    session.morphContacts = result.contacts.map((c) => ({
-      kind: c.kind as MorphContactKind,
-      targetPenetrationMm: c.targetPenetrationMm,
-      achievedSignedDistanceMm: c.achievedSignedDistanceMm,
-      contactResidualMm: c.contactResidualMm,
-      regionResidualMm: c.regionResidualMm,
-      clampBound: c.clampBound,
-      // ADR-022: the antagonist is the case's own scan; the proximal
-      // neighbours carry the anatomy input's provenance.
-      provenance: c.kind === 'antagonist' ? 'case' : neighbourProvenance,
-    }));
+    const input = session.anatomyInput;
+    const neighbourProvenance = input?.neighbourProvenance ?? 'case';
+    session.morphContacts = result.contacts.map((c) => {
+      const kind = c.kind as MorphContactKind;
+      const base: ContactResidualInput = {
+        kind,
+        targetPenetrationMm: c.targetPenetrationMm,
+        achievedSignedDistanceMm: c.achievedSignedDistanceMm,
+        contactResidualMm: c.contactResidualMm,
+        regionResidualMm: c.regionResidualMm,
+        clampBound: c.clampBound,
+        // ADR-022: the antagonist is the case's own scan (or its confirmed
+        // opposite-arch capture); each proximal side carries its own
+        // provenance (captured ⇒ case, else the placeholder box).
+        provenance: kind === 'antagonist' ? 'case' : neighbourProvenance,
+      };
+      if (kind === 'antagonist') {
+        return input?.antagonistWindowBandMm !== undefined ? { ...base, neighbourWindowBandMm: input.antagonistWindowBandMm } : base;
+      }
+      const info = input?.neighbourSides?.[kind === 'proximalMesial' ? 'mesial' : 'distal'];
+      if (!info) return base;
+      return {
+        ...base,
+        provenance: info.provenance,
+        ...(info.standInReason !== undefined ? { standInReason: info.standInReason } : {}),
+        ...(info.windowBoundaryBandMm !== undefined ? { neighbourWindowBandMm: info.windowBoundaryBandMm } : {}),
+      };
+    });
     session.morphHeatmap = result.heatmaps && result.heatmaps.length > 0 ? result.heatmaps[0]!.distances : null;
     if (journal) {
       this.commitStage(

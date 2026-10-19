@@ -41,6 +41,10 @@ export interface ExportContactJson {
   /** ADR-022 — the contacted geometry's provenance (absent ⇒ `'case'`). The
    * server re-runs the gate with it and refuses an untraceable `case` claim. */
   readonly provenance?: GeometryProvenance;
+  /** Phase 9 Task 3 — why a `placeholder` neighbour stands in. */
+  readonly standInReason?: 'no-neighbour-geometry' | 'not-captured';
+  /** Phase 9 Task 3 — a captured neighbour's window-border band (mm). */
+  readonly neighbourWindowBandMm?: number;
 }
 
 /** A mesh as the server's `MeshDataInput` (JSON number arrays; JSON round-trips

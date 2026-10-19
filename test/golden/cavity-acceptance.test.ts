@@ -58,7 +58,7 @@ const µm = (mm: number): string => `${(mm * 1000).toFixed(3)} µm`;
 // golden change (bump + changelog), never a silent regen (the WASM boolean is
 // manifoldVersion-guarded, the crown-acceptance precedent).
 // ---------------------------------------------------------------------------
-const EXPECTED_KERNEL_VERSION = '0.27.0';
+const EXPECTED_KERNEL_VERSION = '0.28.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 function installedManifoldVersion(): string {
   const pkg = JSON.parse(readFileSync(join(repoRoot, 'node_modules', 'manifold-3d', 'package.json'), 'utf8')) as { version: string };
@@ -108,7 +108,11 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // geometry pin above BYTE-IDENTICAL (verified). Old hash:
   // b800cfd29b54859f04b09c3c2aa0623eceb9bcc818e119659da8443d589afa51. See
   // CHANGELOG-kernel.md [0.27.0].
-  'cavity-inlay-qc': '657cbed85e2d9b5ba747cba82e1722f1b7f0abdc71acea16f9663be4712ffcd3',
+  // Advanced 0.27.0 → 0.28.0 (Phase 9 Task 3): MECHANICAL, metadata-only — the new
+  // neighbour/extractNeighbourRegion op does not touch this chain; hashQcReport tracks
+  // the embedded kernelVersion, every geometry stage pin above BYTE-IDENTICAL to
+  // 0.27.0 (verified). Old hash: 657cbed85e2d9b5ba747cba82e1722f1b7f0abdc71acea16f9663be4712ffcd3. See docs/CHANGELOG-kernel.md's [0.28.0] entry.
+  'cavity-inlay-qc': 'abc04f02921c63a5084d35fc375352adde188b3aa326d90983b078a28bfe2136',
   // --- onlay chain (incl. cuspCoverage.select) ---
   // NOTE: the cuspCoverage pin is BIT-IDENTICAL to the kernel op's committed
   // extended-outline golden (cuspCoverage.test.ts's sha at 0.21.0) — a strong
@@ -133,7 +137,11 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // face pairs across 74854 triangles — NOT a flip); geometry byte-identical. Old
   // hash: 85f0c2b310c77bf15f7e2dd7153054c01328bc7cb7e131b12f43903366c8f9ec. See
   // CHANGELOG-kernel.md [0.27.0].
-  'cavity-onlay-qc': '9e1246238c81f0c416601bea80e09906786987eb8c60e4c61079aedb354fc07b',
+  // Advanced 0.27.0 → 0.28.0 (Phase 9 Task 3): MECHANICAL, metadata-only — the new
+  // neighbour/extractNeighbourRegion op does not touch this chain; hashQcReport tracks
+  // the embedded kernelVersion, every geometry stage pin above BYTE-IDENTICAL to
+  // 0.27.0 (verified). Old hash: 9e1246238c81f0c416601bea80e09906786987eb8c60e4c61079aedb354fc07b. See docs/CHANGELOG-kernel.md's [0.28.0] entry.
+  'cavity-onlay-qc': 'a7d7d24e7130a049421f426201122c6f7563b2b54e15d154b2dbfb775d5f021b',
 };
 
 const INLAY_GATE_ORDER = ['watertight', 'manifold', 'selfIntersection', 'minWallThickness', 'marginFit', 'seamDihedral', 'seating', 'contact'];

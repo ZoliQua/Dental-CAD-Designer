@@ -69,7 +69,19 @@ export interface ContactResidualInput {
   /** Where the contacted geometry (neighbour / antagonist) came from (ADR-022).
    * Absent ⇒ `'case'`. Any non-`case` contact fails the gate closed. */
   readonly provenance?: GeometryProvenance;
+  /** Why a `placeholder` neighbour stands in (Phase 9 Task 3): the case has
+   * no arch scan to capture it from, or it has one and the neighbour is not
+   * captured yet. Only names the stand-in in the message. */
+  readonly standInReason?: ContactStandInReason;
+  /** For a neighbour captured from the case's arch scan: the capture's
+   * window-border band (mm) — kernel `extractNeighbourRegion`'s
+   * `@errorBound` on missed contact surface. Disclosed in the message; it
+   * does not enter the residual (the measurement itself is exact on the
+   * captured surface). */
+  readonly neighbourWindowBandMm?: number;
 }
+
+export type ContactStandInReason = 'no-neighbour-geometry' | 'not-captured';
 
 export interface ContactGateInput {
   /** Per-contact residuals from the morph (`stages/morphing.ts` params.contacts). */
@@ -156,10 +168,18 @@ export function contactGate(input: ContactGateInput): QcGateResult {
   // Disclose the summed heal bound ONLY when it is non-zero — so an un-healed
   // restoration's message is byte-identical to the pre-heal gate.
   const healNote = healBound > 0 ? ` (incl. +${um(healBound)} morph→shell heal shift)` : '';
-  const message = passed
-    ? `contacts achieved — worst residual ${um(worst)} (${worstKind})${healNote} ≤ ${um(tolerance)} tolerance; no clamped contacts`
-    : `contact residual ${um(worst)} (${worstKind})${healNote} ${withinTolerance ? 'within tolerance but' : `exceeds ${um(tolerance)} tolerance;`} ` +
-      `${clamped.length > 0 ? 'one or more contacts were not achieved' : 'contact off target'}${clampNote}`;
+  // Disclose the captured-neighbour window bound ONLY when a captured
+  // neighbour is present — byte-identical otherwise.
+  let windowBand: number | null = null;
+  for (const c of input.contacts) {
+    if (c.neighbourWindowBandMm !== undefined) windowBand = Math.max(windowBand ?? 0, c.neighbourWindowBandMm);
+  }
+  const windowNote = windowBand === null ? '' : ` | captured neighbour window border band ≤ ${um(windowBand)}`;
+  const message =
+    (passed
+      ? `contacts achieved — worst residual ${um(worst)} (${worstKind})${healNote} ≤ ${um(tolerance)} tolerance; no clamped contacts`
+      : `contact residual ${um(worst)} (${worstKind})${healNote} ${withinTolerance ? 'within tolerance but' : `exceeds ${um(tolerance)} tolerance;`} ` +
+        `${clamped.length > 0 ? 'one or more contacts were not achieved' : 'contact off target'}${clampNote}`) + windowNote;
 
   const measured: QcGateResult = {
     gate: CONTACT_GATE_NAME,
@@ -175,6 +195,14 @@ export function contactGate(input: ContactGateInput): QcGateResult {
   // 'case' provenance leaves the result byte-identical.
   const provenance = worstProvenance(input.contacts.map((c) => c.provenance));
   if (provenance === null) return measured;
-  const standIns = input.contacts.filter((c) => c.provenance !== undefined && c.provenance !== 'case').map((c) => c.kind);
-  return failClosedOnNonCaseInput(measured, provenance, `contact(s) [${standIns.join(', ')}] against stand-in neighbour geometry`);
+  const standIns = input.contacts.filter((c) => c.provenance !== undefined && c.provenance !== 'case');
+  const kinds = `contact(s) [${standIns.map((c) => c.kind).join(', ')}]`;
+  const reason = standIns.find((c) => c.standInReason !== undefined)?.standInReason;
+  const standIn =
+    reason === 'no-neighbour-geometry'
+      ? `no neighbour geometry in this case: ${kinds} against stand-in neighbour geometry`
+      : reason === 'not-captured'
+        ? `neighbour not yet captured from the arch scan: ${kinds} against stand-in neighbour geometry`
+        : `${kinds} against stand-in neighbour geometry`;
+  return failClosedOnNonCaseInput(measured, provenance, standIn);
 }

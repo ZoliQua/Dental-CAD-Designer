@@ -59,6 +59,70 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.28.0] — Phase 9 Task 3: `extractNeighbourRegion` — neighbour and antagonist capture from the case's own scans
+
+**No existing kernel op changed: every geometry stage pin and every
+journal-replay pin is BYTE-IDENTICAL to `[0.27.0]`. `kernel-ops.json` is
+unchanged (the new op is pure Float64 with no WASM boundary, so it takes no
+manifoldVersion-guarded op pin). The crown / cavity / bridge acceptance `*-qc`
+pins and the server traceability byte-golden advance only because the
+QcReport embeds `kernelVersion` (metadata-only churn).**
+
+ADR-022 Decision 3: the proximal neighbours (and, after explicit confirmation,
+the antagonist) come from the case's arch scans instead of synthetic boxes.
+New op `packages/kernel/src/neighbour/extractNeighbourRegion.ts`:
+
+- **The window.** With c = the margin-loop centroid, a = the insertion axis
+  and s = the user's pick snapped onto the scan: approach direction
+  n = (s − c) ⟂ a (the `occlusal` approach for the antagonist: n = ±a toward
+  the pick); a separating plane ⟂ n at max(margin reach along n, ½ (s − c)·n).
+  A source triangle is captured iff it lies wholly beyond the plane, not
+  apical to the cervical cut (proximal only), inside a 6 mm ball around s,
+  FACES the restoration (unit normal · −n ≥ 0.1), is VISIBLE from the
+  restoration side (a centroid ray along −n hits no other window triangle),
+  and belongs to the largest-area edge-connected component (pinched border
+  vertices pruned). Never oriented by world axes.
+- **The closure.** The captured surface is a height field over the plane, so
+  it is closed into a watertight solid by projecting it along n onto a back
+  plane 2 mm behind its deepest vertex (reversed back cap + wall quads). The
+  contact measurements (`anatomy/morph.ts`, `cavity/proximalContact.ts`)
+  require a watertight neighbour for the exact pseudonormal sign. The solid is
+  validated (watertight, positive volume, no degenerate triangle, no
+  self-intersection, halfedge-valid). The visibility rule tests centroids
+  only, so a real scan can keep a small fold whose closure faces cross: every
+  captured triangle implicated in such a face is dropped and the region
+  rebuilt (≤ 64 rounds; `foldTrianglesDropped` reports how many), else the
+  region is refused with `NeighbourRegionInvalidError`. To find every such
+  face, `findSelfIntersections` gained an observe-only `onIntersectingPair`
+  option (its result is unchanged — tested).
+- **`@errorBound`.** Zero positional error on the captured surface (scan
+  vertices copied verbatim, so a closest-point query answered on it is
+  bit-identical to the full scan). The capture can miss true neighbour
+  surface only outside the window (its parameters are returned) and along its
+  border, by at most `windowBoundaryBandMm` = the longest edge of a source
+  triangle dropped across a border edge (whole-triangle inclusion). The
+  contact gate prints this band whenever a captured neighbour is present.
+- **Tests first:** closed-form box arch (restoration / neighbour 1 mm away /
+  a second tooth hidden behind it): exactly the facing face captured,
+  bit-exact; 1 mm gap and a −20 µm inside sign measured exactly; the band =
+  the dropped side cells' diagonal; a sphere pair (window contact ≡
+  full-sphere contact, within the chord sagitta of the analytic 1 mm);
+  translation equivariance (fast-check); an exhaustive seed grid over the
+  neighbour's occlusal surface, plus the regression it found (a pick at the
+  neighbour's far edge once selected the strip of the second tooth peeking
+  past it, when the component was chosen by distance to the pick); the
+  occlusal approach; typed errors. On the real `arch-case-01` upper arch the
+  facing set splits into many small fragments (scan noise), so the component
+  is chosen by AREA — choosing it by least depth across the plane captured
+  1–2 noise triangles there (found by the env-gated acceptance run).
+- **Real-scan acceptance** (env-gated `RUN_NEIGHBOUR_CAPTURE_REAL=1`,
+  `test/golden/neighbour-capture-acceptance.test.ts`): crown on
+  `arch-case-01` tooth 11 with 12 / 21 captured from the upper arch
+  (2178 / 1449 triangles, 31.1 / 20.7 mm²) and the antagonist from the lower
+  arch (5472 triangles); placement + morph run on the captured solids and
+  the contact gate is measured on `case` geometry (both proximal contacts at
+  the −20 µm target), disclosing a window-border band ≤ 692 µm.
+
 ## [0.27.0] — Feature #4: `selfIntersection` is now a true geometric gate — new `intersect/` (`triangleTriangleIntersect` + `findSelfIntersections`)
 
 **No kernel GEOMETRY changed: every geometry stage pin and every journal-replay

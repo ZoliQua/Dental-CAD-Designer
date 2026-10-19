@@ -10,6 +10,7 @@ import { curvatureEngine } from '../engine/curvature';
 import { heatmapEngine } from '../engine/heatmap';
 import { lodEngine } from '../engine/lod';
 import { marginEditor } from '../engine/marginEditor';
+import { handleNeighbourPick } from '../engine/neighbourPick';
 import { toMarginOverlayRenderData } from '../engine/marginFrame';
 import { toMeasurementRenderData, toWorldRay } from '../engine/measurementFrame';
 import type { RenderNode } from '../engine/renderNode';
@@ -26,6 +27,7 @@ import { useCurvatureStore } from '../state/curvatureStore';
 import { useHeatmapStore } from '../state/heatmapStore';
 import { useLodStore } from '../state/lodStore';
 import { useMarginStore } from '../state/marginStore';
+import { useNeighbourPickStore } from '../state/neighbourCaptureStore';
 import { useSectionStore } from '../state/sectionStore';
 import { useToolStore } from '../state/toolStore';
 import { useViewerStore } from '../state/viewerStore';
@@ -160,6 +162,12 @@ function handleMeasurePick(pick: MeasurePickCandidate): void {
     void marginEditor.handlePick(worldRay);
     return;
   }
+  // Phase 9 Task 3: an armed neighbour pick raycasts only the arch scan
+  // (engine/neighbourPick.ts), same split as margin editing above.
+  if (useNeighbourPickStore.getState().pending !== null) {
+    void handleNeighbourPick(worldRay);
+    return;
+  }
   void toolManager.handlePick(request);
 }
 
@@ -180,6 +188,7 @@ export function Viewport() {
   const activeMeasurementTool = useToolStore((state) => state.activeTool);
   const alignmentPhase = useAlignmentStore((state) => state.phase);
   const marginPhase = useMarginStore((state) => state.phase);
+  const neighbourPickPending = useNeighbourPickStore((state) => state.pending !== null);
   const marginSegments = useMarginStore((state) => state.segments);
   const marginSegmentConfidence = useMarginStore((state) => state.segmentConfidence);
   const marginHumanEdited = useMarginStore((state) => state.humanEdited);
@@ -328,9 +337,10 @@ export function Viewport() {
     // Alignment/margin picking both reuse the SAME 'measure' interaction
     // mode as the measurement tools (candidate-set + ray reporting) — see
     // `handleMeasurePick`'s doc for how the three are told apart.
-    const measureModeActive = Boolean(activeMeasurementTool) || alignmentPhase === 'pickingPairs' || marginPhase === 'active';
+    const measureModeActive =
+      Boolean(activeMeasurementTool) || alignmentPhase === 'pickingPairs' || marginPhase === 'active' || neighbourPickPending;
     sceneManagerRef.current?.setInteractionMode(measureModeActive ? 'measure' : 'select');
-  }, [activeMeasurementTool, alignmentPhase, marginPhase]);
+  }, [activeMeasurementTool, alignmentPhase, marginPhase, neighbourPickPending]);
 
   useEffect(() => {
     // Margin curve overlay (Phase 3 Task 5) — re-syncs whenever the live

@@ -671,6 +671,10 @@ const contactResidualInputSchema = {
     // gate fails closed on a non-case contact; the export route additionally
     // refuses a 'case' claim it cannot trace (export-route.ts).
     provenance: geometryProvenanceSchema,
+    // Phase 9 Task 3: why a placeholder neighbour stands in, and a captured
+    // neighbour's window-border band (both only shape the gate message).
+    standInReason: { type: 'string', enum: ['no-neighbour-geometry', 'not-captured'] },
+    neighbourWindowBandMm: { type: 'number', minimum: 0 },
   },
 } as const;
 

@@ -820,13 +820,34 @@
   },
   "provenance": {
     "title": "Platzhalter-Geometrie",
-    "crownNeighbours": "Die mesialen und distalen Nachbarn sind synthetische Platzhalter-Quader, nicht die Zähne des Patienten. Die Erfassung der Nachbarn aus dem Kieferscan ist noch nicht verfügbar, daher kann das QC-Gate für den Approximalkontakt nicht bestanden werden. Bestätigen Sie es nur, wenn Sie die Kontakte auf anderem Weg geprüft haben.",
-    "cavityNeighbours": "Die approximalen Kästen sind an synthetische Platzhalter-Nachbarn angepasst, nicht an die Zähne des Patienten. Die Erfassung der Nachbarn aus dem Kieferscan ist noch nicht verfügbar, daher kann das QC-Gate für den Approximalkontakt nicht bestanden werden. Bestätigen Sie es nur, wenn Sie die Kontakte auf anderem Weg geprüft haben.",
+    "crownNeighbours": "Mindestens ein Nachbar ist ein synthetischer Platzhalter-Quader, nicht der Zahn des Patienten. Erfassen Sie ihn oben auf dem Kieferscan. Bis dahin kann das QC-Gate für den Approximalkontakt nicht bestanden werden. Bestätigen Sie es nur, wenn Sie die Kontakte auf anderem Weg geprüft haben.",
+    "cavityNeighbours": "Mindestens ein approximaler Kasten ist an einen synthetischen Platzhalter-Nachbarn angepasst, nicht an den Zahn des Patienten. Erfassen Sie ihn oben auf dem Kieferscan. Bis dahin kann das QC-Gate für den Approximalkontakt nicht bestanden werden. Bestätigen Sie es nur, wenn Sie die Kontakte auf anderem Weg geprüft haben.",
     "coverageDivider": "Die Trennebene des überkuppelten Höckers ist eine Platzhalter-Ebene aus der Bounding Box des Kavitätenumrisses, nicht aus der Höckeranatomie des Patienten. Das QC-Gate für die Höckerüberdeckungsstärke kann daher nicht bestanden werden. Bestätigen Sie es nur, wenn Sie die Höckerstärke auf anderem Weg geprüft haben.",
     "gate": {
       "placeholder": "an Platzhalter-Geometrie gemessen, nicht an der des Patienten; kann nicht bestehen",
       "demo-fixture": "am Demonstrations-Fixture gemessen, nicht an diesem Fall; kann nicht bestehen"
     },
-    "exportPlaceholder": "Einige QC-Gates dieser Restauration wurden an Platzhalter-Geometrie gemessen, nicht an der des Patienten ({{gates}}). Sie können nicht bestehen. Eine Bestätigung wird protokolliert und im Rückverfolgbarkeitsdokument ausgewiesen."
+    "exportPlaceholder": "Einige QC-Gates dieser Restauration wurden an Platzhalter-Geometrie gemessen, nicht an der des Patienten ({{gates}}). Sie können nicht bestehen. Eine Bestätigung wird protokolliert und im Rückverfolgbarkeitsdokument ausgewiesen.",
+    "noNeighbourGeometry": "Dieser Fall enthält keinen Kieferscan, daher gibt es keine Nachbargeometrie: Die Nachbarn sind synthetische Platzhalter-Quader. Das QC-Gate für den Approximalkontakt kann nicht bestanden werden. Bestätigen Sie es nur, wenn Sie die Kontakte auf anderem Weg geprüft haben."
+  },
+  "capture": {
+    "title": "Nachbarn aus den Scans des Falls",
+    "noArchScan": "Dieser Fall enthält keinen Kieferscan dieses Kiefers, daher gibt es keine Nachbargeometrie. Die Approximalkontakte werden gegen Platzhalter-Quader gemessen; ihr QC-Gate kann nicht bestanden werden.",
+    "side": {
+      "mesial": "Mesialer Nachbar ({{tooth}})",
+      "distal": "Distaler Nachbar ({{tooth}})"
+    },
+    "notCaptured": "nicht erfasst; ein Platzhalter-Quader wird verwendet",
+    "captured": "aus dem Kieferscan erfasst · Fenstergrenze ≤ {{band}} µm",
+    "busy": "Wird erfasst…",
+    "pick": "Auf dem Kieferscan auswählen",
+    "repick": "Erneut auswählen",
+    "picking": "Klicken Sie auf dem Kieferscan auf die Mitte des Nachbarzahns.",
+    "cancel": "Abbrechen",
+    "antagonistTitle": "Antagonist",
+    "antagonistScan": "aus dem Antagonistenscan des Falls",
+    "antagonistOpposite": "aus dem Gegenkieferscan erfasst (bestätigt) · Fenstergrenze ≤ {{band}} µm",
+    "useOppositeArch": "Gegenkieferscan als Antagonist verwenden",
+    "noAntagonist": "kein Antagonistenscan in diesem Fall"
   }
 }

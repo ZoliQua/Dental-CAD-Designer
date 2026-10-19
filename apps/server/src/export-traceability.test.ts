@@ -550,7 +550,7 @@ describe('QC traceability document — server generation, storage, routes', () =
     // Pin preconditions — the pinned values are kernel-derived; a bump moves
     // them ONLY with a deliberate KERNEL_VERSION change + changelog entry
     // (the golden discipline).
-    expect(KERNEL_VERSION).toBe('0.27.0');
+    expect(KERNEL_VERSION).toBe('0.28.0');
     expect(installedManifoldVersion()).toBe('3.5.1');
 
     // Fixed identity/journal constants isolate the pin to the DETERMINISTIC
@@ -636,8 +636,16 @@ describe('QC traceability document — server generation, storage, routes', () =
     // Every other gate, value, hash and version is byte-identical; kernel /
     // manifold pins unchanged (0.27.0 / 3.5.1). No numerical drift.
     // Previous (pre-ADR-022): 3c5853fac713891f37388b1a13d5a75abc9f58f58d6aab1bfbd861126a362808.
+    //
+    // MOVED at KERNEL_VERSION 0.27.0 → 0.28.0 (Phase 9 Task 3): VERSION-ONLY.
+    // Proof (run when re-pinning): replacing the document's two "0.28.0"
+    // strings with "0.27.0" reproduces the previous hash exactly. The new
+    // neighbour-capture op does not touch this fixture (its contacts stay
+    // declared `placeholder` — the saved case has no scans).
+    // Previous (0.27.0): d0fe109c92d05e2a15cf3b4ed000f833747d328f2ddc837851fd345bcfb57606.
+    // See CHANGELOG-kernel.md [0.28.0].
     expect(sha256Hex(json)).toBe(
-      'd0fe109c92d05e2a15cf3b4ed000f833747d328f2ddc837851fd345bcfb57606',
+      '7920d6a51c314d28a04cd9b8c1a53284aff91599d9894e6e3d6e7c69c436649b',
     );
   });
 });
