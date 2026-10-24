@@ -31,6 +31,7 @@
 //   jobs/decimate.ts   decimateMesh (Phase 2 Task 10 — render LODs)
 //   jobs/export.ts     exportRestorationMesh (Phase 7 Task 3 — manufacturing bytes)
 //   jobs/neighbourRegion.ts extractNeighbourRegion (Phase 9 Task 3 — neighbour capture)
+//   jobs/toothAsset.ts loadToothAsset (Phase 9 Task 4 — verify a fetched library asset)
 //   jobs/registry.ts   this file — types + runJob + registry assembly
 //
 // This was a PURE MECHANICAL MOVE (plus this same task's worker-side-hashing
@@ -193,6 +194,8 @@ import {
   type CavityOcclusalPatchResult,
 } from './cavityOcclusalPatch.ts';
 export type { CavityOcclusalPatchPayload, CavityOcclusalPatchResult };
+import { loadToothAssetJob, type LoadToothAssetPayload, type LoadToothAssetResult } from './toothAsset.ts';
+export type { LoadToothAssetPayload, LoadToothAssetResult };
 import {
   extractNeighbourRegionJob,
   type ExtractNeighbourRegionPayload,
@@ -475,6 +478,7 @@ export interface JobPayloadMap {
   cavityOcclusalPatch: CavityOcclusalPatchPayload;
   cavityProximalContact: CavityProximalContactPayload;
   extractNeighbourRegion: ExtractNeighbourRegionPayload;
+  loadToothAsset: LoadToothAssetPayload;
   placeAnatomy: PlaceAnatomyPayload;
   morphAnatomy: MorphAnatomyPayload;
   resolveMorph: ResolveMorphPayload;
@@ -536,6 +540,7 @@ export interface JobResultMap {
   cavityOcclusalPatch: CavityOcclusalPatchResult;
   cavityProximalContact: CavityProximalContactResult;
   extractNeighbourRegion: ExtractNeighbourRegionResult;
+  loadToothAsset: LoadToothAssetResult;
   placeAnatomy: PlaceAnatomyResult;
   morphAnatomy: MorphAnatomyResult;
   resolveMorph: MorphAnatomyResult;
@@ -604,6 +609,7 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   cavityOcclusalPatch: cavityOcclusalPatchJob,
   cavityProximalContact: cavityProximalContactJob,
   extractNeighbourRegion: extractNeighbourRegionJob,
+  loadToothAsset: loadToothAssetJob,
   placeAnatomy: placeAnatomyJob,
   morphAnatomy: morphAnatomyJob,
   resolveMorph: resolveMorphJob,

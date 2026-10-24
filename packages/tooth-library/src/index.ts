@@ -23,6 +23,7 @@ export type {
   MorphTarget,
   RawToothAssetMetadataJson,
   ToothAssetMetadata,
+  ToothAssetKind,
   ToothLandmarks,
   ToothType,
 } from './schema.ts';
@@ -36,6 +37,7 @@ export {
   computeMeshChecksum,
   computeToothAssetMetadataChecksum,
   loadToothAssetMetadata,
+  resolveToothAssetKind,
   validateToothAssetMetadataShape,
 } from './schema.ts';
 

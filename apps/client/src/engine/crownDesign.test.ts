@@ -16,6 +16,8 @@ import { crownDesignEngine, CrownNoSessionError, CrownStageOrderError, type Runn
 import { builtinLibraryTooth, boxMesh, marginCircleVecs } from './crownGeometry';
 import { canRunStage } from './crownWorkflow';
 import { useCrownStore } from '../state/crownStore';
+import { useServerStatusStore } from '../state/serverStatusStore';
+import { __resetToothLibraryCacheForTests } from './toothLibrary';
 
 const STATS: MeshStats = {
   watertight: true,
@@ -47,6 +49,7 @@ interface FakeCall {
 class FakePool {
   calls: FakeCall[] = [];
   extractCalls = 0;
+  failToothAsset = false;
   private hashCounter = 0;
   failShell = false;
   failResolveMorph = false;
@@ -58,6 +61,19 @@ class FakePool {
     switch (job) {
       case 'buildBvh':
         return {};
+      case 'loadToothAsset': {
+        if (this.failToothAsset) {
+          const err = new Error('mesh bytes do not match metadata.meshChecksum');
+          err.name = 'ToothMeshChecksumError';
+          throw err;
+        }
+        return {
+          ...tetra(40),
+          landmarks: { incisalEdge: [0, 0, 10] },
+          canonicalFrame: { origin: [0, 0, 0], mesialDistal: [1, 0, 0], buccoLingual: [0, 1, 0], occlusoGingival: [0, 0, 1] },
+          metadata: { fdi: 11, version: '1.1.0', toothType: 'incisor', provenance: 'PLACEHOLDER-ANATOMY: generated', assetKind: 'generator', meshChecksum: 'c'.repeat(64), metadataChecksum: 'd'.repeat(64) },
+        };
+      }
       case 'extractNeighbourRegion': {
         const p = payload as { seed: number[]; options?: { approach?: string } };
         this.extractCalls += 1;
@@ -447,6 +463,91 @@ describe('crownDesign controller — neighbour + antagonist capture (Phase 9 Tas
     addScan('ant', 'antagonist');
     crownDesignEngine.start(restorationId);
     expect(useCrownStore.getState().capture.antagonistSource).toBe('antagonistScan');
+  });
+});
+
+describe('crownDesign controller — anatomy from the tooth library (Phase 9 Task 4)', () => {
+  const libraryFetch = (async (url: string) => {
+    if (url === '/api/tooth-library/11') return Response.json({ fdi: 11, meshChecksum: 'c'.repeat(64) });
+    if (url === `/api/meshes/${'c'.repeat(64)}`) return new Response(new Uint8Array([1, 2, 3]));
+    return new Response('', { status: 404 });
+  }) as typeof fetch;
+
+  afterEach(() => {
+    useServerStatusStore.getState().setStatus('unknown');
+    __resetToothLibraryCacheForTests();
+  });
+
+  function lastPlace() {
+    return [...fake.calls].reverse().find((c) => c.job === 'placeAnatomy')!.payload as { libraryPositions: Float64Array; landmarks: Record<string, number[]> };
+  }
+  function anatomyOp() {
+    return caseStore.getDocument().history.filter((o) => o.name === 'crown-anatomy').pop()!;
+  }
+
+  it('by default the built-in template is placed; the verified library asset is shown as available, not used', async () => {
+    crownDesignEngine.__setToothLibraryFetchForTests(libraryFetch);
+    crownDesignEngine.start(restorationId);
+    await crownDesignEngine.refreshLibraryAnatomy();
+    expect(useCrownStore.getState().libraryAnatomy).toMatchObject({ origin: 'library', fdi: 11, assetKind: 'generator' });
+    expect(useCrownStore.getState().useLibraryAnatomy).toBe(false);
+    await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
+    await crownDesignEngine.placeAnatomyAuto();
+    expect(lastPlace().libraryPositions[0]).not.toBe(40);
+    expect(anatomyOp().params.anatomySource).toEqual({ origin: 'builtin', reason: 'notSelected', detail: null });
+  });
+
+  it('selecting the library template is one journaled op that invalidates anatomy onward, and survives a reload', async () => {
+    crownDesignEngine.__setToothLibraryFetchForTests(libraryFetch);
+    crownDesignEngine.start(restorationId);
+    await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
+    await crownDesignEngine.placeAnatomyAuto();
+    expect(currentRestoration().stages.anatomyPlacement).toBeTypeOf('string');
+    crownDesignEngine.setUseLibraryAnatomy(true);
+    const op = caseStore.getDocument().history.filter((o) => o.name === 'crown-anatomy-template').pop()!;
+    expect(op.params).toMatchObject({ restorationId, template: 'library' });
+    expect(currentRestoration().stages.anatomyPlacement).toBeUndefined();
+    crownDesignEngine.clear();
+    crownDesignEngine.start(restorationId);
+    expect(useCrownStore.getState().useLibraryAnatomy).toBe(true);
+  });
+
+  it('with the library template selected, places the verified asset and journals which one (input hash = its mesh checksum)', async () => {
+    crownDesignEngine.__setToothLibraryFetchForTests(libraryFetch);
+    crownDesignEngine.start(restorationId);
+    crownDesignEngine.setUseLibraryAnatomy(true);
+    await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
+    await crownDesignEngine.placeAnatomyAuto();
+    expect(lastPlace().libraryPositions[0]).toBe(40);
+    expect(lastPlace().landmarks).toEqual({ incisalEdge: [0, 0, 10] });
+    const op = anatomyOp();
+    expect(op.params.anatomySource).toMatchObject({ origin: 'library', fdi: 11, version: '1.1.0', assetKind: 'generator' });
+    expect(op.inputHashes).toContain('c'.repeat(64));
+    expect(useCrownStore.getState().anatomy?.anatomySource).toMatchObject({ origin: 'library', assetKind: 'generator' });
+  });
+
+  it('client-only mode: the built-in placeholder, labelled with why', async () => {
+    useServerStatusStore.getState().setStatus('offline');
+    crownDesignEngine.__setToothLibraryFetchForTests(libraryFetch);
+    crownDesignEngine.start(restorationId);
+    crownDesignEngine.setUseLibraryAnatomy(true);
+    await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
+    await crownDesignEngine.placeAnatomyAuto();
+    expect(fake.calls.some((c) => c.job === 'loadToothAsset')).toBe(false);
+    expect(anatomyOp().params.anatomySource).toEqual({ origin: 'builtin', reason: 'offline', detail: null });
+    expect(useCrownStore.getState().anatomy?.anatomySource).toEqual({ origin: 'builtin', reason: 'offline', detail: null });
+  });
+
+  it('an asset failing verification is never placed: the placeholder, with the error named', async () => {
+    fake.failToothAsset = true;
+    crownDesignEngine.__setToothLibraryFetchForTests(libraryFetch);
+    crownDesignEngine.start(restorationId);
+    crownDesignEngine.setUseLibraryAnatomy(true);
+    await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
+    await crownDesignEngine.placeAnatomyAuto();
+    expect(lastPlace().libraryPositions[0]).not.toBe(40);
+    expect(anatomyOp().params.anatomySource).toMatchObject({ origin: 'builtin', reason: 'verificationFailed' });
+    expect(useCrownStore.getState().anatomy?.anatomySource).toMatchObject({ detail: expect.stringMatching(/^ToothMeshChecksumError/) });
   });
 });
 

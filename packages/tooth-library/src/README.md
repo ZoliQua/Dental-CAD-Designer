@@ -17,8 +17,9 @@ A tooth asset is **two separately-addressable files**:
    interface ToothAssetMetadata {
      fdi: FdiTooth; // 11-18 / 21-28 / 31-38 / 41-48
      version: string; // semver-shaped, bump on ANY value change
-     toothType: 'incisor' | 'molar'; // more types are additive, not a closed union in practice
+     toothType: 'incisor' | 'premolar' | 'molar'; // more types are additive, not a closed union in practice
      provenance: string; // REQUIRED — where this anatomy came from
+     assetKind?: 'generator' | 'scanned' | 'licensed'; // how it was produced (see below)
      landmarks: Record<string, [number, number, number]>; // named points, mm, in canonicalFrame space
      canonicalFrame: {
        origin: [number, number, number];
@@ -40,6 +41,7 @@ sense depends on `toothType`. This package's own generators populate:
 | toothType | landmark names |
 | --- | --- |
 | `incisor` | `incisalEdge`, `cingulum`, `mesialMarginalRidge`, `distalMarginalRidge`, `mesialContact`, `distalContact` |
+| `premolar` | `buccalCusp`, `lingualCusp`, `centralFossa`, `mesialMarginalRidge`, `distalMarginalRidge` |
 | `molar` | `mesiobuccalCusp`, `distobuccalCusp`, `mesiolingualCusp`, `distolingualCusp`, `centralFossa`, `mesialMarginalRidge`, `distalMarginalRidge` |
 
 A third-party asset for a different tooth type (canine, premolar) should
@@ -90,6 +92,22 @@ produces when parsed and welded by `@dqcad/kernel`'s `intake()`
 this rule (see `assets.ts`'s module doc for the full reasoning) — it does
 NOT use its procedural generators' own internal vertex ordering.
 
+## Asset kind (Phase 9 Task 4)
+
+`assetKind` says how the anatomy was produced: `generator` (procedurally
+generated — this package's starter set), `scanned` (scanned or
+technician-authored from a real tooth or typodont) or `licensed` (taken
+from a licensed anatomical library). It is covered by `metadataChecksum`
+like every other field. It is OPTIONAL so that an asset written before the
+field existed still loads and still verifies; read it through
+`resolveToothAssetKind`, which maps an absent kind to `generator` for a
+`PLACEHOLDER-ANATOMY:` provenance and to `unspecified` otherwise. It never
+assumes an undeclared source is scanned or licensed. A
+`PLACEHOLDER-ANATOMY:` provenance declaring `scanned` / `licensed` is
+refused (`ToothAssetMetadataValidationError`). The client shows the kind
+and the provenance verbatim, and discloses a `generator` or `unspecified`
+asset as not anatomical data (ADR-022 Decision 5).
+
 ## Checksums
 
 Both checksums are **corruption-detection**, not a security/authenticity
@@ -108,7 +126,9 @@ silent fallback.
 ```ts
 import { loadToothAssetFromBytes, loadToothAssetFromServer } from '@dqcad/tooth-library';
 
-// From files you already have (a third-party import script):
+// From files you already have (a third-party import script). Also available
+// as `@dqcad/tooth-library/bytes`, which does not build the starter set on
+// import (the client's `loadToothAsset` worker job uses it):
 const asset = loadToothAssetFromBytes(metadataJson, meshBytes);
 
 // From the running server (see apps/server's routes below):
@@ -137,8 +157,9 @@ content-addressed" contract).
 
 ## Adding a tooth beyond this task's starter set
 
-This task ships 5 FDI codes: `12/11/21/22` (incisors) and `16` (one
-molar) — see `generate/README.md`'s YAGNI note for how to add the
+The starter set (version `1.1.0`) ships 20 FDI codes: the upper incisors
+`12/11/21/22`, every premolar (`14/15/24/25/34/35/44/45`) and the first +
+second molars of every quadrant (`16/17/26/27/36/37/46/47`) — see `generate/README.md`'s YAGNI note for how to add the
 remaining 27 by either (a) adding a size-parameter entry to an EXISTING
 generator (`toothParams.ts`), for another incisor/molar-shaped tooth, or
 (b) writing a new generator for a genuinely different tooth type

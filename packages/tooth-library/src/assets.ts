@@ -46,7 +46,8 @@ import { parseStl, writeStlBinary } from '@dqcad/io';
 import type { FdiTooth } from '@dqcad/shared-types';
 import { generateIncisorAsset, incisorMorphTargets, INCISOR_FDI_CODES } from './generate/incisor.ts';
 import { generateMolarAsset, molarMorphTargets, MOLAR_FDI_CODES } from './generate/molar.ts';
-import { INCISOR_FDI_PARAMS, MOLAR_FDI_PARAMS } from './generate/toothParams.ts';
+import { generatePremolarAsset, premolarMorphTargets, PREMOLAR_FDI_CODES } from './generate/premolar.ts';
+import { INCISOR_FDI_PARAMS, MOLAR_FDI_PARAMS, PREMOLAR_FDI_PARAMS } from './generate/toothParams.ts';
 import {
   PLACEHOLDER_PROVENANCE_PREFIX,
   computeMeshChecksum,
@@ -62,7 +63,11 @@ import {
  * output (shape params, ring/segment counts, landmark picks) per this
  * format's "version bumps on any value change" audit convention (mirrors
  * `MaterialProfile.version`'s doc). */
-export const STARTER_ASSET_VERSION = '1.0.0';
+//
+// 1.1.0 (Phase 9 Task 4): every asset declares `assetKind: 'generator'`
+// (a metadata change — the 1.0.0 meshes are byte-identical), and the set
+// grows by every premolar and the first + second molars of every quadrant.
+export const STARTER_ASSET_VERSION = '1.1.0';
 
 function provenanceFor(kind: ToothType): string {
   return (
@@ -120,6 +125,7 @@ function buildStarterAsset(generated: GeneratedAsset, morphTargetsFor: (position
     version: STARTER_ASSET_VERSION,
     toothType: generated.toothType,
     provenance: provenanceFor(generated.toothType),
+    assetKind: 'generator' as const,
     landmarks: generated.landmarks,
     canonicalFrame: generated.canonicalFrame,
     morphTargets,
@@ -143,17 +149,24 @@ function buildIncisorStarterAsset(fdi: FdiTooth): StarterToothAsset {
   return buildStarterAsset(generated, (positions) => incisorMorphTargets(positions, crownHeightMm));
 }
 
+function buildPremolarStarterAsset(fdi: FdiTooth): StarterToothAsset {
+  const generated = generatePremolarAsset(fdi);
+  const params = PREMOLAR_FDI_PARAMS[fdi]!;
+  return buildStarterAsset(generated, (positions) => premolarMorphTargets(positions, params, params.crownHeightMm));
+}
+
 function buildMolarStarterAsset(fdi: FdiTooth): StarterToothAsset {
   const generated = generateMolarAsset(fdi);
   const params = MOLAR_FDI_PARAMS[fdi]!;
   return buildStarterAsset(generated, (positions) => molarMorphTargets(positions, params, params.crownHeightMm));
 }
 
-/** FDI -> starter asset, built once at import time. Ordered 12, 11, 21, 22,
- * 16 — the 4 incisors first (the real case's immediate need), then the
- * posterior. */
+/** FDI -> starter asset, built once at import time. Ordered: the 4 upper
+ * incisors (12, 11, 21, 22 — the real case's immediate need), then every
+ * premolar, then the first + second molars. */
 export const STARTER_TOOTH_ASSETS: ReadonlyMap<FdiTooth, StarterToothAsset> = new Map([
   ...INCISOR_FDI_CODES.map((fdi) => [fdi, buildIncisorStarterAsset(fdi)] as const),
+  ...PREMOLAR_FDI_CODES.map((fdi) => [fdi, buildPremolarStarterAsset(fdi)] as const),
   ...MOLAR_FDI_CODES.map((fdi) => [fdi, buildMolarStarterAsset(fdi)] as const),
 ]);
 

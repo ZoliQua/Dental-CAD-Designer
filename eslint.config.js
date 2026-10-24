@@ -120,10 +120,18 @@ export default tseslint.config(
               // identically from a browser Worker ... and from the Node server").
               // Acyclic: cad-pipeline imports only kernel/io/shared-types, never
               // kernel-workers — so this adds a dependency edge, not a cycle.
+              //
+              // ...and on tooth-library as of Phase 9 Task 4: the `loadToothAsset`
+              // job verifies a tooth-library asset fetched by the client engine
+              // (checksums, watertight parse) off the UI thread, through the
+              // format-only `@dqcad/tooth-library/bytes` subpath. Acyclic:
+              // tooth-library imports only kernel/io/clinical-profiles/shared-types.
               from: { element: { types: 'kernel-workers' } },
               allow: {
                 to: {
-                  element: { types: { anyOf: ['kernel', 'io', 'cad-pipeline', 'shared-types'] } },
+                  element: {
+                    types: { anyOf: ['kernel', 'io', 'cad-pipeline', 'tooth-library', 'shared-types'] },
+                  },
                 },
               },
             },

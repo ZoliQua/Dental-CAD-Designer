@@ -15,6 +15,7 @@
     "@dqcad/kernel": "*",
     "@dqcad/io": "*",
     "@dqcad/cad-pipeline": "*",
-    "comlink": "^4.4.2"
+    "comlink": "^4.4.2",
+    "@dqcad/tooth-library": "*"
   }
 }

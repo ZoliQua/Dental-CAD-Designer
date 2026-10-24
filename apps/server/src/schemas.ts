@@ -582,8 +582,12 @@ export const toothAssetMetadataSchema = {
   properties: {
     fdi: fdiToothSchema,
     version: { type: 'string' },
-    toothType: { type: 'string', enum: ['incisor', 'molar'] },
+    toothType: { type: 'string', enum: ['incisor', 'premolar', 'molar'] },
     provenance: { type: 'string' },
+    // Phase 9 Task 4: how the anatomy was produced. Optional (an asset
+    // written before the field existed has none); the tooth-library loader
+    // also refuses a placeholder provenance claiming scanned / licensed.
+    assetKind: { type: 'string', enum: ['generator', 'scanned', 'licensed'] },
     landmarks: { type: 'object', additionalProperties: vec3TupleSchema },
     canonicalFrame: toothCanonicalFrameSchema,
     morphTargets: { type: 'array', items: toothMorphTargetSchema },

@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./checksum": "./src/checksum.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

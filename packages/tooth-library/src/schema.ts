@@ -28,14 +28,23 @@
 // of everything else. `loadToothAssetMetadata` below is the only function
 // that needs to accept it.
 import type { FdiTooth, Vec3 } from '@dqcad/shared-types';
-import { canonicalStringify, sha256Bytes, sha256HexOfString } from '@dqcad/clinical-profiles';
+// The checksum-only subpath: this module is reachable from the Node worker
+// entry (the `loadToothAsset` job), where the package index's JSON imports
+// would not load.
+import { canonicalStringify, sha256Bytes, sha256HexOfString } from '@dqcad/clinical-profiles/checksum';
 
 /** Broad tooth-shape family — drives which landmark SET is anatomically
  * meaningful (an incisor has no cusps; a molar has no incisal edge). Only
  * the two families this task's starter set actually populates are listed;
  * a canine/premolar generator (YAGNI for this task, see generate/README)
  * would add its own member here, never repurpose an existing one. */
-export type ToothType = 'incisor' | 'molar';
+export type ToothType = 'incisor' | 'premolar' | 'molar';
+
+/** How an asset's anatomy was produced (Phase 9 Task 4, ADR-022 Decision 5):
+ * `generator` = procedurally generated (this package's placeholder starter
+ * set); `scanned` = scanned / technician-authored from a real tooth or
+ * typodont; `licensed` = taken from a licensed anatomical library. */
+export type ToothAssetKind = 'generator' | 'scanned' | 'licensed';
 
 /** Named surface landmarks, keyed by a documented per-`ToothType` name set
  * (see generate/README.md's landmark table) — e.g. an incisor's
@@ -106,6 +115,12 @@ export interface ToothAssetMetadata {
    * mitigation note (PLAN.md §9). A real third-party library replacing a
    * given FDI's asset would set this to its own real citation instead. */
   provenance: string;
+  /** How the anatomy was produced (see `ToothAssetKind`). OPTIONAL so that
+   * an asset written before this field existed still loads and still
+   * checksum-verifies (an absent field is not part of its checksum); read
+   * it through `resolveToothAssetKind`, which never upgrades an unknown
+   * source. A `PLACEHOLDER-ANATOMY:` provenance may only be `generator`. */
+  assetKind?: ToothAssetKind;
   landmarks: ToothLandmarks;
   canonicalFrame: CanonicalFrame;
   morphTargets: readonly MorphTarget[];
@@ -249,7 +264,17 @@ function requireFdiTooth(value: unknown, fieldPath: string): FdiTooth {
   return value as FdiTooth;
 }
 
-const VALID_TOOTH_TYPES: ReadonlySet<string> = new Set(['incisor', 'molar']);
+const VALID_TOOTH_TYPES: ReadonlySet<string> = new Set(['incisor', 'premolar', 'molar']);
+
+const VALID_ASSET_KINDS: ReadonlySet<string> = new Set(['generator', 'scanned', 'licensed']);
+
+function requireAssetKind(value: unknown, fieldPath: string): ToothAssetKind {
+  const s = requireString(value, fieldPath);
+  if (!VALID_ASSET_KINDS.has(s)) {
+    fail(`${fieldPath} must be one of ${[...VALID_ASSET_KINDS].join('/')}, got ${JSON.stringify(s)}`);
+  }
+  return s as ToothAssetKind;
+}
 
 function requireToothType(value: unknown, fieldPath: string): ToothType {
   const s = requireString(value, fieldPath);
@@ -367,6 +392,7 @@ const ALLOWED_TOP_LEVEL_KEYS = new Set([
   'version',
   'toothType',
   'provenance',
+  'assetKind',
   'landmarks',
   'canonicalFrame',
   'morphTargets',
@@ -394,6 +420,10 @@ export function validateToothAssetMetadataShape(
   const version = requireString(root['version'], 'asset.version');
   const toothType = requireToothType(root['toothType'], 'asset.toothType');
   const provenance = requireString(root['provenance'], 'asset.provenance');
+  const assetKind = root['assetKind'] === undefined ? undefined : requireAssetKind(root['assetKind'], 'asset.assetKind');
+  if (assetKind !== undefined && assetKind !== 'generator' && provenance.startsWith(PLACEHOLDER_PROVENANCE_PREFIX)) {
+    fail(`asset.assetKind "${assetKind}" contradicts a placeholder provenance (${PLACEHOLDER_PROVENANCE_PREFIX}) — a placeholder is a generator asset`);
+  }
   const landmarks = requireLandmarks(root['landmarks'], 'asset.landmarks');
   const canonicalFrame = requireCanonicalFrame(root['canonicalFrame'], 'asset.canonicalFrame');
   const morphTargets = requireMorphTargets(root['morphTargets'], 'asset.morphTargets', expectedVertexCount);
@@ -411,12 +441,22 @@ export function validateToothAssetMetadataShape(
     version,
     toothType,
     provenance,
+    ...(assetKind === undefined ? {} : { assetKind }),
     landmarks,
     canonicalFrame,
     morphTargets,
     meshChecksum,
     metadataChecksum,
   };
+}
+
+/** The asset's kind for display and provenance decisions: the declared
+ * `assetKind`, else `generator` for a `PLACEHOLDER-ANATOMY:` provenance,
+ * else `unspecified` — an undeclared third-party source is never assumed to
+ * be scanned or licensed. */
+export function resolveToothAssetKind(metadata: Pick<ToothAssetMetadata, 'assetKind' | 'provenance'>): ToothAssetKind | 'unspecified' {
+  if (metadata.assetKind !== undefined) return metadata.assetKind;
+  return metadata.provenance.startsWith(PLACEHOLDER_PROVENANCE_PREFIX) ? 'generator' : 'unspecified';
 }
 
 /** Recomputes the `metadataChecksum` a validated asset's metadata SHOULD

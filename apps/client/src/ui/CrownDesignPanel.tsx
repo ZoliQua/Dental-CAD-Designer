@@ -18,6 +18,7 @@ import { insertionAxisIsPlaceholder } from '../engine/restorations';
 import { useCaseStore } from '../state/caseStore';
 import { GateProvenanceNote, StandInDisclosure } from './StandInDisclosure';
 import { NeighbourCapture } from './NeighbourCapture';
+import { AnatomySourceNote } from './AnatomySourceNote';
 import {
   useCrownStore,
   type CrownPrerequisiteCode,
@@ -72,6 +73,9 @@ export function CrownDesignPanel() {
     setStartError(null);
     try {
       crownDesignEngine.start(pendingId);
+      // Phase 9 Task 4: look up (and verify) this tooth's library asset so
+      // the anatomy stage can show it; never throws.
+      void crownDesignEngine.refreshLibraryAnatomy();
     } catch (error) {
       // Translated frame around the raw engine message — see CavityDesignPanel
       // (sibling-panel `startErrorOther` pattern); never show bare English.
@@ -258,12 +262,42 @@ function AnatomyStage({ busy }: { busy: boolean }) {
   const gate = useGate('anatomy');
   const anatomy = useCrownStore((state) => state.anatomy);
   const capture = useCrownStore((state) => state.capture);
+  const libraryAnatomy = useCrownStore((state) => state.libraryAnatomy);
+  const useLibraryAnatomy = useCrownStore((state) => state.useLibraryAnatomy);
   const [tx, setTx] = useState(0);
   const [ty, setTy] = useState(0);
   const [tz, setTz] = useState(0);
   return (
     <StageShell stage="anatomy" title={t('crown.anatomyTitle')} busy={busy}>
       <p className="crown-stage__note">{t('crown.anatomyLibraryNote')}</p>
+      {libraryAnatomy?.origin === 'library' && (
+        <>
+          <p className="crown-stage__note" data-testid="crown-anatomy-library-available">
+            {t('anatomySource.libraryAvailable', {
+              fdi: libraryAnatomy.fdi,
+              version: libraryAnatomy.version,
+              kind: t(`anatomySource.kind.${libraryAnatomy.assetKind}`),
+            })}
+          </p>
+          <label className="crown-stage__field">
+            <input
+              type="checkbox"
+              checked={useLibraryAnatomy}
+              disabled={busy}
+              onChange={(e) => crownDesignEngine.setUseLibraryAnatomy(e.target.checked)}
+              data-testid="crown-anatomy-use-library"
+            />
+            {t('anatomySource.useLibrary')}
+          </label>
+        </>
+      )}
+      {libraryAnatomy?.origin === 'builtin' && (
+        <p className="crown-stage__note" data-testid="crown-anatomy-library-unavailable">
+          {t('anatomySource.libraryUnavailable', {
+            reason: t(`anatomySource.reason.${libraryAnatomy.reason}`, { detail: libraryAnatomy.detail ?? '' }),
+          })}
+        </p>
+      )}
       <NeighbourCapture
         workflow="crown"
         capture={capture}
@@ -284,6 +318,7 @@ function AnatomyStage({ busy }: { busy: boolean }) {
             {anatomy.usedProximalGap && ` · ${t('crown.anatomyProximalGap')}`}
             {anatomy.antagonistUsed && ` · ${t('crown.anatomyAntagonist')}`}
           </p>
+          {anatomy.anatomySource && <AnatomySourceNote source={anatomy.anatomySource} />}
           {anatomy.neighbourProvenance !== 'case' && (
             <StandInDisclosure
               messageKey={capture.archScanAvailable ? 'provenance.crownNeighbours' : 'provenance.noNeighbourGeometry'}

@@ -88,6 +88,8 @@ import {
   type MorphStrengthsUi,
 } from '../state/crownStore';
 import { useCaseStore } from '../state/caseStore';
+import { useServerStatusStore } from '../state/serverStatusStore';
+import { resolveLibraryTooth, type AnatomySource, type ResolvedAnatomy } from './toothLibrary';
 
 /** Minimal structural view of a pool that can dispatch a job — `WorkerPool`
  * satisfies it; node-lane tests inject a fake implementing exactly this. */
@@ -192,6 +194,9 @@ export interface NeighbourSideInfo {
  * on fabricated geometry. */
 export interface AnatomyPlacementInput {
   library: BuiltinLibraryTooth;
+  /** Where `library` came from (Phase 9 Task 4): a verified tooth-library
+   * asset, or the built-in placeholder and why. Journaled; disclosed. */
+  anatomySource?: AnatomySource;
   mesialNeighbor?: IndexedBuffers;
   distalNeighbor?: IndexedBuffers;
   /** Provenance of `mesialNeighbor` / `distalNeighbor` — the worse of the
@@ -247,6 +252,9 @@ interface Session {
   captures: Partial<Record<CaptureRole, CapturedNeighbour>>;
 }
 
+/** Journal op name of the anatomy-template choice (Phase 9 Task 4). */
+const ANATOMY_TEMPLATE_OP = 'crown-anatomy-template';
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -254,9 +262,85 @@ function nowIso(): string {
 class CrownDesignEngine {
   private session: Session | null = null;
   private testPool: RunnablePool | null = null;
+  private testFetch: typeof fetch | null = null;
 
   private pool(): RunnablePool {
     return this.testPool ?? getPool();
+  }
+
+  /** TEST-ONLY: inject the `fetch` the tooth-library lookup uses. */
+  __setToothLibraryFetchForTests(fetchImpl: typeof fetch | null): void {
+    this.testFetch = fetchImpl;
+  }
+
+  /** The anatomy template for the session's FDI (engine/toothLibrary.ts):
+   * the verified library asset, or the placeholder with a named reason. */
+  private lookupLibraryAnatomy(): Promise<ResolvedAnatomy> {
+    return resolveLibraryTooth(this.requireSession().tooth, {
+      serverStatus: () => useServerStatusStore.getState().status,
+      fetch: this.testFetch ?? ((input, init) => globalThis.fetch(input, init)),
+      pool: this.pool(),
+    });
+  }
+
+  /** The template the anatomy stage places: the built-in tooth unless the
+   * user selected the library template (Phase 9 Task 4 decision — the
+   * library anatomy is not yet fitted to the margin, so on a prep die it
+   * yields a crown that fails structural QC; it is opt-in until a cervical
+   * fit step lands). */
+  private async resolveAnatomy(): Promise<ResolvedAnatomy> {
+    if (!this.libraryAnatomySelected()) {
+      return { tooth: null, source: { origin: 'builtin', reason: 'notSelected', detail: null } };
+    }
+    return this.lookupLibraryAnatomy();
+  }
+
+  /** Looks up (fetch + worker verification) the tooth-library asset for the
+   * session's FDI and publishes what was found, so the panel can show it
+   * whichever template is selected. Never throws. */
+  async refreshLibraryAnatomy(): Promise<void> {
+    const resolved = await this.lookupLibraryAnatomy();
+    if (this.session) this.publish({ libraryAnatomy: resolved.source });
+  }
+
+  /** The latest journaled template choice for this restoration. */
+  private libraryAnatomySelected(): boolean {
+    const session = this.requireSession();
+    const history = caseStore.getDocument().history;
+    for (let i = history.length - 1; i >= 0; i--) {
+      const op = history[i]!;
+      if (op.name === ANATOMY_TEMPLATE_OP && op.params['restorationId'] === session.restorationId) {
+        return op.params['template'] === 'library';
+      }
+    }
+    return false;
+  }
+
+  /** Selects the anatomy template (library asset vs built-in). One
+   * journaled op; invalidates anatomy onward (the next placement uses it). */
+  setUseLibraryAnatomy(useLibrary: boolean): void {
+    const session = this.requireSession();
+    if (this.libraryAnatomySelected() === useLibrary) return;
+    const restoration = this.restoration();
+    const invalidation = downstreamInvalidations('innerSurface');
+    const stages: Restoration['stages'] = { ...restoration.stages };
+    for (const field of invalidation.stageFields) delete stages[field];
+    caseStore.updateRestoration(
+      { ...restoration, stages, qc: invalidation.clearQc ? null : restoration.qc },
+      {
+        id: crypto.randomUUID(),
+        name: ANATOMY_TEMPLATE_OP,
+        params: { restorationId: restoration.id, tooth: session.tooth, template: useLibrary ? 'library' : 'builtin' },
+        inputHashes: [],
+        outputHashes: [],
+        kernelVersion: KERNEL_VERSION,
+        timestamp: nowIso(),
+      },
+    );
+    this.invalidateDownstream(invalidation);
+    session.anatomyInput = null;
+    this.publish({ useLibraryAnatomy: useLibrary });
+    this.refreshGates();
   }
 
   /** TEST-ONLY: inject a fake pool so the controller's order/coalescing/
@@ -329,7 +413,15 @@ class CrownDesignEngine {
       captures: {},
     };
     caseStore.setSelectedRestorationId(restorationId);
-    this.publish({ restorationId, active: true, error: null, errorStage: null, capture: this.captureState() });
+    this.publish({
+      restorationId,
+      active: true,
+      error: null,
+      errorStage: null,
+      capture: this.captureState(),
+      libraryAnatomy: null,
+      useLibraryAnatomy: this.libraryAnatomySelected(),
+    });
     // Publish the initial gate snapshot so the UI enables/blocks each stage
     // from the first render (without this every stage button stays disabled).
     this.refreshGates();
@@ -344,6 +436,7 @@ class CrownDesignEngine {
   resetForTests(): void {
     this.session = null;
     this.testPool = null;
+    this.testFetch = null;
     useCrownStore.getState().reset();
   }
 
@@ -727,7 +820,10 @@ class CrownDesignEngine {
    * engine (crownGeometry.ts); the UI only calls `placeAnatomyAuto` /
    * `commitAnatomyTransform`.
    */
-  private buildAnatomyInput(manualOverride?: AnatomyPlacementInput['manualOverride']): AnatomyPlacementInput {
+  private buildAnatomyInput(
+    manualOverride: AnatomyPlacementInput['manualOverride'] | undefined,
+    anatomy: ResolvedAnatomy,
+  ): AnatomyPlacementInput {
     const session = this.requireSession();
     let cx = 0;
     let cy = 0;
@@ -751,7 +847,10 @@ class CrownDesignEngine {
       if (session.diePositions[i]! > dieMaxZ) dieMaxZ = session.diePositions[i]!;
     }
     const heightMm = Math.max((dieMaxZ - cz) * 1.3 + 0.5, marginR * 2);
-    const library = builtinLibraryTooth(marginR, cz, heightMm, session.params.minWallThicknessMm * 2);
+    // Phase 9 Task 4: the verified tooth-library asset for this FDI; the
+    // built-in parametric tooth only as the labelled fallback.
+    const library: BuiltinLibraryTooth =
+      anatomy.tooth ?? builtinLibraryTooth(marginR, cz, heightMm, session.params.minWallThicknessMm * 2);
     // Each proximal side is the region captured from the case's arch scan
     // (Phase 9 Task 3). A side not captured falls back to a synthetic box
     // flanking the margin in world ±X at a small gap (the placement solve
@@ -797,6 +896,7 @@ class CrownDesignEngine {
       .map((c) => c.contentHash);
     return {
       library,
+      anatomySource: anatomy.source,
       mesialNeighbor,
       distalNeighbor,
       neighbourProvenance,
@@ -811,14 +911,14 @@ class CrownDesignEngine {
   /** Auto-places the built-in library tooth (no manual override). */
   async placeAnatomyAuto(): Promise<void> {
     await this.restoreJournaledCaptures();
-    await this.placeAnatomy(this.buildAnatomyInput());
+    await this.placeAnatomy(this.buildAnatomyInput(undefined, await this.resolveAnatomy()));
   }
 
   /** Commits a manual gizmo transform (one coalesced op — the whole drag is
    * one gesture). */
   async commitAnatomyTransform(override: NonNullable<AnatomyPlacementInput['manualOverride']>): Promise<void> {
     await this.restoreJournaledCaptures();
-    await this.placeAnatomy(this.buildAnatomyInput(override));
+    await this.placeAnatomy(this.buildAnatomyInput(override, await this.resolveAnatomy()));
   }
 
   /**
@@ -866,9 +966,14 @@ class CrownDesignEngine {
           antagonistUsed: result.antagonistUsed,
           neighbourProvenance: input.neighbourProvenance ?? 'case',
           ...(input.neighbourSides ? { neighbourSides: input.neighbourSides } : {}),
+          ...(input.anatomySource ? { anatomySource: input.anatomySource } : {}),
           override: input.manualOverride ?? null,
         },
-        [...(session.inner ? [session.inner.contentHash] : []), ...(input.inputRegionHashes ?? [])],
+        [
+          ...(session.inner ? [session.inner.contentHash] : []),
+          ...(input.inputRegionHashes ?? []),
+          ...(input.anatomySource?.origin === 'library' ? [input.anatomySource.meshChecksum] : []),
+        ],
       );
       this.publish({
         busyStage: null,
@@ -880,6 +985,7 @@ class CrownDesignEngine {
           usedProximalGap: result.usedProximalGap,
           antagonistUsed: result.antagonistUsed,
           neighbourProvenance: input.neighbourProvenance ?? 'case',
+          anatomySource: input.anatomySource ?? null,
           manual,
         },
         morph: null,

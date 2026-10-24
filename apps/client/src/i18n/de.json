@@ -478,7 +478,7 @@
     "innerReadout": "Fehlergrenze {{error}} µm · {{tris}} Patch-Dreiecke · {{verts}} Randpunkte",
     "innerGhostToggle": "Innenflächen-Vorschau anzeigen",
     "anatomyTitle": "2 · Anatomie-Platzierung",
-    "anatomyLibraryNote": "Integrierter parametrischer Bibliothekszahn (Platzhalter-Anatomie).",
+    "anatomyLibraryNote": "Standardmäßig wird die eingebaute parametrische Vorlage platziert. Stattdessen kann die Vorlage dieses Zahns aus der Zahnbibliothek gewählt werden (experimentell).",
     "anatomyAutoPlace": "Auto-Platzierung",
     "anatomyManualTitle": "Manuelle Transformation",
     "anatomyTranslateX": "Verschieben X (mm)",
@@ -849,5 +849,27 @@
     "antagonistOpposite": "aus dem Gegenkieferscan erfasst (bestätigt) · Fenstergrenze ≤ {{band}} µm",
     "useOppositeArch": "Gegenkieferscan als Antagonist verwenden",
     "noAntagonist": "kein Antagonistenscan in diesem Fall"
+  },
+  "anatomySource": {
+    "libraryLine": "Anatomie: Zahnbibliothek, FDI {{fdi}}, Version {{version}} ({{kind}}).",
+    "kind": {
+      "generator": "prozedural erzeugt",
+      "scanned": "gescannt",
+      "licensed": "lizenzierte Bibliothek",
+      "unspecified": "Herkunft nicht angegeben"
+    },
+    "provenanceLabel": "Herkunft:",
+    "placeholderLibrary": "Dieses Bibliothekselement sind keine anatomischen Daten: Es ist prozedural erzeugt oder seine Herkunft ist nicht angegeben. Es ist nur ein Gestaltungsvorschlag; die QC-Gates messen die fertige Krone.",
+    "builtinLine": "Anatomie: eingebauter parametrischer Platzhalter — {{reason}} Er ist nur ein Gestaltungsvorschlag; die QC-Gates messen die fertige Krone.",
+    "reason": {
+      "offline": "diese Bereitstellung hat keinen Server.",
+      "fdiMissing": "die Zahnbibliothek hat kein Element für diesen Zahn.",
+      "unavailable": "die Zahnbibliothek war nicht erreichbar.",
+      "verificationFailed": "das Bibliothekselement hat die Prüfung nicht bestanden ({{detail}}) und wurde nicht verwendet.",
+      "notSelected": "die eingebaute Vorlage ist ausgewählt."
+    },
+    "libraryAvailable": "Zahnbibliothek: FDI {{fdi}}, Version {{version}} ({{kind}}) ist verfügbar.",
+    "libraryUnavailable": "Zahnbibliothek: nicht verfügbar — {{reason}}",
+    "useLibrary": "Vorlage aus der Zahnbibliothek verwenden (experimentell: noch nicht an den Präparationsrand angepasst, daher kann die Krone die strukturelle QC nicht bestehen)"
   }
 }

@@ -37,6 +37,7 @@ const ANATOMY: Omit<AnatomySummary, 'neighbourProvenance'> = {
   usedProximalGap: true,
   antagonistUsed: false,
   manual: false,
+  anatomySource: null,
 };
 
 beforeEach(() => {
@@ -75,6 +76,34 @@ describe('crown anatomy stage — neighbour provenance', () => {
     useCrownStore.setState({ capture: { ...useCrownStore.getState().capture, archScanAvailable: true } });
     render(<CrownDesignPanel />);
     expect(screen.getByTestId('crown-neighbours-placeholder').textContent).toMatch(/Capture it on the arch scan/);
+  });
+
+  it('shows an available library asset and the opt-in template switch (Phase 9 Task 4)', () => {
+    seed('case');
+    useCrownStore.setState({
+      libraryAnatomy: {
+        origin: 'library',
+        fdi: 11,
+        version: '1.1.0',
+        toothType: 'incisor',
+        assetKind: 'generator',
+        provenance: 'PLACEHOLDER-ANATOMY: x',
+        meshChecksum: 'c'.repeat(64),
+        metadataChecksum: 'd'.repeat(64),
+      },
+      useLibraryAnatomy: false,
+    });
+    render(<CrownDesignPanel />);
+    expect(screen.getByTestId('crown-anatomy-library-available').textContent).toMatch(/FDI 11, version 1\.1\.0/);
+    expect((screen.getByTestId('crown-anatomy-use-library') as HTMLInputElement).checked).toBe(false);
+  });
+
+  it('says why the library is not available', () => {
+    seed('case');
+    useCrownStore.setState({ libraryAnatomy: { origin: 'builtin', reason: 'offline', detail: null } });
+    render(<CrownDesignPanel />);
+    expect(screen.getByTestId('crown-anatomy-library-unavailable').textContent).toMatch(/no server in this deployment/);
+    expect(screen.queryByTestId('crown-anatomy-use-library')).toBeNull();
   });
 
   it('says nothing for case-derived neighbours', () => {

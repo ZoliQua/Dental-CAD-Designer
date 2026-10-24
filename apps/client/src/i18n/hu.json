@@ -478,7 +478,7 @@
     "innerReadout": "Hibahatár {{error}} µm · {{tris}} folt-háromszög · {{verts}} határ-csúcs",
     "innerGhostToggle": "Belső felület árnykép",
     "anatomyTitle": "2 · Anatómia elhelyezése",
-    "anatomyLibraryNote": "Beépített parametrikus könyvtári fog (helyettesítő anatómia).",
+    "anatomyLibraryNote": "Alapértelmezésben a beépített parametrikus sablont helyezzük el. Helyette a fog fogkönyvtári sablonja is választható (kísérleti).",
     "anatomyAutoPlace": "Automatikus elhelyezés",
     "anatomyManualTitle": "Kézi transzformáció",
     "anatomyTranslateX": "Mozgatás X (mm)",
@@ -849,5 +849,27 @@
     "antagonistOpposite": "rögzítve a szemközti ívszkenből (megerősítve) · ablakhatár ≤ {{band}} µm",
     "useOppositeArch": "A szemközti ívszken használata antagonistaként",
     "noAntagonist": "az esetben nincs antagonista-szken"
+  },
+  "anatomySource": {
+    "libraryLine": "Anatómia: fogkönyvtár, FDI {{fdi}}, {{version}} verzió ({{kind}}).",
+    "kind": {
+      "generator": "eljárással generált",
+      "scanned": "szkennelt",
+      "licensed": "licencelt könyvtár",
+      "unspecified": "a forrás nincs megadva"
+    },
+    "provenanceLabel": "Eredet:",
+    "placeholderLibrary": "Ez a könyvtári elem nem anatómiai adat: eljárással generált, vagy a forrása nincs megadva. Csak tervezési javaslat; a QC-kapuk az elkészült héjat mérik.",
+    "builtinLine": "Anatómia: beépített parametrikus helyettesítő — {{reason}} Csak tervezési javaslat; a QC-kapuk az elkészült héjat mérik.",
+    "reason": {
+      "offline": "ebben a telepítésben nincs szerver.",
+      "fdiMissing": "a fogkönyvtárban nincs elem ehhez a foghoz.",
+      "unavailable": "a fogkönyvtár nem érhető el.",
+      "verificationFailed": "a könyvtári elem ellenőrzése nem sikerült ({{detail}}), ezért nem használtuk.",
+      "notSelected": "a beépített sablon van kiválasztva."
+    },
+    "libraryAvailable": "Fogkönyvtár: FDI {{fdi}}, {{version}} verzió ({{kind}}) elérhető.",
+    "libraryUnavailable": "Fogkönyvtár: nem érhető el — {{reason}}",
+    "useLibrary": "A fogkönyvtári sablon használata (kísérleti: még nincs a margóhoz illesztve, ezért a korona elbukhat a szerkezeti QC-n)"
   }
 }

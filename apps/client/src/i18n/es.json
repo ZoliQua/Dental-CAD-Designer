@@ -478,7 +478,7 @@
     "innerReadout": "Cota de error {{error}} µm · {{tris}} triángulos · {{verts}} vértices de margen",
     "innerGhostToggle": "Mostrar fantasma de superficie interna",
     "anatomyTitle": "2 · Colocación de anatomía",
-    "anatomyLibraryNote": "Diente de biblioteca paramétrico integrado (anatomía de marcador de posición).",
+    "anatomyLibraryNote": "Por defecto se coloca la plantilla paramétrica integrada. En su lugar se puede elegir la plantilla de este diente de la biblioteca (experimental).",
     "anatomyAutoPlace": "Colocación automática",
     "anatomyManualTitle": "Transformación manual",
     "anatomyTranslateX": "Mover X (mm)",
@@ -849,5 +849,27 @@
     "antagonistOpposite": "capturado del escaneo de la arcada opuesta (confirmado) · borde de la ventana ≤ {{band}} µm",
     "useOppositeArch": "Usar el escaneo de la arcada opuesta como antagonista",
     "noAntagonist": "no hay escaneo antagonista en este caso"
+  },
+  "anatomySource": {
+    "libraryLine": "Anatomía: biblioteca de dientes, FDI {{fdi}}, versión {{version}} ({{kind}}).",
+    "kind": {
+      "generator": "generado por procedimiento",
+      "scanned": "escaneado",
+      "licensed": "biblioteca con licencia",
+      "unspecified": "origen no indicado"
+    },
+    "provenanceLabel": "Procedencia:",
+    "placeholderLibrary": "Este elemento de la biblioteca no son datos anatómicos: se generó por procedimiento o su origen no está indicado. Es solo una propuesta de diseño; las puertas de QC miden la corona terminada.",
+    "builtinLine": "Anatomía: marcador paramétrico integrado — {{reason}} Es solo una propuesta de diseño; las puertas de QC miden la corona terminada.",
+    "reason": {
+      "offline": "este despliegue no tiene servidor.",
+      "fdiMissing": "la biblioteca de dientes no tiene un elemento para este diente.",
+      "unavailable": "no se pudo acceder a la biblioteca de dientes.",
+      "verificationFailed": "el elemento de la biblioteca no superó la verificación ({{detail}}) y no se usó.",
+      "notSelected": "está seleccionada la plantilla integrada."
+    },
+    "libraryAvailable": "Biblioteca de dientes: FDI {{fdi}}, versión {{version}} ({{kind}}) disponible.",
+    "libraryUnavailable": "Biblioteca de dientes: no disponible — {{reason}}",
+    "useLibrary": "Usar la plantilla de la biblioteca de dientes (experimental: aún no se ajusta al margen, por lo que la corona puede no superar el QC estructural)"
   }
 }

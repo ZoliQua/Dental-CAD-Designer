@@ -6,6 +6,7 @@ import {
   loadToothAssetMetadata,
   ToothAssetMetadataChecksumError,
   ToothAssetMetadataValidationError,
+  resolveToothAssetKind,
   validateToothAssetMetadataShape,
   type CanonicalFrame,
   type ToothAssetMetadata,
@@ -177,5 +178,37 @@ describe('assertOrthonormalFrame', () => {
       occlusoGingival: [0, 0, 1],
     };
     expect(() => assertOrthonormalFrame(skewed)).toThrow(ToothAssetMetadataValidationError);
+  });
+});
+
+describe('assetKind — where the anatomy came from (Phase 9 Task 4)', () => {
+  function withKind(assetKind: unknown, provenance = 'PLACEHOLDER-ANATOMY: test fixture'): Record<string, unknown> {
+    const withoutChecksum = { ...baseMetadataWithoutChecksum(), provenance, assetKind: assetKind as ToothAssetMetadata['assetKind'] };
+    return { ...withoutChecksum, metadataChecksum: computeToothAssetMetadataChecksum(withoutChecksum) };
+  }
+
+  it('accepts generator / scanned / licensed and carries it through the checksum', () => {
+    expect(loadToothAssetMetadata(withKind('generator')).assetKind).toBe('generator');
+    expect(loadToothAssetMetadata(withKind('scanned', 'Technician-scanned typodont, lab X')).assetKind).toBe('scanned');
+    expect(loadToothAssetMetadata(withKind('licensed', 'Licensed atlas Y, tooth 11')).assetKind).toBe('licensed');
+  });
+
+  it('rejects an unknown kind', () => {
+    expect(() => validateToothAssetMetadataShape(withKind('sculpted'))).toThrow(ToothAssetMetadataValidationError);
+  });
+
+  it('a placeholder provenance can only be a generator asset (no placeholder may claim scanned/licensed)', () => {
+    expect(() => validateToothAssetMetadataShape(withKind('scanned'))).toThrow(/placeholder/i);
+    expect(() => validateToothAssetMetadataShape(withKind('licensed'))).toThrow(/placeholder/i);
+  });
+
+  it('is optional for assets written before it existed; resolveToothAssetKind derives it honestly', () => {
+    const legacy = loadToothAssetMetadata(validRawMetadata());
+    expect('assetKind' in legacy).toBe(false);
+    expect(resolveToothAssetKind(legacy)).toBe('generator'); // PLACEHOLDER-ANATOMY prefix
+    const thirdParty = { ...baseMetadataWithoutChecksum(), provenance: 'Atlas Z' };
+    const raw = { ...thirdParty, metadataChecksum: computeToothAssetMetadataChecksum(thirdParty) };
+    expect(resolveToothAssetKind(loadToothAssetMetadata(raw))).toBe('unspecified');
+    expect(resolveToothAssetKind(loadToothAssetMetadata(withKind('licensed', 'Atlas Z')))).toBe('licensed');
   });
 });

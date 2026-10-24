@@ -72,9 +72,32 @@ export interface AnatomySummary {
    * of the two sides: `case` once both are captured from the arch scan
    * (Phase 9 Task 3), else `placeholder`. */
   neighbourProvenance: GeometryProvenance;
+  /** Where the anatomy template came from (Phase 9 Task 4) — a verified
+   * tooth-library asset, or the built-in placeholder and why; `null` when
+   * the caller supplied its own template. Disclosed; never fails a gate. */
+  anatomySource: AnatomySourceSummary | null;
   /** `true` after a manual gizmo transform, `false` after auto-place. */
   manual: boolean;
 }
+
+/** Mirrors engine/toothLibrary.ts's `AnatomySource` (state may not import
+ * engine). */
+export type AnatomySourceSummary =
+  | {
+      origin: 'library';
+      fdi: number;
+      version: string;
+      toothType: string;
+      assetKind: 'generator' | 'scanned' | 'licensed' | 'unspecified';
+      provenance: string;
+      meshChecksum: string;
+      metadataChecksum: string;
+    }
+  | {
+      origin: 'builtin';
+      reason: 'notSelected' | 'offline' | 'fdiMissing' | 'unavailable' | 'verificationFailed';
+      detail: string | null;
+    };
 
 export interface MorphContactReadout {
   kind: MorphContactKind;
@@ -146,6 +169,13 @@ export interface CrownState {
   qc: QcReport | null;
   /** Neighbour / antagonist capture from the case's scans (Phase 9 Task 3). */
   capture: CaptureState;
+  /** The tooth-library asset for this FDI as last looked up (Phase 9 Task
+   * 4): verified and available, or the reason it is not; `null` before the
+   * lookup. */
+  libraryAnatomy: AnatomySourceSummary | null;
+  /** The user's journaled template choice: the library asset (opt-in — not
+   * yet fitted to the margin) instead of the built-in template. */
+  useLibraryAnatomy: boolean;
 
   strengths: MorphStrengthsUi;
   /** `true` while a live `resolveMorph` re-solve is in flight (slider drag) —
@@ -191,6 +221,8 @@ const INITIAL: Omit<CrownState, 'apply' | 'reset'> = {
   sculpt: null,
   qc: null,
   capture: INITIAL_CAPTURE,
+  libraryAnatomy: null,
+  useLibraryAnatomy: false,
   strengths: { proximalMesial: 1, proximalDistal: 1, antagonist: 1 },
   morphBusy: false,
   brush: 'add',

@@ -139,3 +139,21 @@ describe('generateMolarAsset', () => {
     expect(() => generateMolarAsset(11)).toThrow(RangeError);
   });
 });
+
+describe('generateMolarAsset — FDI 16 regression pin (Phase 9 Task 4 shared posterior builder)', () => {
+  it('the FDI 16 mesh, landmarks and morph targets are byte-identical to the pre-premolar generator', async () => {
+    const { createHash } = await import('node:crypto');
+    const m = generateMolarAsset(16);
+    const meshHash = createHash('sha256')
+      .update(Buffer.from(m.mesh.positions.buffer))
+      .update(Buffer.from(m.mesh.indices.buffer))
+      .digest('hex');
+    const restHash = createHash('sha256').update(JSON.stringify([m.landmarks, m.morphTargets])).digest('hex');
+    expect(meshHash).toBe('2ce81bcf4eee91be3d49aacd82ae10568437dfdda0a82d8887f0b6de4bd4b2e7');
+    expect(restHash).toBe('eef9aeca6bb719152bce9bf74efca10ec24cf35032834d49eab71dadcc0cd5b9');
+  });
+
+  it('covers the first and second molars of every quadrant', () => {
+    expect([...MOLAR_FDI_CODES].sort()).toEqual([16, 17, 26, 27, 36, 37, 46, 47]);
+  });
+});

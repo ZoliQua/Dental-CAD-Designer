@@ -165,6 +165,45 @@ decisions:
 - **Tests:** offline fallback path; checksum verification of fetched assets;
   server seed includes the new FDIs.
 
+**Landed (2026-10-24).** With one recorded decision that changes the plan:
+- **The built-in template stays the default; the library template is
+  opt-in.** The engine fetches the asset for the restoration's FDI
+  (`engine/toothLibrary.ts`). The new `loadToothAsset` worker job verifies
+  both checksums, parses the STL and gates on watertightness. The panel
+  shows the asset (FDI, version, kind, provenance verbatim). Placing it is
+  a journaled choice (`crown-anatomy-template`). The reason is a finding
+  from the phase4 e2e: on the synthetic shoulder die, the library incisor
+  gives a crown that fails structural QC (selfIntersection, seating
+  175 mm³, min wall 0). The placement solve scales the template so its
+  WIDEST section matches the margin, which pulls the incisor's narrower
+  cervical ring inside the margin. The built-in straight-walled tooth was
+  built for exactly that solve. A cervical-fit step (fit the template's
+  cervical band to the margin) is the unblock; it is a tracked-pending
+  item, and the library becomes the default once it lands.
+- Every fallback is labelled with its reason (`notSelected`, `offline` =
+  client-only deploy, `fdiMissing`, `unavailable`, `verificationFailed` with
+  the loader's error named). A corrupted asset is never placed. Anatomy
+  provenance is disclosed but fails no gate (ADR-022 Decision 5). The
+  anatomy op journals the template source, and a placed library asset's
+  mesh checksum goes into `inputHashes`.
+- `@dqcad/tooth-library` 1.1.0: an optional, checksum-covered `assetKind`
+  (`generator` / `scanned` / `licensed`). A placeholder provenance can only
+  be `generator`. `resolveToothAssetKind` never assumes an undeclared source
+  is scanned or licensed. Optional so that stored 1.0.0 assets still load
+  (tested: a 1.0.0 file plus the seeded 1.1.0, latest wins). New premolar
+  generator, plus the first + second molars of every quadrant (20 FDIs). The
+  molar and premolar generators now share `generate/posterior.ts`; FDI 16
+  is byte-identical (pinned), and so are the 1.0.0 meshes.
+- Layering: `kernel-workers` → `tooth-library` is a new allowed edge
+  (acyclic). The job imports the format-only `@dqcad/tooth-library/bytes`
+  (no starter-set generation on worker start), and `tooth-library` takes its
+  checksum primitives from `@dqcad/clinical-profiles/checksum` (the package
+  index imports JSON, which the Node worker loader cannot).
+- Found while verifying, not caused by this task: since Phase 8 Task 2 the
+  first-run onboarding tour's backdrop blocks the phase1–7 e2e specs (they
+  never dismiss it). Tracked; the phase4 spec was run with the tour
+  pre-dismissed to verify this task.
+
 ## Task 5 — Ridge-crest fit *(new kernel op)*
 
 `fitRidgeCrestCylinder(gingivaMesh, region)` — PCA over the crest region →

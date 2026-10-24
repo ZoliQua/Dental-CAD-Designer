@@ -700,17 +700,29 @@ describe('server app', () => {
   });
 
   describe('GET /api/tooth-library[/:fdi] (Phase 4 Task 2)', () => {
-    it('lists the 5 seeded starter assets (4 incisors + 1 molar)', async () => {
+    it('lists the 20 seeded starter assets (4 incisors, every premolar, the first + second molars — Phase 9 Task 4)', async () => {
       const response = await app.inject({ method: 'GET', url: '/api/tooth-library' });
       expect(response.statusCode).toBe(200);
       const list = response.json() as Array<{ fdi: number; version: string; toothType: string }>;
-      expect(list).toHaveLength(5);
-      expect(list.map((a) => a.fdi).sort((a, b) => a - b)).toEqual([11, 12, 16, 21, 22]);
+      expect(list).toHaveLength(20);
+      expect(list.map((a) => a.fdi).sort((a, b) => a - b)).toEqual([
+        11, 12, 14, 15, 16, 17, 21, 22, 24, 25, 26, 27, 34, 35, 36, 37, 44, 45, 46, 47,
+      ]);
       expect(list.find((a) => a.fdi === 16)?.toothType).toBe('molar');
       expect(list.find((a) => a.fdi === 11)?.toothType).toBe('incisor');
+      expect(list.find((a) => a.fdi === 45)?.toothType).toBe('premolar');
       for (const entry of list) {
-        expect(entry.version).toBe('1.0.0');
+        expect(entry.version).toBe('1.1.0');
       }
+    });
+
+    it('GET /api/tooth-library/:fdi serves a premolar with its assetKind (Phase 9 Task 4)', async () => {
+      const response = await app.inject({ method: 'GET', url: '/api/tooth-library/14' });
+      expect(response.statusCode).toBe(200);
+      const metadata = response.json() as { toothType: string; assetKind?: string; landmarks: Record<string, unknown> };
+      expect(metadata.toothType).toBe('premolar');
+      expect(metadata.assetKind).toBe('generator');
+      expect(metadata.landmarks['buccalCusp']).toBeDefined();
     });
 
     it('GET /api/tooth-library/:fdi returns the full checksum-verified metadata for an incisor', async () => {

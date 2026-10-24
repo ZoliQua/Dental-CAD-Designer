@@ -4,9 +4,24 @@ import { PLACEHOLDER_PROVENANCE_PREFIX } from './schema.ts';
 import { STARTER_ASSET_VERSION, STARTER_FDI_CODES, STARTER_TOOTH_ASSETS } from './assets.ts';
 
 describe('STARTER_TOOTH_ASSETS', () => {
-  it('ships exactly the 4 incisors + 1 molar this task promises', () => {
-    expect(STARTER_FDI_CODES).toEqual([12, 11, 21, 22, 16]);
-    expect(STARTER_TOOTH_ASSETS.size).toBe(5);
+  it('ships the 4 upper incisors, every premolar and every first + second molar (Phase 9 Task 4)', () => {
+    expect(STARTER_FDI_CODES).toEqual([12, 11, 21, 22, 14, 15, 24, 25, 34, 35, 44, 45, 16, 17, 26, 27, 36, 37, 46, 47]);
+    expect(STARTER_TOOTH_ASSETS.size).toBe(20);
+    expect(STARTER_ASSET_VERSION).toBe('1.1.0');
+  });
+
+  it.each(STARTER_FDI_CODES)('FDI %i: declares itself a generator asset (and a premolar FDI is a premolar)', (fdi) => {
+    const { metadata } = STARTER_TOOTH_ASSETS.get(fdi)!;
+    expect(metadata.assetKind).toBe('generator');
+    const position = fdi % 10;
+    expect(metadata.toothType).toBe(position <= 3 ? 'incisor' : position <= 5 ? 'premolar' : 'molar');
+  });
+
+  it('the pre-existing starter meshes are byte-identical (only the metadata gained assetKind)', () => {
+    const meshSum = (fdi: number) => STARTER_TOOTH_ASSETS.get(fdi as 11)!.metadata.meshChecksum;
+    expect(meshSum(11)).toBe('d3ce91df82c2f2c284d814e2022f7606da656323b4662d63bf1bdec3fedf5c1e');
+    expect(meshSum(12)).toBe('bb34022b5accf6a278c75e46bf9ee5eaf713bf0e52a4b0924d4b35f3c5fc7c32');
+    expect(meshSum(16)).toBe('9eb9112b6f1f90ac24ed1771813e3717a0dcf46de7be4940c1f245dd41c6b281');
   });
 
   it.each(STARTER_FDI_CODES)('FDI %i: metadata validated successfully at import time (already loaded)', (fdi) => {

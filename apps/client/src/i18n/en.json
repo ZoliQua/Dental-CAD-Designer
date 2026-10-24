@@ -478,7 +478,7 @@
     "innerReadout": "Error bound {{error}} µm · {{tris}} patch triangles · {{verts}} margin vertices",
     "innerGhostToggle": "Show inner-surface ghost",
     "anatomyTitle": "2 · Anatomy placement",
-    "anatomyLibraryNote": "Built-in parametric library tooth (placeholder anatomy).",
+    "anatomyLibraryNote": "The built-in parametric template is placed by default. The tooth-library template for this tooth can be selected instead (experimental).",
     "anatomyAutoPlace": "Auto-place",
     "anatomyManualTitle": "Manual transform",
     "anatomyTranslateX": "Move X (mm)",
@@ -849,5 +849,27 @@
     "antagonistOpposite": "captured from the opposite arch scan (confirmed) · window border ≤ {{band}} µm",
     "useOppositeArch": "Use the opposite arch scan as the antagonist",
     "noAntagonist": "no antagonist scan in this case"
+  },
+  "anatomySource": {
+    "libraryLine": "Anatomy: tooth library, FDI {{fdi}}, version {{version}} ({{kind}}).",
+    "kind": {
+      "generator": "procedurally generated",
+      "scanned": "scanned",
+      "licensed": "licensed library",
+      "unspecified": "origin not stated"
+    },
+    "provenanceLabel": "Provenance:",
+    "placeholderLibrary": "This library asset is not anatomical data: it is procedurally generated or its origin is not stated. It is only a design proposal; the QC gates measure the finished shell.",
+    "builtinLine": "Anatomy: built-in parametric placeholder — {{reason}} It is only a design proposal; the QC gates measure the finished shell.",
+    "reason": {
+      "offline": "there is no server in this deployment.",
+      "fdiMissing": "the tooth library has no asset for this tooth.",
+      "unavailable": "the tooth library could not be reached.",
+      "verificationFailed": "the library asset failed verification ({{detail}}) and was not used.",
+      "notSelected": "the built-in template is selected."
+    },
+    "libraryAvailable": "Tooth library: FDI {{fdi}}, version {{version}} ({{kind}}) is available.",
+    "libraryUnavailable": "Tooth library: not available — {{reason}}",
+    "useLibrary": "Use the tooth-library template (experimental: it is not yet fitted to the margin, so the crown may fail structural QC)"
   }
 }
