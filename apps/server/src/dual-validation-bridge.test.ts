@@ -125,6 +125,21 @@ describe('POST /api/restorations/:id/validate-qc — bridge dual validation (cli
     expect(serverReport.kernelVersion).toBe(passClientReport.kernelVersion);
   }, 180_000);
 
+  it('a fitted-crest disclosure (Phase 9 Task 5) rides through the re-validation byte-identically', async () => {
+    const input: RunBridgeQcInput = {
+      ...pass.qcInput,
+      ponticRelief: { ...pass.qcInput.ponticRelief, crestFit: { radialResidualMaxMm: 0.0042, axisSpreadRad: 0.003 } },
+    };
+    const client = await runBridgeQc(input);
+    const res = await post(input);
+    expect(res.statusCode).toBe(200);
+    const serverReport = res.json() as QcReport;
+    expect(canonical(serverReport)).toBe(canonical(client));
+    expect(serverReport.gates.find((g) => g.gate === 'ponticRelief')!.message).toMatch(
+      /ridge crest fitted to the gingiva scan: max radial residual 4\.20 µm/,
+    );
+  }, 180_000);
+
   it('the WASM gates (seating + selfIntersection) run server-side on the bridge path and agree byte-for-byte', async () => {
     const serverReport = (await post(pass.qcInput)).json() as QcReport;
     const seating = serverReport.gates.find((g) => g.gate === 'seating');

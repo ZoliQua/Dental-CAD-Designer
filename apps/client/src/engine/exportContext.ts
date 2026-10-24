@@ -134,7 +134,13 @@ export interface BridgeExportQcContext {
   connectorAreaTargetMm2: number;
   frameworkMode?: boolean;
   frameworkMinThicknessMm?: number;
-  ponticRelief: { maxAbsDeviationMm: number; style: string; configuredReliefMm: number };
+  ponticRelief: {
+    maxAbsDeviationMm: number;
+    style: string;
+    configuredReliefMm: number;
+    /** Phase 9 Task 5 — a fitted crest's @errorBound (message only). */
+    crestFit?: { radialResidualMaxMm: number; axisSpreadRad: number };
+  };
 }
 
 export type ExportQcContext = CrownExportQcContext | InlayExportQcContext | BridgeExportQcContext;

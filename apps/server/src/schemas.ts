@@ -941,6 +941,16 @@ const ponticReliefInputSchema = {
     style: { type: 'string' },
     configuredReliefMm: { type: 'number' },
     thresholdMm: { type: 'number' },
+    // Phase 9 Task 5: the fitted crest's @errorBound (message only).
+    crestFit: {
+      type: 'object',
+      required: ['radialResidualMaxMm', 'axisSpreadRad'],
+      additionalProperties: false,
+      properties: {
+        radialResidualMaxMm: { type: 'number', minimum: 0 },
+        axisSpreadRad: { type: 'number', minimum: 0 },
+      },
+    },
   },
 } as const;
 

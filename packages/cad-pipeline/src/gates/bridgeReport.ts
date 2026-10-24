@@ -121,6 +121,8 @@ export interface RunBridgeQcInput {
     readonly style: string;
     readonly configuredReliefMm: number;
     readonly thresholdMm?: number;
+    /** Phase 9 Task 5 — the fitted crest's `@errorBound` (see the gate). */
+    readonly crestFit?: { readonly radialResidualMaxMm: number; readonly axisSpreadRad: number };
   };
 
   // --- optional gate-tolerance overrides ---
@@ -234,6 +236,7 @@ export async function runBridgeQc(input: RunBridgeQcInput, onProgress?: (fractio
       style: c.input.ponticRelief.style,
       configuredReliefMm: c.input.ponticRelief.configuredReliefMm,
       thresholdMm: c.input.ponticRelief.thresholdMm,
+      ...(c.input.ponticRelief.crestFit ? { crestFit: c.input.ponticRelief.crestFit } : {}),
     }),
   );
   gates.push((c) => seatingGate({ measurement: c.seating, interferenceVolumeToleranceMm3: c.input.seatingInterferenceVolumeToleranceMm3 }));

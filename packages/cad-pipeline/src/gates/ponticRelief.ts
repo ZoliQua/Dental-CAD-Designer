@@ -50,6 +50,16 @@ export interface PonticReliefGateInput {
   readonly configuredReliefMm: number;
   /** Override the ±20 µm threshold (testing only — the acceptance is fixed). */
   readonly thresholdMm?: number;
+  /** Phase 9 Task 5: when the crest the base was shaped on was FITTED to the
+   * gingiva scan (kernel `fitRidgeCrestCylinder`), its `@errorBound` — the
+   * measured max radial residual and the normals' axis spread — disclosed in
+   * the message. It does not enter the verdict: the relief is measured
+   * against the gingiva mesh itself, so a fit error already shows up in
+   * `maxAbsDeviationMm`. Absent ⇒ byte-identical message. */
+  readonly crestFit?: {
+    readonly radialResidualMaxMm: number;
+    readonly axisSpreadRad: number;
+  };
 }
 
 /**
@@ -62,11 +72,16 @@ export function ponticReliefGate(input: PonticReliefGateInput): QcGateResult {
   const dev = input.maxAbsDeviationMm;
   const passed = Number.isFinite(dev) && dev <= threshold;
   const um = (mm: number): string => (Number.isFinite(mm) ? `${(mm * 1000).toFixed(2)} µm` : '∞');
-  const message = passed
-    ? `pontic relief (${input.style}) matches configured ${input.configuredReliefMm} mm within ±${(threshold * 1000).toFixed(0)} µm ` +
-      `(worst deviation ${um(dev)})`
-    : `pontic relief (${input.style}) DEVIATES ${um(dev)} from configured ${input.configuredReliefMm} mm ` +
-      `— exceeds ±${(threshold * 1000).toFixed(0)} µm acceptance (mis-shaped or mis-configured base)`;
+  const crestNote = input.crestFit
+    ? ` | ridge crest fitted to the gingiva scan: max radial residual ${um(input.crestFit.radialResidualMaxMm)}, ` +
+      `axis spread ${((input.crestFit.axisSpreadRad * 180) / Math.PI).toFixed(2)}°`
+    : '';
+  const message =
+    (passed
+      ? `pontic relief (${input.style}) matches configured ${input.configuredReliefMm} mm within ±${(threshold * 1000).toFixed(0)} µm ` +
+        `(worst deviation ${um(dev)})`
+      : `pontic relief (${input.style}) DEVIATES ${um(dev)} from configured ${input.configuredReliefMm} mm ` +
+        `— exceeds ±${(threshold * 1000).toFixed(0)} µm acceptance (mis-shaped or mis-configured base)`) + crestNote;
   return {
     gate: PONTIC_RELIEF_GATE_NAME,
     passed,

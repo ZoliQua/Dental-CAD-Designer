@@ -264,7 +264,13 @@ interface BridgeValidateQcBody {
   connectorAreaTargetMm2: number;
   frameworkMode?: boolean;
   frameworkMinThicknessMm?: number;
-  ponticRelief: { maxAbsDeviationMm: number; style: string; configuredReliefMm: number; thresholdMm?: number };
+  ponticRelief: {
+    maxAbsDeviationMm: number;
+    style: string;
+    configuredReliefMm: number;
+    thresholdMm?: number;
+    crestFit?: { radialResidualMaxMm: number; axisSpreadRad: number };
+  };
   marginFitThresholdMm?: number;
   seatingInterferenceVolumeToleranceMm3?: number;
   kernelVersion: string;
@@ -391,6 +397,7 @@ function reconstructBridgeQcInput(b: BridgeValidateQcBody): RunBridgeQcInput {
       style: b.ponticRelief.style,
       configuredReliefMm: b.ponticRelief.configuredReliefMm,
       thresholdMm: b.ponticRelief.thresholdMm,
+      ...(b.ponticRelief.crestFit ? { crestFit: b.ponticRelief.crestFit } : {}),
     },
     marginFitThresholdMm: b.marginFitThresholdMm,
     seatingInterferenceVolumeToleranceMm3: b.seatingInterferenceVolumeToleranceMm3,

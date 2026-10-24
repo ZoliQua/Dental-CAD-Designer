@@ -55,7 +55,7 @@ const µm = (mm: number): string => `${(mm * 1000).toFixed(3)} µm`;
 // change (bump + changelog), never a silent regen (the WASM union is
 // manifoldVersion-guarded, the crown/cavity-acceptance precedent).
 // ---------------------------------------------------------------------------
-const EXPECTED_KERNEL_VERSION = '0.28.0';
+const EXPECTED_KERNEL_VERSION = '0.29.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 function installedManifoldVersion(): string {
   const pkg = JSON.parse(
@@ -95,7 +95,11 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // neighbour/extractNeighbourRegion op does not touch this chain; hashQcReport tracks
   // the embedded kernelVersion, every geometry stage pin above BYTE-IDENTICAL to
   // 0.27.0 (verified). Old hash: 67a9ea023389489b80cb5a2af34b1d6de3f6357d48e62ec778981379c46d413e. See docs/CHANGELOG-kernel.md's [0.28.0] entry.
-  'bridge-fullContour-qc': 'fd334638fc1521e55567934165d4aedf5f8b6760ef84ee3565b818aa00ea7000',
+  // Advanced 0.28.0 → 0.29.0 (Phase 9 Task 5): MECHANICAL, metadata-only — the new
+  // bridge/ridgeCrest fit is not in this chain; hashQcReport tracks the embedded
+  // kernelVersion, every geometry stage pin above BYTE-IDENTICAL to 0.28.0
+  // (verified). Old hash: fd334638fc1521e55567934165d4aedf5f8b6760ef84ee3565b818aa00ea7000. See docs/CHANGELOG-kernel.md's [0.29.0] entry.
+  'bridge-fullContour-qc': 'c50f65771a511d0d7edf5b87899ec6e0d78b11999296921fa2f4f4728afb5963',
   // --- framework chain (bridge.framework outputs the cut-back unit hashes) ---
   'bridge-framework-abutmentSurfaces':
     '217b2b13d6d41e657f9b652009a4efe1d3c285a6c4fa428b0030eb0c5070cc8c|d64954bd314424813eed60441adc74dce985310d225e5a9702499bc633f7261c',
@@ -114,7 +118,11 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // neighbour/extractNeighbourRegion op does not touch this chain; hashQcReport tracks
   // the embedded kernelVersion, every geometry stage pin above BYTE-IDENTICAL to
   // 0.27.0 (verified). Old hash: 02a748f9adeae37bbb668db7802368f94eece324baa61eb1079c31780138df10. See docs/CHANGELOG-kernel.md's [0.28.0] entry.
-  'bridge-framework-qc': 'c38239c267b1d580eeb055b4bd02c45517d081f6f84d3a57db4485d758f74686',
+  // Advanced 0.28.0 → 0.29.0 (Phase 9 Task 5): MECHANICAL, metadata-only — the new
+  // bridge/ridgeCrest fit is not in this chain; hashQcReport tracks the embedded
+  // kernelVersion, every geometry stage pin above BYTE-IDENTICAL to 0.28.0
+  // (verified). Old hash: c38239c267b1d580eeb055b4bd02c45517d081f6f84d3a57db4485d758f74686. See docs/CHANGELOG-kernel.md's [0.29.0] entry.
+  'bridge-framework-qc': '345bf02dd1b869da7849798e91901be5a91ed5d7eab76c964ee87e1fb1d9d9d1',
 };
 
 const FULL_GATE_ORDER = [

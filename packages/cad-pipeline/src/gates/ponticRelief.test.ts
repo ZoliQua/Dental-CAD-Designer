@@ -38,3 +38,22 @@ describe('ponticReliefGate', () => {
     expect(ponticReliefGate({ maxAbsDeviationMm: 0.015, style: 'hygienic', configuredReliefMm: 2.0, thresholdMm: 0.01 }).passed).toBe(false);
   });
 });
+
+describe('ponticReliefGate — fitted crest disclosure (Phase 9 Task 5)', () => {
+  it('without a crest fit the result is byte-identical to before', () => {
+    const plain = ponticReliefGate({ maxAbsDeviationMm: 0.005, style: 'hygienic', configuredReliefMm: 2 });
+    expect(plain.message).not.toMatch(/crest/);
+  });
+
+  it('a crest fitted from the gingiva scan is disclosed (residual + axis spread); the verdict is the measured relief alone', () => {
+    const r = ponticReliefGate({
+      maxAbsDeviationMm: 0.005,
+      style: 'hygienic',
+      configuredReliefMm: 2,
+      crestFit: { radialResidualMaxMm: 0.0123, axisSpreadRad: 0.01 },
+    });
+    expect(r.passed).toBe(true);
+    expect(r.value).toBe(0.005);
+    expect(r.message).toMatch(/ridge crest fitted to the gingiva scan: max radial residual 12\.30 µm, axis spread 0\.57°/);
+  });
+});

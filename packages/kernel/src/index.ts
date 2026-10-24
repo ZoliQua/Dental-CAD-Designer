@@ -335,8 +335,18 @@
  * (regression-pinned by its closed-form box / sphere tests). No existing op
  * changed: every geometry + journal-replay pin is byte-identical; the
  * acceptance QC pins advance MECHANICALLY (kernelVersion embedded in the
- * QcReport JSON). See docs/CHANGELOG-kernel.md's `[0.28.0]` entry. */
-export const KERNEL_VERSION = '0.28.0';
+ * QcReport JSON). See docs/CHANGELOG-kernel.md's `[0.28.0]` entry.
+ *
+ * 0.29.0 (Phase 9 Task 5, ADR-022 Decision 4): NEW op — `bridge/ridgeCrest.ts`'s
+ * `fitRidgeCrestCylinder` (the edentulous-ridge crest fitted from the gingiva
+ * MESH: axis = smallest eigenvector of the up-facing window's area-weighted
+ * normal covariance, cross-section = Kåsa + Gauss–Newton circle fit;
+ * `@errorBound` = the measured max / RMS radial residual and the normals' axis
+ * spread). Pure Float64; no manifold-3d boundary, no `kernel-ops.json` pin.
+ * `register/kabsch.ts`'s Jacobi solver is now exported (unchanged). No existing
+ * op changed: geometry + journal-replay pins byte-identical; the acceptance QC
+ * pins advance mechanically. See docs/CHANGELOG-kernel.md's `[0.29.0]` entry. */
+export const KERNEL_VERSION = '0.29.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -892,6 +902,15 @@ export {
   type BridgeAssemblyResult,
   type BridgeAssemblyFailureReason,
   type FitRegionDescriptor,
+  fitRidgeCrestCylinder,
+  RIDGE_CREST_DEFAULT_MIN_UP_COS,
+  RIDGE_CREST_MIN_VERTICES,
+  RidgeCrestRegionTooSmallError,
+  RidgeCrestDegenerateError,
+  RidgeCrestOrientationError,
+  type RidgeCrestRegion,
+  type RidgeCrestFitOptions,
+  type RidgeCrestFit,
 } from './bridge/index.ts';
 
 export {

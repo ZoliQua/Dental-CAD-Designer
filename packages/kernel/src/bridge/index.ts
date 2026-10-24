@@ -31,6 +31,17 @@ export {
   type PonticReliefPatchStats,
   type PonticReliefMeasurement,
 } from './ponticInterface.ts';
+export {
+  fitRidgeCrestCylinder,
+  RIDGE_CREST_DEFAULT_MIN_UP_COS,
+  RIDGE_CREST_MIN_VERTICES,
+  RidgeCrestRegionTooSmallError,
+  RidgeCrestDegenerateError,
+  RidgeCrestOrientationError,
+  type RidgeCrestRegion,
+  type RidgeCrestFitOptions,
+  type RidgeCrestFit,
+} from './ridgeCrest.ts';
 
 // Phase 6 Task 4 — the bridge CONNECTOR op (editable 2D profiles + deterministic
 // watertight loft + the exact closed-form minimum cross-section area, the

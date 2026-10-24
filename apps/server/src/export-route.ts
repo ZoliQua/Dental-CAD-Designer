@@ -276,7 +276,12 @@ export interface BridgeExportQcContext {
   connectorAreaTargetMm2: number;
   frameworkMode?: boolean;
   frameworkMinThicknessMm?: number;
-  ponticRelief: { maxAbsDeviationMm: number; style: string; configuredReliefMm: number };
+  ponticRelief: {
+    maxAbsDeviationMm: number;
+    style: string;
+    configuredReliefMm: number;
+    crestFit?: { radialResidualMaxMm: number; axisSpreadRad: number };
+  };
 }
 
 export type ExportQcContext = CrownExportQcContext | InlayExportQcContext | BridgeExportQcContext;
@@ -398,6 +403,7 @@ async function runExportQc(
         maxAbsDeviationMm: b.ponticRelief.maxAbsDeviationMm,
         style: b.ponticRelief.style,
         configuredReliefMm: b.ponticRelief.configuredReliefMm,
+        ...(b.ponticRelief.crestFit ? { crestFit: b.ponticRelief.crestFit } : {}),
       },
       ...meta,
     };

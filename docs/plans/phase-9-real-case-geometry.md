@@ -211,6 +211,19 @@ decisions:
 analytic cylinders and noisy-cylinder property tests; `@errorBound` on axis
 and radius, surfaced in the pontic relief QC.
 
+**Landed (2026-10-24, kernel 0.29.0).** As planned. The "PCA over the
+crest region" is a PCA over the up-facing window's area-weighted NORMALS:
+the axis is the smallest eigenvector, which is exact on a cylinder whatever
+the window's shape. The cross-section is a Kåsa + Gauss–Newton circle fit.
+The `@errorBound` is the measured max / RMS radial residual and the normals'
+axis spread (`packages/kernel/src/bridge/ridgeCrest.ts`, changelog
+`[0.29.0]`). The ponticRelief gate prints that bound when the crest was
+fitted (an optional `crestFit` input, carried through the server dual
+validation; byte-identical when absent). It does not enter the verdict,
+because the relief is measured against the gingiva mesh itself. A hygienic
+pontic shaped on the crest fitted to the bridge fixture's gingiva meets
+±20 µm. The worker job and the engine wiring land with Task 6.
+
 ## Task 6 — Bridge real-geometry path
 
 - Abutment units per abutment: shared axis from the restoration,

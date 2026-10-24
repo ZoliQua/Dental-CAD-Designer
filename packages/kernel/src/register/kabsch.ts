@@ -159,7 +159,7 @@ const JACOBI_SWEEP_PAIRS: readonly (readonly [number, number])[] = [
  * (order NOT guaranteed ascending/descending — the caller sorts) and the
  * corresponding eigenVECTORS as columns of a row-major 3x3 (`eigenvectors[.][k]`
  * is the k-th eigenvector). */
-function jacobiEigenSymmetric3x3(aIn: Mat3): { eigenvalues: Vec3; eigenvectors: Mat3 } {
+export function jacobiEigenSymmetric3x3(aIn: Mat3): { eigenvalues: Vec3; eigenvectors: Mat3 } {
   const a: number[][] = aIn.map((row) => [...row]);
   const v: number[][] = [
     [1, 0, 0],

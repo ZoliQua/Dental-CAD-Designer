@@ -59,6 +59,48 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.29.0] — Phase 9 Task 5: `fitRidgeCrestCylinder` — the ridge crest fitted from the gingiva scan
+
+**No existing kernel op changed: every geometry stage pin and every
+journal-replay pin is BYTE-IDENTICAL to `[0.28.0]`. `kernel-ops.json` is
+unchanged (pure Float64, no WASM boundary). The acceptance `*-qc` pins and
+the server traceability byte-golden advance only because the QcReport embeds
+`kernelVersion`.**
+
+ADR-022 Decision 4: the pontic base is shaped against the case's own
+`gingiva` scan, so its crest must come from that scan instead of the bridge
+fixture's analytic cylinder. New op `packages/kernel/src/bridge/ridgeCrest.ts`:
+
+- **Window.** Triangles wholly inside a ball around the region centre whose
+  unit normal faces the up hint (· up ≥ 0.2): the crest top, not the flanks,
+  walls or base.
+- **Axis (PCA over the crest normals).** On a cylinder every normal is ⟂ the
+  axis, so the axis is the eigenvector of the smallest eigenvalue of
+  Σ area · n nᵀ. This is exact whatever the window's shape (a point-cloud PCA
+  would depend on the window's extent). No curvature across the ridge
+  (λmid/λmax ≤ 1e-6) ⇒ `RidgeCrestDegenerateError`. The Jacobi solver from
+  `register/kabsch.ts` is reused, now exported unchanged.
+- **Cross-section.** Kåsa algebraic circle fit of the window's vertices in
+  the plane ⟂ the axis, refined by Gauss–Newton on the geometric residual.
+- **Frame.** up = the up hint ⟂ the axis (the crest must lie on its + side);
+  buccal = up × axis, with the axis sign set by the buccal hint;
+  mesialDistal × buccal = up (`ponticInterface.ts`'s convention). The axis
+  point is the region centre's foot on the axis.
+- **`@errorBound`.** Exact to Float64 rounding for vertices on a cylinder.
+  For a scan, the MEASURED max / RMS radial residual of the window against
+  the fitted cylinder, and the normals' spread about the axis
+  (atan √(λmin/λmid)). The fit only shapes the base; the relief is measured
+  against the gingiva mesh, so a fit error appears as relief deviation and is
+  judged by the ponticRelief gate. That gate now prints the fit's bound when
+  one is supplied (byte-identical otherwise; the server carries it through
+  the dual validation).
+- **Tests first:** an exact cylinder patch in an arbitrary pose (radius,
+  axis line and frame < 1e-9; zero residual and spread); the bridge
+  fixture's gingiva (walls and base excluded, the analytic crest recovered,
+  and a hygienic pontic shaped on the FITTED crest still meets ±20 µm against
+  the mesh); seeded radial noise (|ΔR| ≤ amplitude, residual on the order of
+  the noise); translation equivariance; typed refusals.
+
 ## [0.28.0] — Phase 9 Task 3: `extractNeighbourRegion` — neighbour and antagonist capture from the case's own scans
 
 **No existing kernel op changed: every geometry stage pin and every
