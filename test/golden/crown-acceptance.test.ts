@@ -105,7 +105,7 @@ const µm = (mm: number): string => `${(mm * 1000).toFixed(3)} µm`;
 // proof this qc diff is the version string alone, not numerical drift (the same
 // mechanical churn documented at 0.16.0-0.19.0). See docs/CHANGELOG-kernel.md's
 // [0.20.0] entry.
-const EXPECTED_KERNEL_VERSION = '0.30.0';
+const EXPECTED_KERNEL_VERSION = '0.31.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 function installedManifoldVersion(): string {
   const pkg = JSON.parse(readFileSync(join(repoRoot, 'node_modules', 'manifold-3d', 'package.json'), 'utf8')) as {
@@ -182,7 +182,11 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // bridge/ponticUnit + connector auto-placement ops are not in this chain; hashQcReport
   // tracks the embedded kernelVersion, every geometry stage pin above BYTE-IDENTICAL to
   // 0.29.0 (verified: the whole golden suite passes at 0.29.0 with the old pins). Old hash: 3c017f35b9ef8e437660617559ae51e33f4c52744175d06d571515b6634a25e7. See docs/CHANGELOG-kernel.md's [0.30.0] entry.
-  'crown-standin-qc': '1fc032c079a181ef04253510f146336eb2cb306b3b75af54d1e0884ecca81cf0',
+  // Advanced 0.30.0 → 0.31.0 (Phase 9 Task 7): MECHANICAL, metadata-only — the
+  // tri-tri predicate's coplanar fix changes no gate of this chain (its report had
+  // no near-coplanar pair); every geometry stage pin above BYTE-IDENTICAL (verified: the
+  // whole golden suite passes at 0.30.0 with the fix). Old hash: 1fc032c079a181ef04253510f146336eb2cb306b3b75af54d1e0884ecca81cf0. See docs/CHANGELOG-kernel.md's [0.31.0] entry.
+  'crown-standin-qc': 'd007f96d02fd4f164c3597bf5bc498188781eb2f684ff9e97b659deaa744c5db',
 };
 
 const GATE_ORDER = ['watertight', 'manifold', 'selfIntersection', 'minWallThickness', 'marginFit', 'seating', 'connectorCrossSection', 'contact'];

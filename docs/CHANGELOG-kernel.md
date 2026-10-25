@@ -59,6 +59,47 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.31.0] — Phase 9 Task 7: the triangle–triangle predicate judges near-coplanar pairs in their plane
+
+**No geometry op changed: every geometry stage pin and every journal-replay
+pin is BYTE-IDENTICAL to `[0.30.0]` (verified by running the whole golden
+suite at `0.30.0` with the fix). The acceptance `*-qc` pins and the server
+traceability byte-golden advance only because the QcReport embeds
+`kernelVersion`. The bridge-case golden (`bridge-case-real-path.json`) was
+re-recorded because that test now imports its scans through STL, as the app
+does; it is not a kernel change.**
+
+`intersect/triangleTriangle.ts` (the selfIntersection gate's predicate,
+`[0.27.0]`) misjudged faces that are coplanar to within a few picometres.
+The per-vertex 1 pm on-plane snap sorted some of their vertices onto the
+other plane and some off it, which sent such a pair down the general
+(Möller) path. There the two planes' intersection line has no usable
+direction.
+
+- **False positive.** Two faces of an offset surface, 0.06 mm apart on the
+  same flat wall, were reported as intersecting. The inner surface of a
+  crown or bridge abutment showed hundreds of such "pairs". Most were
+  hidden after the shell's manifold clean-up, but some survived it. When the
+  bridge built from the case went through the app's STL import (Float32
+  vertices), 4 survived and the gate failed.
+- **False negative.** A genuinely overlapping, picometre-jittered coplanar
+  pair was reported as disjoint.
+- **The fix.** When every vertex of each triangle lies within
+  `TRIANGLE_COPLANAR_TOLERANCE_MM` = 1e-6 mm (1 nm, three orders below the
+  1 µm clinical resolution) of the other's plane, the pair goes to the 2-D
+  coplanar test. Every other configuration is unchanged.
+- **`@errorBound`** gains the coplanarity tolerance: an out-of-plane
+  separation under 1 nm is not resolved.
+- **Tests first.** A regression test with the exact face pair found on the
+  arch fixture's inner surface, and a property over a planar pair jittered
+  ±3 pm off its plane (it failed before the fix in both directions).
+  Together with the differential test against the exact-arithmetic
+  reference, all 28 intersect tests pass.
+- **Corrects `[0.30.0]`.** The "flat die top" self-overlap of the inner
+  surface reported there was this false positive, not an inner-surface
+  defect. The inner surface over the arch fixture's dies scans clean (0
+  pairs).
+
 ## [0.30.0] — Phase 9 Task 6: `buildPonticUnit` and `placeConnectorBetweenUnits` — the bridge built from the case
 
 **No existing kernel op changed: every geometry stage pin and every
@@ -107,11 +148,11 @@ pontic. Two new ops:
   on the as-built base; a property over body radius and height;
   determinism; refusals. Connector placement: two boxes (exact exit / entry),
   swap symmetry, a gap/overlap property, refusals.
-- **Found while building the closed-form arch fixture (tracked, not changed
-  here):** at a fine voxel pitch (60 µm) the inner-surface op's offset over a
-  large FLAT die top contains coplanar overlapping triangles (5
-  self-intersecting pairs on `shoulderPrepMesh`'s cap). The arch fixture's
-  dies have a domed occlusal reduction, which is also the more faithful prep.
+- **Found while building the closed-form arch fixture:** at a fine voxel
+  pitch (60 µm) the inner surface over a large flat die top appeared to
+  contain coplanar overlapping triangles. **Corrected in `[0.31.0]`:** that
+  was a false positive of the self-intersection predicate, not an
+  inner-surface defect.
 
 ## [0.29.0] — Phase 9 Task 5: `fitRidgeCrestCylinder` — the ridge crest fitted from the gingiva scan
 

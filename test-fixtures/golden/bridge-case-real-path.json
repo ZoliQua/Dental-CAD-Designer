@@ -1,27 +1,27 @@
 {
-  "kernelVersion": "0.30.0",
+  "kernelVersion": "0.31.0",
   "manifoldVersion": "3.5.1",
   "stages": {
     "hygienic": {
-      "bridgeAbutmentSurfaces": "f9031c676e76acfc85233a79eb5f34c675d9f9f3b2e79cc64aa7ec4ce7ab7c5d",
-      "bridgePontic": "9dfb5031f51de3b641739e378e2ae0e0569bb6d4687d8f9d6a368cf5b136d213",
-      "bridgeConnectors": "9f20c38915310d533eab2efbbdacb989aac9919b93ff4e2b1212b83301b55cda",
+      "bridgeAbutmentSurfaces": "557213bff86cda8943b7d33050f87e4abb0dc9c64371f398ef77657c21aa4740",
+      "bridgePontic": "3d2c690ace0fff23019069d15965c264828e3ed620cb411eda560777314b1107",
+      "bridgeConnectors": "98a0b8f05da046da79c87d35846e5a1d71de48b0f59004d291614fc7aa249739",
       "bridgeFramework": "framework:fullContour",
-      "finalMesh": "5ddc516488a7a88585eb376d3424112a16cf4d2f267c5e14de05d988b81d3ad4"
+      "finalMesh": "5006b9ba9ceab389b87c8994788a5f9d4dfc51794fb7d265b5da7e47d01f2443"
     },
     "ridgeLap": {
-      "bridgeAbutmentSurfaces": "f9031c676e76acfc85233a79eb5f34c675d9f9f3b2e79cc64aa7ec4ce7ab7c5d",
-      "bridgePontic": "8a73296f75c82ad31df4eaaaa71851363fc727db20a93a352b30f3753f6235e6",
-      "bridgeConnectors": "645717561db0d0e92b3a298f09b599517223027eacc9b57c68b38a98dcfb8081",
+      "bridgeAbutmentSurfaces": "557213bff86cda8943b7d33050f87e4abb0dc9c64371f398ef77657c21aa4740",
+      "bridgePontic": "7af32cfc172c54109a5dc248304d70d48fd6bc64eab7995ebdf871eca9a50669",
+      "bridgeConnectors": "013f2a1c38691e344e6e0f9c3e27cfb24e71964c350a2bb842f1545c9188a3bb",
       "bridgeFramework": "framework:fullContour",
-      "finalMesh": "994aba3485d70760821d4503213852e8fd5a2a453f5b89f516a38857cba91b71"
+      "finalMesh": "416dbe128723c101d497bb21edb066a05f85ab1879b9ae8b27d26373d3e856f2"
     },
     "ovate": {
-      "bridgeAbutmentSurfaces": "f9031c676e76acfc85233a79eb5f34c675d9f9f3b2e79cc64aa7ec4ce7ab7c5d",
-      "bridgePontic": "4ec33189c873fbfbe483ef2d36d9fbada1ffde5219e8c1a7721ff176f768c38a",
-      "bridgeConnectors": "75e5d8f0518697c4b364845cca49d035fa5f72c0c4677105c23938c649812de2",
+      "bridgeAbutmentSurfaces": "557213bff86cda8943b7d33050f87e4abb0dc9c64371f398ef77657c21aa4740",
+      "bridgePontic": "0790adbebaa0edf47762d4a6d6856f66f03ba3a46ade64e6f21e092f8e9833ed",
+      "bridgeConnectors": "e9dd9c96b9e3528ea2013673e88e78c2f28c96834f978b8fa69d274d6c7490cf",
       "bridgeFramework": "framework:fullContour",
-      "finalMesh": "b87f35f821a665d76e516d157155172979a4a761822d1b1155ddb6b49efa8394"
+      "finalMesh": "df9e34e524a371d705d1ef764a1d45f6efbf52737a98549d877f9dfef1217990"
     }
   }
 }

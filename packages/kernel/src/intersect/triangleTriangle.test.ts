@@ -184,3 +184,54 @@ describe('triangleTriangleIntersect — symmetry (property)', () => {
     );
   });
 });
+
+describe('triangleTriangleIntersect — near-coplanar faces of a curved offset surface (Phase 9 Task 7 regression)', () => {
+  // Two faces of the inner-surface offset over the arch fixture's 14 die,
+  // 0.06 mm apart on the same wall, coplanar to ~2e-9 mm: some of their
+  // plane distances fall inside the 1 pm on-plane snap and some just outside,
+  // which sent them down the general path where the near-parallel planes'
+  // intersection line is meaningless — reported as intersecting.
+  const A: [Vec3, Vec3, Vec3] = [
+    [-10.486407280052543, -0.07000000000000028, 1.69],
+    [-10.47807912497002, -0.07000000000000028, 1.75],
+    [-10.488371476573805, -0.009999999999999787, 1.69],
+  ];
+  const B: [Vec3, Vec3, Vec3] = [
+    [-10.476114927515015, -0.1299999999999999, 1.75],
+    [-10.465822574654737, -0.1900000000000004, 1.81],
+    [-10.467786772140538, -0.1299999999999999, 1.81],
+  ];
+
+  it('two disjoint near-coplanar faces do not intersect (either order)', () => {
+    expect(triangleTriangleIntersect(A[0], A[1], A[2], B[0], B[1], B[2])).toBe(false);
+    expect(triangleTriangleIntersect(B[0], B[1], B[2], A[0], A[1], A[2])).toBe(false);
+  });
+
+  it('PROPERTY: a planar triangle pair jittered off its plane by < 1 nm keeps its 2-D overlap verdict', () => {
+    fc.assert(
+      fc.property(
+        fc.double({ min: -2, max: 2, noNaN: true }), // offset of B along the plane
+        fc.array(fc.double({ min: -3e-9, max: 3e-9, noNaN: true }), { minLength: 6, maxLength: 6 }),
+        fc.double({ min: 0, max: Math.PI, noNaN: true }), // the plane's tilt
+        (shift, jitter, tilt) => {
+          // A unit right triangle and a copy shifted along x, in the plane
+          // through the origin with normal (sin t, 0, cos t), each vertex
+          // lifted off the plane by a few-picometre jitter that straddles the 1 pm on-plane snap.
+          const n: Vec3 = [Math.sin(tilt), 0, Math.cos(tilt)];
+          const u: Vec3 = [Math.cos(tilt), 0, -Math.sin(tilt)];
+          const at = (x: number, y: number, j: number): Vec3 => [
+            x * u[0] + j * n[0],
+            y + x * u[1] + j * n[1],
+            x * u[2] + j * n[2],
+          ];
+          const a: [Vec3, Vec3, Vec3] = [at(0, 0, jitter[0]!), at(1, 0, jitter[1]!), at(0, 1, jitter[2]!)];
+          const b: [Vec3, Vec3, Vec3] = [at(shift, 0, jitter[3]!), at(shift + 1, 0, jitter[4]!), at(shift, 1, jitter[5]!)];
+          // In the plane, the two triangles overlap iff |shift| ≤ 1 (touching at 1).
+          fc.pre(Math.abs(Math.abs(shift) - 1) > 1e-6);
+          expect(triangleTriangleIntersect(a[0], a[1], a[2], b[0], b[1], b[2])).toBe(Math.abs(shift) < 1);
+        },
+      ),
+      { numRuns: 300, seed: 20261025 },
+    );
+  });
+});

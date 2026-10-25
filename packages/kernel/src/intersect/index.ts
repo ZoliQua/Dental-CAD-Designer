@@ -8,6 +8,7 @@ export {
   readTriangle,
   DegenerateTriangleError,
   TRIANGLE_INTERSECTION_EPSILON,
+  TRIANGLE_COPLANAR_TOLERANCE_MM,
   type Vec3,
   type MutableVec3,
 } from './triangleTriangle.ts';

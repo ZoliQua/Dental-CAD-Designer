@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { type IndexedMesh } from '@dqcad/kernel';
+import { KERNEL_VERSION, type IndexedMesh } from '@dqcad/kernel';
 import { writeStlBinary, type RawTriangleSoup } from '@dqcad/io';
 
 // Phase 8 Task 7 acceptance walkthrough (docs/plans/phase-8-polish-hardening.md,
@@ -393,7 +393,7 @@ test.describe.serial('Phase 8 polish & hardening UX (real UI, isolated bootstrap
     };
     // The bundle carries the app/kernel versions + the error, but NO PHI: the
     // loaded case's NAME must never appear (allowlist-not-denylist posture).
-    expect(bundle.app?.kernelVersion).toBe('0.26.0');
+    expect(bundle.app?.kernelVersion).toBe(KERNEL_VERSION);
     expect(bundle.error?.message).toContain('E2E synthetic diagnostic error');
     expect(readFileSync(bundlePath, 'utf8')).not.toContain(caseName);
 

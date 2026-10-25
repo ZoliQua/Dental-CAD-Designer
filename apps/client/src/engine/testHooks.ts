@@ -48,7 +48,7 @@
 //     "assert real engine state, not a screenshot" convention (this file's
 //     top doc) applied to a case with no DOM surface at all to assert
 //     against.
-import type { Operation, Restoration, Vec3 } from '@dqcad/shared-types';
+import type { MarginLine, Operation, Restoration, Vec3 } from '@dqcad/shared-types';
 import { KERNEL_VERSION } from '@dqcad/kernel-workers';
 import { axisEngine } from './axis';
 import { caseStore } from './caseStore';
@@ -157,6 +157,24 @@ export interface DqcadTestHooks {
    * sufficient and honest here, unlike `seedCavityOutline`'s bit-exact
    * snap-to-mesh requirement. */
   seedBridgeAbutmentMargin(restorationId: string, tooth: number, points: readonly (readonly [number, number, number])[]): void;
+  /** DEV/TEST-ONLY, Phase 9 Task 7 addition. Commits a CONFIRMED margin line
+   * traced elsewhere — the committed hand-traced reference
+   * (`test-fixtures/margins/<case>/<tooth>.reference.json`: surface anchors
+   * + dense resampled points), or a closed-form prep's exact shoulder ring —
+   * as one journaled `margin-edit`. Unlike `seedBridgeAbutmentMargin`, the
+   * loop IS geometric input here (the crown and the bridge built from the
+   * case read it), so the caller passes on-surface points; the anchors make
+   * the axis panel's real auto-suggest available. Tooth 11 of arch-case-01
+   * needs this: its curvature ridge does not close under auto-propose
+   * (docs/demos/phase-3-task-8-evidence.md). */
+  seedConfirmedMargin(restorationId: string, tooth: number, line: MarginLine): void;
+  /** DEV/TEST-ONLY, Phase 9 Task 7: the restoration's committed insertion
+   * axis (a read, for a spec computing a pick point along it). */
+  getRestorationAxis(restorationId: string): readonly [number, number, number] | null;
+  /** DEV/TEST-ONLY, Phase 9 Task 7: the params + hashes of the latest journal
+   * op named `name` (a read of the case journal — what a spec asserts a stage
+   * consumed). */
+  getLatestOperation(name: string): Pick<Operation, 'params' | 'inputHashes' | 'outputHashes'> | null;
 }
 
 declare global {
@@ -224,6 +242,36 @@ const hooks: DqcadTestHooks = {
       id: crypto.randomUUID(),
       name: 'margin-edit',
       params: { restorationId, tooth, source: 'e2e-test-hook-seedCavityOutline' },
+      inputHashes: [],
+      outputHashes: [],
+      kernelVersion: KERNEL_VERSION,
+      timestamp: new Date().toISOString(),
+    };
+    caseStore.updateRestoration(next, operation);
+  },
+  getRestorationAxis(restorationId) {
+    return caseStore.getDocument().restorations.find((r) => r.id === restorationId)?.insertionAxis ?? null;
+  },
+  getLatestOperation(name) {
+    const history = caseStore.getDocument().history;
+    for (let i = history.length - 1; i >= 0; i--) {
+      const op = history[i]!;
+      if (op.name === name) return { params: op.params, inputHashes: op.inputHashes, outputHashes: op.outputHashes };
+    }
+    return null;
+  },
+  seedConfirmedMargin(restorationId, tooth, line) {
+    const restoration = caseStore
+      .getDocument()
+      .restorations.find((r) => r.id === restorationId);
+    if (!restoration) {
+      throw new Error(`seedConfirmedMargin: no restoration ${restorationId}`);
+    }
+    const next: Restoration = { ...restoration, marginLines: { ...restoration.marginLines, [tooth]: line } };
+    const operation: Operation = {
+      id: crypto.randomUUID(),
+      name: 'margin-edit',
+      params: { restorationId, tooth, source: 'e2e-test-hook-seedConfirmedMargin' },
       inputHashes: [],
       outputHashes: [],
       kernelVersion: KERNEL_VERSION,

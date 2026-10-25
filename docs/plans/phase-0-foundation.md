@@ -10,7 +10,7 @@ Decomposition of PLAN.md Phase 0 into dispatchable tasks. Executed on branch `ph
 - **Layer rule (lint-enforced):** `ui → engine → kernel-workers → kernel`. `kernel` and `io` import nothing from upper layers and nothing from `three`.
 - **Determinism:** no unseeded randomness, no `Date.now()` in computations. Fixture generators must be fully deterministic (stable output hashes).
 - **TypeScript `strict: true`**, no `any` (use `unknown` + narrowing), ESM everywhere (`"type": "module"`).
-- **Ports:** Vite dev server **5173**, Fastify API **4100**.
+- **Ports:** Vite dev server **5173**, Fastify API **4100**. (Phase 9 Task 7: the e2e runner may move the client with `DQCAD_E2E_PORT` → `DQCAD_CLIENT_PORT` when 5173 is taken; the default is unchanged.)
 - **Units:** mm internally.
 - **i18n:** no hardcoded UI strings; keys exist in EN/HU/DE/ES.
 - **Package scope:** `@dqcad/*` for workspace packages. Root package name: `dq-dental-cad`.

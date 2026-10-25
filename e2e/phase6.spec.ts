@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { writeStlBinary, type RawTriangleSoup } from '@dqcad/io';
+import { skipOnboardingTour } from './support';
 
 // Phase 9 Task 6 (ADR-022): this walkthrough drives the EXPLICIT DEMO MODE
 // (`bridge-start-button`) — the fixed 14-15-16 demonstration bridge. Every QC
@@ -213,6 +214,7 @@ test.describe.serial('Phase 6 bridge workflow (3-unit posterior demonstration fi
     boxPath = join(tmpDir, 'bridge-arch-box.stl');
     writeFileSync(boxPath, writeStlBinary(boxTriangleSoup(BOX_SIZE_MM)));
     page = await browser.newPage();
+    await skipOnboardingTour(page);
   });
 
   test.afterAll(async () => {

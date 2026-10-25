@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { analyzeMesh, intake, buildBvh, snapToSurface, type IndexedMesh } from '@dqcad/kernel';
 import { parseStl, writeStlBinary, type RawTriangleSoup } from '@dqcad/io';
+import { skipOnboardingTour } from './support';
 
 // Phase 7 Task 9 acceptance walkthrough (docs/plans/phase-7-export.md's Task 9
 // brief): the export & manufacturing-handoff workflow END TO END through the
@@ -249,6 +250,7 @@ test.describe.serial('Phase 7 export & manufacturing-handoff workflow (buildable
     diePath = join(tmpDir, 'shoulder-prep-die.stl');
     writeFileSync(diePath, writeStlBinary(toTriangleSoup(buildShoulderPrepDie())));
     page = await browser.newPage();
+    await skipOnboardingTour(page);
   });
 
   test.afterAll(async () => {

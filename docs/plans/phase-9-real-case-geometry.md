@@ -296,9 +296,10 @@ What landed differs from the bullets above as follows:
 - **Goldens.** Every existing geometry and journal pin is byte-identical: the
   whole golden suite passes at 0.29.0 against the old pins. The `*-qc` pins
   and the traceability golden moved version-only.
-- **Found, tracked:** at a fine pitch (60 µm) the inner-surface offset over
-  a large flat die top has coplanar overlapping triangles. The arch dies use
-  a domed occlusal reduction instead.
+- **Found:** at a fine pitch (60 µm) the inner surface over a large flat die
+  top appeared to have coplanar overlapping triangles. Task 7 showed this was
+  a false positive of the self-intersection predicate, fixed in kernel
+  0.31.0.
 - **e2e:** `e2e/phase6.spec.ts` now asserts the fail-closed demo. A
   real-path bridge e2e is part of Task 7. The onboarding-tour blocker is
   still open.
@@ -310,6 +311,40 @@ bridge on the arch fixture; demo-mode bridge blocked for export. Demo doc
 (`docs/demos/phase-9.md`) with open items; README / PLAN status; tracked
 pendings: real bridge scan, real inlay scan, automatic tooth segmentation,
 cusp watershed.
+
+**Landed (2026-10-25, kernel 0.31.0).** Evidence and open items are in
+[`docs/demos/phase-9.md`](../demos/phase-9.md).
+
+- **`e2e/phase9.spec.ts`: the bridge built from the case, through the real
+  UI.** The arch case's target and gingiva scans are imported as STL, the
+  bridge is built from the case, and every stage runs. All 11 gates pass.
+  After saving, the server re-validates the exact bytes and traces the `case`
+  claim to the journal, then releases the export. The same spec runs a
+  demo-mode bridge: every gate fails closed and the export is refused.
+- **`e2e/phase9-crown.spec.ts`: crown on real `arch-case-01`.** The
+  reference margin for 11 is seeded, and the axis tool's real suggest and
+  confirm set the axis. The neighbours 21 and 12 are captured with real canvas
+  picks, and each capture is journaled against the scan. The crown then stops,
+  visibly, at the inner surface: a full-arch scan is open (2624 boundary
+  edges), and the intaglio offset needs a closed die. The capture moved out
+  of the anatomy stage, because it needs only the margin, the axis and the
+  scan. The contact gate on captured real neighbours remains proven at the
+  pipeline level (`neighbour-capture-acceptance`). The open-scan intaglio is
+  a tracked pending.
+- **Found and fixed: the self-intersection predicate (kernel 0.31.0).** The
+  browser bridge, whose scans arrive as Float32 STL, failed
+  `selfIntersection` with 4 pairs. Every pair was a false positive on
+  near-coplanar faces. Pairs coplanar to within 1 nm are now judged in the
+  plane, and a property test also caught the matching false negative. This
+  also withdraws Task 6's "flat die top" note. The bridge-case golden now
+  imports its scans through STL, as the app does, and was re-pinned.
+- **The onboarding-tour blocker is fixed.** `e2e/support.ts`
+  `skipOnboardingTour` is used by the phase 1–7, smoke and perf specs.
+  `DQCAD_E2E_PORT` moves the e2e client off an occupied 5173. With the specs
+  running again, two hidden defects surfaced. Phase 5's onlay ran at a 150
+  µm pitch, where its shell genuinely self-intersects; it now runs at the 60
+  µm acceptance pitch. Phase 8 pinned a stale kernel version string. The
+  whole e2e suite passes (63, perf env-gated).
 
 ## Order and dependencies
 

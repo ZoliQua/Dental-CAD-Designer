@@ -58,7 +58,7 @@ const µm = (mm: number): string => `${(mm * 1000).toFixed(3)} µm`;
 // golden change (bump + changelog), never a silent regen (the WASM boolean is
 // manifoldVersion-guarded, the crown-acceptance precedent).
 // ---------------------------------------------------------------------------
-const EXPECTED_KERNEL_VERSION = '0.30.0';
+const EXPECTED_KERNEL_VERSION = '0.31.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 function installedManifoldVersion(): string {
   const pkg = JSON.parse(readFileSync(join(repoRoot, 'node_modules', 'manifold-3d', 'package.json'), 'utf8')) as { version: string };
@@ -120,7 +120,11 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // bridge/ponticUnit + connector auto-placement ops are not in this chain; hashQcReport
   // tracks the embedded kernelVersion, every geometry stage pin above BYTE-IDENTICAL to
   // 0.29.0 (verified: the whole golden suite passes at 0.29.0 with the old pins). Old hash: a5dd84d1d6e91e0aefba354634d304d6b0db747505f7b3d46ecdf0d063b277f6. See docs/CHANGELOG-kernel.md's [0.30.0] entry.
-  'cavity-inlay-qc': '8f530c2ba3fc261a73c075dc07f1b20fed05622d304dbe11532612d7ff587f63',
+  // Advanced 0.30.0 → 0.31.0 (Phase 9 Task 7): MECHANICAL, metadata-only — the
+  // tri-tri predicate's coplanar fix changes no gate of this chain (its report had
+  // no near-coplanar pair); every geometry stage pin above BYTE-IDENTICAL (verified: the
+  // whole golden suite passes at 0.30.0 with the fix). Old hash: 8f530c2ba3fc261a73c075dc07f1b20fed05622d304dbe11532612d7ff587f63. See docs/CHANGELOG-kernel.md's [0.31.0] entry.
+  'cavity-inlay-qc': 'abe67856ad3d823ba75db92a52124cb804cc0008e0cef3da69461364de8e765d',
   // --- onlay chain (incl. cuspCoverage.select) ---
   // NOTE: the cuspCoverage pin is BIT-IDENTICAL to the kernel op's committed
   // extended-outline golden (cuspCoverage.test.ts's sha at 0.21.0) — a strong
@@ -157,7 +161,11 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // bridge/ponticUnit + connector auto-placement ops are not in this chain; hashQcReport
   // tracks the embedded kernelVersion, every geometry stage pin above BYTE-IDENTICAL to
   // 0.29.0 (verified: the whole golden suite passes at 0.29.0 with the old pins). Old hash: a76aa2b1692ea1fa39e31694cf1a3b6914d12cb815eb9769e38fd5d8c15d147b. See docs/CHANGELOG-kernel.md's [0.30.0] entry.
-  'cavity-onlay-qc': '465956be838e4f978653a6d1fb803dbcee6b951eab2a8fe5c16aac046cfd208c',
+  // Advanced 0.30.0 → 0.31.0 (Phase 9 Task 7): MECHANICAL, metadata-only — the
+  // tri-tri predicate's coplanar fix changes no gate of this chain (its report had
+  // no near-coplanar pair); every geometry stage pin above BYTE-IDENTICAL (verified: the
+  // whole golden suite passes at 0.30.0 with the fix). Old hash: 465956be838e4f978653a6d1fb803dbcee6b951eab2a8fe5c16aac046cfd208c. See docs/CHANGELOG-kernel.md's [0.31.0] entry.
+  'cavity-onlay-qc': '70f07176bac686b00efcc1ac2f56af3d47bcbfce971084c379bf5a13008fc36a',
 };
 
 const INLAY_GATE_ORDER = ['watertight', 'manifold', 'selfIntersection', 'minWallThickness', 'marginFit', 'seamDihedral', 'seating', 'contact'];

@@ -82,7 +82,7 @@ describe('downloadDiagnosticBundleNow', () => {
     expect(dl).toHaveBeenCalledTimes(1);
     const [json] = dl.mock.calls[0]!;
     expect(json).toContain('case-777');
-    expect(json).toContain('"kernelVersion": "0.30.0"');
+    expect(json).toContain('"kernelVersion": "0.31.0"');
     // Not left in a stuck "downloading" state.
     expect(useErrorReportStore.getState().downloading).toBe(false);
   });

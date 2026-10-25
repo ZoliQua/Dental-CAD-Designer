@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { skipOnboardingTour } from './support';
 
 // Phase 0 acceptance (docs/plans/phase-0-foundation.md): "npm run dev boots
 // UI+server; a worker round-trips a mesh buffer; CI green." This spec
@@ -9,6 +10,7 @@ import { expect, test } from '@playwright/test';
 test('app shell renders, both smoke tests pass, and /api/health proxies through', async ({
   page,
 }) => {
+  await skipOnboardingTour(page);
   await page.goto('/');
 
   // 1. App shell renders — header title visible.

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { modCavityMesh, modOnlayCavityMesh } from '@dqcad/kernel/cavity-fixtures';
 import { intake, type IndexedMesh, type Vec3 } from '@dqcad/kernel';
 import { parseStl, writeStlBinary, type RawTriangleSoup } from '@dqcad/io';
+import { skipOnboardingTour } from './support';
 
 // Phase 5 Task 11 acceptance walkthrough (docs/plans/phase-5-inlay-onlay.md's
 // Task 11 brief): the inlay/onlay design workflow END TO END through the
@@ -280,6 +281,7 @@ test.describe.serial('Phase 5 inlay workflow (canonical MOD-cavity fixture, real
     // float32 rounding).
     outlinePoints = snapOutlineToImportedMesh(toothPath, fx.cavityOutline);
     page = await browser.newPage();
+    await skipOnboardingTour(page);
   });
 
   test.afterAll(async () => {
@@ -481,6 +483,7 @@ test.describe.serial('Phase 5 onlay workflow (cusp coverage + the honest ACKNOWL
     writeFileSync(toothPath, writeStlBinary(toTriangleSoup(fx.mesh)));
     outlinePoints = snapOutlineToImportedMesh(toothPath, fx.onlayOutline);
     page = await browser.newPage();
+    await skipOnboardingTour(page);
   });
 
   test.afterAll(async () => {
@@ -523,9 +526,14 @@ test.describe.serial('Phase 5 onlay workflow (cusp coverage + the honest ACKNOWL
     await page.getByTestId('cavity-start-button').click();
     await expect(page.getByTestId('cavity-stage-outline')).toHaveAttribute('data-complete', 'true');
 
-    await page.getByTestId('cavity-fit-pitch').fill('150');
+    // The onlay runs at the 60 µm acceptance pitch (T6/T10's), not 150 µm: at
+    // 150 µm the coarse fit surface leaves long stitch triangles at the cavity
+    // outline that genuinely self-intersect (39 pairs, measured in Node), and
+    // `selfIntersection` (the geometric gate since kernel 0.27.0, after this
+    // spec was written) is a HARD gate — correctly unacknowledgeable.
+    await page.getByTestId('cavity-fit-pitch').fill('60');
     await page.getByTestId('cavity-fit-run').click();
-    await expect(page.getByTestId('cavity-fit-readout')).toBeVisible({ timeout: 120_000 });
+    await expect(page.getByTestId('cavity-fit-readout')).toBeVisible({ timeout: 300_000 });
     await expect(page.getByTestId('cavity-error')).toHaveCount(0);
 
     await page.getByTestId('cavity-patch-run').click();

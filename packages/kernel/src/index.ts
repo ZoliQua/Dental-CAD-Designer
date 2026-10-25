@@ -355,8 +355,16 @@
  * `placeConnectorBetweenUnits` (centroid axis, ends `overlap` inside the units'
  * actual surfaces). No existing op changed: geometry + journal-replay pins
  * byte-identical; the acceptance QC pins advance mechanically. See
- * docs/CHANGELOG-kernel.md's `[0.30.0]` entry. */
-export const KERNEL_VERSION = '0.30.0';
+ * docs/CHANGELOG-kernel.md's `[0.30.0]` entry.
+ *
+ * 0.31.0 (Phase 9 Task 7): FIX — `intersect/triangleTriangle.ts` judges a pair
+ * coplanar to within `TRIANGLE_COPLANAR_TOLERANCE_MM` (1 nm) by the 2-D
+ * coplanar test; the per-vertex on-plane snap alone sent such pairs down the
+ * general path (false positives on flat offset walls, false negatives on
+ * jittered overlaps). No geometry op changed: geometry + journal-replay pins
+ * byte-identical; the acceptance QC pins advance mechanically. See
+ * docs/CHANGELOG-kernel.md's `[0.31.0]` entry. */
+export const KERNEL_VERSION = '0.31.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -450,6 +458,7 @@ export {
   findSelfIntersections,
   DegenerateTriangleError,
   TRIANGLE_INTERSECTION_EPSILON,
+  TRIANGLE_COPLANAR_TOLERANCE_MM,
   type SelfIntersectionScanResult,
   type SelfIntersectionScanOptions,
   type SelfIntersectionLocus,

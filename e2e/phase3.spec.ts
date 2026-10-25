@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { parseStl } from '@dqcad/io';
 import { intake, buildBvh, snapToSurface, type Vec3 } from '@dqcad/kernel';
 import type { MarginReferenceExport } from '@dqcad/shared-types';
+import { skipOnboardingTour } from './support';
 
 // Phase 3 acceptance walkthrough (docs/plans/phase-3-margin-axis.md's Task
 // 11 brief): open a case -> import the real clinical upperjaw scan ->
@@ -219,6 +220,7 @@ test.describe.serial('Phase 3 acceptance flow', () => {
 
   test.beforeAll(async ({ browser }) => {
     page = await browser.newPage();
+    await skipOnboardingTour(page);
   });
 
   test.afterAll(async () => {

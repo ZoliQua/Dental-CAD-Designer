@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { intake, buildBvh, snapToSurface, type IndexedMesh } from '@dqcad/kernel';
 import { parseStl, writeStlBinary, type RawTriangleSoup } from '@dqcad/io';
+import { skipOnboardingTour } from './support';
 
 // Phase 4 Task 13 acceptance walkthrough (docs/plans/phase-4-crown-design.md's
 // Task 13 brief): the crown-design workflow END TO END through the REAL UI —
@@ -274,6 +275,7 @@ test.describe.serial('Phase 4 crown-design workflow (buildable synthetic fixture
     const dieMesh = buildShoulderPrepDie();
     writeFileSync(diePath, writeStlBinary(toTriangleSoup(dieMesh)));
     page = await browser.newPage();
+    await skipOnboardingTour(page);
   });
 
   test.afterAll(async () => {

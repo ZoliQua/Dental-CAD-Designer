@@ -165,6 +165,7 @@ function CrownWorkflow({ restorationId }: { restorationId: string }) {
       )}
 
       <InnerSurfaceStage busy={busyStage === 'innerSurface'} />
+      <CaptureSection busy={busyStage !== null} />
       <AnatomyStage busy={busyStage === 'anatomy'} />
       <MorphStage busy={busyStage === 'morph'} />
       <ShellStage busy={busyStage === 'shell'} />
@@ -257,6 +258,22 @@ function InnerSurfaceStage({ busy }: { busy: boolean }) {
   );
 }
 
+/** The neighbour / antagonist capture (Phase 9 Task 3). It reads only the
+ * margin, the insertion axis and the arch scan, so it is offered as soon as a
+ * session runs — not gated behind the intaglio, which an open scan cannot
+ * have yet. The anatomy stage consumes what was captured. */
+function CaptureSection({ busy }: { busy: boolean }) {
+  const capture = useCrownStore((state) => state.capture);
+  return (
+    <NeighbourCapture
+      workflow="crown"
+      capture={capture}
+      disabled={busy}
+      onConfirmOppositeArch={() => run(() => crownDesignEngine.confirmOppositeArchAntagonist())}
+    />
+  );
+}
+
 function AnatomyStage({ busy }: { busy: boolean }) {
   const { t } = useTranslation();
   const gate = useGate('anatomy');
@@ -298,12 +315,6 @@ function AnatomyStage({ busy }: { busy: boolean }) {
           })}
         </p>
       )}
-      <NeighbourCapture
-        workflow="crown"
-        capture={capture}
-        disabled={busy}
-        onConfirmOppositeArch={() => run(() => crownDesignEngine.confirmOppositeArchAntagonist())}
-      />
       <button type="button" disabled={busy || !gate?.allowed} onClick={() => run(() => crownDesignEngine.placeAnatomyAuto())} data-testid="crown-anatomy-autoplace">
         {t('crown.anatomyAutoPlace')}
       </button>

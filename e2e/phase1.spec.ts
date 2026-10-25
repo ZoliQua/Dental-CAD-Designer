@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
+import { skipOnboardingTour } from './support';
 
 // Phase 1 acceptance walkthrough (docs/plans/phase-1-import-viewer.md's
 // Task 12 brief): import -> intake -> role assign -> standard views ->
@@ -150,6 +151,7 @@ test.describe.serial('Phase 1 acceptance flow', () => {
 
   test.beforeAll(async ({ browser }) => {
     page = await browser.newPage();
+    await skipOnboardingTour(page);
   });
 
   test.afterAll(async () => {

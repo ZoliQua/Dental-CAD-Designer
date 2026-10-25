@@ -19,15 +19,14 @@
 // Frame: X mesiodistal (14 → 16), Y buccal (FDI quadrant 1: buccal = up × md),
 // Z occlusal. Units mm. Deterministic Float64.
 //
-// ## Why a domed occlusal reduction (and not the flat top of `shoulderPrepMesh`)
+// ## The domed occlusal reduction
 //
-// At a fine voxel pitch the inner-surface op's offset over a large flat die top
-// comes out with coplanar overlapping triangles (found while building this
-// fixture: 5 self-intersecting pairs at 60 µm on `shoulderPrepMesh`'s flat
-// cap; tracked). A clinical occlusal reduction follows the cusps — it is not a
-// flat plateau — so the dome is both the more faithful prep and outside that
-// pending defect. The margin ring itself is identical in kind to
-// `shoulderPrepMesh`'s exact ring.
+// A clinical occlusal reduction follows the cusps rather than leaving a flat
+// plateau, so the dies are domed. (While building this fixture a flat die top
+// appeared to make the inner-surface offset self-intersect at a fine pitch;
+// that was a false positive of the self-intersection predicate on
+// near-coplanar faces, fixed in kernel 0.31.0 — see the changelog.) The margin
+// ring is identical in kind to `shoulderPrepMesh`'s exact ring.
 import type { IndexedMesh } from '../mesh/types.ts';
 import type { Vec3 } from '../bvh/geometry.ts';
 import { analyzeMesh } from '../intake/analyze.ts';

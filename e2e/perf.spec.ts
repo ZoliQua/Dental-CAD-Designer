@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { skipOnboardingTour } from './support';
 
 // UI-thread responsiveness guard for streaming a real ~120 MB scan through
 // the import pipeline (docs/plans/phase-1-import-viewer.md's Global
@@ -118,7 +119,8 @@ test.describe(() => {
   }) => {
     test.setTimeout(180_000);
 
-    await page.goto('/');
+    await skipOnboardingTour(page);
+  await page.goto('/');
 
     await page.evaluate(() => {
       const w = window as unknown as {

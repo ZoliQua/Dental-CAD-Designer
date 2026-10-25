@@ -24,6 +24,8 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { KERNEL_VERSION, WorkerPool } from '@dqcad/kernel-workers';
 import { STARTER_TOOTH_ASSETS } from '@dqcad/tooth-library';
+import { parseStl, writeStlBinary } from '@dqcad/io';
+import { intake } from '@dqcad/kernel';
 import type { FdiTooth, QcReport, Vec3 } from '@dqcad/shared-types';
 import { caseStore } from '../../apps/client/src/engine/caseStore.ts';
 import { bridgeDesignEngine, type RunnablePool } from '../../apps/client/src/engine/bridgeDesign.ts';
@@ -35,7 +37,7 @@ import type { PonticStyleName } from '../../apps/client/src/state/bridgeStore.ts
 import { repoRoot } from '../../scripts/kernel-ops-lib.ts';
 
 const PITCH_MM = 0.06;
-const EXPECTED_KERNEL_VERSION = '0.30.0';
+const EXPECTED_KERNEL_VERSION = '0.31.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 
 const asset = JSON.parse(readFileSync(join(repoRoot, 'apps', 'client', 'src', 'engine', 'archBridgeFixture.asset.json'), 'utf8')) as {
@@ -85,9 +87,26 @@ const libraryFetch = (async (input: RequestInfo | URL) => {
   return new Response('', { status: 404 });
 }) as typeof fetch;
 
-async function register(name: string, mesh: { positions: number[]; indices: number[] }, role: 'upperJaw' | 'gingiva') {
-  const positions = Float64Array.from(mesh.positions);
-  const indices = Uint32Array.from(mesh.indices);
+/** The scan as the app imports it: binary STL bytes (Float32 vertices)
+ * parsed and welded by the same intake the import worker runs. */
+function viaStl(mesh: { positions: number[]; indices: number[] }): { positions: Float64Array; indices: Uint32Array } {
+  const triangleCount = mesh.indices.length / 3;
+  const soup = new Float64Array(triangleCount * 9);
+  for (let t = 0; t < triangleCount; t++) {
+    for (let v = 0; v < 3; v++) {
+      const vi = mesh.indices[t * 3 + v]!;
+      for (let k = 0; k < 3; k++) soup[t * 9 + v * 3 + k] = mesh.positions[vi * 3 + k]!;
+    }
+  }
+  const bytes = writeStlBinary({ positions: soup, normals: null, triangleCount });
+  const parsed = parseStl(bytes).soup;
+  return intake({ kind: 'soup', soup: parsed }).mesh;
+}
+
+async function register(name: string, source: { positions: number[]; indices: number[] }, role: 'upperJaw' | 'gingiva') {
+  const imported = viaStl(source);
+  const positions = imported.positions;
+  const indices = imported.indices;
   const { contentHash } = await pool.run('hashMesh', { positions: positions.slice(), indices: indices.slice() });
   caseStore.registerImportedMesh({
     contentHash,
@@ -116,7 +135,12 @@ async function setupCase(): Promise<string> {
   const restoration = createRestoration({ type: 'bridge', teeth: asset.teeth as FdiTooth[], pontics: [asset.ponticTooth as FdiTooth], targetNodeId: target.id });
   const marginLines: Record<number, { anchors: []; closed: true; resampledPoints: Vec3[] }> = {};
   for (const a of asset.abutments) {
-    marginLines[a.tooth] = { anchors: [], closed: true, resampledPoints: a.marginLoop.map((p) => [p[0]!, p[1]!, p[2]!] as Vec3) };
+    // The shoulder ring as the imported (Float32) scan holds it.
+    marginLines[a.tooth] = {
+      anchors: [],
+      closed: true,
+      resampledPoints: a.marginLoop.map((p) => [Math.fround(p[0]!), Math.fround(p[1]!), Math.fround(p[2]!)] as Vec3),
+    };
   }
   caseStore.updateRestoration(
     { ...restoration, marginLines, insertionAxis: [asset.insertionAxis[0]!, asset.insertionAxis[1]!, asset.insertionAxis[2]!] },
@@ -207,9 +231,11 @@ describe('Phase 9 Task 6 — the bridge built from the case', () => {
         expect(g.inputProvenance, g.gate).toBeUndefined();
       }
       expect(report.passed).toBe(true);
+      // Re-pin mode (PRINT_BRIDGE_CASE_PINS=1, after a deliberate change)
+      // prints every style's hashes instead of asserting them.
       if (process.env.PRINT_BRIDGE_CASE_PINS === '1') console.log(`[bridge-case][pins] ${style} ${JSON.stringify(stages)}`);
       // Replay proof: the pins were recorded by an independent run.
-      expect(stages, style).toEqual(PIN.stages[style]);
+      else expect(stages, style).toEqual(PIN.stages[style]);
 
       // Phase acceptance 4: every stage op names the case inputs it consumed.
       const abut = opOf('bridge-abutment-surfaces');

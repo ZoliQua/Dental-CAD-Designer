@@ -64,6 +64,19 @@ export type MutableVec3 = [number, number, number];
 export const TRIANGLE_INTERSECTION_EPSILON = 1e-9;
 
 /**
+ * Coplanarity tolerance, in **mm**: when every vertex of each triangle lies
+ * within this distance of the other triangle's plane, the pair is judged by
+ * the 2-D coplanar test. Two faces that coplanar have no usable intersection
+ * line (their planes are parallel to within rounding), and a per-vertex snap
+ * at `TRIANGLE_INTERSECTION_EPSILON` alone sorts some of their vertices onto
+ * the plane and others off it — which made the general path report faces
+ * 0.06 mm apart as intersecting, and miss genuinely overlapping ones (Phase 9
+ * Task 7 regression). 1e-6 mm (1 nm) is 3 orders of magnitude below the 1 µm
+ * clinical resolution.
+ */
+export const TRIANGLE_COPLANAR_TOLERANCE_MM = 1e-6;
+
+/**
  * Thrown when a triangle handed to the predicate is degenerate (zero-area:
  * its edge cross-product norm² is below the kernel's shared
  * `DEGENERATE_CROSS_NORM_SQ_THRESHOLD_MM4`). A degenerate triangle has no
@@ -271,9 +284,12 @@ function coplanarIntersect(
  *
  * @errorBound Exact for non-degenerate, non-coplanar Float64 inputs (every
  * accept/reject is an exactly-evaluated sign test, modulo ordinary Float64
- * rounding). Near-coplanar and on-plane configurations are resolved with a
- * single snap tolerance of `TRIANGLE_INTERSECTION_EPSILON` = 1e-9 mm: a vertex
- * within 1 pm of the other triangle's plane is treated as lying on it. Two
+ * rounding). A pair whose every vertex lies within
+ * `TRIANGLE_COPLANAR_TOLERANCE_MM` = 1e-6 mm of the other's plane is judged by
+ * the 2-D coplanar test (an out-of-plane separation under 1 nm is not
+ * resolved). Otherwise on-plane configurations are resolved with a snap
+ * tolerance of `TRIANGLE_INTERSECTION_EPSILON` = 1e-9 mm: a vertex within 1 pm
+ * of the other triangle's plane is treated as lying on it. Two
  * triangles separated by, or overlapping by, less than this are indistinguish-
  * able from touching — 6 orders of magnitude below the 1 µm clinical
  * resolution, so clinically irrelevant. Exact single-point/edge touches sit
@@ -316,20 +332,36 @@ export function triangleTriangleIntersect(
   const n2: Vec3 = [n2raw[0] / n2len, n2raw[1] / n2len, n2raw[2] / n2len];
   const d2 = -dot(n2, b0);
 
-  // Signed distances of A's vertices to B's plane; early reject if all one side.
-  const dva0 = snap(dot(n2, a0) + d2);
-  const dva1 = snap(dot(n2, a1) + d2);
-  const dva2 = snap(dot(n2, a2) + d2);
-  if (dva0 * dva1 > 0 && dva0 * dva2 > 0) return false;
-
   // Plane of triangle A.
   const n1len = Math.sqrt(n1sq);
   const n1: Vec3 = [n1raw[0] / n1len, n1raw[1] / n1len, n1raw[2] / n1len];
   const d1 = -dot(n1, a0);
 
-  const dvb0 = snap(dot(n1, b0) + d1);
-  const dvb1 = snap(dot(n1, b1) + d1);
-  const dvb2 = snap(dot(n1, b2) + d1);
+  // Signed distances of each triangle's vertices to the other's plane.
+  const ra0 = dot(n2, a0) + d2;
+  const ra1 = dot(n2, a1) + d2;
+  const ra2 = dot(n2, a2) + d2;
+  const rb0 = dot(n1, b0) + d1;
+  const rb1 = dot(n1, b1) + d1;
+  const rb2 = dot(n1, b2) + d1;
+
+  // Coplanar to within TRIANGLE_COPLANAR_TOLERANCE_MM: judge in the plane.
+  const c = TRIANGLE_COPLANAR_TOLERANCE_MM;
+  if (
+    Math.abs(ra0) <= c && Math.abs(ra1) <= c && Math.abs(ra2) <= c &&
+    Math.abs(rb0) <= c && Math.abs(rb1) <= c && Math.abs(rb2) <= c
+  ) {
+    return coplanarIntersect(n1, a0, a1, a2, b0, b1, b2);
+  }
+
+  // Early reject if either triangle is strictly on one side of the other's plane.
+  const dva0 = snap(ra0);
+  const dva1 = snap(ra1);
+  const dva2 = snap(ra2);
+  if (dva0 * dva1 > 0 && dva0 * dva2 > 0) return false;
+  const dvb0 = snap(rb0);
+  const dvb1 = snap(rb1);
+  const dvb2 = snap(rb2);
   if (dvb0 * dvb1 > 0 && dvb0 * dvb2 > 0) return false;
 
   // Direction of the intersection line L = n1 × n2; project onto its largest

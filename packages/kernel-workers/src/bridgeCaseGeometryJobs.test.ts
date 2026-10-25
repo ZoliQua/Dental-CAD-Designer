@@ -5,6 +5,8 @@
 // byte-identically, through a real worker where it matters (registration +
 // transfer of nested results), and refuse bad input.
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   buildPlacementTransform,
@@ -18,7 +20,6 @@ import {
   type IndexedMesh,
   type Vec3,
 } from '@dqcad/kernel';
-import { archBridgeFixture } from '../../kernel/src/bridge/archBridge.test-fixtures.ts';
 import { WorkerPool } from './pool.js';
 import { bridgePonticUnitJob, fitRidgeCrestJob, placeBridgeConnectorsJob, RidgeSiteMissError } from './jobs/bridgeCaseGeometry.ts';
 import type { JobContext } from './jobs/context.ts';
@@ -58,7 +59,26 @@ function cylinder(rho: number, height: number, segments = 64): IndexedMesh {
   return { positions: Float64Array.from(positions), indices: Uint32Array.from(tris) };
 }
 
-const FX = archBridgeFixture();
+// The closed-form arch case, read as DATA from the committed client asset
+// (byte-guarded against the kernel fixture by archBridge.fixture-asset.test.ts).
+const ASSET = JSON.parse(
+  readFileSync(fileURLToPath(new URL('../../../apps/client/src/engine/archBridgeFixture.asset.json', import.meta.url)), 'utf8'),
+) as {
+  targetScan: { positions: number[]; indices: number[] };
+  gingiva: { positions: number[]; indices: number[] };
+  abutments: { tooth: number; marginLoop: number[][] }[];
+};
+const mesh = (m: { positions: number[]; indices: number[] }): IndexedMesh => ({
+  positions: Float64Array.from(m.positions),
+  indices: Uint32Array.from(m.indices),
+});
+const FX = {
+  targetScan: mesh(ASSET.targetScan),
+  gingiva: mesh(ASSET.gingiva),
+  abutments: ASSET.abutments.map((a) => ({ tooth: a.tooth, marginLoop: a.marginLoop.map((p) => [p[0]!, p[1]!, p[2]!] as Vec3) })),
+  // The analytic crest the fixture's gingiva was built on (archBridge.test-fixtures.ts).
+  crest: { axisPointMm: [0, 0, -1.5] as Vec3, mesialDistalDir: [1, 0, 0] as Vec3, buccalDir: [0, 1, 0] as Vec3, upDir: [0, 0, 1] as Vec3, radiusMm: 3 },
+};
 const AXIS: Vec3 = [0, 0, 1];
 const CANONICAL = { origin: [0, 0, 0] as Vec3, mesialDistal: [1, 0, 0] as Vec3, buccoLingual: [0, 1, 0] as Vec3, occlusoGingival: [0, 0, 1] as Vec3 };
 const RES = { meshStations: 24, meshAngularSegments: 48, sampleStations: 40, sampleAngularSegments: 80 };
@@ -170,9 +190,13 @@ describe('bridgePonticUnit job', () => {
 
 describe('placeBridgeConnectors job', () => {
   it('places one frame per adjacent pair, byte-identical to the kernel op', async () => {
-    const a = FX.abutments[0]!.die;
+    const shift = (m: IndexedMesh, dx: number): IndexedMesh => ({
+      positions: m.positions.map((v, i) => (i % 3 === 0 ? v + dx : v)),
+      indices: m.indices,
+    });
+    const a = shift(cylinder(3, 6), -7.5);
     const b = cylinder(2, 6);
-    const c = FX.abutments[1]!.die;
+    const c = shift(cylinder(3.5, 6), 8);
     const result = await placeBridgeConnectorsJob({ units: [a, b, c], overlapMm: 0.5 }, NOOP_CTX);
     expect(result.connectors).toHaveLength(2);
     const first = placeConnectorBetweenUnits(a, b, 0.5);
