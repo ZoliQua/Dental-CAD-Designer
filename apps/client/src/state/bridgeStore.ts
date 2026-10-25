@@ -74,6 +74,19 @@ export interface BridgePonticSummary {
   withinTolerance: boolean;
 }
 
+/** Where the session's bridge geometry came from (ADR-022). */
+export type BridgeGeometrySource = 'case' | 'demo';
+
+/** What a bridge built from the case consumed — the panel's disclosure. */
+export interface BridgeCaseBuildSummary {
+  /** The fitted ridge crest's @errorBound (Phase 9 Task 5). */
+  crestRadialResidualMaxMm: number;
+  crestAxisSpreadRad: number;
+  /** The pontic body template: the library asset, or the built-in fallback. */
+  ponticTemplate: { origin: 'library'; version: string } | { origin: 'builtin'; reason: string };
+  pitchMm: number;
+}
+
 /** One connector's live/committed readout — the T4 min-area instrument value +
  * its positional gate verdict. */
 export interface BridgeConnectorReadout {
@@ -125,6 +138,12 @@ export interface BridgeState {
   errorKey: string | null;
   errorDetail: string | null;
 
+  /** `null` until a session starts. */
+  geometrySource: BridgeGeometrySource | null;
+  caseBuild: BridgeCaseBuildSummary | null;
+  /** Progress of building the geometry from the case (before the session
+   * starts); `null` when no build runs. */
+  buildProgress: number | null;
   sharedAxis: BridgeSharedAxisSummary | null;
   abutmentSurfaces: BridgeAbutmentSummary | null;
   pontic: BridgePonticSummary | null;
@@ -156,6 +175,9 @@ const INITIAL: Omit<BridgeState, 'apply' | 'reset'> = {
   errorStage: null,
   errorKey: null,
   errorDetail: null,
+  geometrySource: null,
+  caseBuild: null,
+  buildProgress: null,
   sharedAxis: null,
   abutmentSurfaces: null,
   pontic: null,

@@ -59,6 +59,60 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.30.0] — Phase 9 Task 6: `buildPonticUnit` and `placeConnectorBetweenUnits` — the bridge built from the case
+
+**No existing kernel op changed: every geometry stage pin and every
+journal-replay pin is BYTE-IDENTICAL to `[0.29.0]` (verified by running the
+whole golden suite at `0.29.0` against the old pins). `kernel-ops.json` is
+unchanged. The acceptance `*-qc` pins and the server traceability byte-golden
+advance only because the QcReport embeds `kernelVersion`.**
+
+ADR-022: a bridge built from the case needs a real, closed pontic unit and
+connectors placed against the units it actually built. Phase 6 shaped the
+pontic base as an open patch and the demonstration bridge carried a stand-in
+pontic. Two new ops:
+
+- **`bridge/ponticUnit.ts` `buildPonticUnit`.** In the crest frame (station,
+  angle φ, radius r; style surface r = R + t(φ)):
+  1. *Cut.* A "below" solid (the style surface over an extended footprint,
+     closed down to an inner radius) is subtracted from the placed library
+     body. The cut surface is lifted by its own measured chord inset (at
+     least 10 µm, well clear of the boolean kernel's merge tolerance), so no
+     body material remains inside the configured clearance.
+  2. *Footprint.* The body's extent between the style surface and the plate
+     top (`R + max(max t, seatOffset) + plateThickness`), widened by a flange,
+     so the body never overhangs the plate rim inside the plate band.
+  3. *Plate.* A closed plate over that footprint, from the style surface up
+     to the plate top, is unioned with the cut body. Its bottom is the base
+     mesh itself, so the pontic's underside is the configured base.
+  The result is partitioned by construction provenance (each vertex's place
+  in the crest frame) into underside (the thickness gate's inner surface),
+  rim (the plate walls, excluded from both surfaces like a crown's seam band)
+  and outer. `@errorBound`: the measured max distance from every primary base
+  sample to the as-built underside (the base mesh's chord error, plus the
+  Float32 boundary); the relief gate adds it to the design deviation.
+- **`bridge/connector.ts` `placeConnectorBetweenUnits`.** The axis runs
+  between the two units' vertex centroids (the cad-pipeline connectors
+  stage's rule); the bar spans from `overlap` inside the surface where the
+  axis leaves unit A to `overlap` inside where it enters unit B (BVH ray
+  casts). Unlike the stage's fixed span fraction, an end never reaches deeper
+  than `overlap` into a unit, so a connector cannot reach a crown's intaglio
+  through its wall.
+- `ponticInterface.ts` exports `ponticStyleTargetField` (the per-style target
+  field `shapePonticBase` already used; unchanged).
+- **Tests first:** a vertical cylinder body over the analytic ridge (the
+  footprint's closed-form stations and angle; the underside on the style
+  surface; nothing below it; the plate thickness as the measured wall, and
+  ~0 without the rim partition); every style watertight with relief ≤ 20 µm
+  on the as-built base; a property over body radius and height;
+  determinism; refusals. Connector placement: two boxes (exact exit / entry),
+  swap symmetry, a gap/overlap property, refusals.
+- **Found while building the closed-form arch fixture (tracked, not changed
+  here):** at a fine voxel pitch (60 µm) the inner-surface op's offset over a
+  large FLAT die top contains coplanar overlapping triangles (5
+  self-intersecting pairs on `shoulderPrepMesh`'s cap). The arch fixture's
+  dies have a domed occlusal reduction, which is also the more faithful prep.
+
 ## [0.29.0] — Phase 9 Task 5: `fitRidgeCrestCylinder` — the ridge crest fitted from the gingiva scan
 
 **No existing kernel op changed: every geometry stage pin and every

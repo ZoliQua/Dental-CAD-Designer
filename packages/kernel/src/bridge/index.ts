@@ -19,6 +19,7 @@ export {
   measurePonticRelief,
   analyticCylinderSignedDistanceMm,
   crestSagittaBoundMm,
+  ponticStyleTargetField,
   PonticInterfaceParamError,
   type PonticInterfaceStyle,
   type RidgeCrestCylinder,
@@ -43,6 +44,15 @@ export {
   type RidgeCrestFit,
 } from './ridgeCrest.ts';
 
+// Phase 9 Task 6 — the closed pontic UNIT solid (cut library body + base
+// plate, partitioned into underside / rim / outer). See ponticUnit.ts.
+export {
+  buildPonticUnit,
+  PonticUnitError,
+  type PonticUnitParams,
+  type PonticUnitResult,
+} from './ponticUnit.ts';
+
 // Phase 6 Task 4 — the bridge CONNECTOR op (editable 2D profiles + deterministic
 // watertight loft + the exact closed-form minimum cross-section area, the
 // fracture-strength gate value). See connector.ts's module doc + @errorBound.
@@ -59,6 +69,9 @@ export {
   sampleConnectorCrossSectionAreas,
   measureConnectorMinArea,
   connectorAxialLengthMm,
+  placeConnectorBetweenUnits,
+  ConnectorPlacementError,
+  type PlacedConnectorFrame,
   NonClosedProfileError,
   DegenerateProfileError,
   SelfIntersectingProfileError,

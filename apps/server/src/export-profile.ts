@@ -63,6 +63,9 @@
 //   occlusalMinWallThicknessMm  ← profile.occlusalMinWallThicknessMm
 //   connectorAreaTargetMm2      ← profile.connectorAreaMm2.posteriorMm2
 //   frameworkMinThicknessMm(opt)← profile.frameworkMinThicknessMm
+//   marginExclusionMm (opt)     ← profile.marginExclusionMm (Phase 9 Task 6 —
+//                                 the bridge built from the case; applied to
+//                                 every unit)
 //   connectors[i].targetMm2(opt)← connectorPositionalTargetMm2(teeth, profile
 //                                 .connectorAreaMm2) — the FDI positional rule
 //                                 (requires the connector's 2 teeth to ride)
@@ -211,6 +214,7 @@ export function verifyProfileThresholds(
     check(mismatches, 'occlusalMinWallThicknessMm', c.occlusalMinWallThicknessMm, profile.occlusalMinWallThicknessMm);
     check(mismatches, 'connectorAreaTargetMm2', c.connectorAreaTargetMm2, profile.connectorAreaMm2.posteriorMm2);
     check(mismatches, 'frameworkMinThicknessMm', c.frameworkMinThicknessMm, profile.frameworkMinThicknessMm);
+    check(mismatches, 'marginExclusionMm', c.marginExclusionMm, profile.marginExclusionMm);
     c.connectors.forEach((connector, i) => {
       if (connector.targetMm2 === undefined) return;
       const teeth = connector.teeth;

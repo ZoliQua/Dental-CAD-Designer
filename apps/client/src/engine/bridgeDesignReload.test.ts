@@ -81,6 +81,7 @@ function unit(label: string, kind: 'abutment' | 'pontic', tag: number) {
 
 function geometry(): BridgeSessionGeometry {
   return {
+    source: 'demo',
     sharedAxis: {
       direction: [0, 0, 1],
       acceptable: true,

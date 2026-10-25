@@ -55,7 +55,7 @@ const µm = (mm: number): string => `${(mm * 1000).toFixed(3)} µm`;
 // change (bump + changelog), never a silent regen (the WASM union is
 // manifoldVersion-guarded, the crown/cavity-acceptance precedent).
 // ---------------------------------------------------------------------------
-const EXPECTED_KERNEL_VERSION = '0.29.0';
+const EXPECTED_KERNEL_VERSION = '0.30.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 function installedManifoldVersion(): string {
   const pkg = JSON.parse(
@@ -99,7 +99,11 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // bridge/ridgeCrest fit is not in this chain; hashQcReport tracks the embedded
   // kernelVersion, every geometry stage pin above BYTE-IDENTICAL to 0.28.0
   // (verified). Old hash: fd334638fc1521e55567934165d4aedf5f8b6760ef84ee3565b818aa00ea7000. See docs/CHANGELOG-kernel.md's [0.29.0] entry.
-  'bridge-fullContour-qc': 'c50f65771a511d0d7edf5b87899ec6e0d78b11999296921fa2f4f4728afb5963',
+  // Advanced 0.29.0 → 0.30.0 (Phase 9 Task 6): MECHANICAL, metadata-only — the new
+  // bridge/ponticUnit + connector auto-placement ops are not in this chain; hashQcReport
+  // tracks the embedded kernelVersion, every geometry stage pin above BYTE-IDENTICAL to
+  // 0.29.0 (verified: the whole golden suite passes at 0.29.0 with the old pins). Old hash: c50f65771a511d0d7edf5b87899ec6e0d78b11999296921fa2f4f4728afb5963. See docs/CHANGELOG-kernel.md's [0.30.0] entry.
+  'bridge-fullContour-qc': '08364b8cbaed7f54294acc22ef0235438ecbe00a5fc6986b8105c3dee496b748',
   // --- framework chain (bridge.framework outputs the cut-back unit hashes) ---
   'bridge-framework-abutmentSurfaces':
     '217b2b13d6d41e657f9b652009a4efe1d3c285a6c4fa428b0030eb0c5070cc8c|d64954bd314424813eed60441adc74dce985310d225e5a9702499bc633f7261c',
@@ -122,7 +126,11 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // bridge/ridgeCrest fit is not in this chain; hashQcReport tracks the embedded
   // kernelVersion, every geometry stage pin above BYTE-IDENTICAL to 0.28.0
   // (verified). Old hash: c38239c267b1d580eeb055b4bd02c45517d081f6f84d3a57db4485d758f74686. See docs/CHANGELOG-kernel.md's [0.29.0] entry.
-  'bridge-framework-qc': '345bf02dd1b869da7849798e91901be5a91ed5d7eab76c964ee87e1fb1d9d9d1',
+  // Advanced 0.29.0 → 0.30.0 (Phase 9 Task 6): MECHANICAL, metadata-only — the new
+  // bridge/ponticUnit + connector auto-placement ops are not in this chain; hashQcReport
+  // tracks the embedded kernelVersion, every geometry stage pin above BYTE-IDENTICAL to
+  // 0.29.0 (verified: the whole golden suite passes at 0.29.0 with the old pins). Old hash: 345bf02dd1b869da7849798e91901be5a91ed5d7eab76c964ee87e1fb1d9d9d1. See docs/CHANGELOG-kernel.md's [0.30.0] entry.
+  'bridge-framework-qc': '4f924c29bb01469c3f2e27ed1849d03692ad31ec7a5e8d7bd0a241de0257629e',
 };
 
 const FULL_GATE_ORDER = [

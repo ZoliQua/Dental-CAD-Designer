@@ -15,7 +15,7 @@
 // CLAUDE.md's "Import extension convention".
 import type { FitRegionDescriptor, IndexedMesh, Vec3 } from '@dqcad/kernel';
 import { runBridgeQc, type BridgeUnitQcInput, type ConnectorCrossSection, type RunBridgeQcInput } from '@dqcad/cad-pipeline';
-import type { FdiTooth, QcReport } from '@dqcad/shared-types';
+import type { FdiTooth, GeometryProvenance, QcReport } from '@dqcad/shared-types';
 import { JobCancelledError, type JobContext } from './context.ts';
 
 /** One unit's serialized QC inputs (flat transferable buffers). */
@@ -65,7 +65,12 @@ export interface RunBridgeQcPayload {
     style: string;
     configuredReliefMm: number;
     thresholdMm?: number;
+    /** Phase 9 Task 5 — the fitted crest's @errorBound (disclosed by the gate). */
+    crestFit?: { radialResidualMaxMm: number; axisSpreadRad: number };
   };
+
+  /** ADR-022 — the bridge geometry's provenance (absent ⇒ case). */
+  geometryProvenance?: GeometryProvenance;
 
   marginFitThresholdMm?: number;
   seatingInterferenceVolumeToleranceMm3?: number;
@@ -130,6 +135,7 @@ export const runBridgeQcJob = async (payload: RunBridgeQcPayload, ctx: JobContex
     frameworkMode: payload.frameworkMode,
     frameworkMinThicknessMm: payload.frameworkMinThicknessMm,
     ponticRelief: payload.ponticRelief,
+    ...(payload.geometryProvenance !== undefined ? { geometryProvenance: payload.geometryProvenance } : {}),
     marginFitThresholdMm: payload.marginFitThresholdMm,
     seatingInterferenceVolumeToleranceMm3: payload.seatingInterferenceVolumeToleranceMm3,
     kernelVersion: payload.kernelVersion,

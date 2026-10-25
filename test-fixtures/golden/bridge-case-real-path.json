@@ -1,0 +1,27 @@
+{
+  "kernelVersion": "0.30.0",
+  "manifoldVersion": "3.5.1",
+  "stages": {
+    "hygienic": {
+      "bridgeAbutmentSurfaces": "f9031c676e76acfc85233a79eb5f34c675d9f9f3b2e79cc64aa7ec4ce7ab7c5d",
+      "bridgePontic": "9dfb5031f51de3b641739e378e2ae0e0569bb6d4687d8f9d6a368cf5b136d213",
+      "bridgeConnectors": "9f20c38915310d533eab2efbbdacb989aac9919b93ff4e2b1212b83301b55cda",
+      "bridgeFramework": "framework:fullContour",
+      "finalMesh": "5ddc516488a7a88585eb376d3424112a16cf4d2f267c5e14de05d988b81d3ad4"
+    },
+    "ridgeLap": {
+      "bridgeAbutmentSurfaces": "f9031c676e76acfc85233a79eb5f34c675d9f9f3b2e79cc64aa7ec4ce7ab7c5d",
+      "bridgePontic": "8a73296f75c82ad31df4eaaaa71851363fc727db20a93a352b30f3753f6235e6",
+      "bridgeConnectors": "645717561db0d0e92b3a298f09b599517223027eacc9b57c68b38a98dcfb8081",
+      "bridgeFramework": "framework:fullContour",
+      "finalMesh": "994aba3485d70760821d4503213852e8fd5a2a453f5b89f516a38857cba91b71"
+    },
+    "ovate": {
+      "bridgeAbutmentSurfaces": "f9031c676e76acfc85233a79eb5f34c675d9f9f3b2e79cc64aa7ec4ce7ab7c5d",
+      "bridgePontic": "4ec33189c873fbfbe483ef2d36d9fbada1ffde5219e8c1a7721ff176f768c38a",
+      "bridgeConnectors": "75e5d8f0518697c4b364845cca49d035fa5f72c0c4677105c23938c649812de2",
+      "bridgeFramework": "framework:fullContour",
+      "finalMesh": "b87f35f821a665d76e516d157155172979a4a761822d1b1155ddb6b49efa8394"
+    }
+  }
+}

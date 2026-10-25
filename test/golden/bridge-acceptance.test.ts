@@ -235,3 +235,26 @@ describe('Phase 6 — whole-bridge seating + determinism', () => {
     expect(report.passed).toBe(true);
   });
 });
+
+describe('Phase 9 Task 6 — the demonstration bridge cannot pass (ADR-022)', () => {
+  it('every gate fails closed on demo-fixture geometry, keeping the measurement', async () => {
+    const { input } = await buildCase();
+    const clean = await runBridgeQc(input);
+    const demo = await runBridgeQc({ ...input, geometryProvenance: 'demo-fixture' });
+    expect(clean.passed).toBe(true);
+    expect(demo.passed).toBe(false);
+    expect(demo.gates.map((g) => g.gate)).toEqual(clean.gates.map((g) => g.gate));
+    demo.gates.forEach((g, i) => {
+      expect(g.passed, g.gate).toBe(false);
+      expect(g.inputProvenance).toBe('demo-fixture');
+      expect(g.value).toBe(clean.gates[i]!.value);
+      expect(g.message).toContain('NON-CASE INPUT');
+      expect(g.message).toContain(clean.gates[i]!.message);
+    });
+  });
+
+  it("'case' provenance leaves the report byte-identical", async () => {
+    const { input } = await buildCase();
+    expect(hashReport(await runBridgeQc({ ...input, geometryProvenance: 'case' }))).toBe(hashReport(await runBridgeQc(input)));
+  });
+});

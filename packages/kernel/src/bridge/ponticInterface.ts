@@ -275,6 +275,19 @@ function buildStyleField(style: PonticInterfaceStyle, params: PonticInterfacePar
   };
 }
 
+/**
+ * The per-style signed target offset `t(φ)` (mm; + clearance above the crest,
+ * − penetration into it) — the same field `shapePonticBase` builds the base
+ * from, exposed so the pontic UNIT construction (ponticUnit.ts) can classify
+ * the as-built underside against it. Validates `params` exactly as
+ * `shapePonticBase` does.
+ *
+ * @throws {PonticInterfaceParamError} for a missing/invalid configured value.
+ */
+export function ponticStyleTargetField(style: PonticInterfaceStyle, params: PonticInterfaceParams): (phi: number) => number {
+  return buildStyleField(style, params).target;
+}
+
 // ---------------------------------------------------------------------------
 // The crest cylinder geometry
 // ---------------------------------------------------------------------------

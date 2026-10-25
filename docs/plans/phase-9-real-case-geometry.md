@@ -241,6 +241,68 @@ pontic shaped on the crest fitted to the bridge fixture's gingiva meets
   drift guard) and new goldens for the real path; existing bridge goldens
   untouched.
 
+**Landed (2026-10-25, kernel 0.30.0).** `bridgeDesignEngine.startFromCase`
+(`apps/client/src/engine/bridgeCaseGeometry.ts`) builds every unit from the
+case through registered jobs; `startDemo` is the explicit demo mode. On the
+new closed-form 14-15-16 arch case (`archBridge.test-fixtures.ts`: two domed
+shoulder dies in one target scan, a separate gingiva scan; asset
+`apps/client/src/engine/archBridgeFixture.asset.json`, byte-guarded),
+driven through the real controller on a real worker pool with the library
+body for 15, all 11 bridge gates pass for every pontic style, and every stage
+hash is pinned (`test/golden/bridge-case-acceptance.test.ts`,
+`test-fixtures/golden/bridge-case-real-path.json`, recorded in a separate run).
+What landed differs from the bullets above as follows:
+
+- **Abutments.** `bridgeAbutmentSurfaces` on the shared axis, now with an
+  opt-in `assess` (the shared axis judged over each prep, and each
+  surface's margin fit). Then `placeAnatomy` of the built-in template, which
+  emerges `2 × minWall` beyond the margin, and `constructShell`. The shell
+  job now also returns the trimmed outer it stitched, which is the unit's QC
+  outer. The morph step is not run: a bridge abutment has no contact targets
+  yet, because capturing its outer neighbours is still pending. The library
+  template for abutments stays out of the default, as for crowns.
+- **Pontic.** `fitRidgeCrest` (Task 5) on the gingiva scan, with the crest
+  window centred under the site between the margins. Buccal is FDI
+  quadrant-aware. The body is the tooth-library asset for the pontic FDI
+  (Task 4), with a disclosed built-in fallback. `bridgePonticUnit` builds the
+  closed unit for all three styles. This needed a new kernel op,
+  `buildPonticUnit`: no closed pontic existed, because Phase 6 shaped an open
+  base and the demo carried a stand-in pontic. The body is cut at the base
+  surface and unioned with a base plate whose bottom IS the base mesh. The
+  plate's rim is set aside from the thickness gate's surfaces, like a crown's
+  seam band. The body is scaled to keep 0.3 mm from each abutment. The
+  relief gate value is the design deviation plus the measured
+  design-to-as-built distance.
+- **Connectors.** `placeBridgeConnectors` (new kernel op
+  `placeConnectorBetweenUnits`) keeps the stage's centroid axis. Each end
+  sits 0.5 mm inside the surface where the axis leaves or enters a unit; the
+  stage's fixed span fraction would reach a real crown's intaglio. The
+  cad-pipeline stage is unchanged, and so are the editor and the area gate.
+- **QC and export.** A case-built bridge carries the profile's
+  `marginExclusionMm` on every unit. The client sends it once in the export
+  context, and the server pins it to the profile and applies it to every
+  unit. A demo session declares `geometryProvenance: 'demo-fixture'`, and
+  every gate fails closed. The hard gates cannot be acknowledged, so a demo
+  report can never pass, on the client or on the server (parity tested).
+- **Server trace.** A bridge `case` claim must be backed by the ops that
+  sealed the current abutment-surfaces and pontic stages: built from the
+  case, from the restoration's target scan and a gingiva scan still in the
+  case. Otherwise the export gets 409 `export-untraceable-provenance`. The
+  export suites now persist such a case (`traceBridgeToCase`).
+- **Journal.** The abutment op journals the target scan and both margin-loop
+  hashes. The pontic op journals the gingiva scan, the abutment stage and the
+  library asset. Connectors and assembly journal the upstream stage hashes.
+  All of them journal `geometrySource`.
+- **Goldens.** Every existing geometry and journal pin is byte-identical: the
+  whole golden suite passes at 0.29.0 against the old pins. The `*-qc` pins
+  and the traceability golden moved version-only.
+- **Found, tracked:** at a fine pitch (60 µm) the inner-surface offset over
+  a large flat die top has coplanar overlapping triangles. The arch dies use
+  a domed occlusal reduction instead.
+- **e2e:** `e2e/phase6.spec.ts` now asserts the fail-closed demo. A
+  real-path bridge e2e is part of Task 7. The onboarding-tour blocker is
+  still open.
+
 ## Task 7 — Phase gate
 
 e2e: crown on real `arch-case-01` with captured neighbours; real-path

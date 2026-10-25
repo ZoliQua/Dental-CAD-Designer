@@ -140,6 +140,17 @@ describe('POST /api/restorations/:id/validate-qc — bridge dual validation (cli
     );
   }, 180_000);
 
+  it('the demonstration bridge (Phase 9 Task 6) fails every gate closed on the server, bit-identically', async () => {
+    const input: RunBridgeQcInput = { ...pass.qcInput, geometryProvenance: 'demo-fixture' };
+    const client = await runBridgeQc(input);
+    const res = await post(input);
+    expect(res.statusCode).toBe(200);
+    const serverReport = res.json() as QcReport;
+    expect(canonical(serverReport)).toBe(canonical(client));
+    expect(serverReport.passed).toBe(false);
+    expect(serverReport.gates.every((g) => !g.passed && g.inputProvenance === 'demo-fixture')).toBe(true);
+  }, 180_000);
+
   it('the WASM gates (seating + selfIntersection) run server-side on the bridge path and agree byte-for-byte', async () => {
     const serverReport = (await post(pass.qcInput)).json() as QcReport;
     const seating = serverReport.gates.find((g) => g.gate === 'seating');

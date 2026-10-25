@@ -345,8 +345,18 @@
  * spread). Pure Float64; no manifold-3d boundary, no `kernel-ops.json` pin.
  * `register/kabsch.ts`'s Jacobi solver is now exported (unchanged). No existing
  * op changed: geometry + journal-replay pins byte-identical; the acceptance QC
- * pins advance mechanically. See docs/CHANGELOG-kernel.md's `[0.29.0]` entry. */
-export const KERNEL_VERSION = '0.29.0';
+ * pins advance mechanically. See docs/CHANGELOG-kernel.md's `[0.29.0]` entry.
+ *
+ * 0.30.0 (Phase 9 Task 6, ADR-022): NEW ops — `bridge/ponticUnit.ts`'s
+ * `buildPonticUnit` (the closed pontic unit: the library body cut at the
+ * per-style base surface and unioned with a base plate whose bottom IS the base
+ * mesh; partitioned into underside / rim / outer; `@errorBound` = the measured
+ * base-to-as-built-underside distance) and `bridge/connector.ts`'s
+ * `placeConnectorBetweenUnits` (centroid axis, ends `overlap` inside the units'
+ * actual surfaces). No existing op changed: geometry + journal-replay pins
+ * byte-identical; the acceptance QC pins advance mechanically. See
+ * docs/CHANGELOG-kernel.md's `[0.30.0]` entry. */
+export const KERNEL_VERSION = '0.30.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -911,6 +921,14 @@ export {
   type RidgeCrestRegion,
   type RidgeCrestFitOptions,
   type RidgeCrestFit,
+  ponticStyleTargetField,
+  buildPonticUnit,
+  PonticUnitError,
+  type PonticUnitParams,
+  type PonticUnitResult,
+  placeConnectorBetweenUnits,
+  ConnectorPlacementError,
+  type PlacedConnectorFrame,
 } from './bridge/index.ts';
 
 export {

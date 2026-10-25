@@ -4,6 +4,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { writeStlBinary, type RawTriangleSoup } from '@dqcad/io';
 
+// Phase 9 Task 6 (ADR-022): this walkthrough drives the EXPLICIT DEMO MODE
+// (`bridge-start-button`) — the fixed 14-15-16 demonstration bridge. Every QC
+// gate of a demo session fails closed (`demo-fixture`), so the QC segments
+// below assert the fail-closed table, never an all-pass badge; the connector
+// edit still proves the live editor + the journaled ACKNOWLEDGE on a soft gate,
+// and the hard gates keep the report failed (it can never pass for export).
+// The bridge built from the case is proven in
+// test/golden/bridge-case-acceptance.test.ts (Task 7 adds its e2e).
+
 // Phase 6 Task 10 acceptance walkthrough (docs/plans/phase-6-bridge.md's Task 10
 // brief): the bridge (multi-unit) design workflow END TO END through the REAL UI
 // -- import -> wizard: BRIDGE restoration (14 abutment / 15 pontic / 16 abutment)
@@ -328,7 +337,7 @@ test.describe.serial('Phase 6 bridge workflow (3-unit posterior demonstration fi
     await expect(page.getByTestId('bridge-error')).toHaveCount(0);
   });
 
-  test('QC: the whole-bridge gate table (per-unit + connector + relief rows), all-pass badge', async () => {
+  test('QC: the whole-bridge gate table (per-unit + connector + relief rows), every gate failed closed (demo mode)', async () => {
     await page.getByTestId('bridge-qc-run').click();
     await expect(page.getByTestId('bridge-qc-table')).toBeVisible({ timeout: 120_000 });
     await expect(page.getByTestId('bridge-error')).toHaveCount(0);
@@ -347,16 +356,18 @@ test.describe.serial('Phase 6 bridge workflow (3-unit posterior demonstration fi
     await expect(page.getByTestId('bridge-qc-gate-ponticRelief')).toBeVisible();
     await expect(page.getByTestId('bridge-qc-gate-seating')).toBeVisible();
 
-    // All-pass badge -- no acknowledgment needed on the default (healthy) connectors.
-    await expect(page.getByTestId('bridge-qc-passed')).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByTestId('bridge-qc-failed')).toHaveCount(0);
-    await expect(page.locator('[data-testid^="bridge-qc-gate-"][data-passed="false"]')).toHaveCount(0);
+    // Demo mode: every gate fails closed (demo-fixture) — the healthy demo
+    // connectors are still measured, but a measurement of the demonstration
+    // bridge is not a measurement of this case.
+    await expect(page.getByTestId('bridge-qc-failed')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('bridge-qc-passed')).toHaveCount(0);
+    await expect(page.locator('[data-testid^="bridge-qc-gate-"][data-passed="false"]')).toHaveCount(11);
     await expect(page.getByTestId('bridge-qc-scope-note')).toBeVisible();
     // --- T7 DISCLOSURE PROOF: the banner is REPEATED inside the QC results ---
     const qcNote = page.getByTestId('bridge-qc-synthetic-note');
     await expect(qcNote).toBeVisible();
     await expect(qcNote).toHaveAttribute('role', 'alert');
-    await expect(qcNote).toContainText('illustrative, not a clinical');
+    await expect(qcNote).toContainText('every gate fails closed');
   });
 
   test('connector edit drives connectorCrossSection BLOCK; the real, journaled ACKNOWLEDGE action', async () => {
@@ -392,9 +403,11 @@ test.describe.serial('Phase 6 bridge workflow (3-unit posterior demonstration fi
     await page.getByTestId('bridge-qc-ack-connectorCrossSection').click();
     await expect(page.getByTestId('bridge-qc-gate-connectorCrossSection')).toContainText(/acknowledged/i, { timeout: 120_000 });
     // The acknowledged gate keeps reporting passed=false -- acknowledging journals
-    // the decision, it never silently flips the gate's own verdict.
+    // the decision, it never silently flips the gate's own verdict. The demo's
+    // hard gates (watertight, manifold) cannot be acknowledged, so the report
+    // stays failed.
     await expect(connectorGate).toHaveAttribute('data-passed', 'false');
-    await expect(page.getByTestId('bridge-qc-passed')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('bridge-qc-failed')).toBeVisible({ timeout: 15_000 });
   });
 
   test('saves the (acknowledged) case', async () => {
@@ -433,17 +446,17 @@ test.describe.serial('Phase 6 bridge workflow (3-unit posterior demonstration fi
     await expect(page.getByTestId('bridge-framework-done')).toBeVisible();
     await expect(page.getByTestId('bridge-assembly-done')).toBeVisible();
 
-    // The saved report genuinely rests on the acknowledgment (invariant 4: never
-    // silently flipped) -- restored exactly as saved, not re-run.
-    await expect(page.getByTestId('bridge-qc-passed')).toBeVisible({ timeout: 15_000 });
+    // The saved report is restored exactly as saved, not re-run: still failed
+    // (demo mode), the connector acknowledgment intact (invariant 4).
+    await expect(page.getByTestId('bridge-qc-failed')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId('bridge-qc-stale')).toHaveCount(0);
     const gateRows = page.locator('[data-testid^="bridge-qc-gate-"]');
     await expect(gateRows).toHaveCount(11);
     const connectorGate = page.getByTestId('bridge-qc-gate-connectorCrossSection');
     await expect(connectorGate).toHaveAttribute('data-passed', 'false');
     await expect(connectorGate).toContainText(/acknowledged/i);
-    // No OTHER gate is pending acknowledgment -- the block was localized to the
-    // one edited connector, exactly as it was before the save.
-    await expect(page.locator('[data-testid^="bridge-qc-gate-"][data-passed="false"] [data-testid^="bridge-qc-ack-"]')).toHaveCount(0);
+    // Every OTHER gate is still a pending (fail-closed) block, exactly as it was
+    // before the save.
+    await expect(page.locator('[data-testid^="bridge-qc-gate-"][data-passed="false"] [data-testid^="bridge-qc-ack-"]')).toHaveCount(10);
   });
 });

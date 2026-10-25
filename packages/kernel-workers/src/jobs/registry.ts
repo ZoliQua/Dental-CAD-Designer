@@ -32,6 +32,8 @@
 //   jobs/export.ts     exportRestorationMesh (Phase 7 Task 3 — manufacturing bytes)
 //   jobs/neighbourRegion.ts extractNeighbourRegion (Phase 9 Task 3 — neighbour capture)
 //   jobs/toothAsset.ts loadToothAsset (Phase 9 Task 4 — verify a fetched library asset)
+//   jobs/bridgeCaseGeometry.ts fitRidgeCrest, bridgePonticUnit, placeBridgeConnectors
+//                      (Phase 9 Task 6 — the bridge built from the case)
 //   jobs/registry.ts   this file — types + runJob + registry assembly
 //
 // This was a PURE MECHANICAL MOVE (plus this same task's worker-side-hashing
@@ -194,6 +196,31 @@ import {
   type CavityOcclusalPatchResult,
 } from './cavityOcclusalPatch.ts';
 export type { CavityOcclusalPatchPayload, CavityOcclusalPatchResult };
+import {
+  fitRidgeCrestJob,
+  bridgePonticUnitJob,
+  placeBridgeConnectorsJob,
+  RidgeSiteMissError,
+  type FitRidgeCrestPayload,
+  type FitRidgeCrestResult,
+  type BridgePonticUnitPayload,
+  type BridgePonticUnitResult,
+  type BridgePonticUnitStylePayload,
+  type BridgePonticUnitStyleResult,
+  type PlaceBridgeConnectorsPayload,
+  type PlaceBridgeConnectorsResult,
+} from './bridgeCaseGeometry.ts';
+export { RidgeSiteMissError };
+export type {
+  FitRidgeCrestPayload,
+  FitRidgeCrestResult,
+  BridgePonticUnitPayload,
+  BridgePonticUnitResult,
+  BridgePonticUnitStylePayload,
+  BridgePonticUnitStyleResult,
+  PlaceBridgeConnectorsPayload,
+  PlaceBridgeConnectorsResult,
+};
 import { loadToothAssetJob, type LoadToothAssetPayload, type LoadToothAssetResult } from './toothAsset.ts';
 export type { LoadToothAssetPayload, LoadToothAssetResult };
 import {
@@ -475,6 +502,9 @@ export interface JobPayloadMap {
   bridgeConnectors: BridgeConnectorsPayload;
   bridgeFramework: BridgeFrameworkPayload;
   bridgeAssembly: BridgeAssemblyPayload;
+  fitRidgeCrest: FitRidgeCrestPayload;
+  bridgePonticUnit: BridgePonticUnitPayload;
+  placeBridgeConnectors: PlaceBridgeConnectorsPayload;
   cavityOcclusalPatch: CavityOcclusalPatchPayload;
   cavityProximalContact: CavityProximalContactPayload;
   extractNeighbourRegion: ExtractNeighbourRegionPayload;
@@ -537,6 +567,9 @@ export interface JobResultMap {
   bridgeConnectors: BridgeConnectorsResult;
   bridgeFramework: BridgeFrameworkResult;
   bridgeAssembly: BridgeAssemblyResultPayload;
+  fitRidgeCrest: FitRidgeCrestResult;
+  bridgePonticUnit: BridgePonticUnitResult;
+  placeBridgeConnectors: PlaceBridgeConnectorsResult;
   cavityOcclusalPatch: CavityOcclusalPatchResult;
   cavityProximalContact: CavityProximalContactResult;
   extractNeighbourRegion: ExtractNeighbourRegionResult;
@@ -606,6 +639,9 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   bridgeConnectors: bridgeConnectorsJob,
   bridgeFramework: bridgeFrameworkJob,
   bridgeAssembly: bridgeAssemblyJob,
+  fitRidgeCrest: fitRidgeCrestJob,
+  bridgePonticUnit: bridgePonticUnitJob,
+  placeBridgeConnectors: placeBridgeConnectorsJob,
   cavityOcclusalPatch: cavityOcclusalPatchJob,
   cavityProximalContact: cavityProximalContactJob,
   extractNeighbourRegion: extractNeighbourRegionJob,

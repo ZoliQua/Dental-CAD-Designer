@@ -17,25 +17,20 @@
 //     per-unit-not-whole-solid scope note);
 // an HONEST failure banner, and the insertion-axis placeholder warning.
 //
-// ## SYNTHETIC-DATA DISCLOSURE (patient safety — Phase 6 is fixture-driven)
+// ## Two entries: the case, or an explicit demonstration (ADR-022)
 //
-// There is NO real multi-abutment bridge-geometry capture in the client yet (a
-// tracked real-case pending). So `start()` runs the workflow on the fixed
-// synthetic demonstration fixture (`buildBridgeFixture()`, teeth 14-15-16) for
-// ANY selected bridge restoration. That would let fabricated readouts masquerade
-// as real per-case results — so this panel renders an UN-MISSABLE synthetic-data
-// banner over EVERY stage (and repeats it in the QC results), and when the
-// selected case's teeth ≠ the fixture's it surfaces the MISMATCH explicitly
-// ("your case: X · demo fixture: 14-15-16"). GUARD DECISION: we ALLOW start on a
-// mismatch (with the loud disclosure) rather than refuse — the entire Phase-6
-// bridge workflow is a synthetic demonstration and refusing would make the panel
-// unusable for the only geometry that exists; the always-on banner + explicit
-// mismatch line make it impossible to mistake the demo for clinical results.
+// "Build from this case" (Phase 9 Task 6) builds every unit from the case's
+// own target scan, confirmed margins, insertion axis and gingiva scan through
+// the worker jobs (engine/bridgeCaseGeometry.ts); the panel then shows what the
+// build consumed. "Demo mode" runs the workflow on the fixed 14-15-16
+// demonstration bridge: an UN-MISSABLE banner sits over every stage (with the
+// teeth mismatch, if any), and every QC gate of a demo session fails closed
+// (`demo-fixture`), so it can never pass for export.
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Restoration } from '@dqcad/shared-types';
 import { bridgeDesignEngine, type PonticStyleName } from '../engine/bridgeDesign';
-import { buildBridgeFixture, BRIDGE_FIXTURE_TEETH } from '../engine/bridgeGeometry';
+import { BRIDGE_FIXTURE_TEETH } from '../engine/bridgeGeometry';
 import { isBridgeQcStale } from '../engine/bridgeWorkflow';
 import { insertionAxisIsPlaceholder } from '../engine/restorations';
 import { useCaseStore } from '../state/caseStore';
@@ -85,21 +80,37 @@ function um(mm: number): string {
   return (mm * 1000).toFixed(1);
 }
 
+/** The clinical default fit-surface pitch (µm) — mirrors clinical-profiles'
+ * `DEFAULT_OFFSET_VOXEL_PITCH_MM` (the crown panel's default). */
+const DEFAULT_PITCH_UM = 20;
+
 export function BridgeDesignPanel() {
   const { t } = useTranslation();
   const document = useCaseStore((state) => state.document);
   const active = useBridgeStore((state) => state.active);
   const restorationId = useBridgeStore((state) => state.restorationId);
+  const buildProgress = useBridgeStore((state) => state.buildProgress);
   const [pendingId, setPendingId] = useState('');
+  const [pitchUm, setPitchUm] = useState(DEFAULT_PITCH_UM);
   const [startError, setStartError] = useState<string | null>(null);
 
   const restorations = document.restorations.filter((r) => r.type === 'bridge');
+  const hasGingivaScan = document.scene.some((n) => n.role === 'gingiva');
+  const building = buildProgress !== null;
 
-  function handleStart(): void {
+  function handleStartFromCase(): void {
+    if (!pendingId) return;
+    setStartError(null);
+    void bridgeDesignEngine.startFromCase(pendingId, { pitchMm: pitchUm / 1000 }).catch((error: unknown) => {
+      setStartError(t('bridge.startErrorCase', { message: error instanceof Error ? error.message : String(error) }));
+    });
+  }
+
+  function handleStartDemo(): void {
     if (!pendingId) return;
     setStartError(null);
     try {
-      bridgeDesignEngine.start(pendingId, buildBridgeFixture());
+      bridgeDesignEngine.startDemo(pendingId);
     } catch (error) {
       // Translated frame around the raw engine message — see CavityDesignPanel
       // (sibling-panel `startErrorOther` pattern); never show bare English.
@@ -113,9 +124,6 @@ export function BridgeDesignPanel() {
     return (
       <section className="bridge-panel" data-testid="bridge-panel">
         <h2 className="bridge-panel__title">{t('bridge.panelTitle')}</h2>
-        <p className="bridge-panel__synthetic-start-note" role="note" data-testid="bridge-synthetic-start-note">
-          {t('bridge.syntheticStartNote', { fixtureTeeth: FIXTURE_TEETH_LABEL })}
-        </p>
         {restorations.length === 0 ? (
           <p className="bridge-panel__empty">{t('bridge.needsRestoration')}</p>
         ) : (
@@ -131,9 +139,44 @@ export function BridgeDesignPanel() {
                 ))}
               </select>
             </label>
-            <button type="button" onClick={handleStart} disabled={!pendingId} data-testid="bridge-start-button" className="bridge-panel__start-button">
-              {t('bridge.startButton')}
+            <label className="bridge-panel__field">
+              {t('bridge.casePitchLabel')}
+              <input
+                type="number"
+                min={10}
+                step={10}
+                value={pitchUm}
+                onChange={(event) => setPitchUm(Number(event.target.value))}
+                data-testid="bridge-case-pitch"
+              />
+            </label>
+            {!hasGingivaScan && (
+              <p className="bridge-panel__note" role="note" data-testid="bridge-needs-gingiva">
+                {t('bridge.needsGingivaScan')}
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={handleStartFromCase}
+              disabled={!pendingId || !hasGingivaScan || building}
+              data-testid="bridge-start-case-button"
+              className="bridge-panel__start-button"
+            >
+              {t('bridge.startFromCaseButton')}
             </button>
+            {building && (
+              <p className="bridge-panel__progress" role="status" data-testid="bridge-case-building">
+                {t('bridge.buildingFromCase', { percent: Math.round((buildProgress ?? 0) * 100) })}
+              </p>
+            )}
+            <div className="bridge-panel__demo-entry">
+              <p className="bridge-panel__synthetic-start-note" role="note" data-testid="bridge-synthetic-start-note">
+                {t('bridge.demoStartNote', { fixtureTeeth: FIXTURE_TEETH_LABEL })}
+              </p>
+              <button type="button" onClick={handleStartDemo} disabled={!pendingId || building} data-testid="bridge-start-button">
+                {t('bridge.startDemoButton')}
+              </button>
+            </div>
             {startError && (
               <p className="bridge-panel__error" data-testid="bridge-start-error">
                 {startError}
@@ -148,6 +191,25 @@ export function BridgeDesignPanel() {
   return <BridgeWorkflow restorationId={restorationId} />;
 }
 
+/** What a bridge built from the case consumed (the disclosure the demo banner
+ * stands in for). */
+function CaseSourceNote() {
+  const { t } = useTranslation();
+  const caseBuild = useBridgeStore((state) => state.caseBuild);
+  if (!caseBuild) return null;
+  return (
+    <div className="bridge-panel__case-note" role="note" data-testid="bridge-case-source">
+      <p>{t('bridge.caseSourceNote')}</p>
+      <p data-testid="bridge-case-crest">{t('bridge.caseCrestFit', { residual: um(caseBuild.crestRadialResidualMaxMm) })}</p>
+      <p data-testid="bridge-case-pontic-template">
+        {caseBuild.ponticTemplate.origin === 'library'
+          ? t('bridge.casePonticLibrary', { version: caseBuild.ponticTemplate.version })
+          : t('bridge.casePonticBuiltin', { reason: t(`anatomySource.reason.${caseBuild.ponticTemplate.reason}`, { detail: '' }) })}
+      </p>
+    </div>
+  );
+}
+
 function BridgeWorkflow({ restorationId }: { restorationId: string }) {
   const { t } = useTranslation();
   const document = useCaseStore((state) => state.document);
@@ -157,9 +219,11 @@ function BridgeWorkflow({ restorationId }: { restorationId: string }) {
   const errorDetail = useBridgeStore((state) => state.errorDetail);
   const busyStage = useBridgeStore((state) => state.busyStage);
 
+  const geometrySource = useBridgeStore((state) => state.geometrySource);
   const restoration = document.restorations.find((r) => r.id === restorationId);
   const caseTeeth = restoration?.teeth ?? [];
-  const mismatch = !teethMatchFixture(caseTeeth);
+  const demo = geometrySource === 'demo';
+  const mismatch = demo && !teethMatchFixture(caseTeeth);
 
   return (
     <section className="bridge-panel bridge-panel--active" data-testid="bridge-panel">
@@ -170,18 +234,22 @@ function BridgeWorkflow({ restorationId }: { restorationId: string }) {
         </button>
       </div>
 
-      {/* UN-MISSABLE synthetic-data disclosure — over EVERY stage view (patient
-          safety; the whole workflow runs on the demo fixture, not the case). */}
-      <div className="bridge-panel__synthetic-banner" role="alert" data-testid="bridge-synthetic-notice">
-        <strong className="bridge-panel__synthetic-banner-title">{t('bridge.syntheticTitle')}</strong>{' '}
-        <span>{t('bridge.syntheticNotice', { fixtureTeeth: FIXTURE_TEETH_LABEL })}</span>
-        {mismatch && (
-          <span className="bridge-panel__synthetic-mismatch" data-testid="bridge-synthetic-mismatch">
-            {' '}
-            {t('bridge.syntheticMismatch', { caseTeeth: [...caseTeeth].join('-') || '—', fixtureTeeth: FIXTURE_TEETH_LABEL })}
-          </span>
-        )}
-      </div>
+      {/* Demo mode: an UN-MISSABLE disclosure over EVERY stage view (patient
+          safety — the workflow runs on the demonstration bridge, not the case). */}
+      {demo ? (
+        <div className="bridge-panel__synthetic-banner" role="alert" data-testid="bridge-synthetic-notice">
+          <strong className="bridge-panel__synthetic-banner-title">{t('bridge.syntheticTitle')}</strong>{' '}
+          <span>{t('bridge.syntheticNotice', { fixtureTeeth: FIXTURE_TEETH_LABEL })}</span>
+          {mismatch && (
+            <span className="bridge-panel__synthetic-mismatch" data-testid="bridge-synthetic-mismatch">
+              {' '}
+              {t('bridge.syntheticMismatch', { caseTeeth: [...caseTeeth].join('-') || '—', fixtureTeeth: FIXTURE_TEETH_LABEL })}
+            </span>
+          )}
+        </div>
+      ) : (
+        <CaseSourceNote />
+      )}
 
       {restoration && insertionAxisIsPlaceholder(restoration) && (
         <div className="bridge-panel__warning-banner" role="status" data-testid="bridge-axis-warning">
@@ -212,7 +280,7 @@ function BridgeWorkflow({ restorationId }: { restorationId: string }) {
       <ConnectorsStage busy={busyStage === 'connectors'} />
       <FrameworkStage busy={busyStage === 'framework'} />
       <AssemblyStage busy={busyStage === 'assembly'} />
-      <QcStage busy={busyStage === 'qc'} restoration={restoration ?? null} />
+      <QcStage busy={busyStage === 'qc'} restoration={restoration ?? null} demo={demo} />
     </section>
   );
 }
@@ -458,7 +526,7 @@ function AssemblyStage({ busy }: { busy: boolean }) {
   );
 }
 
-function QcStage({ busy, restoration }: { busy: boolean; restoration: Restoration | null }) {
+function QcStage({ busy, restoration, demo }: { busy: boolean; restoration: Restoration | null; demo: boolean }) {
   const { t } = useTranslation();
   const gate = useGate('qc');
   const qc = restoration?.qc ?? null;
@@ -504,9 +572,11 @@ function QcStage({ busy, restoration }: { busy: boolean; restoration: Restoratio
           <p className="bridge-qc__scope-note" data-testid="bridge-qc-scope-note">
             {t('bridge.qcScopeNote')}
           </p>
-          <p className="bridge-qc__synthetic-note" role="alert" data-testid="bridge-qc-synthetic-note">
-            {t('bridge.qcSyntheticNote', { fixtureTeeth: FIXTURE_TEETH_LABEL })}
-          </p>
+          {demo && (
+            <p className="bridge-qc__synthetic-note" role="alert" data-testid="bridge-qc-synthetic-note">
+              {t('bridge.qcSyntheticNote', { fixtureTeeth: FIXTURE_TEETH_LABEL })}
+            </p>
+          )}
         </>
       )}
     </StageShell>

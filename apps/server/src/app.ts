@@ -271,6 +271,8 @@ interface BridgeValidateQcBody {
     thresholdMm?: number;
     crestFit?: { radialResidualMaxMm: number; axisSpreadRad: number };
   };
+  /** ADR-022 — `demo-fixture` fails every gate closed (absent ⇒ case). */
+  geometryProvenance?: GeometryProvenance;
   marginFitThresholdMm?: number;
   seatingInterferenceVolumeToleranceMm3?: number;
   kernelVersion: string;
@@ -399,6 +401,7 @@ function reconstructBridgeQcInput(b: BridgeValidateQcBody): RunBridgeQcInput {
       thresholdMm: b.ponticRelief.thresholdMm,
       ...(b.ponticRelief.crestFit ? { crestFit: b.ponticRelief.crestFit } : {}),
     },
+    ...(b.geometryProvenance !== undefined ? { geometryProvenance: b.geometryProvenance } : {}),
     marginFitThresholdMm: b.marginFitThresholdMm,
     seatingInterferenceVolumeToleranceMm3: b.seatingInterferenceVolumeToleranceMm3,
     kernelVersion: b.kernelVersion,

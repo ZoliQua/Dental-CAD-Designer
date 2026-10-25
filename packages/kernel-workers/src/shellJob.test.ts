@@ -116,6 +116,11 @@ describe('constructShell worker job', () => {
     expect(job.seamTriangleCount).toBeGreaterThan(0);
     expect(job.minWallThicknessMm).toBeGreaterThan(0.5);
     expect(hash(job.positions, job.indices)).toBe(hash(direct.mesh.positions, direct.mesh.indices));
+    // Phase 9 Task 6: the stitched outer rides back — the bridge abutment
+    // unit's QC outer surface.
+    expect(hash(job.outerUsedPositions, job.outerUsedIndices)).toBe(
+      hash(direct.outerUsedMesh.positions, direct.outerUsedMesh.indices),
+    );
   }, 120000);
 
   it('W1: surfaces healOuterErrorBoundMm ONLY when the outer is healed (~pitch/2)', async () => {

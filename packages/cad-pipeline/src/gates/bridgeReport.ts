@@ -56,7 +56,7 @@
 // Determinism / hash-stability / DOM-free — identical to `runCrownQc` (the report
 // carries NO timestamp; it is journalHash/version-addressed).
 import { analyzeMesh, extractFitPatch, union, type IndexedMesh, type Vec3, type FitRegionDescriptor } from '@dqcad/kernel';
-import type { QcReport } from '@dqcad/shared-types';
+import type { GeometryProvenance, QcReport } from '@dqcad/shared-types';
 import { runQcGates, type QcGate } from './runner.ts';
 import { watertightGate, manifoldGate } from './watertight.ts';
 import { measureSelfIntersection, selfIntersectionGate, type SelfIntersectionMeasurement } from './selfIntersection.ts';
@@ -65,6 +65,7 @@ import { marginFitGate } from './marginFit.ts';
 import { measureSeating, seatingGate, type SeatingMeasurement } from './seating.ts';
 import { connectorCrossSectionGate, type ConnectorCrossSection } from './connectorCrossSection.ts';
 import { ponticReliefGate } from './ponticRelief.ts';
+import { failClosedOnNonCaseInput } from './provenance.ts';
 
 /** Thrown when a bridge QC input is structurally invalid (no units, no dies).
  * Explicit field + body assignment (NOT a TS ctor parameter property). */
@@ -125,6 +126,12 @@ export interface RunBridgeQcInput {
     readonly crestFit?: { readonly radialResidualMaxMm: number; readonly axisSpreadRad: number };
   };
 
+  /** ADR-022: where the bridge geometry came from. `'demo-fixture'` (the
+   * fixed demonstration bridge) or `'placeholder'` fails EVERY gate closed —
+   * a measurement of the demonstration solid is not a measurement of this
+   * case. Absent / `'case'` ⇒ the report is byte-identical. */
+  readonly geometryProvenance?: GeometryProvenance;
+
   // --- optional gate-tolerance overrides ---
   readonly marginFitThresholdMm?: number;
   readonly seatingInterferenceVolumeToleranceMm3?: number;
@@ -135,6 +142,12 @@ export interface RunBridgeQcInput {
   readonly journalHash: string;
   readonly acknowledgedGates?: ReadonlySet<string> | readonly string[];
 }
+
+/** How a non-case bridge is named in a fail-closed gate message. */
+const NON_CASE_BRIDGE_STAND_IN = {
+  'demo-fixture': 'the fixed demonstration bridge, not built from this case',
+  placeholder: 'placeholder bridge geometry, not built from this case',
+} as const;
 
 interface BridgeQcContext {
   readonly input: RunBridgeQcInput;
@@ -242,8 +255,13 @@ export async function runBridgeQc(input: RunBridgeQcInput, onProgress?: (fractio
   gates.push((c) => seatingGate({ measurement: c.seating, interferenceVolumeToleranceMm3: c.input.seatingInterferenceVolumeToleranceMm3 }));
 
   const total = gates.length;
+  const provenance = input.geometryProvenance;
   const wrapped: QcGate<BridgeQcContext>[] = gates.map((gate, i) => (c: BridgeQcContext) => {
-    const result = gate(c);
+    const measured = gate(c);
+    const result =
+      provenance === undefined || provenance === 'case'
+        ? measured
+        : failClosedOnNonCaseInput(measured, provenance, NON_CASE_BRIDGE_STAND_IN[provenance]);
     onProgress?.(0.6 + (0.4 * (i + 1)) / total);
     return result;
   });

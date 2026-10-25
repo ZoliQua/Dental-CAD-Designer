@@ -141,6 +141,11 @@ export interface BridgeExportQcContext {
     /** Phase 9 Task 5 — a fitted crest's @errorBound (message only). */
     crestFit?: { radialResidualMaxMm: number; axisSpreadRad: number };
   };
+  /** Phase 9 Task 6 — the bridge-level thickness-gate margin band (the
+   * profile's `marginExclusionMm`; present for a bridge built from the case). */
+  marginExclusionMm?: number;
+  /** ADR-022 — `'demo-fixture'` for the demonstration bridge (absent ⇒ case). */
+  geometryProvenance?: GeometryProvenance;
 }
 
 export type ExportQcContext = CrownExportQcContext | InlayExportQcContext | BridgeExportQcContext;

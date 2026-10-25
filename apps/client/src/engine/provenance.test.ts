@@ -63,11 +63,16 @@ describe('restorationInputProvenance', () => {
     expect(restorationInputProvenance(r).provenance).toBe('demo-fixture');
   });
 
-  it('a bridge is demo-fixture as a whole (the workflow runs on the 14-15-16 asset until Phase 9 Task 6)', () => {
-    expect(restorationInputProvenance(restoration('bridge', [gate('watertight')]))).toEqual({
-      provenance: 'demo-fixture',
+  it('a demonstration bridge is demo-fixture through its fail-closed gates; a bridge built from the case claims nothing', () => {
+    const demo = restoration('bridge', [
+      gate('watertight', { passed: false, inputProvenance: 'demo-fixture' }),
+      gate('seating', { passed: false, inputProvenance: 'demo-fixture' }),
+    ]);
+    expect(restorationInputProvenance(demo)).toEqual({ provenance: 'demo-fixture', gates: ['watertight', 'seating'] });
+    expect(restorationInputProvenance(restoration('bridge', [gate('watertight'), gate('seating')]))).toEqual({
+      provenance: null,
       gates: [],
     });
-    expect(restorationInputProvenance(restoration('bridge', null)).provenance).toBe('demo-fixture');
+    expect(restorationInputProvenance(restoration('bridge', null)).provenance).toBeNull();
   });
 });

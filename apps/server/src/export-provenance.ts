@@ -19,10 +19,17 @@
 //
 // Non-`case` claims are always accepted here: they make the gate fail closed,
 // which can only tighten the release (acknowledgment stays journaled).
-// The bridge branch is out of scope until its real-geometry path lands
-// (Phase 9 Task 6) — its whole workflow is the disclosed ADR-014 demo.
+//
+//  - bridge (Phase 9 Task 6) → the ops that sealed the restoration's CURRENT
+//    abutment-surfaces and pontic stages (`outputHashes[0]` = the saved stage
+//    hash) were built from the case (`params.geometrySource === 'case'`): the
+//    abutment op from the restoration's target scan, still in the case, same
+//    mesh; the pontic op from a gingiva-role scan still in the case. The
+//    demonstration bridge declares `demo-fixture` and fails closed instead.
 import {
   ANTAGONIST_CONFIRM_OP,
+  BRIDGE_ABUTMENT_SURFACES_OP,
+  BRIDGE_PONTIC_OP,
   NEIGHBOUR_CAPTURE_OP,
   type CaseDocument,
   type GeometryProvenance,
@@ -39,6 +46,7 @@ interface ProvenanceContext {
   contacts?: readonly ProvenanceContact[];
   coverage?: { dividerProvenance?: GeometryProvenance };
   units?: unknown;
+  geometryProvenance?: GeometryProvenance;
 }
 
 const PROXIMAL_SIDES: Readonly<Record<string, string>> = {
@@ -74,6 +82,40 @@ function claimsCase(provenance: GeometryProvenance | undefined): boolean {
   return provenance === undefined || provenance === 'case';
 }
 
+/** The op that sealed `stageHash` for this restoration (the latest match). */
+function sealingOp(document: CaseDocument, name: string, restorationId: string, stageHash: string | undefined): Operation | undefined {
+  if (stageHash === undefined) return undefined;
+  const history = document.history ?? [];
+  for (let i = history.length - 1; i >= 0; i--) {
+    const op = history[i]!;
+    if (op.name === name && op.params['restorationId'] === restorationId && op.outputHashes[0] === stageHash) return op;
+  }
+  return undefined;
+}
+
+/** A bridge's `case` claim: its current abutment and pontic stages were
+ * built from this case's scans (see this module's doc). */
+function bridgeClaims(document: CaseDocument, restorationId: string): UntraceableClaim[] {
+  const restoration = document.restorations.find((r) => r.id === restorationId);
+  const claims: UntraceableClaim[] = [];
+  const abutments = sealingOp(document, BRIDGE_ABUTMENT_SURFACES_OP, restorationId, restoration?.stages.bridgeAbutmentSurfaces);
+  const target = document.scene.find((n) => n.id === restoration?.targetNodeId);
+  if (!abutments || abutments.params['geometrySource'] !== 'case' || !target || target.meshId !== abutments.inputHashes[0]) {
+    claims.push({
+      input: 'bridge:abutmentSurfaces',
+      reason: "the case records no abutment surfaces built from the restoration's target scan",
+    });
+  }
+  const pontic = sealingOp(document, BRIDGE_PONTIC_OP, restorationId, restoration?.stages.bridgePontic);
+  const gingiva = pontic
+    ? document.scene.find((n) => n.role === 'gingiva' && n.meshId === pontic.inputHashes[0])
+    : undefined;
+  if (!pontic || pontic.params['geometrySource'] !== 'case' || !gingiva) {
+    claims.push({ input: 'bridge:pontic', reason: "the case records no pontic shaped on one of its gingiva scans" });
+  }
+  return claims;
+}
+
 /** One untraceable claim, for the rejection diagnostics. */
 export interface UntraceableClaim {
   input: string;
@@ -87,7 +129,7 @@ export function untraceableProvenanceClaims(
   document: CaseDocument,
   restorationId: string,
 ): UntraceableClaim[] {
-  if (ctx.units !== undefined) return []; // bridge — Phase 9 Task 6
+  if (ctx.units !== undefined) return claimsCase(ctx.geometryProvenance) ? bridgeClaims(document, restorationId) : [];
   const claims: UntraceableClaim[] = [];
   const hasAntagonistScan = document.scene.some((node) => node.role === 'antagonist');
   for (const contact of ctx.contacts ?? []) {

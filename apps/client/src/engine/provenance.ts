@@ -7,12 +7,11 @@
 // like a clean pass.
 //
 // Sources:
-//  - crown / inlay / onlay: the per-gate `inputProvenance` the cad-pipeline
-//    gates set when they fail closed on a stand-in input (synthetic neighbour
-//    boxes, the bbox coverage divider);
-//  - bridge: the whole workflow still runs on the fixed 14-15-16 demo asset
-//    (ADR-014), so the restoration is `demo-fixture` as a whole until the
-//    real-geometry path lands (Phase 9 Task 6).
+//  the per-gate `inputProvenance` the cad-pipeline gates set when they fail
+//  closed on a stand-in input — the synthetic neighbour boxes and the bbox
+//  coverage divider (crown / inlay / onlay), and every gate of the
+//  demonstration bridge (`demo-fixture`). A bridge built from the case
+//  (Phase 9 Task 6) carries none.
 //
 // Pure (no store, no worker) — node-lane testable.
 import type { NonCaseProvenance, Restoration } from '@dqcad/shared-types';
@@ -27,7 +26,7 @@ export interface RestorationProvenanceSummary {
 
 export function restorationInputProvenance(restoration: Restoration): RestorationProvenanceSummary {
   const gates: string[] = [];
-  let provenance: NonCaseProvenance | null = restoration.type === 'bridge' ? 'demo-fixture' : null;
+  let provenance: NonCaseProvenance | null = null;
   for (const gate of restoration.qc?.gates ?? []) {
     if (gate.inputProvenance === undefined) continue;
     gates.push(gate.gate);

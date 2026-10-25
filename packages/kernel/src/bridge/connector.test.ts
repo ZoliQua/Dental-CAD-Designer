@@ -12,6 +12,7 @@ import { createHash } from 'node:crypto';
 import { analyzeMesh } from '../intake/index.ts';
 import type { IndexedMesh } from '../mesh/types.ts';
 import type { Vec3 } from '../bvh/geometry.ts';
+import { placeConnectorBetweenUnits, ConnectorPlacementError } from './connector.ts';
 import {
   makeEllipseConnectorProfile,
   ellipseConnectorProfileAreaMm2,
@@ -372,5 +373,66 @@ describe('connector — property', () => {
       ),
       { numRuns: 25 },
     );
+  });
+});
+
+// ===========================================================================
+// 7. AUTO-PLACEMENT between two unit solids (Phase 9 Task 6)
+// ===========================================================================
+/** An axis-aligned closed box [min, max] (outward-wound, 12 triangles). */
+function box(min: Vec3, max: Vec3): IndexedMesh {
+  const [x0, y0, z0] = min;
+  const [x1, y1, z1] = max;
+  const positions = Float64Array.from([
+    x0, y0, z0, x1, y0, z0, x1, y1, z0, x0, y1, z0,
+    x0, y0, z1, x1, y0, z1, x1, y1, z1, x0, y1, z1,
+  ]);
+  const indices = Uint32Array.from([
+    0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4,
+    1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7,
+  ]);
+  return { positions, indices };
+}
+
+describe('placeConnectorBetweenUnits', () => {
+  it('spans from the overlap inside A to the overlap inside B along the centroid axis (closed form)', () => {
+    const a = box([-3, -1, -1], [-1, 1, 1]);
+    const b = box([1, -1, -1], [3, 1, 1]);
+    const placed = placeConnectorBetweenUnits(a, b, 0.5);
+    expect(placed.centroidAMm).toEqual([-2, 0, 0]);
+    expect(placed.centroidBMm).toEqual([2, 0, 0]);
+    expect(placed.axisMm).toEqual([1, 0, 0]);
+    expect(placed.exitAMm).toBe(1); // x = −1
+    expect(placed.entryBMm).toBe(3); // x = +1
+    expect(placed.originMm).toEqual([-1.5, 0, 0]);
+    expect(placed.spanMm).toBe(3);
+  });
+
+  it('is symmetric: swapping the units reverses the axis and keeps the span', () => {
+    const a = box([-3, -1, -1], [-1, 1, 2]);
+    const b = box([1.5, -1, -1], [4, 1, 1]);
+    const ab = placeConnectorBetweenUnits(a, b, 0.4);
+    const ba = placeConnectorBetweenUnits(b, a, 0.4);
+    expect(ba.spanMm).toBeCloseTo(ab.spanMm, 12);
+    for (let k = 0; k < 3; k++) expect(ba.axisMm[k]).toBeCloseTo(-ab.axisMm[k]!, 12);
+  });
+
+  it('PROPERTY: the bar ends exactly `overlap` past each crossing, whatever the gap', () => {
+    fc.assert(
+      fc.property(fc.double({ min: 0.2, max: 4, noNaN: true }), fc.double({ min: 0.1, max: 0.9, noNaN: true }), (gap, overlap) => {
+        const a = box([-2 - gap / 2, -1, -1], [-gap / 2, 1, 1]);
+        const b = box([gap / 2, -1, -1], [2 + gap / 2, 1, 1]);
+        const placed = placeConnectorBetweenUnits(a, b, overlap);
+        expect(placed.spanMm).toBeCloseTo(gap + 2 * overlap, 9);
+        expect(placed.originMm[0]).toBeCloseTo(-gap / 2 - overlap, 9);
+      }),
+      { numRuns: 40, seed: 20261025 },
+    );
+  });
+
+  it('refuses coincident centroids and a non-positive overlap', () => {
+    const a = box([-1, -1, -1], [1, 1, 1]);
+    expect(() => placeConnectorBetweenUnits(a, a, 0.5)).toThrow(ConnectorPlacementError);
+    expect(() => placeConnectorBetweenUnits(a, box([2, -1, -1], [4, 1, 1]), 0)).toThrow(RangeError);
   });
 });

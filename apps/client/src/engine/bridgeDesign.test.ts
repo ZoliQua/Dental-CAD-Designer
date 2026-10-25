@@ -64,6 +64,7 @@ function unit(label: string, kind: 'abutment' | 'pontic', tag: number) {
 
 function geometry(): BridgeSessionGeometry {
   return {
+    source: 'demo',
     sharedAxis: { direction: [0, 0, 1], acceptable: true, perAbutment: [{ label: '14', marginFitMm: 0 }, { label: '16', marginFitMm: 0 }] },
     units: [unit('14', 'abutment', 1), unit('15', 'pontic', 2), unit('16', 'abutment', 3)],
     connectors: [
@@ -390,5 +391,76 @@ describe('bridgeDesign — ACKNOWLEDGE journaling (invariant 4, never a silent b
     expect(gate.acknowledged).toBe(true);
     expect(r.qc!.passed).toBe(true); // now passes WITH the acknowledgment
     expect(historyNames().filter((n) => n === 'bridge-qc-ack').length).toBe(1);
+  });
+});
+
+describe('bridgeDesign — geometry provenance (Phase 9 Task 6, ADR-022)', () => {
+  function lastQcPayload(): Record<string, unknown> {
+    return [...pool.calls].reverse().find((c) => c.job === 'runBridgeQc')!.payload as Record<string, unknown>;
+  }
+  function caseGeometry(): BridgeSessionGeometry {
+    const base = geometry();
+    const variant = (tag: number) => ({ pontic: unit('15', 'pontic', tag), connectors: base.connectors });
+    return {
+      ...base,
+      source: 'case',
+      styleVariants: { hygienic: variant(30), ridgeLap: variant(31), ovate: variant(32) },
+      caseBuild: {
+        inputHashes: { targetScan: 'bridge-arch', gingiva: 'gum-mesh', marginLoops: { '14': 'loop-14', '16': 'loop-16' }, ponticTemplate: 'lib-15' },
+        crestFit: { radialResidualMaxMm: 0.0012, radialResidualRmsMm: 0.0004, axisSpreadRad: 0.002, faceCount: 300 },
+        ponticTemplate: { origin: 'library', meshChecksum: 'lib-15', version: '1.1.0' },
+        asBuiltDeviationByStyle: { hygienic: 0.0002, ridgeLap: 0.0003, ovate: 0.0013 },
+        sharedAxisUndercut: [],
+        construction: { pitchMm: 0.02 },
+      },
+    };
+  }
+
+  it('demo mode: the QC payload and the export context declare demo-fixture; the journal says so', async () => {
+    const id = setupBridgeCase();
+    await driveToQc(id);
+    expect(lastQcPayload()['geometryProvenance']).toBe('demo-fixture');
+    expect(bridgeDesignEngine.exportQcContext(id)!.geometryProvenance).toBe('demo-fixture');
+    const abut = caseStore.getDocument().history.find((o) => o.name === 'bridge-abutment-surfaces')!;
+    expect(abut.params['geometrySource']).toBe('demo');
+    expect(abut.inputHashes).toEqual([]);
+    expect(useBridgeStore.getState().geometrySource).toBe('demo');
+  });
+
+  it('a bridge built from the case: no provenance claim, the profile band on every unit, the crest bound, and the case inputs journaled', async () => {
+    const id = setupBridgeCase();
+    bridgeDesignEngine.start(id, caseGeometry());
+    await bridgeDesignEngine.commitAbutmentSurfaces();
+    await bridgeDesignEngine.commitPontic('ridgeLap');
+    await bridgeDesignEngine.commitConnectors();
+    await bridgeDesignEngine.selectFramework('fullContour');
+    await bridgeDesignEngine.runAssembly();
+    await bridgeDesignEngine.runQc();
+    const qc = lastQcPayload() as { geometryProvenance?: string; units: { label: string; marginExclusionMm?: number; innerPositions: Float64Array }[]; ponticRelief: { crestFit?: unknown } };
+    expect(qc.geometryProvenance).toBeUndefined();
+    expect(qc.units.map((u) => u.marginExclusionMm)).toEqual([0.2, 0.2, 0.2]);
+    // The committed style's pontic unit is the one measured.
+    expect(qc.units[1]!.innerPositions[0]).toBe(31.1);
+    expect(qc.ponticRelief.crestFit).toEqual({ radialResidualMaxMm: 0.0012, axisSpreadRad: 0.002 });
+    const ctx = bridgeDesignEngine.exportQcContext(id)!;
+    expect(ctx.geometryProvenance).toBeUndefined();
+    expect(ctx.marginExclusionMm).toBe(STANDARD_ZIRCONIA_PROFILE.marginExclusionMm);
+
+    const ops = caseStore.getDocument().history;
+    const abut = ops.find((o) => o.name === 'bridge-abutment-surfaces')!;
+    expect(abut.params['geometrySource']).toBe('case');
+    expect(abut.inputHashes).toEqual(['bridge-arch', 'loop-14', 'loop-16']);
+    const pontic = ops.find((o) => o.name === 'bridge-pontic')!;
+    expect(pontic.inputHashes).toEqual(['gum-mesh', restoration(id).stages.bridgeAbutmentSurfaces, 'lib-15']);
+    expect(pontic.params['asBuiltDeviationMm']).toBe(0.0003);
+    expect(ops.find((o) => o.name === 'bridge-assembly')!.inputHashes).toHaveLength(3);
+    expect(useBridgeStore.getState().caseBuild).toMatchObject({ ponticTemplate: { origin: 'library', version: '1.1.0' }, pitchMm: 0.02 });
+  });
+
+  it('startFromCase refuses a case without a gingiva scan, never falling back to the demo', async () => {
+    const id = setupBridgeCase();
+    await expect(bridgeDesignEngine.startFromCase(id)).rejects.toMatchObject({ name: 'BridgeCaseInputError', reason: 'noGingivaScan' });
+    expect(useBridgeStore.getState().active).toBe(false);
+    expect(pool.calls).toHaveLength(0);
   });
 });

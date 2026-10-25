@@ -151,6 +151,9 @@ describe.each(CASES)('Phase 7 acceptance — $name (full loop, STL)', ({ build }
       qcContext: bundle.qcContext,
       profile: bundle.profile,
       format: 'stl',
+      // The bridge fixture stands for a bridge built from the saved case's own
+      // scans (Phase 9 Task 6): its journal must trace the `case` claim.
+      traceBridgeToCase: true,
       ...overrides,
     });
 

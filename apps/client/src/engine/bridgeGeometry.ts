@@ -2,16 +2,14 @@
 //
 // Phase 6 Task 7 — loader for the CLIENT-side analytic 3-unit bridge fixture.
 //
-// ## Where this geometry comes from (synthetic-fixture-driven phase)
+// ## The explicit demo mode (Phase 9 Task 6, ADR-022)
 //
-// Phase 6 is explicitly SYNTHETIC-FIXTURE-DRIVEN (docs/plans/phase-6-bridge.md
-// "Fixture reality"): there is no real multi-abutment bridge scan + coupled
-// T2/T3 geometry-capture in the client yet (a tracked real-case pending). So this
-// loader is the bridge panel's geometry source in THIS phase — both the
-// browser-lane critical-path test (ui/BridgeDesignPanel.dom.test.tsx) AND
-// ui/BridgeDesignPanel.tsx's `start()` consume it. A later phase replaces it with
-// a real bridge-geometry capture from the coupled abutment-surface/pontic stages
-// (reviewer item; the ~280 KB asset bundle is the synthetic-phase cost).
+// Since Phase 9 Task 6 a bridge is built from the case
+// (engine/bridgeCaseGeometry.ts). This loader is the geometry of the EXPLICIT
+// demo mode only (`bridgeDesignEngine.startDemo`): the fixed 14-15-16
+// demonstration bridge, `source: 'demo'`, every QC gate of which fails closed
+// (`demo-fixture`). The browser-lane critical-path test
+// (ui/BridgeDesignPanel.dom.test.tsx) drives it too.
 //
 // The geometry is NOT constructed here. It is the EXACT output of the kernel's
 // own `bridgeAssemblyFixture` (+ the T3 pontic-relief measurements + the T4
@@ -27,14 +25,10 @@
 // FAILS that test until the asset is deliberately regenerated (npx tsx
 // scripts/generate-client-bridge-fixture.ts), reviewed, and committed.
 //
-// PRODUCTION NOTE (corrected): this module is NOT test-only. In this
-// synthetic-fixture-driven phase the production `ui/BridgeDesignPanel.tsx` also
-// imports `buildBridgeFixture()` AS THE DISCLOSED DEMONSTRATION FIXTURE (the
-// panel renders an un-missable synthetic-data banner over every stage; there is
-// no real bridge-geometry capture yet — a tracked real-case pending). The
-// browser-lane dom test consumes the same asset. It lives in engine/ so both the
-// panel and the ui test may import it under the layer rule; DATA crosses the
-// package boundary (never kernel test CODE).
+// PRODUCTION NOTE: this module is NOT test-only — demo mode ships, behind its
+// explicit entry and the un-missable banner. It lives in engine/ so the
+// controller and the ui test may import it under the layer rule; DATA crosses
+// the package boundary (never kernel test CODE).
 import asset from './bridgeFixture.asset.json';
 import type { IndexedBuffers } from './crownGeometry';
 
@@ -88,6 +82,8 @@ export interface ClientBridgePonticRelief {
 }
 
 export interface ClientBridge {
+  /** The demonstration bridge (ADR-022 `demo-fixture`) — never this case. */
+  source: 'demo';
   sharedAxis: {
     direction: Vec3;
     acceptable: boolean;
@@ -140,6 +136,7 @@ export function buildBridgeFixture(): ClientBridge {
     ponticReliefByStyle: Record<string, { configuredReliefMm: number; maxAbsDeviationMm: number }>;
   };
   return {
+    source: 'demo',
     sharedAxis: {
       direction: vec3(a.sharedAxis.directionMm),
       acceptable: a.sharedAxis.acceptable,

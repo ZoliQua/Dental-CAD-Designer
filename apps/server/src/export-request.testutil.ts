@@ -23,6 +23,7 @@ import { STANDARD_ZIRCONIA_PROFILE, type MaterialProfile } from '@dqcad/clinical
 import { encodeFinalMeshContainer, exportPlyBinary, exportStlBinary } from '@dqcad/io';
 import { KERNEL_VERSION, type IndexedMesh } from '@dqcad/kernel';
 import { hashCaseJournal } from '@dqcad/kernel-workers/journal-hash';
+import { BRIDGE_ABUTMENT_SURFACES_OP, BRIDGE_PONTIC_OP } from '@dqcad/shared-types';
 import type {
   CaseDocument,
   ExportAcknowledgment,
@@ -123,6 +124,24 @@ export interface ExportHarnessOptions {
    * construction (persisted clean solid vs tampered delivered bytes → the
    * step-10.5 outer-envelope check catches it). */
   persistFinalMesh?: boolean;
+  /** Bridge only (Phase 9 Task 6): persist the case as a bridge built from
+   * its own scans — a target-scan node, a gingiva node, and the
+   * abutment-surfaces / pontic stage ops that sealed the saved stage hashes
+   * with `geometrySource: 'case'` — so the context's (implicit) `case` claim
+   * is traceable. Without it a bridge context must declare its provenance. */
+  traceBridgeToCase?: boolean;
+}
+
+/** The stand-in identities of the traced bridge case (`traceBridgeToCase`). */
+export const TRACED_BRIDGE_CASE = {
+  targetMeshId: sha256HexOf(new TextEncoder().encode('traced-bridge-target-scan')),
+  gingivaMeshId: sha256HexOf(new TextEncoder().encode('traced-bridge-gingiva-scan')),
+  abutmentSurfacesHash: sha256HexOf(new TextEncoder().encode('traced-bridge-abutment-surfaces')),
+  ponticHash: sha256HexOf(new TextEncoder().encode('traced-bridge-pontic')),
+} as const;
+
+function sceneNode(id: string, meshId: string, role: 'upperJaw' | 'gingiva'): CaseDocument['scene'][number] {
+  return { id, meshId, role, transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], visible: true, opacity: 1 };
 }
 
 export interface ExportHarness {
@@ -229,8 +248,31 @@ export async function buildExportHarness(options: ExportHarnessOptions): Promise
     timestamp: OP_TIMESTAMP,
   };
 
-  const fullHistory: Operation[] = [...ackOps, exportOp];
-  let persistedHistory: Operation[] = options.skipPersistExportOp ? [...ackOps] : fullHistory;
+  const traced = options.traceBridgeToCase === true && restorationType === 'bridge';
+  const caseBuildOps: Operation[] = traced
+    ? [
+        {
+          id: nextOpId('bridge-abutments-op'),
+          name: BRIDGE_ABUTMENT_SURFACES_OP,
+          params: { restorationId, geometrySource: 'case' },
+          inputHashes: [TRACED_BRIDGE_CASE.targetMeshId],
+          outputHashes: [TRACED_BRIDGE_CASE.abutmentSurfacesHash],
+          kernelVersion: KERNEL_VERSION,
+          timestamp: OP_TIMESTAMP,
+        },
+        {
+          id: nextOpId('bridge-pontic-op'),
+          name: BRIDGE_PONTIC_OP,
+          params: { restorationId, geometrySource: 'case', style: 'hygienic' },
+          inputHashes: [TRACED_BRIDGE_CASE.gingivaMeshId, TRACED_BRIDGE_CASE.abutmentSurfacesHash],
+          outputHashes: [TRACED_BRIDGE_CASE.ponticHash],
+          kernelVersion: KERNEL_VERSION,
+          timestamp: OP_TIMESTAMP,
+        },
+      ]
+    : [];
+  const fullHistory: Operation[] = [...caseBuildOps, ...ackOps, exportOp];
+  let persistedHistory: Operation[] = options.skipPersistExportOp ? [...caseBuildOps, ...ackOps] : fullHistory;
   if (options.mutateHistory) {
     persistedHistory = options.mutateHistory(persistedHistory.map((op) => ({ ...op, params: { ...op.params } })));
   }
@@ -252,7 +294,7 @@ export async function buildExportHarness(options: ExportHarnessOptions): Promise
     type: restorationType,
     teeth: [...teeth],
     pontics: [...(options.pontics ?? [])],
-    targetNodeId: null,
+    targetNodeId: traced ? 'node-target-scan' : null,
     marginLines: {},
     insertionAxis: [0, 0, 1],
     params: {
@@ -263,7 +305,13 @@ export async function buildExportHarness(options: ExportHarnessOptions): Promise
       proximalContactPenetrationMm: 0.02,
       occlusalContactMm: 0,
     },
-    stages: { finalMesh: finalMeshHash },
+    stages: traced
+      ? {
+          bridgeAbutmentSurfaces: TRACED_BRIDGE_CASE.abutmentSurfacesHash,
+          bridgePontic: TRACED_BRIDGE_CASE.ponticHash,
+          finalMesh: finalMeshHash,
+        }
+      : { finalMesh: finalMeshHash },
     qc: clientReport,
   };
   const persistedDocument: CaseDocument = {
@@ -271,7 +319,12 @@ export async function buildExportHarness(options: ExportHarnessOptions): Promise
     schemaVersion: 2,
     createdAt: OP_TIMESTAMP,
     meshes: [],
-    scene: [],
+    scene: traced
+      ? [
+          sceneNode('node-target-scan', TRACED_BRIDGE_CASE.targetMeshId, 'upperJaw'),
+          sceneNode('node-gingiva-scan', TRACED_BRIDGE_CASE.gingivaMeshId, 'gingiva'),
+        ]
+      : [],
     restorations: [restoration],
     measurements: [],
     history: persistedHistory,

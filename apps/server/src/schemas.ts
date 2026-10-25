@@ -983,6 +983,9 @@ export const bridgeValidateQcBodySchema = {
     frameworkMode: { type: 'boolean' },
     frameworkMinThicknessMm: { type: 'number' },
     ponticRelief: ponticReliefInputSchema,
+    // ADR-022 (Phase 9 Task 6): where the bridge geometry came from — the
+    // demonstration bridge fails every gate closed (absent ⇒ case).
+    geometryProvenance: geometryProvenanceSchema,
     marginFitThresholdMm: { type: 'number' },
     seatingInterferenceVolumeToleranceMm3: { type: 'number' },
     kernelVersion: { type: 'string' },
@@ -1113,10 +1116,12 @@ export const inlayExportQcContextSchema = omitBodySchemaProperties(inlayValidate
 ]);
 
 // The bridge context additionally derives knob-free NESTED schemas: the
-// per-unit `marginExclusionMm` band (never sent by bridgeDesign; its crown
-// analogue is profile-pinned) and `ponticRelief.thresholdMm` (the ±20 µm
+// per-unit `marginExclusionMm` band and `ponticRelief.thresholdMm` (the ±20 µm
 // gate default is the only value the client ever uses) are forbidden the
-// same way as the top-level knobs.
+// same way as the top-level knobs. A bridge built from the case (Phase 9 Task
+// 6) sends ONE bridge-level `marginExclusionMm` instead — the profile's
+// finish-line band, pinned to the server-resolved profile (export-profile.ts)
+// and applied to every unit by the route.
 const bridgeExportBase = omitBodySchemaProperties(bridgeValidateQcBodySchema, [
   'assembledSolid',
   ...EXPORT_CONTEXT_REQUEST_DERIVED,
@@ -1133,6 +1138,7 @@ export const bridgeExportQcContextSchema = {
       minItems: 1,
     },
     ponticRelief: omitBodySchemaProperties(ponticReliefInputSchema, ['thresholdMm']),
+    marginExclusionMm: { type: 'number' },
   },
 };
 

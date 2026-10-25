@@ -197,13 +197,23 @@ describe('ExportPanel — export gate recap + server release', () => {
     expect(screen.getByTestId('export-gate-block').textContent).toContain('contact');
   });
 
-  it('ADR-014/022: a bridge (demo-fixture workflow) rides the demonstration-data disclosure', async () => {
-    const id = seedRestoration('bridge', qcReport([gate({ gate: 'watertight' })]));
+  it('ADR-014/022: a demonstration bridge (its gates failed closed on demo-fixture) rides the demonstration-data disclosure', async () => {
+    const id = seedRestoration(
+      'bridge',
+      qcReport([gate({ gate: 'watertight', passed: false, inputProvenance: 'demo-fixture' })]),
+    );
     render(<ExportPanel />);
     await selectRestoration(id);
     const banner = screen.getByTestId('export-disclosure');
     expect(banner.getAttribute('data-provenance')).toBe('demo-fixture');
     expect(banner.textContent).toMatch(/Demonstration data/);
+  });
+
+  it('Phase 9 Task 6: a bridge built from the case shows NO disclosure', async () => {
+    const id = seedRestoration('bridge', qcReport([gate({ gate: 'watertight' }), gate({ gate: 'seating' })]));
+    render(<ExportPanel />);
+    await selectRestoration(id);
+    expect(screen.queryByTestId('export-disclosure')).toBeNull();
   });
 
   it('BLOCKS export on a failing unacknowledged gate: shows the failing-gate list, disables the button, sends nothing', async () => {

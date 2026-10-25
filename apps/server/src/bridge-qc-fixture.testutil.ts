@@ -236,6 +236,7 @@ export function toValidateBridgeQcBody(
       ...(input.ponticRelief.thresholdMm !== undefined ? { thresholdMm: input.ponticRelief.thresholdMm } : {}),
       ...(input.ponticRelief.crestFit !== undefined ? { crestFit: input.ponticRelief.crestFit } : {}),
     },
+    ...(input.geometryProvenance !== undefined ? { geometryProvenance: input.geometryProvenance } : {}),
     ...(input.marginFitThresholdMm !== undefined ? { marginFitThresholdMm: input.marginFitThresholdMm } : {}),
     ...(input.seatingInterferenceVolumeToleranceMm3 !== undefined
       ? { seatingInterferenceVolumeToleranceMm3: input.seatingInterferenceVolumeToleranceMm3 }

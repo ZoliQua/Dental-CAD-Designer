@@ -374,6 +374,22 @@ export const NEIGHBOUR_CAPTURE_OP = 'neighbour-capture';
  */
 export const ANTAGONIST_CONFIRM_OP = 'antagonist-confirm';
 
+/**
+ * Journal op name of a bridge's abutment-surfaces stage (Phase 6 Task 7). For
+ * a bridge built from the case (Phase 9 Task 6) `params.geometrySource` is
+ * `'case'` and `inputHashes[0]` is the target scan's mesh id; the
+ * demonstration bridge journals `'demo'`. `outputHashes[0]` is the stage hash.
+ * The server traces a bridge's `case` claim to the op that sealed the stage.
+ */
+export const BRIDGE_ABUTMENT_SURFACES_OP = 'bridge-abutment-surfaces';
+
+/**
+ * Journal op name of a bridge's pontic stage (Phase 6 Task 7). For a bridge
+ * built from the case `params.geometrySource` is `'case'` and
+ * `inputHashes[0]` is the gingiva scan's mesh id.
+ */
+export const BRIDGE_PONTIC_OP = 'bridge-pontic';
+
 export interface QcGateResult {
   gate: string;
   passed: boolean;

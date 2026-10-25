@@ -14,7 +14,9 @@
 //   - the CONNECTOR EDITOR live min-area readout renders with a per-connector
 //     gate verdict (the T4 measurement wired live);
 //   - the whole-bridge QC table renders WITH per-unit thickness rows +
-//     per-connector + pontic-relief rows, all passing;
+//     per-connector + pontic-relief rows — every one FAILED CLOSED, because
+//     this is the explicit demo mode (Phase 9 Task 6, ADR-022: a measurement
+//     of the demonstration bridge is not a measurement of the case);
 //   - editing a connector to ~5 mm² (the live editor) invalidates the downstream
 //     assembly + QC (the stale-QC guard: a stale report NEVER keeps displaying),
 //     the re-run QC BLOCKS on the connector gate, and ACKNOWLEDGE journals it.
@@ -101,6 +103,32 @@ describe('BridgeDesignPanel — browser-lane critical path (real WorkerPool, 3-u
     expect(Object.keys(fx.ponticReliefByStyle).sort()).toEqual(['hygienic', 'ovate', 'ridgeLap']);
   });
 
+  it('two entries: building from the case needs a gingiva scan (disabled + named); demo mode is the explicit alternative', async () => {
+    const user = userEvent.setup();
+    const id = setupBridgeCase();
+    render(<BridgeDesignPanel />);
+    await user.selectOptions(screen.getByTestId('bridge-restoration-select'), id);
+    expect(screen.getByTestId('bridge-needs-gingiva')).toBeTruthy();
+    expect((screen.getByTestId('bridge-start-case-button') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId('bridge-start-button') as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByTestId('bridge-synthetic-start-note').textContent).toMatch(/fails closed/);
+
+    // Importing a gingiva-role scan enables the case entry.
+    caseStore.registerImportedMesh({
+      contentHash: 'gum',
+      name: 'gingiva.stl',
+      format: 'stl',
+      positions: Float64Array.from([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1]),
+      indices: Uint32Array.from([0, 2, 1, 0, 1, 3, 1, 2, 3, 0, 3, 2]),
+      stats: STATS,
+      report: REPORT,
+      operations: [],
+    });
+    caseStore.addSceneNode('gum', 'gingiva');
+    await waitFor(() => expect(screen.queryByTestId('bridge-needs-gingiva')).toBeNull());
+    expect((screen.getByTestId('bridge-start-case-button') as HTMLButtonElement).disabled).toBe(false);
+  }, 30_000);
+
   it('a real case whose teeth ≠ the fixture (24-25-26) starts WITH an explicit teeth-mismatch disclosure', async () => {
     const user = userEvent.setup();
     const id = setupBridgeCase([24, 25, 26] as FdiTooth[], [25] as FdiTooth[]);
@@ -182,7 +210,8 @@ describe('BridgeDesignPanel — browser-lane critical path (real WorkerPool, 3-u
     expect(restoration(id).stages.finalMesh).toBeTypeOf('string');
     expect(historyNames()).toContain('bridge-assembly');
 
-    // Stage: QC — the whole-bridge table renders per-unit + connector + relief rows, all pass.
+    // Stage: QC — the whole-bridge table renders per-unit + connector + relief
+    // rows; in demo mode every gate fails closed (demo-fixture).
     await user.click(screen.getByTestId('bridge-qc-run'));
     await waitFor(() => expect(screen.getByTestId('bridge-qc-table')).toBeTruthy(), { timeout: 120_000 });
     expect(restoration(id).qc).not.toBeNull();
@@ -192,7 +221,12 @@ describe('BridgeDesignPanel — browser-lane critical path (real WorkerPool, 3-u
     expect(screen.getByTestId('bridge-qc-gate-minWallThickness:16')).toBeTruthy();
     expect(screen.getByTestId('bridge-qc-gate-connectorCrossSection')).toBeTruthy();
     expect(screen.getByTestId('bridge-qc-gate-ponticRelief')).toBeTruthy();
-    expect(screen.getByTestId('bridge-qc-passed')).toBeTruthy();
+    expect(screen.getByTestId('bridge-qc-failed')).toBeTruthy();
+    for (const g of restoration(id).qc!.gates) {
+      expect(g.passed, g.gate).toBe(false);
+      expect(g.inputProvenance, g.gate).toBe('demo-fixture');
+      expect(screen.getByTestId(`bridge-qc-gate-${g.gate}`).getAttribute('data-passed')).toBe('false');
+    }
     expect(screen.getByTestId('bridge-qc-scope-note')).toBeTruthy();
     // The synthetic-data disclosure is REPEATED in the QC results.
     expect(screen.getByTestId('bridge-qc-synthetic-note')).toBeTruthy();

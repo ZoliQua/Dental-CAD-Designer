@@ -77,7 +77,10 @@ describe('export dual-validation — P6 bridge fixture', () => {
     for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
   });
 
-  const bridgeHarness = (format: 'stl' | 'ply'): Promise<ExportHarness> =>
+  const bridgeHarness = (
+    format: 'stl' | 'ply',
+    overrides: Partial<Parameters<typeof buildExportHarness>[0]> = {},
+  ): Promise<ExportHarness> =>
     buildExportHarness({
       app,
       restorationType: 'bridge',
@@ -87,6 +90,9 @@ describe('export dual-validation — P6 bridge fixture', () => {
       clientReport,
       qcContext,
       format,
+      // The fixture stands for a bridge built from the saved case's scans.
+      traceBridgeToCase: true,
+      ...overrides,
     });
 
   it('STL: full loop — release, ledger row, byte-identical download, bit-identical server report', async () => {
@@ -151,5 +157,56 @@ describe('export dual-validation — P6 bridge fixture', () => {
     const dl = await app.inject({ method: 'GET', url: body.downloadPath });
     expect(dl.statusCode).toBe(200);
     expect(dl.rawPayload.equals(Buffer.from(harness.bytes))).toBe(true);
+  }, 300_000);
+
+  // ---- Phase 9 Task 6: the bridge provenance (ADR-022) ----------------------
+
+  it('a case claim the saved case cannot back is refused (409 export-untraceable-provenance)', async () => {
+    const harness = await bridgeHarness('stl', { traceBridgeToCase: false });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/restorations/${harness.restorationId}/export`,
+      payload: harness.body,
+    });
+    expect(res.statusCode).toBe(409);
+    const body = res.json() as { error: string; details: { claims: { input: string }[] } };
+    expect(body.error).toBe('export-untraceable-provenance');
+    expect(body.details.claims.map((c) => c.input)).toEqual(['bridge:abutmentSurfaces', 'bridge:pontic']);
+  }, 300_000);
+
+  it('the demonstration bridge fails every gate closed on the server too, and cannot be released', async () => {
+    const demoReport = await runBridgeQc({ ...input, geometryProvenance: 'demo-fixture' });
+    expect(demoReport.gates.every((g) => !g.passed && g.inputProvenance === 'demo-fixture')).toBe(true);
+    const harness = await bridgeHarness('stl', {
+      traceBridgeToCase: false,
+      clientReport: demoReport,
+      qcContext: { ...qcContext, geometryProvenance: 'demo-fixture' },
+    });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/restorations/${harness.restorationId}/export`,
+      payload: harness.body,
+    });
+    expect(res.statusCode).toBe(409);
+    expect((res.json() as { error: string }).error).toBe('export-gates-failing');
+  }, 300_000);
+
+  it('a bridge-level margin band rides once, is pinned to the profile, and reaches every unit', async () => {
+    const band = STANDARD_ZIRCONIA_PROFILE.marginExclusionMm;
+    const banded: RunBridgeQcInput = { ...input, units: input.units.map((u) => ({ ...u, marginExclusionMm: band })) };
+    const bandedReport = await runBridgeQc(banded);
+    const harness = await bridgeHarness('stl', { clientReport: bandedReport, qcContext: { ...qcContext, marginExclusionMm: band } });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/restorations/${harness.restorationId}/export`,
+      payload: harness.body,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(canonical((res.json() as ExportOkBody).qcReport)).toBe(canonical(bandedReport));
+
+    const off = await bridgeHarness('stl', { clientReport: bandedReport, qcContext: { ...qcContext, marginExclusionMm: band + 0.1 } });
+    const refused = await app.inject({ method: 'POST', url: `/api/restorations/${off.restorationId}/export`, payload: off.body });
+    expect(refused.statusCode).toBe(409);
+    expect((refused.json() as { error: string }).error).toBe('export-profile-threshold-mismatch');
   }, 300_000);
 });

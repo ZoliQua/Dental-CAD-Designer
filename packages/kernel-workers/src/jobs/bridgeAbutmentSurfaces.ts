@@ -27,12 +27,17 @@
 // `.ts` extension: reachable from the Node worker entry's import closure — see
 // CLAUDE.md's "Import extension convention".
 import {
+  assessSharedAxis,
+  buildBvh,
+  closestPoint,
   buildInnerSurface,
   blendZoneLipschitz,
   MIN_PITCH_MM,
   PitchTooSmallError,
   BlendWidthTooNarrowError,
   type InnerSurfaceGapParams,
+  type AxisRegion,
+  type IndexedMesh,
   type MeshStats,
   type Vec3,
 } from '@dqcad/kernel';
@@ -57,6 +62,11 @@ export interface BridgeAbutmentSurfacesPayload {
   insertionAxis: Vec3;
   /** One entry per abutment (>= 1). */
   abutments: readonly BridgeAbutmentInputPayload[];
+  /** Phase 9 Task 6: also measure each surface's margin fit and assess the
+   * shared axis over each abutment's prep (the target-mesh triangles inside
+   * its margin). Off ⇒ the result carries neither (byte-identical meshes
+   * either way). */
+  assess?: boolean;
 }
 
 export interface BridgeAbutmentSurfaceResult {
@@ -69,6 +79,15 @@ export interface BridgeAbutmentSurfaceResult {
   patchTriangleCount: number;
   skirtTriangleCount: number;
   marginVertexCount: number;
+  /** Max distance (mm) from a margin-loop point to the built surface —
+   * present when `payload.assess`. */
+  marginFitMm?: number;
+}
+
+/** The shared axis judged over every abutment's prep (`assessSharedAxis`). */
+export interface BridgeSharedAxisAssessmentPayload {
+  acceptable: boolean;
+  perAbutment: readonly { tooth: number; undercutTriangleCount: number; maxDepthMm: number; regionTriangleCount: number }[];
 }
 
 export interface BridgeAbutmentSurfacesResult {
@@ -78,12 +97,60 @@ export interface BridgeAbutmentSurfacesResult {
   insertionAxis: Vec3;
   /** Max abutment error bound (mm). */
   errorBoundMm: number;
+  /** Present when `payload.assess`. */
+  sharedAxis?: BridgeSharedAxisAssessmentPayload;
 }
 
 function rebuildLoop(flat: Float64Array): Vec3[] {
   const loop: Vec3[] = [];
   for (let i = 0; i < flat.length; i += 3) loop.push([flat[i]!, flat[i + 1]!, flat[i + 2]!]);
   return loop;
+}
+
+/** Slack (mm) on the prep-region bounds: margin-loop points are vertices of
+ * the scan, so only rounding separates them from the bound. */
+const PREP_REGION_SLACK_MM = 1e-6;
+
+/** The prep of one abutment on `mesh`: every triangle whose three vertices lie
+ * within the margin's lateral radius about its centroid (⊥ `axis`) and at or
+ * above its lowest point along `axis`. */
+function prepRegion(mesh: IndexedMesh, loop: readonly Vec3[], axis: Vec3): AxisRegion {
+  const l = Math.hypot(axis[0], axis[1], axis[2]);
+  const a: Vec3 = [axis[0] / l, axis[1] / l, axis[2] / l];
+  let cx = 0;
+  let cy = 0;
+  let cz = 0;
+  for (const p of loop) {
+    cx += p[0];
+    cy += p[1];
+    cz += p[2];
+  }
+  const c: Vec3 = [cx / loop.length, cy / loop.length, cz / loop.length];
+  const radialAxial = (x: number, y: number, z: number): [number, number] => {
+    const dx = x - c[0];
+    const dy = y - c[1];
+    const dz = z - c[2];
+    const h = dx * a[0] + dy * a[1] + dz * a[2];
+    return [Math.hypot(dx - h * a[0], dy - h * a[1], dz - h * a[2]), h];
+  };
+  let maxRadial = 0;
+  let minAxial = Infinity;
+  for (const p of loop) {
+    const [r, h] = radialAxial(p[0], p[1], p[2]);
+    if (r > maxRadial) maxRadial = r;
+    if (h < minAxial) minAxial = h;
+  }
+  const n = mesh.positions.length / 3;
+  const inside = new Uint8Array(n);
+  for (let v = 0; v < n; v++) {
+    const [r, h] = radialAxial(mesh.positions[v * 3]!, mesh.positions[v * 3 + 1]!, mesh.positions[v * 3 + 2]!);
+    inside[v] = r <= maxRadial + PREP_REGION_SLACK_MM && h >= minAxial - PREP_REGION_SLACK_MM ? 1 : 0;
+  }
+  const tris: number[] = [];
+  for (let t = 0; t < mesh.indices.length / 3; t++) {
+    if (inside[mesh.indices[t * 3]!] && inside[mesh.indices[t * 3 + 1]!] && inside[mesh.indices[t * 3 + 2]!]) tris.push(t);
+  }
+  return { triangleIndices: Uint32Array.from(tris) };
 }
 
 function validateScalars(payload: BridgeAbutmentSurfacesPayload): void {
@@ -141,7 +208,7 @@ export const bridgeAbutmentSurfacesJob = async (
   if (await ctx.cancelled()) throw new JobCancelledError();
   ctx.progress(0);
 
-  const { mesh } = requireCachedBvh(payload.contentHash);
+  const { mesh, bvh } = requireCachedBvh(payload.contentHash);
   const { pitchMm, marginalGapMm, cementGapMm, spacerStartMm, blendWidthMm, insertionAxis } = payload;
   const n = payload.abutments.length;
 
@@ -162,6 +229,15 @@ export const bridgeAbutmentSurfacesJob = async (
       },
     );
     if (result.errorBoundMm > errorBoundMm) errorBoundMm = result.errorBoundMm;
+    let marginFitMm: number | undefined;
+    if (payload.assess) {
+      const surfaceBvh = buildBvh(result.mesh);
+      marginFitMm = 0;
+      for (const p of marginLoop) {
+        const d = closestPoint(result.mesh, surfaceBvh, p).distance;
+        if (d > marginFitMm) marginFitMm = d;
+      }
+    }
     abutments.push({
       tooth: ab.tooth,
       positions: result.mesh.positions,
@@ -172,9 +248,26 @@ export const bridgeAbutmentSurfacesJob = async (
       patchTriangleCount: result.patchTriangleCount,
       skirtTriangleCount: result.skirtTriangleCount,
       marginVertexCount: result.marginVertexCount,
+      ...(marginFitMm !== undefined ? { marginFitMm } : {}),
     });
   }
 
+  let sharedAxis: BridgeSharedAxisAssessmentPayload | undefined;
+  if (payload.assess) {
+    const regions = payload.abutments.map((ab) => prepRegion(mesh, rebuildLoop(ab.marginLoop), insertionAxis));
+    const l = Math.hypot(insertionAxis[0], insertionAxis[1], insertionAxis[2]);
+    const assessment = assessSharedAxis(mesh, bvh, regions, [insertionAxis[0] / l, insertionAxis[1] / l, insertionAxis[2] / l]);
+    sharedAxis = {
+      acceptable: assessment.sharedAxisAcceptable,
+      perAbutment: assessment.perAbutment.map((r, i) => ({
+        tooth: payload.abutments[i]!.tooth,
+        undercutTriangleCount: r.undercutTriangleCount,
+        maxDepthMm: r.maxDepthMm,
+        regionTriangleCount: r.regionTriangleCount,
+      })),
+    };
+  }
+
   ctx.progress(1);
-  return { abutments, pitchMm, insertionAxis, errorBoundMm };
+  return { abutments, pitchMm, insertionAxis, errorBoundMm, ...(sharedAxis ? { sharedAxis } : {}) };
 };

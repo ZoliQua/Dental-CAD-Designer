@@ -22,18 +22,16 @@
 //      hash/qc for a stage that failed, so a broken bridge can never masquerade
 //      as a completed one — the P4 honest-failure invariant).
 //
-// ## The abutmentSurfaces / pontic milestones are asset-provided (documented)
+// ## Where the unit geometry comes from (Phase 9 Task 6, ADR-022)
 //
-// The upstream T2 (per-abutment intaglios + shared axis + margin fit) and T3
-// (pontic body/base + measured relief) geometry is NOT re-run client-side — its
-// real inputs (a prep BVH; an edentulous-ridge scan + library body + canonical
-// frame) are not reconstructable in the UI. Instead the controller CAPTURES that
-// kernel-built geometry from a `BridgeSessionGeometry` handed to `start()` — the
-// SAME "external kernel-built artifact captured, never ported" split the cavity
-// `outline` stage uses (the browser lane supplies the serialized fixture asset via
-// engine/bridgeGeometry.ts). Committing these milestones content-addresses +
-// journals the captured surfaces; the connector editor, assembly and QC are the
-// genuinely interactive client stages driven through the real registered jobs.
+// `start()` takes a `BridgeSessionGeometry`: either built FROM THE CASE by
+// `startFromCase` (engine/bridgeCaseGeometry.ts — the target scan, margins,
+// shared axis and gingiva scan through the registered jobs; the pontic and
+// its connectors per style) or the explicit DEMO MODE's fixed demonstration
+// bridge (`startDemo`, engine/bridgeGeometry.ts), every QC gate of which fails
+// closed (`demo-fixture`). Committing the abutment-surfaces / pontic milestones
+// content-addresses + journals that geometry (with the case inputs it
+// consumed); the connector editor, assembly and QC run through the real jobs.
 //
 // Layer rule: engine may import kernel-workers / state / shared-types /
 // clinical-profiles only (never kernel, cad-pipeline, Three.js). Kernel/pipeline
@@ -43,7 +41,7 @@
 // document).
 import { KERNEL_VERSION, type JobName, type JobPayloadMap, type JobResultMap, type RunJobOptions } from '@dqcad/kernel-workers';
 import { STANDARD_ZIRCONIA_PROFILE, type MaterialProfile } from '@dqcad/clinical-profiles';
-import type { Operation, QcReport, Restoration, Vec3 } from '@dqcad/shared-types';
+import { BRIDGE_ABUTMENT_SURFACES_OP, BRIDGE_PONTIC_OP, type Operation, type QcReport, type Restoration, type Vec3 } from '@dqcad/shared-types';
 import { caseStore } from './caseStore';
 import { resolveFullMaterialProfile, resolveProfileVersion } from './materialProfile';
 import {
@@ -56,6 +54,10 @@ import {
 } from './bridgeWorkflow';
 import { getPool } from './workers';
 import { meshJson, type BridgeExportQcContext } from './exportContext';
+import { buildBridgeFixture } from './bridgeGeometry';
+import { BRIDGE_PONTIC_STYLES, BridgeCaseInputError, buildBridgeCaseGeometry, type CaseBridgeGeometry } from './bridgeCaseGeometry';
+import { resolveLibraryTooth } from './toothLibrary';
+import { useServerStatusStore } from '../state/serverStatusStore';
 import {
   useBridgeStore,
   type BridgeConnectorReadout,
@@ -100,17 +102,35 @@ export interface BridgeSessionConnector {
   semiAxisMm: number;
   segments: number;
   profileFlat: readonly number[];
-  defaultMinAreaMm2: number;
+  /** The demonstration asset's measured default area (absent for the case path). */
+  defaultMinAreaMm2?: number;
 }
 
 /** The captured bridge geometry `start()` consumes — supplied by the caller (the
  * browser lane's serialized fixture asset via engine/bridgeGeometry.ts; a future
  * real tool builds it from the coupled T2/T3 stages). */
 export interface BridgeSessionGeometry {
+  /** ADR-022: `case` — built from this case's scans and margins
+   * (bridgeCaseGeometry.ts); `demo` — the fixed demonstration bridge, whose
+   * every QC gate fails closed (`demo-fixture`). */
+  source: 'case' | 'demo';
   sharedAxis: { direction: Vec3; acceptable: boolean; perAbutment: readonly { label: string; marginFitMm: number }[] };
   units: readonly BridgeSessionUnit[];
   connectors: readonly BridgeSessionConnector[];
   ponticReliefByStyle: Record<string, { configuredReliefMm: number; maxAbsDeviationMm: number }>;
+  /** Case path: the pontic unit and the connectors placed against it, per
+   * style (the base — and so the unit — depends on the style). The demo's
+   * pontic is style-independent and leaves this absent. */
+  styleVariants?: Partial<Record<PonticStyleName, { pontic: BridgeSessionUnit; connectors: readonly BridgeSessionConnector[] }>>;
+  /** Case path: what the build consumed and how (journaled with the stages). */
+  caseBuild?: {
+    inputHashes: { targetScan: string; gingiva: string; marginLoops: Record<string, string>; ponticTemplate: string | null };
+    crestFit: { radialResidualMaxMm: number; radialResidualRmsMm: number; axisSpreadRad: number; faceCount: number };
+    ponticTemplate: { origin: 'library'; meshChecksum: string; version: string } | { origin: 'builtin'; reason: string };
+    asBuiltDeviationByStyle: Record<string, number>;
+    sharedAxisUndercut: readonly { label: string; undercutTriangleCount: number; maxDepthMm: number }[];
+    construction: Record<string, unknown>;
+  };
 }
 
 /** The ±20 µm pontic-relief acceptance tolerance (mm). Mirrors cad-pipeline's
@@ -161,7 +181,7 @@ function isPonticStyleName(value: string): value is PonticStyleName {
  * partial/mismatched decision must not silently re-attach). */
 function parsePersistedConnectors(
   value: unknown,
-  geometry: BridgeSessionGeometry,
+  connectors: readonly BridgeSessionConnector[],
 ): { label: string; semiAxisMm: number; minAreaMm2: number; targetMm2: number }[] | null {
   if (!Array.isArray(value)) return null;
   const parsed: { label: string; semiAxisMm: number; minAreaMm2: number; targetMm2: number }[] = [];
@@ -181,8 +201,8 @@ function parsePersistedConnectors(
   }
   const labels = new Set(parsed.map((p) => p.label));
   if (labels.size !== parsed.length) return null;
-  if (geometry.connectors.length !== parsed.length) return null;
-  for (const c of geometry.connectors) if (!labels.has(c.label)) return null;
+  if (connectors.length !== parsed.length) return null;
+  for (const c of connectors) if (!labels.has(c.label)) return null;
   return parsed;
 }
 
@@ -309,6 +329,7 @@ function combineMeshes(meshes: readonly Buffers[]): Buffers {
 class BridgeDesignEngine {
   private session: Session | null = null;
   private testPool: RunnablePool | null = null;
+  private testFetch: typeof fetch | null = null;
 
   private pool(): RunnablePool {
     return this.testPool ?? getPool();
@@ -368,6 +389,19 @@ class BridgeDesignEngine {
       errorStage: null,
       errorKey: null,
       errorDetail: null,
+      geometrySource: geometry.source,
+      buildProgress: null,
+      caseBuild: geometry.caseBuild
+        ? {
+            crestRadialResidualMaxMm: geometry.caseBuild.crestFit.radialResidualMaxMm,
+            crestAxisSpreadRad: geometry.caseBuild.crestFit.axisSpreadRad,
+            ponticTemplate:
+              geometry.caseBuild.ponticTemplate.origin === 'library'
+                ? { origin: 'library', version: geometry.caseBuild.ponticTemplate.version }
+                : { origin: 'builtin', reason: geometry.caseBuild.ponticTemplate.reason },
+            pitchMm: geometry.caseBuild.construction['pitchMm'] as number,
+          }
+        : null,
       sharedAxis: {
         acceptable: geometry.sharedAxis.acceptable,
         direction: geometry.sharedAxis.direction,
@@ -375,6 +409,67 @@ class BridgeDesignEngine {
       },
     });
     this.refreshGates();
+  }
+
+  /**
+   * The EXPLICIT demonstration mode: the fixed 14-15-16 demonstration bridge
+   * (engine/bridgeGeometry.ts, ADR-014). Every QC gate of a demo session fails
+   * closed (`demo-fixture`, ADR-022), so it can never pass for export.
+   */
+  startDemo(restorationId: string): void {
+    this.start(restorationId, buildBridgeFixture());
+  }
+
+  /**
+   * Builds the bridge from THIS case (Phase 9 Task 6, engine/
+   * bridgeCaseGeometry.ts) — the target scan, the confirmed abutment margins,
+   * the shared axis and the case's gingiva-role scan — through the registered
+   * jobs, then starts the session on it. Publishes the build progress; throws
+   * (typed) when the case lacks an input or a build step cannot be completed —
+   * never falls back to the demonstration bridge.
+   */
+  async startFromCase(restorationId: string, opts: { pitchMm?: number } = {}): Promise<void> {
+    const document = caseStore.getDocument();
+    const restoration = document.restorations.find((r) => r.id === restorationId);
+    if (!restoration) throw new Error(`bridgeDesign.startFromCase: no restoration ${restorationId}`);
+    if (restoration.type !== 'bridge') throw new NonBridgeRestorationError(restoration.type);
+    if (restoration.targetNodeId === null) throw new BridgeStageOrderError('abutmentSurfaces', 'noTargetScan');
+    if (!hasAbutmentMargins(restoration)) throw new BridgeStageOrderError('abutmentSurfaces', 'noAbutmentMargins');
+    const targetNode = document.scene.find((n) => n.id === restoration.targetNodeId);
+    const target = targetNode ? caseStore.getMeshRecord(targetNode.meshId) : undefined;
+    if (!targetNode || !target) throw new BridgeCaseInputError('noTargetScan', 'the target scan is not loaded');
+    const gingivaNode = document.scene.find((n) => n.role === 'gingiva');
+    const gingiva = gingivaNode ? caseStore.getMeshRecord(gingivaNode.meshId) : undefined;
+    if (!gingivaNode || !gingiva) {
+      throw new BridgeCaseInputError('noGingivaScan', 'the case has no gingiva-role scan to shape the pontic against');
+    }
+    const pool = this.pool();
+    this.publish({ buildProgress: 0, error: null, errorStage: null, errorKey: null, errorDetail: null });
+    try {
+      const built = await buildBridgeCaseGeometry(pool, {
+        restoration,
+        targetScan: { meshId: targetNode.meshId, positions: target.positions, indices: target.indices },
+        gingiva: { meshId: gingivaNode.meshId, positions: gingiva.positions, indices: gingiva.indices },
+        profile: resolveFullMaterialProfile(document),
+        resolvePonticTemplate: (fdi) =>
+          resolveLibraryTooth(fdi, {
+            serverStatus: () => useServerStatusStore.getState().status,
+            fetch: this.testFetch ?? ((input, init) => globalThis.fetch(input, init)),
+            pool,
+          }),
+        ...(opts.pitchMm !== undefined ? { pitchMm: opts.pitchMm } : {}),
+        onProgress: (f) => this.publish({ buildProgress: f }),
+      });
+      this.start(restorationId, caseSessionGeometry(built));
+    } catch (error) {
+      this.publish({ buildProgress: null });
+      throw error;
+    }
+  }
+
+  /** TEST-ONLY: the fetch the tooth-library lookup uses (null ⇒ global). */
+  __setToothLibraryFetchForTests(fetchImpl: typeof fetch | null): void {
+    this.testFetch = fetchImpl;
   }
 
   clear(): void {
@@ -386,6 +481,7 @@ class BridgeDesignEngine {
   resetForTests(): void {
     this.session = null;
     this.testPool = null;
+    this.testFetch = null;
     useBridgeStore.getState().reset();
   }
 
@@ -421,6 +517,12 @@ class BridgeDesignEngine {
       const gate = bridgeWorkflowGates(restoration).find((g) => g.stage === stage);
       throw new BridgeStageOrderError(stage, gate?.reason ?? 'blocked');
     }
+  }
+
+  /** The committed upstream stage hashes a stage consumed (journal inputs). */
+  private upstreamHashes(fields: readonly (keyof Restoration['stages'])[]): string[] {
+    const stages = this.restoration().stages;
+    return fields.map((f) => stages[f]).filter((h): h is string => h !== undefined);
   }
 
   private async hashMesh(positions: Float64Array, indices: Uint32Array): Promise<string> {
@@ -471,7 +573,7 @@ class BridgeDesignEngine {
 
     const ponticHash = restoration.stages.bridgePontic;
     if (ponticHash !== undefined) {
-      const op = this.findDecisionOp('bridge-pontic', restoration.id, ponticHash);
+      const op = this.findDecisionOp(BRIDGE_PONTIC_OP, restoration.id, ponticHash);
       const style = typeof op?.params.style === 'string' ? op.params.style : null;
       const captured = style !== null ? session.geometry.ponticReliefByStyle[style] : undefined;
       if (
@@ -493,7 +595,7 @@ class BridgeDesignEngine {
     const connectorsHash = restoration.stages.bridgeConnectors;
     if (connectorsHash !== undefined) {
       const op = this.findDecisionOp('bridge-connectors', restoration.id, connectorsHash);
-      session.persistedConnectors = op ? parsePersistedConnectors(op.params.connectors, session.geometry) : null;
+      session.persistedConnectors = op ? parsePersistedConnectors(op.params.connectors, activeConnectors(session)) : null;
     }
   }
 
@@ -519,7 +621,7 @@ class BridgeDesignEngine {
       );
     }
     const semiAxisByLabel: Record<string, number> = {};
-    for (const c of session.geometry.connectors) {
+    for (const c of activeConnectors(session)) {
       const decision = persisted.find((p) => p.label === c.label)!;
       if (decision.semiAxisMm !== c.semiAxisMm) semiAxisByLabel[c.label] = decision.semiAxisMm;
     }
@@ -527,7 +629,7 @@ class BridgeDesignEngine {
       onProgress: (f) => this.publish({ progress: f }),
     });
     const profile = resolveFullMaterialProfile(caseStore.getDocument());
-    const committed: CommittedConnector[] = session.geometry.connectors.map((c, i) => {
+    const committed: CommittedConnector[] = activeConnectors(session).map((c, i) => {
       const measured = result.connectors[i]!;
       const decision = persisted.find((p) => p.label === c.label)!;
       return {
@@ -597,7 +699,7 @@ class BridgeDesignEngine {
       if (finalHash === undefined) throw new BridgeStageOrderError('qc', 'assemblyIncomplete');
       if (!session.connectors) throw new BridgeStageOrderError('qc', 'connectorsIncomplete');
       const solids = [
-        ...session.geometry.units.map((u) => ({ positions: u.mesh.positions, indices: u.mesh.indices })),
+        ...activeUnits(session).map((u) => ({ positions: u.mesh.positions, indices: u.mesh.indices })),
         ...session.connectors.map((c) => ({ positions: c.positions, indices: c.indices })),
       ];
       const result = await this.pool().run('bridgeAssembly', { solids }, { onProgress: (f) => this.publish({ progress: f }) });
@@ -693,13 +795,27 @@ class BridgeDesignEngine {
         'abutmentSurfaces',
         'bridgeAbutmentSurfaces',
         contentHash,
-        'bridge-abutment-surfaces',
+        BRIDGE_ABUTMENT_SURFACES_OP,
         {
+          geometrySource: session.geometry.source,
           sharedAxis: session.geometry.sharedAxis.direction,
           sharedAxisAcceptable: session.geometry.sharedAxis.acceptable,
           perAbutmentMarginFitMm: abutments.map((u) => ({ label: u.label, marginFitMm: u.marginFitMm })),
+          ...(session.geometry.caseBuild
+            ? {
+                sharedAxisUndercut: session.geometry.caseBuild.sharedAxisUndercut,
+                construction: session.geometry.caseBuild.construction,
+              }
+            : {}),
         },
-        [],
+        // Case path: the prep scan the intaglios were built on, then every
+        // abutment's confirmed margin loop (arch order).
+        session.geometry.caseBuild
+          ? [
+              session.geometry.caseBuild.inputHashes.targetScan,
+              ...abutments.map((u) => session.geometry.caseBuild!.inputHashes.marginLoops[u.label]!),
+            ]
+          : [],
       );
       // The persisted hash was just produced from THIS session's captured
       // surfaces — no reload re-verification needed until the next start().
@@ -731,17 +847,40 @@ class BridgeDesignEngine {
     if (!relief) throw new BridgeStageOrderError('pontic', `no captured relief for style "${style}"`);
     this.publish({ busyStage: 'pontic', progress: 0, error: null, errorStage: null, errorKey: null, errorDetail: null });
     try {
-      const ponticUnit = session.geometry.units.find((u) => u.kind === 'pontic');
+      const ponticUnit = styleGeometry(session.geometry, style).units.find((u) => u.kind === 'pontic');
       if (!ponticUnit) throw new BridgeStageOrderError('pontic', 'no pontic unit in captured geometry');
       const contentHash = await this.hashMesh(ponticUnit.mesh.positions, ponticUnit.mesh.indices);
       session.pontic = { style, configuredReliefMm: relief.configuredReliefMm, maxAbsDeviationMm: relief.maxAbsDeviationMm };
+      const build = session.geometry.caseBuild;
+      const abutmentSurfacesHash = this.restoration().stages.bridgeAbutmentSurfaces;
       this.commitStage(
         'pontic',
         'bridgePontic',
         contentHash,
-        'bridge-pontic',
-        { style, configuredReliefMm: relief.configuredReliefMm, maxAbsDeviationMm: relief.maxAbsDeviationMm },
-        [],
+        BRIDGE_PONTIC_OP,
+        {
+          style,
+          configuredReliefMm: relief.configuredReliefMm,
+          maxAbsDeviationMm: relief.maxAbsDeviationMm,
+          geometrySource: session.geometry.source,
+          ...(build
+            ? {
+                asBuiltDeviationMm: build.asBuiltDeviationByStyle[style] ?? null,
+                crestFit: build.crestFit,
+                ponticTemplate: build.ponticTemplate,
+              }
+            : {}),
+        },
+        // Case path: the gingiva scan the crest and the relief were measured
+        // on, the abutment surfaces the body was placed between, and the
+        // library asset (when the body is one).
+        build
+          ? [
+              build.inputHashes.gingiva,
+              ...(abutmentSurfacesHash !== undefined ? [abutmentSurfacesHash] : []),
+              ...(build.inputHashes.ponticTemplate !== null ? [build.inputHashes.ponticTemplate] : []),
+            ]
+          : [],
       );
       this.publish({
         busyStage: null,
@@ -768,7 +907,7 @@ class BridgeDesignEngine {
   private connectorPayload(semiAxisByLabel: Readonly<Record<string, number>>): JobPayloadMap['bridgeConnectors'] {
     const session = this.requireSession();
     return {
-      connectors: session.geometry.connectors.map((c) => {
+      connectors: activeConnectors(session).map((c) => {
         const override = semiAxisByLabel[c.label];
         const profileFlat =
           override !== undefined ? ellipseProfileFlat(override, c.segments) : [...c.profileFlat];
@@ -790,7 +929,7 @@ class BridgeDesignEngine {
   ): BridgeConnectorReadout[] {
     const session = this.requireSession();
     const profile = resolveFullMaterialProfile(caseStore.getDocument());
-    return session.geometry.connectors.map((c, i) => {
+    return activeConnectors(session).map((c, i) => {
       const measured = result.connectors[i]!;
       const semiAxisMm = semiAxisByLabel[c.label] ?? c.semiAxisMm;
       const targetMm2 = connectorTargetMm2(c.teeth, profile);
@@ -848,7 +987,7 @@ class BridgeDesignEngine {
       });
       const readouts = this.connectorReadouts(result, semiAxisByLabel);
       const profile = resolveFullMaterialProfile(caseStore.getDocument());
-      const committed: CommittedConnector[] = session.geometry.connectors.map((c, i) => {
+      const committed: CommittedConnector[] = activeConnectors(session).map((c, i) => {
         const measured = result.connectors[i]!;
         return {
           label: c.label,
@@ -871,7 +1010,7 @@ class BridgeDesignEngine {
         {
           connectors: committed.map((c) => ({ label: c.label, semiAxisMm: c.semiAxisMm, minAreaMm2: c.minAreaMm2, targetMm2: c.targetMm2 })),
         },
-        [],
+        this.upstreamHashes(['bridgeAbutmentSurfaces', 'bridgePontic']),
       );
       this.publish({ busyStage: null, progress: 1, connectors: { connectors: readouts }, liveConnectors: { connectors: readouts } });
       this.refreshGates();
@@ -942,7 +1081,7 @@ class BridgeDesignEngine {
       await this.ensureConnectorsMaterialized(session, 'assembly');
       if (!session.connectors) throw new BridgeStageOrderError('assembly', 'connectorsIncomplete');
       const solids = [
-        ...session.geometry.units.map((u) => ({ positions: u.mesh.positions, indices: u.mesh.indices })),
+        ...activeUnits(session).map((u) => ({ positions: u.mesh.positions, indices: u.mesh.indices })),
         ...session.connectors.map((c) => ({ positions: c.positions, indices: c.indices })),
       ];
       const result = await this.pool().run('bridgeAssembly', { solids }, { onProgress: (f) => this.publish({ progress: f }) });
@@ -960,7 +1099,7 @@ class BridgeDesignEngine {
           volumeMm3: result.volumeMm3,
           triangleCount: result.triangleCount,
         },
-        [],
+        this.upstreamHashes(['bridgeAbutmentSurfaces', 'bridgePontic', 'bridgeConnectors']),
       );
       this.publish({
         busyStage: null,
@@ -994,10 +1133,11 @@ class BridgeDesignEngine {
     // ride as-is: those profile values are identical across both shipped
     // profiles, so they equal the server-resolved authority regardless.
     const profile = resolveFullMaterialProfile(document);
+    const exclusion = marginExclusionFor(session.geometry, profile);
     return {
       assembledPositions: session.assembled.positions,
       assembledIndices: session.assembled.indices,
-      units: session.geometry.units.map((u) => ({
+      units: activeUnits(session).map((u) => ({
         label: u.label,
         kind: u.kind,
         innerPositions: u.inner.positions,
@@ -1006,9 +1146,10 @@ class BridgeDesignEngine {
         outerIndices: u.outer.indices,
         insertionAxis: u.insertionAxis,
         marginLoopFlat: flattenLoop(u.marginLoop),
+        ...(exclusion !== undefined ? { marginExclusionMm: exclusion } : {}),
         ...(u.fitRegion ? { fitRegion: u.fitRegion } : {}),
       })),
-      dies: session.geometry.units
+      dies: activeUnits(session)
         .filter((u) => u.die)
         .map((u) => ({ positions: u.die!.positions, indices: u.die!.indices })),
       connectors: session.connectors.map((c) => ({ label: c.label, minAreaMm2: c.minAreaMm2, teeth: c.teeth, targetMm2: c.targetMm2 })),
@@ -1021,7 +1162,9 @@ class BridgeDesignEngine {
         maxAbsDeviationMm: session.pontic.maxAbsDeviationMm,
         style: session.pontic.style,
         configuredReliefMm: session.pontic.configuredReliefMm,
+        ...crestFitFor(session.geometry),
       },
+      ...(session.geometry.source === 'demo' ? { geometryProvenance: 'demo-fixture' as const } : {}),
       kernelVersion: KERNEL_VERSION,
       profileVersion,
       journalHash: session.assembled.contentHash,
@@ -1151,7 +1294,7 @@ class BridgeDesignEngine {
     // export 409).
     const profile = resolveFullMaterialProfile(caseStore.getDocument());
     return {
-      units: session.geometry.units.map((u) => ({
+      units: activeUnits(session).map((u) => ({
         label: u.label,
         kind: u.kind,
         innerSurfaceMesh: meshJson(u.inner.positions, u.inner.indices),
@@ -1170,7 +1313,7 @@ class BridgeDesignEngine {
             }
           : {}),
       })),
-      dieSolids: session.geometry.units
+      dieSolids: activeUnits(session)
         .filter((u) => u.die)
         .map((u) => meshJson(u.die!.positions, u.die!.indices)),
       connectors: session.connectors.map((c) => ({
@@ -1193,7 +1336,12 @@ class BridgeDesignEngine {
         maxAbsDeviationMm: session.pontic.maxAbsDeviationMm,
         style: session.pontic.style,
         configuredReliefMm: session.pontic.configuredReliefMm,
+        ...crestFitFor(session.geometry),
       },
+      // The per-unit band is one bridge-level value the server verifies
+      // against the profile (a per-unit band is a forbidden free knob).
+      ...(marginExclusionFor(session.geometry, profile) !== undefined ? { marginExclusionMm: profile.marginExclusionMm } : {}),
+      ...(session.geometry.source === 'demo' ? { geometryProvenance: 'demo-fixture' as const } : {}),
     };
   }
 
@@ -1232,10 +1380,91 @@ function flattenLoop(points: readonly Vec3[]): Float64Array {
   return out;
 }
 
+/** The session geometry of a bridge built from the case: the abutments and
+ * the hygienic variant as the default units (the committed style selects its
+ * own pontic + connectors through `styleVariants`). */
+function caseSessionGeometry(built: CaseBridgeGeometry): BridgeSessionGeometry {
+  const byLabel = new Map(built.abutments.map((u) => [u.label, u]));
+  const unitsFor = (style: PonticStyleName): BridgeSessionUnit[] =>
+    built.archOrder.map((label) => (label === String(built.ponticTooth) ? built.variants[style].pontic : byLabel.get(label)!));
+  const styleVariants: NonNullable<BridgeSessionGeometry['styleVariants']> = {};
+  const ponticReliefByStyle: BridgeSessionGeometry['ponticReliefByStyle'] = {};
+  const asBuiltDeviationByStyle: Record<string, number> = {};
+  for (const style of BRIDGE_PONTIC_STYLES) {
+    const v = built.variants[style];
+    styleVariants[style] = { pontic: v.pontic, connectors: v.connectors };
+    ponticReliefByStyle[style] = { configuredReliefMm: v.configuredReliefMm, maxAbsDeviationMm: v.maxAbsDeviationMm };
+    asBuiltDeviationByStyle[style] = v.asBuiltDeviationMm;
+  }
+  return {
+    source: 'case',
+    sharedAxis: {
+      direction: built.sharedAxis.direction,
+      acceptable: built.sharedAxis.acceptable,
+      perAbutment: built.sharedAxis.perAbutment.map((a) => ({ label: a.label, marginFitMm: a.marginFitMm })),
+    },
+    units: unitsFor('hygienic'),
+    connectors: built.variants.hygienic.connectors,
+    ponticReliefByStyle,
+    styleVariants,
+    caseBuild: {
+      inputHashes: built.inputHashes,
+      crestFit: built.crestFit,
+      ponticTemplate: built.ponticTemplate,
+      asBuiltDeviationByStyle,
+      sharedAxisUndercut: built.sharedAxis.perAbutment.map((a) => ({
+        label: a.label,
+        undercutTriangleCount: a.undercutTriangleCount,
+        maxDepthMm: a.maxDepthMm,
+      })),
+      construction: built.construction,
+    },
+  };
+}
+
+/** The pontic unit + connectors for `style`: the case path's per-style
+ * variant, else the (style-independent) captured geometry. */
+function styleGeometry(
+  geometry: BridgeSessionGeometry,
+  style: PonticStyleName | null,
+): { units: readonly BridgeSessionUnit[]; connectors: readonly BridgeSessionConnector[] } {
+  const variant = style !== null ? geometry.styleVariants?.[style] : undefined;
+  if (!variant) return { units: geometry.units, connectors: geometry.connectors };
+  return {
+    units: geometry.units.map((u) => (u.kind === 'pontic' ? variant.pontic : u)),
+    connectors: variant.connectors,
+  };
+}
+
+/** The units as committed in this session (the pontic of the chosen style). */
+function activeUnits(session: Session): readonly BridgeSessionUnit[] {
+  return styleGeometry(session.geometry, session.pontic?.style ?? null).units;
+}
+
+/** The connector frames placed against the active units. */
+function activeConnectors(session: Session): readonly BridgeSessionConnector[] {
+  return styleGeometry(session.geometry, session.pontic?.style ?? null).connectors;
+}
+
+/** The margin-band exclusion of every unit's thickness gate: the profile's
+ * finish-line feather for a bridge built from the case (its abutment shells
+ * feather to the margin, as a crown's do — engine/crownDesign.ts); none for the
+ * demonstration bridge, whose closed-form units have a flat rim (so its
+ * report keeps its measured values). */
+function marginExclusionFor(geometry: BridgeSessionGeometry, profile: MaterialProfile): number | undefined {
+  return geometry.source === 'case' ? profile.marginExclusionMm : undefined;
+}
+
+/** The fitted crest's @errorBound for the pontic relief gate (case path). */
+function crestFitFor(geometry: BridgeSessionGeometry): { crestFit?: { radialResidualMaxMm: number; axisSpreadRad: number } } {
+  const fit = geometry.caseBuild?.crestFit;
+  return fit ? { crestFit: { radialResidualMaxMm: fit.radialResidualMaxMm, axisSpreadRad: fit.axisSpreadRad } } : {};
+}
+
 /** The single shared bridge-design controller for the whole client. */
 export const bridgeDesignEngine = new BridgeDesignEngine();
 
 /** Re-exports so the panel can subscribe without importing the state modules
  * twice (mirrors crown/cavityDesign.ts's re-export style). */
-export { useBridgeStore };
+export { useBridgeStore, BridgeCaseInputError };
 export { useCaseStore };

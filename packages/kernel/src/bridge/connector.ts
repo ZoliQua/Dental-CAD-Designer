@@ -69,6 +69,8 @@ import type { Vec3 } from '../bvh/geometry.ts';
 import { orientNormalsConsistently } from '../intake/orient.ts';
 import { normalizePlane, type Plane } from '../section/plane.ts';
 import { sectionMesh } from '../section/polyline.ts';
+import { buildBvh } from '../bvh/build.ts';
+import { raycast } from '../bvh/raycast.ts';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -399,6 +401,90 @@ export function buildConnectorFrame(originMm: Vec3, axisMm: Vec3, spanMm: number
   const plane: Plane = { point: originMm, normal: axisMm };
   const basis = normalizePlane(plane); // throws DegeneratePlaneError on a zero axis
   return { originMm, axis: basis.normal, e1: basis.e1, e2: basis.e2, spanMm };
+}
+
+// ---------------------------------------------------------------------------
+// Auto-placement between two unit solids (Phase 9 Task 6)
+// ---------------------------------------------------------------------------
+
+/** Thrown when the line between two units' centroids does not leave one unit
+ * and enter the other (the units are not side by side). */
+export class ConnectorPlacementError extends Error {
+  constructor(message: string) {
+    super(`placeConnectorBetweenUnits: ${message}`);
+    this.name = 'ConnectorPlacementError';
+  }
+}
+
+export interface PlacedConnectorFrame {
+  readonly originMm: Vec3;
+  readonly axisMm: Vec3;
+  readonly spanMm: number;
+  /** Ray parameter (mm from unit A's centroid) where the line leaves A. */
+  readonly exitAMm: number;
+  /** Ray parameter (mm from unit A's centroid) where the line enters B. */
+  readonly entryBMm: number;
+  /** Unit centroids (vertex means) the axis runs between. */
+  readonly centroidAMm: Vec3;
+  readonly centroidBMm: Vec3;
+}
+
+function vertexCentroid(mesh: IndexedMesh): Vec3 {
+  const p = mesh.positions;
+  const n = p.length / 3;
+  let sx = 0;
+  let sy = 0;
+  let sz = 0;
+  for (let i = 0; i < p.length; i += 3) {
+    sx += p[i]!;
+    sy += p[i + 1]!;
+    sz += p[i + 2]!;
+  }
+  return [sx / n, sy / n, sz / n];
+}
+
+/**
+ * Places a connector between two unit solids: the axis runs from unit A's
+ * vertex centroid toward unit B's (the cad-pipeline connectors stage's axis
+ * rule), and the bar spans from `overlapMm` inside A's surface (where the axis
+ * leaves A) to `overlapMm` inside B's (where it enters B) — the closed-form
+ * bridge fixture's "penetrate the proximal wall by the overlap" construction,
+ * measured on the actual surfaces. Unlike the stage's fixed `spanFraction`, the
+ * ends never reach farther into a unit than `overlapMm`, so a connector cannot
+ * reach a crown's intaglio pocket through its wall (the wall must still be
+ * thicker than `overlapMm` there — seating and margin fit re-check it).
+ * Deterministic (BVH ray casts, lowest-index tie-break).
+ *
+ * @throws {ConnectorPlacementError} when the axis does not cross A's surface
+ * toward B or B's toward A, or the centroids coincide.
+ */
+export function placeConnectorBetweenUnits(unitA: IndexedMesh, unitB: IndexedMesh, overlapMm: number): PlacedConnectorFrame {
+  if (!(Number.isFinite(overlapMm) && overlapMm > 0)) {
+    throw new RangeError(`placeConnectorBetweenUnits: overlapMm must be finite and > 0, got ${overlapMm}`);
+  }
+  const ca = vertexCentroid(unitA);
+  const cb = vertexCentroid(unitB);
+  const v: Vec3 = [cb[0] - ca[0], cb[1] - ca[1], cb[2] - ca[2]];
+  const length = Math.hypot(v[0], v[1], v[2]);
+  if (!(length > 0)) throw new ConnectorPlacementError('the two unit centroids coincide');
+  const d: Vec3 = [v[0] / length, v[1] / length, v[2] / length];
+  const back: Vec3 = [-d[0], -d[1], -d[2]];
+  // Where the axis leaves A: the first hit on A of the ray from B's centroid back.
+  const hitA = raycast(unitA, buildBvh(unitA), cb, back);
+  // Where it enters B: the first hit on B of the ray from A's centroid.
+  const hitB = raycast(unitB, buildBvh(unitB), ca, d);
+  if (!hitA || hitA.distance >= length) {
+    throw new ConnectorPlacementError("the centroid axis does not leave unit A's surface toward unit B");
+  }
+  if (!hitB || hitB.distance >= length) {
+    throw new ConnectorPlacementError("the centroid axis does not enter unit B's surface from unit A");
+  }
+  const exitAMm = length - hitA.distance;
+  const entryBMm = hitB.distance;
+  const t0 = Math.min(exitAMm, entryBMm) - overlapMm;
+  const t1 = Math.max(exitAMm, entryBMm) + overlapMm;
+  const originMm: Vec3 = [ca[0] + d[0] * t0, ca[1] + d[1] * t0, ca[2] + d[2] * t0];
+  return { originMm, axisMm: d, spanMm: t1 - t0, exitAMm, entryBMm, centroidAMm: ca, centroidBMm: cb };
 }
 
 // ---------------------------------------------------------------------------

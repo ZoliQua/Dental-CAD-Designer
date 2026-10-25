@@ -41,11 +41,13 @@ export function transferablesOf(value: unknown): Transferable[] {
   if (value === null || typeof value !== 'object') {
     return [];
   }
-  const transferables: Transferable[] = [];
+  // A Set: two fields may view the same buffer (a job returning an input
+  // surface unchanged), and a transfer list must not name a buffer twice.
+  const transferables = new Set<ArrayBuffer>();
   for (const field of Object.values(value as Record<string, unknown>)) {
     if (ArrayBuffer.isView(field)) {
-      transferables.push(field.buffer as ArrayBuffer);
+      transferables.add(field.buffer as ArrayBuffer);
     }
   }
-  return transferables;
+  return [...transferables];
 }

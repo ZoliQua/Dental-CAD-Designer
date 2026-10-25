@@ -79,6 +79,11 @@ export interface ConstructShellResultPayload {
   healOuterErrorBoundMm?: number;
   /** Per-inner-vertex thickness heatmap (mm). */
   thicknessHeatmap: Float64Array;
+  /** The outer surface the shell actually stitched (a closed tooth trimmed to
+   * the margin) — the outer surface the thickness above was measured against;
+   * a bridge abutment unit's QC outer surface (Phase 9 Task 6). */
+  outerUsedPositions: Float64Array;
+  outerUsedIndices: Uint32Array;
 }
 
 function rebuildLoop(flat: Float64Array | undefined): Vec3[] | undefined {
@@ -189,5 +194,7 @@ export const constructShellJob = async (
     autoThickenMaxAppliedMm,
     ...(healOuterErrorBoundMm !== undefined ? { healOuterErrorBoundMm } : {}),
     thicknessHeatmap: thickness.perInnerVertexMm,
+    outerUsedPositions: shell.outerUsedMesh.positions,
+    outerUsedIndices: shell.outerUsedMesh.indices,
   };
 };

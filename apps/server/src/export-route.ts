@@ -282,6 +282,10 @@ export interface BridgeExportQcContext {
     configuredReliefMm: number;
     crestFit?: { radialResidualMaxMm: number; axisSpreadRad: number };
   };
+  /** Phase 9 Task 6 — one bridge-level thickness band (profile-pinned). */
+  marginExclusionMm?: number;
+  /** ADR-022 — `demo-fixture` fails every gate closed (absent ⇒ case). */
+  geometryProvenance?: GeometryProvenance;
 }
 
 export type ExportQcContext = CrownExportQcContext | InlayExportQcContext | BridgeExportQcContext;
@@ -391,7 +395,9 @@ async function runExportQc(
     const b = ctx as BridgeExportQcContext;
     const input: RunBridgeQcInput = {
       assembledSolid: reimport.mesh,
-      units: b.units.map(toBridgeUnit),
+      units: b.units.map((u) =>
+        toBridgeUnit(b.marginExclusionMm !== undefined ? { ...u, marginExclusionMm: b.marginExclusionMm } : u),
+      ),
       dieSolids: b.dieSolids.map(toIndexedMesh),
       connectors: b.connectors.map(toBridgeConnector),
       minWallThicknessMm: b.minWallThicknessMm,
@@ -405,6 +411,7 @@ async function runExportQc(
         configuredReliefMm: b.ponticRelief.configuredReliefMm,
         ...(b.ponticRelief.crestFit ? { crestFit: b.ponticRelief.crestFit } : {}),
       },
+      ...(b.geometryProvenance !== undefined ? { geometryProvenance: b.geometryProvenance } : {}),
       ...meta,
     };
     return runBridgeQc(input);

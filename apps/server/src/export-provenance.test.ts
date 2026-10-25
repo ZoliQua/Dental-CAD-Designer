@@ -1,7 +1,14 @@
 // ADR-022 — the export route refuses a `case` provenance claim the saved case
 // cannot back (export-provenance.ts). Pure unit tests over plain contexts.
 import { describe, expect, it } from 'vitest';
-import { ANTAGONIST_CONFIRM_OP, NEIGHBOUR_CAPTURE_OP, type CaseDocument, type Operation } from '@dqcad/shared-types';
+import {
+  ANTAGONIST_CONFIRM_OP,
+  BRIDGE_ABUTMENT_SURFACES_OP,
+  BRIDGE_PONTIC_OP,
+  NEIGHBOUR_CAPTURE_OP,
+  type CaseDocument,
+  type Operation,
+} from '@dqcad/shared-types';
 import { ExportRejectionError } from './export-validation.js';
 import { assertTraceableProvenance, untraceableProvenanceClaims } from './export-provenance.js';
 
@@ -98,8 +105,57 @@ describe('untraceableProvenanceClaims', () => {
     ).toEqual(['coverage:divider']);
   });
 
-  it('the bridge branch is out of scope (Phase 9 Task 6)', () => {
-    expect(untraceableProvenanceClaims({ units: [], contacts: [proximal()] }, doc([]), R)).toEqual([]);
+});
+
+describe('untraceableProvenanceClaims — the bridge built from the case (Phase 9 Task 6)', () => {
+  /** A saved case whose bridge stages were sealed by `ops`. */
+  function bridgeDoc(ops: Operation[], stages = { bridgeAbutmentSurfaces: 'stage-abut', bridgePontic: 'stage-pontic' }): CaseDocument {
+    return {
+      scene: [
+        { id: 'target', meshId: 'mesh-target', role: 'upperJaw' },
+        { id: 'gum', meshId: 'mesh-gum', role: 'gingiva' },
+      ],
+      restorations: [{ id: R, targetNodeId: 'target', stages }],
+      history: ops,
+    } as unknown as CaseDocument;
+  }
+  const abutOp = (source: string, input = 'mesh-target', output = 'stage-abut'): Operation => ({
+    id: 'a',
+    name: BRIDGE_ABUTMENT_SURFACES_OP,
+    params: { restorationId: R, geometrySource: source },
+    inputHashes: [input],
+    outputHashes: [output],
+    kernelVersion: 'k',
+    timestamp: 't',
+  });
+  const ponticOp = (source: string, input = 'mesh-gum', output = 'stage-pontic'): Operation => ({
+    id: 'p',
+    name: BRIDGE_PONTIC_OP,
+    params: { restorationId: R, geometrySource: source },
+    inputHashes: [input],
+    outputHashes: [output],
+    kernelVersion: 'k',
+    timestamp: 't',
+  });
+  const claims = (ctx: Record<string, unknown>, d: CaseDocument) => untraceableProvenanceClaims({ units: [], ...ctx }, d, R).map((c) => c.input);
+
+  it('accepts a case claim backed by the sealing ops of the current stages', () => {
+    expect(claims({}, bridgeDoc([abutOp('case'), ponticOp('case')]))).toEqual([]);
+  });
+
+  it('refuses a case claim from the demonstration bridge, a missing scan, or a superseded op', () => {
+    expect(claims({}, bridgeDoc([abutOp('demo'), ponticOp('demo')]))).toEqual(['bridge:abutmentSurfaces', 'bridge:pontic']);
+    expect(claims({}, bridgeDoc([abutOp('case', 'mesh-other'), ponticOp('case', 'mesh-other')]))).toEqual([
+      'bridge:abutmentSurfaces',
+      'bridge:pontic',
+    ]);
+    // An op that sealed an older stage hash does not back the current stage.
+    expect(claims({}, bridgeDoc([abutOp('case', 'mesh-target', 'old'), ponticOp('case')]))).toEqual(['bridge:abutmentSurfaces']);
+    expect(claims({}, bridgeDoc([]))).toEqual(['bridge:abutmentSurfaces', 'bridge:pontic']);
+  });
+
+  it('a declared non-case provenance is always accepted — its gates fail closed', () => {
+    expect(claims({ geometryProvenance: 'demo-fixture' }, bridgeDoc([]))).toEqual([]);
   });
 });
 
