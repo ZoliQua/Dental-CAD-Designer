@@ -1,6 +1,6 @@
 # ADR-023 — A closed prep die extracted from an open scan; library anatomy fitted to the margin
 
-**Status:** Proposed (2026-10-27; Phase 10 implements it — see the Phase 10 plan)
+**Status:** Accepted (2026-10-27; Phase 10 implements it — Task 1 lands Decision 1's op; see the Phase 10 plan)
 **Date:** 2026-10
 **Relates:** ADR-022 (case-derived design inputs, provenance), ADR-007
 (morph–shell coupling), ADR-013 (closed-form abutment scoping), ADR-017

@@ -70,6 +70,26 @@ byte-change is an alarm, never a regeneration.
 - `KERNEL_VERSION` 0.32.0 and a changelog entry. Existing pins stay
   byte-identical, which a full golden run proves.
 
+**Landed (2026-10-27, kernel 0.32.0).** As planned, plus one finding from the
+real scan:
+- **Rim fold repair.** On real `arch-case-01` tooth 12, the cut rim folds in
+  projection: the scan turns under itself along the axis, so two rim edges
+  cross. The op now drops the kept rim triangles implicated in a crossing
+  rim edge or a degenerate or self-intersecting closure face, and rebuilds the
+  region, up to `PREP_DIE_MAX_FOLD_REPAIR_ROUNDS` (64) rounds. The count is
+  returned (`foldTrianglesDropped`), and the certificate is measured on the
+  final rim. A synthetic regression (one rim vertex moved past its
+  neighbour) fails without the repair.
+- **The floor cap** is a strict ear clip. A vertex within 1 nm of a
+  candidate ear blocks it, and a stall throws; it never falls back to a fan.
+- **Real `arch-case-01`** (`test/golden/prep-die-real.test.ts`, gated by
+  `RUN_PREP_DIE_REAL=1`): closed, certified dies for teeth 11, 12 and 21,
+  with clearance 0.73, 0.51 and 0.66 mm, each built in under 0.5 s.
+- **Golden proof.** The whole golden suite passed at 0.31.0 with the new
+  code. At 0.32.0 the five `*-qc` pins and the server traceability golden
+  moved, version-only: replacing "0.32.0" with "0.31.0" reproduces the old
+  hash. Full Vitest: 3789 passed, 24 skipped; lint and typecheck clean.
+
 ## Task 2 — The crown designs on the extracted die *(no new geometry)*
 
 - Worker job `extractPrepDie`, with progress and cancellation and a

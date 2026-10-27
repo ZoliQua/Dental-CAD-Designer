@@ -55,7 +55,7 @@ const µm = (mm: number): string => `${(mm * 1000).toFixed(3)} µm`;
 // change (bump + changelog), never a silent regen (the WASM union is
 // manifoldVersion-guarded, the crown/cavity-acceptance precedent).
 // ---------------------------------------------------------------------------
-const EXPECTED_KERNEL_VERSION = '0.31.0';
+const EXPECTED_KERNEL_VERSION = '0.32.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 function installedManifoldVersion(): string {
   const pkg = JSON.parse(
@@ -107,7 +107,11 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // tri-tri predicate's coplanar fix changes no gate of this chain (its report had
   // no near-coplanar pair); every geometry stage pin above BYTE-IDENTICAL (verified: the
   // whole golden suite passes at 0.30.0 with the fix). Old hash: 08364b8cbaed7f54294acc22ef0235438ecbe00a5fc6986b8105c3dee496b748. See docs/CHANGELOG-kernel.md's [0.31.0] entry.
-  'bridge-fullContour-qc': '1853c3623766e1bea64783e753fa50d9e0184942821c7b1d08e8e63ea21d43d2',
+  // Advanced 0.31.0 → 0.32.0 (Phase 10 Task 1): MECHANICAL, metadata-only — the new
+  // die/extractPrepDie op is not in this chain; hashQcReport tracks the embedded
+  // kernelVersion, every geometry stage pin above BYTE-IDENTICAL (verified: the whole
+  // golden suite passes at 0.31.0 with the new code). Old hash: 1853c3623766e1bea64783e753fa50d9e0184942821c7b1d08e8e63ea21d43d2. See docs/CHANGELOG-kernel.md's [0.32.0] entry.
+  'bridge-fullContour-qc': 'd0110a010d4adb7ca3a01e918b304b0623b76154b7d99d3d1399c2e8e0f6ebb2',
   // --- framework chain (bridge.framework outputs the cut-back unit hashes) ---
   'bridge-framework-abutmentSurfaces':
     '217b2b13d6d41e657f9b652009a4efe1d3c285a6c4fa428b0030eb0c5070cc8c|d64954bd314424813eed60441adc74dce985310d225e5a9702499bc633f7261c',
@@ -138,7 +142,11 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // tri-tri predicate's coplanar fix changes no gate of this chain (its report had
   // no near-coplanar pair); every geometry stage pin above BYTE-IDENTICAL (verified: the
   // whole golden suite passes at 0.30.0 with the fix). Old hash: 4f924c29bb01469c3f2e27ed1849d03692ad31ec7a5e8d7bd0a241de0257629e. See docs/CHANGELOG-kernel.md's [0.31.0] entry.
-  'bridge-framework-qc': '4b6dbd0149ef14317d7d39ac8df151b70ad39b10babcbdf13886d850b3a6425a',
+  // Advanced 0.31.0 → 0.32.0 (Phase 10 Task 1): MECHANICAL, metadata-only — the new
+  // die/extractPrepDie op is not in this chain; hashQcReport tracks the embedded
+  // kernelVersion, every geometry stage pin above BYTE-IDENTICAL (verified: the whole
+  // golden suite passes at 0.31.0 with the new code). Old hash: 4b6dbd0149ef14317d7d39ac8df151b70ad39b10babcbdf13886d850b3a6425a. See docs/CHANGELOG-kernel.md's [0.32.0] entry.
+  'bridge-framework-qc': '8b3b980216277b37eb9871d42588d310972505cd577b3271b00f661b22124506',
 };
 
 const FULL_GATE_ORDER = [

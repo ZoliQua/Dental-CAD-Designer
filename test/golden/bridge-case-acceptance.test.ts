@@ -37,7 +37,7 @@ import type { PonticStyleName } from '../../apps/client/src/state/bridgeStore.ts
 import { repoRoot } from '../../scripts/kernel-ops-lib.ts';
 
 const PITCH_MM = 0.06;
-const EXPECTED_KERNEL_VERSION = '0.31.0';
+const EXPECTED_KERNEL_VERSION = '0.32.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 
 const asset = JSON.parse(readFileSync(join(repoRoot, 'apps', 'client', 'src', 'engine', 'archBridgeFixture.asset.json'), 'utf8')) as {

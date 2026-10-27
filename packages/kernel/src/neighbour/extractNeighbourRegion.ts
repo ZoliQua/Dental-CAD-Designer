@@ -443,7 +443,7 @@ function longestEdge(positions: Float64Array, indices: Uint32Array, t: number): 
 }
 
 /** Verbatim submesh of `triangles` (ascending), vertices in first-seen order. */
-function compactSubmesh(
+export function compactSubmesh(
   mesh: IndexedMesh,
   triangles: readonly number[],
 ): { mesh: IndexedMesh; remap: Map<number, number> } {
@@ -477,7 +477,7 @@ function compactSubmesh(
  * pruned, iterated to a fixed point. Returns ascending source triangle
  * indices. Mutates `inSet`.
  */
-function largestComponentWithoutPinches(
+export function largestComponentWithoutPinches(
   mesh: IndexedMesh,
   inSet: Uint8Array,
   candidates: readonly number[],

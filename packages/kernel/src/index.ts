@@ -363,8 +363,16 @@
  * general path (false positives on flat offset walls, false negatives on
  * jittered overlaps). No geometry op changed: geometry + journal-replay pins
  * byte-identical; the acceptance QC pins advance mechanically. See
- * docs/CHANGELOG-kernel.md's `[0.31.0]` entry. */
-export const KERNEL_VERSION = '0.31.0';
+ * docs/CHANGELOG-kernel.md's `[0.31.0]` entry.
+ *
+ * 0.32.0 (Phase 10 Task 1, ADR-023 Decision 1): NEW op — `die/
+ * extractPrepDie.ts` (a closed prep die from the case's open scan: the kept
+ * scan surface verbatim, a synthetic wall + floor closure, rim fold repair,
+ * and a clearance certificate bounding the closure's distance from the
+ * region the intaglio reads). No existing op changed: geometry +
+ * journal-replay pins byte-identical; the acceptance QC pins advance
+ * mechanically. See docs/CHANGELOG-kernel.md's `[0.32.0]` entry. */
+export const KERNEL_VERSION = '0.32.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -1047,3 +1055,19 @@ export {
   type NeighbourRegionOptions,
   type NeighbourRegionResult,
 } from './neighbour/index.ts';
+
+export {
+  extractPrepDie,
+  PREP_DIE_DEFAULT_RADIAL_SKIRT_MM,
+  PREP_DIE_DEFAULT_DEPTH_SKIRT_MM,
+  PREP_DIE_DEFAULT_PROTECT_BAND_MM,
+  PREP_DIE_DEFAULT_FLOOR_GAP_MM,
+  PREP_DIE_DEFAULT_REQUIRED_CLEARANCE_MM,
+  PREP_DIE_MARGIN_ON_SURFACE_TOLERANCE_MM,
+  PREP_DIE_MAX_FOLD_REPAIR_ROUNDS,
+  PrepDieRegionError,
+  PrepDieInvalidError,
+  PrepDieClearanceError,
+  type PrepDieOptions,
+  type PrepDieResult,
+} from './die/index.ts';

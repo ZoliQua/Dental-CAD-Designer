@@ -59,6 +59,43 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.32.0] — Phase 10 Task 1: a closed prep die extracted from an open scan
+
+**New op; no existing op changed. Every geometry stage pin and every
+journal-replay pin is BYTE-IDENTICAL to `[0.31.0]`. This was verified by
+running the whole golden suite at `0.31.0` with the new code. The acceptance
+`*-qc` pins and the server traceability byte-golden advance only because the
+QcReport embeds `kernelVersion`.**
+
+`die/extractPrepDie.ts` (ADR-023 Decision 1) turns the case scan, usually an
+open intraoral surface, into a closed die of the prep alone. The crown's
+intaglio needs a closed die for its signed distance, and the seating gate
+needs one for `crown ∩ die`.
+
+- **The kept surface.** Whole scan triangles, copied verbatim. Their
+  vertices project inside the margin polygon or within `radialSkirtMm`
+  (1.5 mm) of it, and lie no more than `depthSkirtMm` (1.0 mm) below the
+  lowest margin point. The op keeps the largest pinch-free component, which
+  must be bounded by one loop and must carry the margin (within 0.1 µm).
+- **The closure.** Vertical walls from every rim edge down to a floor plane
+  `floorGapMm` (0.5 mm) below the lowest kept vertex, and an ear-clipped
+  planar floor. The solid is validated: watertight, edge-manifold, one
+  component, no degenerate triangle, the geometric self-intersection scan,
+  positive volume, and a valid halfedge structure.
+- **Rim fold repair.** Where the scan turns under itself at the cut
+  (arch-case-01 tooth 12), the implicated kept rim triangles are dropped and
+  the region is rebuilt, up to 64 rounds. The count is reported.
+- **The clearance certificate.** A lower bound on the distance from every
+  synthetic triangle to the protected prism. That prism is the margin polygon
+  plus `protectBandMm` (0.5 mm), at and above the lowest margin point, and it
+  contains every cell the intaglio reads. If the certificate is below the
+  caller's required clearance, the op throws. On the closed-form open-arch
+  fixture the certificate, the kept rings and the die volume equal their
+  closed forms. On real arch-case-01 it is 0.73 mm (tooth 11), 0.51 mm
+  (12) and 0.66 mm (21), each computed in under 0.5 s.
+- **`@errorBound`.** The kept surface has zero positional error. The closure
+  is synthetic, and is at least `clearanceMm` from the protected prism.
+
 ## [0.31.0] — Phase 9 Task 7: the triangle–triangle predicate judges near-coplanar pairs in their plane
 
 **No geometry op changed: every geometry stage pin and every journal-replay
