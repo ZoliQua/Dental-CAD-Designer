@@ -172,7 +172,14 @@ function buildShoulderPrepDie(): IndexedMesh {
   const preP2: Vec2 = [p2[0] + CORNER_REFINEMENT_MM, p2[1]];
   const taperDir = normalize2(sub2(p3, p2));
   const postP2: Vec2 = [p2[0] + taperDir[0] * CORNER_REFINEMENT_MM, p2[1] + taperDir[1] * CORNER_REFINEMENT_MM];
-  const profile: Vec2[] = [p0, p1, preP2, p2, postP2, p3];
+  // The gingival collar carries two intermediate rings, as a scan's dense
+  // surface would: the prepared die keeps whole scan triangles above its
+  // depth skirt (1 mm below the margin), so a single 1.5 mm collar band would
+  // be dropped and leave the die's cut rim on the shoulder edge, with no
+  // clearance (Phase 10, ADR-023).
+  const collar1: Vec2 = [GINGIVAL_R_MM, MARGIN_Z_MM / 3];
+  const collar2: Vec2 = [GINGIVAL_R_MM, (2 * MARGIN_Z_MM) / 3];
+  const profile: Vec2[] = [p0, collar1, collar2, p1, preP2, p2, postP2, p3];
   return revolveProfile(profile, SEGMENTS);
 }
 /** Un-indexes an `IndexedMesh` into triangle-soup form for `writeStlBinary`. */
@@ -316,10 +323,14 @@ test.describe.serial('Phase 7 export & manufacturing-handoff workflow (buildable
     if (await acknowledgeButton.isVisible()) await acknowledgeButton.click();
     await expect(confirmedIndicator).toBeVisible({ timeout: 15_000 });
 
-    // Crown design: inner -> anatomy -> morph -> shell -> freeform -> QC.
+    // Crown design: die -> inner -> anatomy -> morph -> shell -> freeform -> QC.
     await page.getByTestId('crown-restoration-select').selectOption({ index: 1 });
     await page.getByTestId('crown-start-button').click();
     await expect(page.getByTestId('crown-panel')).toBeVisible();
+
+    await page.getByTestId('crown-prepdie-run').click();
+    await expect(page.getByTestId('crown-prepdie-readout')).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByTestId('crown-error')).toHaveCount(0);
 
     await page.getByTestId('crown-inner-pitch').fill('150');
     await page.getByTestId('crown-inner-run').click();

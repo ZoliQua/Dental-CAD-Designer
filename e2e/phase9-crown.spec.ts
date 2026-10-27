@@ -26,14 +26,15 @@ import { skipOnboardingTour } from './support';
 // ## What this walkthrough proves — and the honest stop
 //
 // The capture runs on the real scan through the real UI, and each capture is
-// journaled against the scan's mesh. The crown cannot go further on this scan:
-// a full-arch intraoral scan is an OPEN surface (2624 boundary edges on this
-// one), and the intaglio's signed-distance offset needs a closed die (Phase 4:
-// "open-mesh offsets are out of scope"), so the inner-surface stage refuses it
-// visibly. The contact gate measured on these captured neighbours is proven at
-// the pipeline level by test/golden/neighbour-capture-acceptance.test.ts
-// (RUN_NEIGHBOUR_CAPTURE_REAL=1); the open-scan intaglio is a tracked pending
-// (docs/demos/phase-9.md).
+// journaled against the scan's mesh. A full-arch intraoral scan is an OPEN
+// surface (2624 boundary edges on this one), and the intaglio's signed-distance
+// offset needs a closed die. Phase 10 (ADR-023) closes that gap: the
+// "Prepare die" step cuts the closed prep from the scan, with a clearance
+// certificate, and the intaglio is built on it. The later stages on this
+// UNPREPARED tooth are Phase 10 Task 6's (their thickness and seating verdicts
+// honestly fail). The contact gate measured on these captured neighbours is
+// proven at the pipeline level by test/golden/neighbour-capture-acceptance.
+// test.ts (RUN_NEIGHBOUR_CAPTURE_REAL=1).
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 const UPPER_PATH = join(repoRoot, 'test-fixtures', 'real-scans', 'arch-case-01', 'arch-case-01-upperjaw.stl');
@@ -166,12 +167,29 @@ test.describe.serial('Phase 9 — a crown on the real arch-case-01 with captured
     }
   });
 
-  test('the intaglio stage refuses the open arch scan visibly (no stand-in die is substituted)', async () => {
+  test('the die is cut from the open arch scan, certified, and the intaglio is built on it (Phase 10)', async () => {
+    // Before Phase 10 the intaglio refused this open scan ("not watertight").
+    // Now the prepared die closes the prep alone, with its certificate shown.
+    await expect(page.getByTestId('crown-innerSurface-blocked')).toBeVisible();
+    await page.getByTestId('crown-prepdie-run').click();
+    await expect(page.getByTestId('crown-prepdie-readout')).toBeVisible({ timeout: 120_000 });
+    await expect(page.getByTestId('crown-error')).toHaveCount(0);
+    await expect(page.getByTestId('crown-prepdie-certificate')).toContainText('µm');
+    const dieOp = await hook<{ params: Record<string, unknown>; inputHashes: string[]; outputHashes: string[] }>(
+      page,
+      'getLatestOperation',
+      'crown-die-extract',
+    );
+    expect(dieOp.params['restorationId']).toBe(restorationId);
+    expect(dieOp.params['syntheticTriangleCount']).toBeGreaterThan(0);
+    expect(dieOp.params['clearanceMm']).toBeGreaterThanOrEqual(dieOp.params['requiredClearanceMm'] as number);
+    expect(dieOp.inputHashes[0]).toMatch(/^[0-9a-f]{64}$/);
+
     await page.getByTestId('crown-inner-pitch').fill('150');
     await page.getByTestId('crown-inner-run').click();
-    await expect(page.getByTestId('crown-error')).toBeVisible({ timeout: 300_000 });
-    await expect(page.getByTestId('crown-error')).toContainText(/not watertight/);
-    await expect(page.getByTestId('crown-inner-readout')).toHaveCount(0);
-    await expect(page.getByTestId('crown-anatomy-autoplace')).toHaveCount(0);
+    await expect(page.getByTestId('crown-inner-readout')).toBeVisible({ timeout: 300_000 });
+    await expect(page.getByTestId('crown-error')).toHaveCount(0);
+    const innerOp = await hook<{ inputHashes: string[] }>(page, 'getLatestOperation', 'crown-inner-surface');
+    expect(innerOp.inputHashes[0]).toBe(dieOp.outputHashes[0]);
   });
 });

@@ -2,7 +2,7 @@
 //
 // Phase 4 Task 10 — browser-lane (`client-dom`, real Chromium + real
 // kernel-workers Web Worker pool) CRITICAL PATH for the crown-design
-// workflow. Drives the SIX pipeline stages through the actual UI on a SMALL
+// workflow. Drives the SEVEN pipeline stages (the prepared die first) through the actual UI on a SMALL
 // SYNTHETIC CLEAN fixture (a cone-frustum prep die — NOT the real
 // arch-case-01 tooth-11, which is unbuildable at the shell stage per the
 // Task 9 finding), asserting the store + journal update at each stage and
@@ -35,7 +35,11 @@ const REPORT = { weldEpsilonMm: 1e-6, steps: [] };
 const MARGIN_R = 1.2;
 const MARGIN_Z = 0.5;
 
-function setupCrownCase(): string {
+/** The margin is the die's 96 bottom-ring vertices — ON the faceted surface,
+ * as the margin editor's snapped points are (an analytic circle would sit up
+ * to 0.6 µm inside the chords, and the die step requires the margin on the
+ * kept scan surface to 0.1 µm). */
+function setupCrownCase(marginLiftMm = 0): string {
   // Closed cone-frustum prep die (margin ring wider than the occlusal) — the
   // frustum family that reliably stitches into a watertight shell.
   const die = buildFrustum(MARGIN_R, 0.8, MARGIN_Z, 2.0, 96, true, true);
@@ -67,7 +71,7 @@ function setupCrownCase(): string {
 
   const restoration = createRestoration({ type: 'crown', teeth: [11], targetNodeId: dieNode.id });
   caseStore.updateRestoration(
-    { ...restoration, marginLines: { 11: { anchors: [], closed: true, resampledPoints: marginCircleVecs(0, 0, MARGIN_R, MARGIN_Z, 240) } } },
+    { ...restoration, marginLines: { 11: { anchors: [], closed: true, resampledPoints: marginCircleVecs(0, 0, MARGIN_R, MARGIN_Z + marginLiftMm, 96) } } },
     { id: 'op-margin', name: 'margin-edit', params: { tooth: 11 }, inputHashes: [], outputHashes: [], kernelVersion: '0.0.0-test', timestamp: new Date().toISOString() },
   );
   return restoration.id;
@@ -91,13 +95,23 @@ afterEach(() => {
 });
 
 describe('CrownDesignPanel — browser-lane critical path (real WorkerPool, synthetic frustum crown)', () => {
-  it('drives inner → anatomy → morph → shell → QC through the UI, journaling each stage and rendering the QcReport', async () => {
+  it('drives die → inner → anatomy → morph → shell → QC through the UI, journaling each stage and rendering the QcReport', async () => {
     const user = userEvent.setup();
     const id = setupCrownCase();
 
     render(<CrownDesignPanel />);
     await user.selectOptions(screen.getByTestId('crown-restoration-select'), id);
     await user.click(screen.getByTestId('crown-start-button'));
+
+    // Stage 1 — the prepared die. The frustum is closed below its margin,
+    // so the scan closes the die itself: nothing synthetic to certify.
+    expect(screen.getByTestId('crown-innerSurface-blocked')).toBeTruthy();
+    await user.click(screen.getByTestId('crown-prepdie-run'));
+    await waitFor(() => expect(screen.getByTestId('crown-prepdie-readout')).toBeTruthy(), { timeout: 30_000 });
+    expect(screen.getByTestId('crown-prepdie-readout').textContent).toContain('0 synthetic');
+    expect(screen.getByTestId('crown-prepdie-certificate').textContent).toContain('closes the die itself');
+    expect(restoration(id).stages.prepDie).toBeTypeOf('string');
+    expect(historyNames()).toContain('crown-die-extract');
 
     // Stage 1 — inner surface (coarse pitch for browser-lane speed).
     fireEvent.change(screen.getByTestId('crown-inner-pitch'), { target: { value: '100' } });
@@ -167,6 +181,8 @@ describe('CrownDesignPanel — browser-lane critical path (real WorkerPool, synt
     await user.selectOptions(screen.getByTestId('crown-restoration-select'), id);
     await user.click(screen.getByTestId('crown-start-button'));
 
+    await user.click(screen.getByTestId('crown-prepdie-run'));
+    await waitFor(() => expect(screen.getByTestId('crown-prepdie-readout')).toBeTruthy(), { timeout: 30_000 });
     fireEvent.change(screen.getByTestId('crown-inner-pitch'), { target: { value: '120' } });
     await user.click(screen.getByTestId('crown-inner-run'));
     await waitFor(() => expect(screen.getByTestId('crown-inner-readout')).toBeTruthy(), { timeout: 40_000 });
@@ -192,4 +208,20 @@ describe('CrownDesignPanel — browser-lane critical path (real WorkerPool, synt
     // No journal op for a live preview (the initial morph is the only crown-morph op so far).
     expect(historyNames().filter((n) => n === 'crown-morph').length).toBe(1);
   }, 180_000);
+
+  it('a die the scan cannot give is refused on the die step, with the cause explained in the user\'s language', async () => {
+    const user = userEvent.setup();
+    // The margin floats 2 mm above the scan: it does not lie on it.
+    const id = setupCrownCase(2);
+
+    render(<CrownDesignPanel />);
+    await user.selectOptions(screen.getByTestId('crown-restoration-select'), id);
+    await user.click(screen.getByTestId('crown-start-button'));
+    await user.click(screen.getByTestId('crown-prepdie-run'));
+    await waitFor(() => expect(screen.getByTestId('crown-error')).toBeTruthy(), { timeout: 30_000 });
+    expect(screen.getByTestId('crown-error').textContent).toContain('PrepDieRegionError');
+    expect(screen.getByTestId('crown-error-hint').textContent).toContain('check that the margin lies on this scan');
+    expect(restoration(id).stages.prepDie).toBeUndefined();
+    expect(screen.getByTestId('crown-innerSurface-blocked')).toBeTruthy();
+  }, 60_000);
 });

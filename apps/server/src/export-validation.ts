@@ -82,6 +82,8 @@ export type ExportRejectionCode =
   | 'export-profile-threshold-mismatch'
   | 'export-qc-mismatch'
   | 'export-outer-envelope-mismatch'
+  | 'export-die-not-traceable'
+  | 'export-die-mismatch'
   | 'export-gates-failing'
   | 'export-not-found'
   | 'export-storage-integrity'

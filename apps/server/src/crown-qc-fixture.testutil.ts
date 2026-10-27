@@ -7,7 +7,7 @@
 // own `report.test.ts` fixture so the QcReport the server recomputes is the
 // same one the client's `runCrownQc` produces. NOT a `.test.ts` — imported by
 // the dual-validation + persistence suites, never run as a suite itself.
-import { buildInnerSurface, KERNEL_VERSION, type IndexedMesh, type Vec3 } from '@dqcad/kernel';
+import { buildInnerSurface, extractPrepDie, KERNEL_VERSION, persistedMeshForm, type IndexedMesh, type Vec3 } from '@dqcad/kernel';
 import type { FdiTooth, QcReport } from '@dqcad/shared-types';
 import {
   runMorphingStage,
@@ -152,6 +152,34 @@ const thinDome = (out: number): IndexedMesh => buildFrustum(MARGIN_R + out, TOP_
 
 const MARGIN = marginCircle(MARGIN_R, MARGIN_Z, 240);
 
+/** The crown fixture's TARGET SCAN (Phase 10 Task 2): the closed frustum die
+ * itself — a die scanned on its own, so the prepared die is the whole scan
+ * (no synthetic closure, certificate unbounded). */
+export function crownScanMesh(): IndexedMesh {
+  return die();
+}
+
+/** The scan's confirmed margin as the die step reads it: the frustum's 96
+ * bottom-rim vertices, ON the faceted surface (the margin editor's snapped
+ * currency). The riding QC margin stays the fixture's analytic 240-point
+ * circle, which lies within the chord sagitta (0.64 µm) of these — the
+ * fixture predates the die step, and its intaglio and pins are kept. */
+export function crownDieMargin(): Vec3[] {
+  const scan = die();
+  const out: Vec3[] = [];
+  for (let s = 0; s < 96; s++) out.push([scan.positions[s * 3]!, scan.positions[s * 3 + 1]!, scan.positions[s * 3 + 2]!]);
+  return out;
+}
+
+let PREPARED_DIE: IndexedMesh | null = null;
+/** The prepared die, exactly as the client's `extractPrepDie` job cuts it:
+ * the kernel op on the scan's persisted form (float32, re-welded), with the
+ * kernel defaults. The seating gate measures against it. */
+export function preparedCrownDie(): IndexedMesh {
+  PREPARED_DIE ??= extractPrepDie(persistedMeshForm(die()), crownDieMargin(), AXIS).mesh;
+  return PREPARED_DIE;
+}
+
 let INNER: IndexedMesh | null = null;
 async function intaglio(): Promise<IndexedMesh> {
   if (!INNER) {
@@ -256,7 +284,7 @@ export async function buildCrownQcInput(
     crownSolid: shell.result.mesh!,
     innerSurfaceMesh: shell.inner,
     outerSurfaceMesh: shell.outer,
-    dieSolid: die(),
+    dieSolid: preparedCrownDie(),
     marginResampledPoints: MARGIN.resampledPoints,
     insertionAxis: AXIS,
     minWallThicknessMm: PROFILE.restorationParams.minWallThicknessMm,

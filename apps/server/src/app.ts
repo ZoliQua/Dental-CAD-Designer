@@ -913,7 +913,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   // Phase 7 Task 4: POST /api/restorations/:id/export (independent
   // re-validation on the exact exported bytes) + GET /api/exports/:hash/
   // download — see export-route.ts's module doc for the full design.
-  registerExportRoutes(app, { prisma, exportsDataDir, finalMeshDataDir, meshMaxBytes });
+  registerExportRoutes(app, { prisma, exportsDataDir, finalMeshDataDir, meshDataDir, meshMaxBytes });
 
   // Phase 7 Task 6 (Part B): case archive export/import — POST
   // /api/cases/:id/archive (streamed archive bytes) + POST /api/archives/import

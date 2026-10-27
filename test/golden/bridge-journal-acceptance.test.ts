@@ -55,7 +55,7 @@ const µm = (mm: number): string => `${(mm * 1000).toFixed(3)} µm`;
 // change (bump + changelog), never a silent regen (the WASM union is
 // manifoldVersion-guarded, the crown/cavity-acceptance precedent).
 // ---------------------------------------------------------------------------
-const EXPECTED_KERNEL_VERSION = '0.32.0';
+const EXPECTED_KERNEL_VERSION = '0.33.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 function installedManifoldVersion(): string {
   const pkg = JSON.parse(
@@ -111,7 +111,12 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // die/extractPrepDie op is not in this chain; hashQcReport tracks the embedded
   // kernelVersion, every geometry stage pin above BYTE-IDENTICAL (verified: the whole
   // golden suite passes at 0.31.0 with the new code). Old hash: 1853c3623766e1bea64783e753fa50d9e0184942821c7b1d08e8e63ea21d43d2. See docs/CHANGELOG-kernel.md's [0.32.0] entry.
-  'bridge-fullContour-qc': 'd0110a010d4adb7ca3a01e918b304b0623b76154b7d99d3d1399c2e8e0f6ebb2',
+  // Advanced 0.32.0 → 0.33.0 (Phase 10 Task 2): MECHANICAL, metadata-only — the die
+  // passthrough, persistedMeshForm and the coverage check are not in this chain;
+  // hashQcReport tracks the embedded kernelVersion, every geometry stage pin above
+  // BYTE-IDENTICAL (verified: the whole golden suite passes at 0.32.0 with the new
+  // code). Old hash: d0110a010d4adb7ca3a01e918b304b0623b76154b7d99d3d1399c2e8e0f6ebb2. See docs/CHANGELOG-kernel.md's [0.33.0] entry.
+  'bridge-fullContour-qc': '300309b51f9d94ff4c66eebe0adc0c203a01067fc998c48f835a3a74d80de24d',
   // --- framework chain (bridge.framework outputs the cut-back unit hashes) ---
   'bridge-framework-abutmentSurfaces':
     '217b2b13d6d41e657f9b652009a4efe1d3c285a6c4fa428b0030eb0c5070cc8c|d64954bd314424813eed60441adc74dce985310d225e5a9702499bc633f7261c',
@@ -146,7 +151,12 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // die/extractPrepDie op is not in this chain; hashQcReport tracks the embedded
   // kernelVersion, every geometry stage pin above BYTE-IDENTICAL (verified: the whole
   // golden suite passes at 0.31.0 with the new code). Old hash: 4b6dbd0149ef14317d7d39ac8df151b70ad39b10babcbdf13886d850b3a6425a. See docs/CHANGELOG-kernel.md's [0.32.0] entry.
-  'bridge-framework-qc': '8b3b980216277b37eb9871d42588d310972505cd577b3271b00f661b22124506',
+  // Advanced 0.32.0 → 0.33.0 (Phase 10 Task 2): MECHANICAL, metadata-only — the die
+  // passthrough, persistedMeshForm and the coverage check are not in this chain;
+  // hashQcReport tracks the embedded kernelVersion, every geometry stage pin above
+  // BYTE-IDENTICAL (verified: the whole golden suite passes at 0.32.0 with the new
+  // code). Old hash: 8b3b980216277b37eb9871d42588d310972505cd577b3271b00f661b22124506. See docs/CHANGELOG-kernel.md's [0.33.0] entry.
+  'bridge-framework-qc': 'e039b039fae0ff68cabfab16113a4fec0f479c2d2fc53025c6666fcbac039475',
 };
 
 const FULL_GATE_ORDER = [

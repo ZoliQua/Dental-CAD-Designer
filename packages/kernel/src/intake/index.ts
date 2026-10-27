@@ -4,6 +4,7 @@
 // pipeline overview and each step's own file for its algorithm.
 export { MESH_WELD_EPSILON_MM, weldVertices } from './weld.ts';
 export { indexedToSoup } from './soup.ts';
+export { persistedMeshForm } from './persistedForm.ts';
 export {
   DEGENERATE_CROSS_NORM_SQ_THRESHOLD_MM4,
   checkDegenerateTriangle,

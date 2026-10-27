@@ -20,10 +20,10 @@
 // the export suites, never run as a suite itself.
 import type { FastifyInstance } from 'fastify';
 import { STANDARD_ZIRCONIA_PROFILE, type MaterialProfile } from '@dqcad/clinical-profiles';
-import { encodeFinalMeshContainer, exportPlyBinary, exportStlBinary } from '@dqcad/io';
-import { KERNEL_VERSION, type IndexedMesh } from '@dqcad/kernel';
+import { encodeFinalMeshContainer, exportPlyBinary, exportStlBinary, writeStlBinary } from '@dqcad/io';
+import { indexedToSoup, KERNEL_VERSION, type IndexedMesh } from '@dqcad/kernel';
 import { hashCaseJournal } from '@dqcad/kernel-workers/journal-hash';
-import { BRIDGE_ABUTMENT_SURFACES_OP, BRIDGE_PONTIC_OP } from '@dqcad/shared-types';
+import { BRIDGE_ABUTMENT_SURFACES_OP, BRIDGE_PONTIC_OP, CROWN_DIE_EXTRACT_OP } from '@dqcad/shared-types';
 import type {
   CaseDocument,
   ExportAcknowledgment,
@@ -34,6 +34,7 @@ import type {
   RestorationExportRequest,
   RestorationType,
 } from '@dqcad/shared-types';
+import { crownDieMargin, crownScanMesh, preparedCrownDie } from './crown-qc-fixture.testutil.js';
 import { hashMesh } from './journal-replay.js';
 import { sha256HexOf } from './mesh-storage.js';
 
@@ -130,7 +131,23 @@ export interface ExportHarnessOptions {
    * with `geometrySource: 'case'` — so the context's (implicit) `case` claim
    * is traceable. Without it a bridge context must declare its provenance. */
   traceBridgeToCase?: boolean;
+  /** Crown only (Phase 10 Task 2): persist the case as a crown designed on
+   * its prepared die — the target scan (the crown fixture's die scan, its STL
+   * bytes stored through POST /api/meshes), the confirmed margin, and the
+   * `crown-die-extract` op that sealed `stages.prepDie` — so the export's
+   * step-10.6 re-extraction can trace the riding die. **Default true** for a
+   * crown (every crown export now needs it). */
+  traceCrownDie?: boolean;
+  /** Crown only: store the target scan's bytes (default true). `false`
+   * leaves the case naming a scan the server does not hold. */
+  persistCrownScan?: boolean;
 }
+
+/** The traced crown case's scan node / mesh identities (`traceCrownDie`). */
+export const TRACED_CROWN_CASE = {
+  scanNodeId: 'node-crown-scan',
+  scanMeshId: hashMesh(crownScanMesh()),
+} as const;
 
 /** The stand-in identities of the traced bridge case (`traceBridgeToCase`). */
 export const TRACED_BRIDGE_CASE = {
@@ -140,7 +157,7 @@ export const TRACED_BRIDGE_CASE = {
   ponticHash: sha256HexOf(new TextEncoder().encode('traced-bridge-pontic')),
 } as const;
 
-function sceneNode(id: string, meshId: string, role: 'upperJaw' | 'gingiva'): CaseDocument['scene'][number] {
+function sceneNode(id: string, meshId: string, role: 'upperJaw' | 'gingiva' | 'prepDie'): CaseDocument['scene'][number] {
   return { id, meshId, role, transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], visible: true, opacity: 1 };
 }
 
@@ -271,6 +288,26 @@ export async function buildExportHarness(options: ExportHarnessOptions): Promise
         },
       ]
     : [];
+  const tracedCrown = restorationType === 'crown' && (options.traceCrownDie ?? true);
+  const crownDieHash = tracedCrown ? hashMesh(preparedCrownDie()) : null;
+  if (tracedCrown) {
+    caseBuildOps.push({
+      id: nextOpId('crown-die-op'),
+      name: CROWN_DIE_EXTRACT_OP,
+      params: {
+        restorationId,
+        tooth: teeth[0]!,
+        scanNodeId: TRACED_CROWN_CASE.scanNodeId,
+        scanForm: 'persisted-stl',
+        marginLoop: crownDieMargin().flat(),
+        insertionAxis: [0, 0, 1],
+      },
+      inputHashes: [TRACED_CROWN_CASE.scanMeshId],
+      outputHashes: [crownDieHash!],
+      kernelVersion: KERNEL_VERSION,
+      timestamp: OP_TIMESTAMP,
+    });
+  }
   const fullHistory: Operation[] = [...caseBuildOps, ...ackOps, exportOp];
   let persistedHistory: Operation[] = options.skipPersistExportOp ? [...caseBuildOps, ...ackOps] : fullHistory;
   if (options.mutateHistory) {
@@ -289,13 +326,34 @@ export async function buildExportHarness(options: ExportHarnessOptions): Promise
   }
   const caseId = (created.json() as { id: string }).id;
 
+  // 3a. A traced crown's target scan: its persisted STL bytes, stored the way
+  // the client's save stores them (POST /api/meshes).
+  let crownScanFileHash: string | null = null;
+  if (tracedCrown) {
+    const scanBytes = writeStlBinary(indexedToSoup(crownScanMesh()));
+    crownScanFileHash = sha256HexOf(scanBytes);
+    if (options.persistCrownScan ?? true) {
+      const posted = await app.inject({
+        method: 'POST',
+        url: '/api/meshes',
+        headers: { 'content-type': 'application/octet-stream' },
+        payload: Buffer.from(scanBytes),
+      });
+      if (posted.statusCode !== 200) {
+        throw new Error(`buildExportHarness: crown scan persist failed (${posted.statusCode}): ${posted.body}`);
+      }
+    }
+  }
+
   const restoration: Restoration = {
     id: restorationId,
     type: restorationType,
     teeth: [...teeth],
     pontics: [...(options.pontics ?? [])],
-    targetNodeId: traced ? 'node-target-scan' : null,
-    marginLines: {},
+    targetNodeId: traced ? 'node-target-scan' : tracedCrown ? TRACED_CROWN_CASE.scanNodeId : null,
+    marginLines: tracedCrown
+      ? { [teeth[0]!]: { anchors: [], closed: true, resampledPoints: crownDieMargin() } }
+      : {},
     insertionAxis: [0, 0, 1],
     params: {
       cementGapMm: 0.05,
@@ -311,20 +369,35 @@ export async function buildExportHarness(options: ExportHarnessOptions): Promise
           bridgePontic: TRACED_BRIDGE_CASE.ponticHash,
           finalMesh: finalMeshHash,
         }
-      : { finalMesh: finalMeshHash },
+      : tracedCrown
+        ? { prepDie: crownDieHash!, finalMesh: finalMeshHash }
+        : { finalMesh: finalMeshHash },
     qc: clientReport,
   };
   const persistedDocument: CaseDocument = {
     id: caseId,
     schemaVersion: 2,
     createdAt: OP_TIMESTAMP,
-    meshes: [],
+    meshes: tracedCrown
+      ? [
+          {
+            id: 'mesh-crown-scan',
+            contentHash: TRACED_CROWN_CASE.scanMeshId,
+            name: 'crown-scan.stl',
+            unit: 'mm',
+            triangleCount: crownScanMesh().indices.length / 3,
+            fileHash: crownScanFileHash!,
+          },
+        ]
+      : [],
     scene: traced
       ? [
           sceneNode('node-target-scan', TRACED_BRIDGE_CASE.targetMeshId, 'upperJaw'),
           sceneNode('node-gingiva-scan', TRACED_BRIDGE_CASE.gingivaMeshId, 'gingiva'),
         ]
-      : [],
+      : tracedCrown
+        ? [sceneNode(TRACED_CROWN_CASE.scanNodeId, TRACED_CROWN_CASE.scanMeshId, 'prepDie')]
+        : [],
     restorations: [restoration],
     measurements: [],
     history: persistedHistory,

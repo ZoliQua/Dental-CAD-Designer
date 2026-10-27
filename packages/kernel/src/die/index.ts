@@ -15,6 +15,9 @@ export {
   PrepDieRegionError,
   PrepDieInvalidError,
   PrepDieClearanceError,
+  PrepDieCoverageError,
+  prepDieInnerSurfaceNeeds,
+  assertPrepDieCoversInnerSurface,
   type PrepDieOptions,
   type PrepDieResult,
 } from './extractPrepDie.ts';

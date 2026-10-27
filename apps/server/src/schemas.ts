@@ -255,6 +255,8 @@ const restorationStagesSchema = {
   type: 'object',
   additionalProperties: false,
   properties: {
+    // Phase 10 Task 2 — the crown's extracted prep die (ADR-023).
+    prepDie: { type: 'string' },
     innerSurface: { type: 'string' },
     anatomyPlacement: { type: 'string' },
     morphState: { type: 'string' },

@@ -7,7 +7,8 @@
     ".": "./src/index.ts",
     "./cavity-fixtures": "./src/cavity/cavity.test-fixtures.ts",
     "./bridge-fixtures": "./src/bridge/bridgeAssembly.test-fixtures.ts",
-    "./neighbour-fixtures": "./src/neighbour/neighbour.test-fixtures.ts"
+    "./neighbour-fixtures": "./src/neighbour/neighbour.test-fixtures.ts",
+    "./die-fixtures": "./src/die/die.test-fixtures.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

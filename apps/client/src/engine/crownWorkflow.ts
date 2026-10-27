@@ -12,8 +12,9 @@
 // "order-enforcing state machine (pure, testable node-lane logic)"
 // guardrail).
 //
-// The fixed stage order (PLAN.md §4 Phase 4) is:
-//   innerSurface -> anatomy -> morph -> shell -> { freeform*, qc }
+// The fixed stage order (PLAN.md §4 Phase 4; the die step is Phase 10 Task 2,
+// ADR-023) is:
+//   prepDie -> innerSurface -> anatomy -> morph -> shell -> { freeform*, qc }
 // where `freeform` is optional and repeatable once the shell exists, and
 // `qc` may run any time the shell exists. A stage may never run before its
 // prerequisite has produced its output — that output is recorded as a
@@ -21,12 +22,15 @@
 // source of truth this module reads for "has stage N completed?".
 import type { FdiTooth, Restoration, Vec3 } from '@dqcad/shared-types';
 
-/** The six crown-design stages, in fixed pipeline order. */
-export type CrownStage = 'innerSurface' | 'anatomy' | 'morph' | 'shell' | 'freeform' | 'qc';
+/** The seven crown-design stages, in fixed pipeline order. `prepDie` cuts
+ * the closed prep die from the target scan (ADR-023); every later stage
+ * designs on that die, never on the whole scan. */
+export type CrownStage = 'prepDie' | 'innerSurface' | 'anatomy' | 'morph' | 'shell' | 'freeform' | 'qc';
 
 /** Fixed stage order — `CrownDesignPanel` renders its sub-panels in exactly
  * this sequence, and `nextRunnableStage` scans it left-to-right. */
 export const CROWN_STAGES: readonly CrownStage[] = [
+  'prepDie',
   'innerSurface',
   'anatomy',
   'morph',
@@ -39,6 +43,7 @@ export const CROWN_STAGES: readonly CrownStage[] = [
  * success (freeform re-writes `finalMesh`; qc writes `Restoration.qc`, not a
  * stage-hash field — both handled explicitly in the controller, not here). */
 export const CROWN_STAGE_HASH_FIELD = {
+  prepDie: 'prepDie',
   innerSurface: 'innerSurface',
   anatomy: 'anatomyPlacement',
   morph: 'morphState',
@@ -51,6 +56,7 @@ export const CROWN_STAGE_HASH_FIELD = {
 export type CrownPrerequisiteCode =
   | 'noTargetScan'
   | 'noMarginLine'
+  | 'prepDieIncomplete'
   | 'innerSurfaceIncomplete'
   | 'anatomyIncomplete'
   | 'morphIncomplete'
@@ -107,6 +113,8 @@ export function firstMarginLoop(
  * is never "complete" (see `StageGate.complete`). */
 export function isStageComplete(stage: CrownStage, restoration: Restoration): boolean {
   switch (stage) {
+    case 'prepDie':
+      return restoration.stages.prepDie !== undefined;
     case 'innerSurface':
       return restoration.stages.innerSurface !== undefined;
     case 'anatomy':
@@ -137,7 +145,7 @@ export function isStageComplete(stage: CrownStage, restoration: Restoration): bo
  * UI (ui/CrownDesignPanel.tsx, via `insertionAxisIsPlaceholder`) so the
  * clinician always sees it — insertion axis/undercuts are core clinical params
  * (CLAUDE.md). Only the two structurally required external prerequisites (a
- * target scan + a real margin loop) hard-gate stage 1. */
+ * target scan + a real margin loop) hard-gate stage 1 (the die). */
 export function stageGate(stage: CrownStage, restoration: Restoration): StageGate {
   const complete = isStageComplete(stage, restoration);
   const reason = firstUnmetPrerequisite(stage, restoration);
@@ -149,10 +157,12 @@ function firstUnmetPrerequisite(
   restoration: Restoration,
 ): CrownPrerequisiteCode | null {
   switch (stage) {
-    case 'innerSurface':
+    case 'prepDie':
       if (restoration.targetNodeId === null) return 'noTargetScan';
       if (firstMarginLoop(restoration) === null) return 'noMarginLine';
       return null;
+    case 'innerSurface':
+      return isStageComplete('prepDie', restoration) ? null : 'prepDieIncomplete';
     case 'anatomy':
       return isStageComplete('innerSurface', restoration) ? null : 'innerSurfaceIncomplete';
     case 'morph':
@@ -171,7 +181,7 @@ export function canRunStage(stage: CrownStage, restoration: Restoration): boolea
   return firstUnmetPrerequisite(stage, restoration) === null;
 }
 
-/** All six gates, in fixed stage order — the whole state-machine snapshot the
+/** All seven gates, in fixed stage order — the whole state-machine snapshot the
  * UI renders (one sub-panel per gate, each enabled/blocked per `allowed`). */
 export function workflowGates(restoration: Restoration): StageGate[] {
   return CROWN_STAGES.map((stage) => stageGate(stage, restoration));
@@ -185,6 +195,7 @@ export function workflowGates(restoration: Restoration): StageGate[] {
  * geometry that no longer exists (the data-integrity rule the controller
  * enforces in `commitStage`; pure + unit-testable here).
  *
+ * - prep die      → inner surface + anatomy + morph + finalMesh hashes, and qc
  * - inner surface → anatomy + morph + finalMesh hashes, and qc
  * - anatomy       → morph + finalMesh hashes, and qc
  * - morph         → finalMesh hash, and qc
@@ -197,6 +208,8 @@ export function downstreamInvalidations(stage: CrownStage): {
   clearQc: boolean;
 } {
   switch (stage) {
+    case 'prepDie':
+      return { stageFields: ['innerSurface', 'anatomyPlacement', 'morphState', 'finalMesh'], clearQc: true };
     case 'innerSurface':
       return { stageFields: ['anatomyPlacement', 'morphState', 'finalMesh'], clearQc: true };
     case 'anatomy':

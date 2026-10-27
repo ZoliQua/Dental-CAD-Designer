@@ -1,13 +1,15 @@
 // apps/client/src/engine/crownDesign.ts
 //
 // Phase 4 Task 10 — the crown-design workflow CONTROLLER. Imperative, engine
-// layer, the SOLE client-side orchestrator of the six pipeline stages
-// (T3–T9's worker jobs) in the fixed order enforced by engine/crownWorkflow.ts.
-// It:
-//   1. dispatches the already-deterministic worker jobs (innerSurface,
-//      placeAnatomy, morphAnatomy/resolveMorph, constructShell,
+// layer, the SOLE client-side orchestrator of the seven pipeline stages
+// (T3–T9's worker jobs, plus Phase 10's prepared die) in the fixed order
+// enforced by engine/crownWorkflow.ts. It:
+//   1. dispatches the already-deterministic worker jobs (extractPrepDie,
+//      innerSurface, placeAnatomy, morphAnatomy/resolveMorph, constructShell,
 //      applySculptStroke, runQc) through the WorkerPool — adding NO new
-//      nondeterminism of its own;
+//      nondeterminism of its own. Every stage after the first designs on the
+//      PREPARED DIE (ADR-023): the closed prep cut from the target scan, never
+//      the whole (usually open) scan;
 //   2. enforces stage order (consults `canRunStage` before every dispatch,
 //      throwing `CrownStageOrderError` on a premature call);
 //   3. content-addresses each stage's output mesh (the `hashMesh` job) and
@@ -44,6 +46,7 @@ import {
 import { DEFAULT_OFFSET_VOXEL_PITCH_MM } from '@dqcad/clinical-profiles';
 import {
   ANTAGONIST_CONFIRM_OP,
+  CROWN_DIE_EXTRACT_OP,
   NEIGHBOUR_CAPTURE_OP,
   type FdiTooth,
   type GeometryProvenance,
@@ -86,6 +89,7 @@ import {
   type CaptureSummary,
   type CrownStageGateSnapshot,
   type MorphStrengthsUi,
+  type PrepDieSummary,
 } from '../state/crownStore';
 import { useCaseStore } from '../state/caseStore';
 import { useServerStatusStore } from '../state/serverStatusStore';
@@ -176,6 +180,25 @@ export class CrownCaptureReplayMismatchError extends Error {
   }
 }
 
+/** The journaled die re-derived on reload produced a different hash — the
+ * die is not reproducible from the scan, margin and axis it was cut against
+ * (one of them changed), so it is refused rather than trusted. */
+export class CrownDieReplayMismatchError extends Error {
+  constructor(journaled: string, replayed: string) {
+    super(
+      `crownDesign: replaying the journaled die gave ${replayed}, not the journaled ${journaled} — ` +
+        'the scan, margin or axis changed since; prepare the die again',
+    );
+    this.name = 'CrownDieReplayMismatchError';
+  }
+}
+
+/** The closed prep die cut from the target scan (Phase 10 Task 2, ADR-023):
+ * the mesh every later stage designs on, plus its clearance certificate. */
+interface PreparedDie extends DerivedMesh {
+  certificate: { clearanceMm: number; protectBandMm: number };
+}
+
 /** Per-side neighbour reference metadata (Phase 9 Task 3). */
 export interface NeighbourSideInfo {
   provenance: GeometryProvenance;
@@ -223,14 +246,20 @@ interface Session {
   restorationId: string;
   tooth: FdiTooth;
   targetNodeId: string;
-  dieHash: string;
-  diePositions: Float64Array;
-  dieIndices: Uint32Array;
+  /** The target scan (the whole scan: usually an open arch). Only the die
+   * step reads it; every later stage uses `die`. */
+  scanHash: string;
+  scanPositions: Float64Array;
+  scanIndices: Uint32Array;
   marginPoints: readonly Vec3[];
   marginLoopFlat: Float64Array;
   insertionAxis: Vec3;
   params: RestorationParams;
-  bvhBuilt: boolean;
+  scanBvhBuilt: boolean;
+  /** The prepared die (ADR-023), or `null` before the die step (or after a
+   * reload, until it is re-derived by replay). */
+  die: PreparedDie | null;
+  dieBvhBuilt: boolean;
   anatomyInput: AnatomyPlacementInput | null;
   inner: DerivedMesh | null;
   placed: DerivedMesh | null;
@@ -392,14 +421,16 @@ class CrownDesignEngine {
       restorationId,
       tooth: loop.tooth,
       targetNodeId: restoration.targetNodeId,
-      dieHash: record.contentHash,
-      diePositions: record.positions,
-      dieIndices: record.indices,
+      scanHash: record.contentHash,
+      scanPositions: record.positions,
+      scanIndices: record.indices,
       marginPoints: loop.points,
       marginLoopFlat: flattenLoop(loop.points),
       insertionAxis: restoration.insertionAxis,
       params: restoration.params,
-      bvhBuilt: false,
+      scanBvhBuilt: false,
+      die: null,
+      dieBvhBuilt: false,
       anatomyInput: null,
       inner: null,
       placed: null,
@@ -421,6 +452,7 @@ class CrownDesignEngine {
       capture: this.captureState(),
       libraryAnatomy: null,
       useLibraryAnatomy: this.libraryAnatomySelected(),
+      prepDie: this.journaledDieSummary(),
     });
     // Publish the initial gate snapshot so the UI enables/blocks each stage
     // from the first render (without this every stage button stays disabled).
@@ -528,7 +560,10 @@ class CrownDesignEngine {
     const session = this.session;
     const storePatch: Parameters<ReturnType<typeof useCrownStore.getState>['apply']>[0] = {};
     for (const field of invalidation.stageFields) {
-      if (field === 'anatomyPlacement') {
+      if (field === 'innerSurface') {
+        if (session) session.inner = null;
+        storePatch.inner = null;
+      } else if (field === 'anatomyPlacement') {
         if (session) session.placed = null;
         storePatch.anatomy = null;
       } else if (field === 'morphState') {
@@ -556,13 +591,156 @@ class CrownDesignEngine {
     }
   }
 
+  // ---- stage 0: the prepared die (Phase 10 Task 2, ADR-023) -------------
+
+  /** Cuts the closed prep die from the target scan (the `extractPrepDie`
+   * job, on the scan's persisted form — see that job's module doc) and
+   * content-addresses it. Builds the scan's BVH once. */
+  private async extractDie(session: Session): Promise<{ die: PreparedDie; result: JobResultMap['extractPrepDie'] }> {
+    if (!session.scanBvhBuilt) {
+      const positionsCopy = session.scanPositions.slice();
+      const indicesCopy = session.scanIndices.slice();
+      await this.pool().run(
+        'buildBvh',
+        { contentHash: session.scanHash, positions: positionsCopy, indices: indicesCopy },
+        { transfer: [positionsCopy.buffer, indicesCopy.buffer], affinityKey: session.scanHash },
+      );
+      session.scanBvhBuilt = true;
+    }
+    const result = await this.pool().run(
+      'extractPrepDie',
+      { contentHash: session.scanHash, marginLoop: session.marginLoopFlat, insertionAxis: session.insertionAxis },
+      { affinityKey: session.scanHash, onProgress: (f) => this.publish({ progress: f }) },
+    );
+    const contentHash = await this.hashMesh(result.positions, result.indices);
+    return {
+      die: {
+        positions: result.positions,
+        indices: result.indices,
+        contentHash,
+        certificate: { clearanceMm: result.clearanceMm, protectBandMm: result.protectBandMm },
+      },
+      result,
+    };
+  }
+
+  /**
+   * Prepares the die: the closed prep die cut from the target scan around
+   * the confirmed margin (ADR-023 Decision 1). Every later stage designs on
+   * it — the intaglio, the anatomy height, seating QC and the export's
+   * `dieSolid` — never on the whole scan. One journaled `crown-die-extract`
+   * op (scan mesh id in, die hash out; the margin, axis, skirts, certificate
+   * and counts in params); invalidates the intaglio onward.
+   */
+  async runPrepDie(): Promise<void> {
+    const session = this.requireSession();
+    this.publish({ busyStage: 'prepDie', progress: 0, error: null, errorStage: null });
+    try {
+      this.assertRunnable('prepDie');
+      const { die, result } = await this.extractDie(session);
+      session.die = die;
+      session.dieBvhBuilt = false;
+      // The certificate is journaled as `null` when the scan closed the die
+      // itself (no synthetic part): JSON has no Infinity.
+      const clearanceMm = Number.isFinite(result.clearanceMm) ? result.clearanceMm : null;
+      this.commitStage(
+        'prepDie',
+        'prepDie',
+        die.contentHash,
+        CROWN_DIE_EXTRACT_OP,
+        {
+          scanNodeId: session.targetNodeId,
+          scanForm: 'persisted-stl',
+          marginLoop: Array.from(session.marginLoopFlat),
+          insertionAxis: [...session.insertionAxis],
+          keptTriangleCount: result.keptTriangleCount,
+          syntheticTriangleCount: result.syntheticTriangleCount,
+          rimVertexCount: result.rimVertexCount,
+          foldTrianglesDropped: result.foldTrianglesDropped,
+          clearanceMm,
+          marginMinHeightMm: result.marginMinHeightMm,
+          floorHeightMm: result.floorHeightMm,
+          volumeMm3: result.volumeMm3,
+          radialSkirtMm: result.radialSkirtMm,
+          depthSkirtMm: result.depthSkirtMm,
+          protectBandMm: result.protectBandMm,
+          floorGapMm: result.floorGapMm,
+          requiredClearanceMm: result.requiredClearanceMm,
+        },
+        [session.scanHash],
+      );
+      this.publish({ busyStage: null, progress: 1, prepDie: this.journaledDieSummary() });
+      this.refreshGates();
+    } catch (error) {
+      this.failStage('prepDie', error);
+      throw error;
+    }
+  }
+
+  /** The op that sealed the restoration's current `stages.prepDie`. */
+  private journaledDieOp(): Operation | undefined {
+    const session = this.requireSession();
+    const document = caseStore.getDocument();
+    const hash = document.restorations.find((r) => r.id === session.restorationId)?.stages.prepDie;
+    if (hash === undefined) return undefined;
+    for (let i = document.history.length - 1; i >= 0; i--) {
+      const op = document.history[i]!;
+      if (op.name === CROWN_DIE_EXTRACT_OP && op.params['restorationId'] === session.restorationId && op.outputHashes[0] === hash) {
+        return op;
+      }
+    }
+    return undefined;
+  }
+
+  /** The panel readout of the current die, from its journal entry. */
+  private journaledDieSummary(): PrepDieSummary | null {
+    const op = this.journaledDieOp();
+    if (!op) return null;
+    return {
+      keptTriangleCount: op.params['keptTriangleCount'] as number,
+      syntheticTriangleCount: op.params['syntheticTriangleCount'] as number,
+      foldTrianglesDropped: op.params['foldTrianglesDropped'] as number,
+      clearanceMm: op.params['clearanceMm'] as number | null,
+      requiredClearanceMm: op.params['requiredClearanceMm'] as number,
+      radialSkirtMm: op.params['radialSkirtMm'] as number,
+      depthSkirtMm: op.params['depthSkirtMm'] as number,
+      volumeMm3: op.params['volumeMm3'] as number,
+    };
+  }
+
+  /** Re-derives the journaled die missing from the session (after a reload)
+   * by REPLAYING the extraction — the replayed die must hash to
+   * `stages.prepDie`, else `CrownDieReplayMismatchError`. A no-op when the
+   * session holds the die or no die is recorded. */
+  private async restoreJournaledDie(): Promise<void> {
+    const session = this.requireSession();
+    if (session.die) return;
+    const journaled = this.restoration().stages.prepDie;
+    if (journaled === undefined) return;
+    const { die } = await this.extractDie(session);
+    if (die.contentHash !== journaled) throw new CrownDieReplayMismatchError(journaled, die.contentHash);
+    session.die = die;
+    session.dieBvhBuilt = false;
+  }
+
+  /** The prepared die, re-derived if needed; throws when there is none. */
+  private async requireDie(stage: CrownStage): Promise<PreparedDie> {
+    await this.restoreJournaledDie();
+    const die = this.requireSession().die;
+    if (!die) throw new CrownStageOrderError(stage, 'prepDieIncomplete');
+    return die;
+  }
+
   // ---- stage 1: inner surface ------------------------------------------
 
   /**
-   * Runs the inner-surface (intaglio) stage: builds a BVH for the die (once),
-   * then the cement-gap offset surface. Default pitch = the clinical 20 µm
-   * (`DEFAULT_OFFSET_VOXEL_PITCH_MM`); a coarser pitch may be passed (it is a
-   * journaled parameter — CLAUDE.md). One coalesced `crown-inner-surface` op.
+   * Runs the inner-surface (intaglio) stage on the PREPARED DIE: builds its
+   * BVH (once), then the cement-gap offset surface. The job first checks the
+   * die's certificate covers this intaglio (the larger gap plus four pitches
+   * — kernel `assertPrepDieCoversInnerSurface`). Default pitch = the clinical
+   * 20 µm (`DEFAULT_OFFSET_VOXEL_PITCH_MM`); a coarser pitch may be passed
+   * (it is a journaled parameter — CLAUDE.md). One coalesced
+   * `crown-inner-surface` op.
    */
   async runInnerSurface(opts: { pitchMm?: number } = {}): Promise<void> {
     const session = this.requireSession();
@@ -570,20 +748,21 @@ class CrownDesignEngine {
     const pitchMm = opts.pitchMm ?? DEFAULT_OFFSET_VOXEL_PITCH_MM;
     this.publish({ busyStage: 'innerSurface', progress: 0, error: null, errorStage: null });
     try {
-      if (!session.bvhBuilt) {
-        const positionsCopy = session.diePositions.slice();
-        const indicesCopy = session.dieIndices.slice();
+      const die = await this.requireDie('innerSurface');
+      if (!session.dieBvhBuilt) {
+        const positionsCopy = die.positions.slice();
+        const indicesCopy = die.indices.slice();
         await this.pool().run(
           'buildBvh',
-          { contentHash: session.dieHash, positions: positionsCopy, indices: indicesCopy },
-          { transfer: [positionsCopy.buffer, indicesCopy.buffer], affinityKey: session.dieHash },
+          { contentHash: die.contentHash, positions: positionsCopy, indices: indicesCopy },
+          { transfer: [positionsCopy.buffer, indicesCopy.buffer], affinityKey: die.contentHash },
         );
-        session.bvhBuilt = true;
+        session.dieBvhBuilt = true;
       }
       const result = await this.pool().run(
         'innerSurface',
         {
-          contentHash: session.dieHash,
+          contentHash: die.contentHash,
           pitchMm,
           marginalGapMm: session.params.marginalGapMm,
           cementGapMm: session.params.cementGapMm,
@@ -591,8 +770,9 @@ class CrownDesignEngine {
           blendWidthMm: INNER_SURFACE_BLEND_WIDTH_MM,
           marginLoop: session.marginLoopFlat,
           insertionAxis: session.insertionAxis,
+          prepDieCertificate: die.certificate,
         },
-        { affinityKey: session.dieHash, onProgress: (f) => this.publish({ progress: f }) },
+        { affinityKey: die.contentHash, onProgress: (f) => this.publish({ progress: f }) },
       );
       const contentHash = await this.hashMesh(result.positions, result.indices);
       session.inner = { positions: result.positions, indices: result.indices, contentHash };
@@ -609,7 +789,7 @@ class CrownDesignEngine {
           blendWidthMm: INNER_SURFACE_BLEND_WIDTH_MM,
           errorBoundMm: result.errorBoundMm,
         },
-        [session.dieHash],
+        [die.contentHash],
       );
       this.publish({
         busyStage: null,
@@ -842,11 +1022,22 @@ class CrownDesignEngine {
       marginR += Math.hypot(p[0] - cx, p[1] - cy);
     }
     marginR /= n;
-    let dieMaxZ = cz;
-    for (let i = 2; i < session.diePositions.length; i += 3) {
-      if (session.diePositions[i]! > dieMaxZ) dieMaxZ = session.diePositions[i]!;
+    // The prep height is measured on the PREPARED DIE along the insertion
+    // axis (ADR-023): on a whole arch scan world Z would read the arch, and
+    // a tilted axis would read the wrong direction.
+    const die = session.die;
+    if (!die) throw new CrownStageOrderError('anatomy', 'prepDieIncomplete');
+    const axisLen = Math.hypot(session.insertionAxis[0], session.insertionAxis[1], session.insertionAxis[2]);
+    const ax = session.insertionAxis[0] / axisLen;
+    const ay = session.insertionAxis[1] / axisLen;
+    const az = session.insertionAxis[2] / axisLen;
+    let prepHeightMm = 0;
+    for (let i = 0; i < die.positions.length; i += 3) {
+      const h = (die.positions[i]! - cx) * ax + (die.positions[i + 1]! - cy) * ay + (die.positions[i + 2]! - cz) * az;
+      if (h > prepHeightMm) prepHeightMm = h;
     }
-    const heightMm = Math.max((dieMaxZ - cz) * 1.3 + 0.5, marginR * 2);
+    const dieMaxZ = cz + prepHeightMm;
+    const heightMm = Math.max(prepHeightMm * 1.3 + 0.5, marginR * 2);
     // Phase 9 Task 4: the verified tooth-library asset for this FDI; the
     // built-in parametric tooth only as the labelled fallback.
     const library: BuiltinLibraryTooth =
@@ -911,6 +1102,7 @@ class CrownDesignEngine {
   /** Auto-places the built-in library tooth (no manual override). */
   async placeAnatomyAuto(): Promise<void> {
     await this.restoreJournaledCaptures();
+    await this.restoreJournaledDie();
     await this.placeAnatomy(this.buildAnatomyInput(undefined, await this.resolveAnatomy()));
   }
 
@@ -918,6 +1110,7 @@ class CrownDesignEngine {
    * one gesture). */
   async commitAnatomyTransform(override: NonNullable<AnatomyPlacementInput['manualOverride']>): Promise<void> {
     await this.restoreJournaledCaptures();
+    await this.restoreJournaledDie();
     await this.placeAnatomy(this.buildAnatomyInput(override, await this.resolveAnatomy()));
   }
 
@@ -1387,7 +1580,7 @@ class CrownDesignEngine {
     // and leave the click a silent no-op.
     try {
       this.assertRunnable('qc');
-      if (!session.shell || !session.inner || !session.morphOuter) {
+      if (!session.shell || !session.inner || !session.morphOuter || !session.die) {
         throw new CrownStageOrderError('qc', 'shellIncomplete');
       }
       const document = caseStore.getDocument();
@@ -1404,8 +1597,10 @@ class CrownDesignEngine {
         innerIndices: session.inner.indices,
         outerPositions: session.morphOuter.positions,
         outerIndices: session.morphOuter.indices,
-        diePositions: session.diePositions,
-        dieIndices: session.dieIndices,
+        // Seating is measured against the PREPARED DIE (ADR-023): the
+        // prep alone, never the arch with its proximal contacts.
+        diePositions: session.die.positions,
+        dieIndices: session.die.indices,
         marginLoop: session.marginLoopFlat,
         insertionAxis: session.insertionAxis,
         minWallThicknessMm: session.params.minWallThicknessMm,
@@ -1449,7 +1644,7 @@ class CrownDesignEngine {
     // Same defense as runQc (P7-T1): no pre-try synchronous escape.
     try {
       const restoration = this.restoration();
-      if (restoration.qc === null || !session.shell || !session.inner || !session.morphOuter) {
+      if (restoration.qc === null || !session.shell || !session.inner || !session.morphOuter || !session.die) {
         throw new CrownStageOrderError('qc', 'shellIncomplete');
       }
       const alreadyAck = restoration.qc.gates.filter((g) => g.acknowledged).map((g) => g.gate);
@@ -1464,8 +1659,10 @@ class CrownDesignEngine {
         innerIndices: session.inner.indices,
         outerPositions: session.morphOuter.positions,
         outerIndices: session.morphOuter.indices,
-        diePositions: session.diePositions,
-        dieIndices: session.dieIndices,
+        // Seating is measured against the PREPARED DIE (ADR-023): the
+        // prep alone, never the arch with its proximal contacts.
+        diePositions: session.die.positions,
+        dieIndices: session.die.indices,
         marginLoop: session.marginLoopFlat,
         insertionAxis: session.insertionAxis,
         minWallThicknessMm: session.params.minWallThicknessMm,
@@ -1553,7 +1750,8 @@ class CrownDesignEngine {
       session.restorationId !== restorationId ||
       !session.inner ||
       !session.morphOuter ||
-      !session.shell
+      !session.shell ||
+      !session.die
     ) {
       return null;
     }
@@ -1564,7 +1762,9 @@ class CrownDesignEngine {
     return {
       innerSurfaceMesh: meshJson(session.inner.positions, session.inner.indices),
       outerSurfaceMesh: meshJson(session.morphOuter.positions, session.morphOuter.indices),
-      dieSolid: meshJson(session.diePositions, session.dieIndices),
+      // The prepared die — the server re-extracts it from the saved scan and
+      // refuses an export whose die differs (ADR-023, invariant 6).
+      dieSolid: meshJson(session.die.positions, session.die.indices),
       marginResampledPoints: loopJson(session.marginLoopFlat),
       insertionAxis: [...session.insertionAxis],
       minWallThicknessMm: session.params.minWallThicknessMm,

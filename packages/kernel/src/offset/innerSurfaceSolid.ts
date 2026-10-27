@@ -281,6 +281,14 @@ export function rotateMesh(mesh: IndexedMesh, f: AxisFrame): IndexedMesh {
   return { positions, indices: mesh.indices.slice() };
 }
 
+/** The lateral band (mm) beyond the margin polygon in which the intaglio's
+ * field is sampled (the outward gap band): the larger gap plus three pitches.
+ * Shared with the prep-die certificate check (die/extractPrepDie.ts), so the
+ * two can never disagree. */
+export function innerSurfaceCropBandMm(maxGapMm: number, pitchMm: number): number {
+  return maxGapMm + 3 * pitchMm;
+}
+
 /** The prep-region ROI bbox in the ROTATED (axis = `+Z`) frame: the margin
  * loop's bbox unioned with every prep vertex ABOVE the margin plane AND within
  * `INNER_SURFACE_ROI_RADIUS_FACTOR * maxMarginRadius` of the margin axis (so a
@@ -428,7 +436,7 @@ async function buildBlockedPatch(
   // — an acceptable marginal transition), in exchange for a robust single
   // boundary loop on real geometry; keep `cleanCutSlack` small to keep that
   // band thin.
-  const cropBandMm = maxGapMm + 3 * pitchMm;
+  const cropBandMm = innerSurfaceCropBandMm(maxGapMm, pitchMm);
   const cleanCutSlack = 3 * pitchMm;
   let maxMarginZ = -Infinity;
   for (const p of marginLoopRot) if (p[2] > maxMarginZ) maxMarginZ = p[2];

@@ -24,9 +24,9 @@ import { INITIAL_CAPTURE, type CaptureState } from './neighbourCaptureStore';
 
 export type { CaptureState, CaptureSummary } from './neighbourCaptureStore';
 
-/** The six crown-design stages (mirrors engine/crownWorkflow.ts's
+/** The seven crown-design stages (mirrors engine/crownWorkflow.ts's
  * `CrownStage` — identical union, re-declared here per the layer rule). */
-export type CrownStageName = 'innerSurface' | 'anatomy' | 'morph' | 'shell' | 'freeform' | 'qc';
+export type CrownStageName = 'prepDie' | 'innerSurface' | 'anatomy' | 'morph' | 'shell' | 'freeform' | 'qc';
 
 /** Mirrors `@dqcad/kernel`'s `MorphContactKind` (re-declared; state may not
  * import kernel/kernel-workers). */
@@ -40,6 +40,7 @@ export type SculptBrushType = 'add' | 'remove' | 'smooth';
 export type CrownPrerequisiteCode =
   | 'noTargetScan'
   | 'noMarginLine'
+  | 'prepDieIncomplete'
   | 'innerSurfaceIncomplete'
   | 'anatomyIncomplete'
   | 'morphIncomplete'
@@ -53,6 +54,20 @@ export interface CrownStageGateSnapshot {
   allowed: boolean;
   complete: boolean;
   reason: CrownPrerequisiteCode | null;
+}
+
+/** The prepared die's readout (Phase 10 Task 2, ADR-023), from its journal
+ * entry. `clearanceMm` is `null` when the scan closed the die itself (no
+ * synthetic part to certify). */
+export interface PrepDieSummary {
+  keptTriangleCount: number;
+  syntheticTriangleCount: number;
+  foldTrianglesDropped: number;
+  clearanceMm: number | null;
+  requiredClearanceMm: number;
+  radialSkirtMm: number;
+  depthSkirtMm: number;
+  volumeMm3: number;
 }
 
 export interface InnerSurfaceSummary {
@@ -158,6 +173,7 @@ export interface CrownState {
   error: string | null;
   errorStage: CrownStageName | null;
 
+  prepDie: PrepDieSummary | null;
   inner: InnerSurfaceSummary | null;
   anatomy: AnatomySummary | null;
   morph: MorphSummary | null;
@@ -214,6 +230,7 @@ const INITIAL: Omit<CrownState, 'apply' | 'reset'> = {
   progress: 0,
   error: null,
   errorStage: null,
+  prepDie: null,
   inner: null,
   anatomy: null,
   morph: null,

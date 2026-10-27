@@ -193,7 +193,14 @@ function buildShoulderPrepDie(): IndexedMesh {
   const preP2: Vec2 = [p2[0] + CORNER_REFINEMENT_MM, p2[1]];
   const taperDir = normalize2(sub2(p3, p2));
   const postP2: Vec2 = [p2[0] + taperDir[0] * CORNER_REFINEMENT_MM, p2[1] + taperDir[1] * CORNER_REFINEMENT_MM];
-  const profile: Vec2[] = [p0, p1, preP2, p2, postP2, p3];
+  // The gingival collar carries two intermediate rings, as a scan's dense
+  // surface would: the prepared die keeps whole scan triangles above its
+  // depth skirt (1 mm below the margin), so a single 1.5 mm collar band would
+  // be dropped and leave the die's cut rim on the shoulder edge, with no
+  // clearance (Phase 10, ADR-023).
+  const collar1: Vec2 = [GINGIVAL_R_MM, MARGIN_Z_MM / 3];
+  const collar2: Vec2 = [GINGIVAL_R_MM, (2 * MARGIN_Z_MM) / 3];
+  const profile: Vec2[] = [p0, collar1, collar2, p1, preP2, p2, postP2, p3];
   return revolveProfile(profile, SEGMENTS);
 }
 
@@ -371,12 +378,19 @@ test.describe.serial('Phase 4 crown-design workflow (buildable synthetic fixture
     await expect(page.getByTestId('margin-confirmed-indicator')).toBeVisible({ timeout: 15_000 });
   });
 
-  test('crown design: inner surface -> anatomy -> morph -> shell -> freeform -> QC all-pass', async () => {
+  test('crown design: die -> inner surface -> anatomy -> morph -> shell -> freeform -> QC all-pass', async () => {
     await page.getByTestId('crown-restoration-select').selectOption({ index: 1 });
     await page.getByTestId('crown-start-button').click();
     await expect(page.getByTestId('crown-panel')).toBeVisible();
 
-    // Stage 1 — inner surface. A coarser-than-clinical-default pitch (still a
+    // Stage 1 — the prepared die (Phase 10, ADR-023): the closed prep cut
+    // from the scan. This synthetic die is its own closed scan, so it passes
+    // through whole — nothing synthetic to certify.
+    await page.getByTestId('crown-prepdie-run').click();
+    await expect(page.getByTestId('crown-prepdie-readout')).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByTestId('crown-error')).toHaveCount(0);
+
+    // Stage 2 — inner surface. A coarser-than-clinical-default pitch (still a
     // journaled parameter — CLAUDE.md) keeps the SDF/marching-cubes offset
     // fast for this small synthetic die inside a real browser Web Worker.
     await page.getByTestId('crown-inner-pitch').fill('150');
@@ -499,7 +513,8 @@ test.describe.serial('Phase 4 crown-design workflow (buildable synthetic fixture
     await page.getByTestId('crown-start-button').click();
     await expect(page.getByTestId('crown-panel')).toBeVisible();
 
-    await expect(page.getByTestId('crown-innerSurface-done')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('crown-prepDie-done')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('crown-innerSurface-done')).toBeVisible();
     await expect(page.getByTestId('crown-anatomy-done')).toBeVisible();
     await expect(page.getByTestId('crown-morph-done')).toBeVisible();
     await expect(page.getByTestId('crown-shell-done')).toBeVisible();

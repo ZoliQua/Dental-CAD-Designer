@@ -187,3 +187,48 @@ export function dieVolumeAnalytic(
   }
   return c * v;
 }
+
+/**
+ * A CLOSED capped frustum die whose margin is its bottom rim (the Phase 4
+ * server crown fixture's shape): bottom ring radius `marginR` at `marginZ`,
+ * top ring `topR` at `topZ`, both capped with a centre fan, outward wound.
+ * Every vertex lies inside the margin footprint and above the depth floor, so
+ * the whole solid is the kept surface. `topCentreZ` moves the top fan's apex
+ * (below `marginZ` it pierces the bottom cap: a self-intersecting die).
+ */
+export function closedFrustumDie(
+  opts: { segments?: number; marginR?: number; topR?: number; marginZ?: number; topZ?: number; topCentreZ?: number } = {},
+): { die: IndexedMesh; marginLoop: Vec3[]; volumeMm3: number } {
+  const n = opts.segments ?? 96;
+  const marginR = opts.marginR ?? 1.2;
+  const topR = opts.topR ?? 0.8;
+  const marginZ = opts.marginZ ?? 0.5;
+  const topZ = opts.topZ ?? 2.0;
+  const positions: number[] = [];
+  for (let s = 0; s < n; s++) {
+    const th = (2 * Math.PI * s) / n;
+    positions.push(marginR * Math.cos(th), marginR * Math.sin(th), marginZ);
+  }
+  for (let s = 0; s < n; s++) {
+    const th = (2 * Math.PI * s) / n;
+    positions.push(topR * Math.cos(th), topR * Math.sin(th), topZ);
+  }
+  const bottomCentre = 2 * n;
+  const topCentre = 2 * n + 1;
+  positions.push(0, 0, marginZ, 0, 0, opts.topCentreZ ?? topZ);
+  const tris: number[] = [];
+  for (let s = 0; s < n; s++) {
+    const sn = (s + 1) % n;
+    tris.push(s, sn, n + sn, s, n + sn, n + s);
+    tris.push(bottomCentre, sn, s);
+    tris.push(topCentre, n + s, n + sn);
+  }
+  const marginLoop: Vec3[] = [];
+  for (let s = 0; s < n; s++) marginLoop.push([positions[s * 3]!, positions[s * 3 + 1]!, positions[s * 3 + 2]!]);
+  // Similar n-gon cross-sections: V = h/3 · (A₁ + A₂ + √(A₁A₂)).
+  const c = (n / 2) * Math.sin((2 * Math.PI) / n);
+  const a1 = c * marginR * marginR;
+  const a2 = c * topR * topR;
+  const volumeMm3 = ((topZ - marginZ) / 3) * (a1 + a2 + Math.sqrt(a1 * a2));
+  return { die: { positions: Float64Array.from(positions), indices: Uint32Array.from(tris) }, marginLoop, volumeMm3 };
+}

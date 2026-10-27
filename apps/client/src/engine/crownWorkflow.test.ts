@@ -109,20 +109,27 @@ describe('isStageComplete', () => {
 });
 
 describe('order enforcement', () => {
-  it('inner surface is blocked without a target scan', () => {
-    const gate = stageGate('innerSurface', restoration({ targetNodeId: null }));
+  it('preparing the die is blocked without a target scan', () => {
+    const gate = stageGate('prepDie', restoration({ targetNodeId: null }));
     expect(gate.allowed).toBe(false);
     expect(gate.reason).toBe('noTargetScan');
   });
 
-  it('inner surface is blocked without a margin line', () => {
-    const gate = stageGate('innerSurface', restoration({ marginLines: {} }));
+  it('preparing the die is blocked without a margin line', () => {
+    const gate = stageGate('prepDie', restoration({ marginLines: {} }));
     expect(gate.allowed).toBe(false);
     expect(gate.reason).toBe('noMarginLine');
   });
 
-  it('inner surface is allowed with target + margin (axis is never gated)', () => {
-    expect(canRunStage('innerSurface', restoration())).toBe(true);
+  it('preparing the die is allowed with target + margin (axis is never gated)', () => {
+    expect(canRunStage('prepDie', restoration())).toBe(true);
+  });
+
+  it('cannot build the inner surface before the die is prepared (ADR-023)', () => {
+    expect(canRunStage('innerSurface', restoration())).toBe(false);
+    expect(stageGate('innerSurface', restoration()).reason).toBe('prepDieIncomplete');
+    expect(canRunStage('innerSurface', restoration({ stages: { prepDie: 'd' } }))).toBe(true);
+    expect(isStageComplete('prepDie', restoration({ stages: { prepDie: 'd' } }))).toBe(true);
   });
 
   it('cannot place anatomy before the inner surface exists', () => {
@@ -157,26 +164,28 @@ describe('order enforcement', () => {
 });
 
 describe('workflowGates + nextRunnableStage', () => {
-  it('returns all six gates in fixed order', () => {
+  it('returns all seven gates in fixed order, the die first', () => {
     const gates = workflowGates(restoration());
     expect(gates.map((g) => g.stage)).toEqual([...CROWN_STAGES]);
+    expect(CROWN_STAGES[0]).toBe('prepDie');
   });
 
   it('advances through the pipeline one stage at a time', () => {
-    expect(nextRunnableStage(restoration())).toBe('innerSurface');
-    expect(nextRunnableStage(restoration({ stages: { innerSurface: 'h' } }))).toBe('anatomy');
-    expect(nextRunnableStage(restoration({ stages: { innerSurface: 'h', anatomyPlacement: 'h' } }))).toBe('morph');
+    expect(nextRunnableStage(restoration())).toBe('prepDie');
+    expect(nextRunnableStage(restoration({ stages: { prepDie: 'd' } }))).toBe('innerSurface');
+    expect(nextRunnableStage(restoration({ stages: { prepDie: 'd', innerSurface: 'h' } }))).toBe('anatomy');
+    expect(nextRunnableStage(restoration({ stages: { prepDie: 'd', innerSurface: 'h', anatomyPlacement: 'h' } }))).toBe('morph');
     expect(
-      nextRunnableStage(restoration({ stages: { innerSurface: 'h', anatomyPlacement: 'h', morphState: 'h' } })),
+      nextRunnableStage(restoration({ stages: { prepDie: 'd', innerSurface: 'h', anatomyPlacement: 'h', morphState: 'h' } })),
     ).toBe('shell');
     // Shell done, QC not yet run -> next is qc (freeform, never "complete", is skipped).
     expect(
-      nextRunnableStage(restoration({ stages: { innerSurface: 'h', anatomyPlacement: 'h', morphState: 'h', finalMesh: 'h' } })),
+      nextRunnableStage(restoration({ stages: { prepDie: 'd', innerSurface: 'h', anatomyPlacement: 'h', morphState: 'h', finalMesh: 'h' } })),
     ).toBe('qc');
     // Everything done.
     expect(
       nextRunnableStage(
-        restoration({ stages: { innerSurface: 'h', anatomyPlacement: 'h', morphState: 'h', finalMesh: 'h' }, qc: EMPTY_QC }),
+        restoration({ stages: { prepDie: 'd', innerSurface: 'h', anatomyPlacement: 'h', morphState: 'h', finalMesh: 'h' }, qc: EMPTY_QC }),
       ),
     ).toBeNull();
   });
@@ -187,6 +196,13 @@ describe('workflowGates + nextRunnableStage', () => {
 });
 
 describe('downstreamInvalidations (invalidation cascade)', () => {
+  it('a new die invalidates the intaglio and everything after it', () => {
+    expect(downstreamInvalidations('prepDie')).toEqual({
+      stageFields: ['innerSurface', 'anatomyPlacement', 'morphState', 'finalMesh'],
+      clearQc: true,
+    });
+  });
+
   it('an upstream commit invalidates every later stage hash + qc', () => {
     expect(downstreamInvalidations('innerSurface')).toEqual({ stageFields: ['anatomyPlacement', 'morphState', 'finalMesh'], clearQc: true });
     expect(downstreamInvalidations('anatomy')).toEqual({ stageFields: ['morphState', 'finalMesh'], clearQc: true });

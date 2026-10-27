@@ -11,7 +11,7 @@ import { analyzeMesh } from '../intake/analyze.ts';
 import { findSelfIntersections } from '../intersect/selfIntersect.ts';
 import type { IndexedMesh } from '../mesh/types.ts';
 import { ARCH_DIES, archPrepDie } from '../bridge/archBridge.test-fixtures.ts';
-import { dieVolumeAnalytic, openArchPrepCase } from './die.test-fixtures.ts';
+import { closedFrustumDie, dieVolumeAnalytic, openArchPrepCase } from './die.test-fixtures.ts';
 import {
   extractPrepDie,
   PREP_DIE_DEFAULT_DEPTH_SKIRT_MM,
@@ -20,8 +20,13 @@ import {
   PREP_DIE_DEFAULT_RADIAL_SKIRT_MM,
   PREP_DIE_DEFAULT_REQUIRED_CLEARANCE_MM,
   PrepDieClearanceError,
+  PrepDieCoverageError,
+  PrepDieInvalidError,
   PrepDieRegionError,
+  assertPrepDieCoversInnerSurface,
+  prepDieInnerSurfaceNeeds,
 } from './extractPrepDie.ts';
+import { innerSurfaceCropBandMm } from '../offset/innerSurfaceSolid.ts';
 
 const fixture = openArchPrepCase();
 const n = fixture.params.segments;
@@ -303,5 +308,89 @@ describe('extractPrepDie — an already closed single die goes through the same 
     const segments = die.marginLoop.length;
     const lateral = p.shoulderMm * Math.cos(Math.PI / segments) - PREP_DIE_DEFAULT_PROTECT_BAND_MM;
     expect(result.clearanceMm).toBeCloseTo(Math.min(lateral, PREP_DIE_DEFAULT_FLOOR_GAP_MM), 9);
+  });
+
+  it('passes a die that is closed within the skirts through whole: no synthetic closure, nothing to certify', () => {
+    // The margin is the frustum's bottom rim, so every triangle is kept and
+    // the kept surface is already closed (the Phase 4 server crown fixture).
+    const frustum = closedFrustumDie();
+    const result = extractPrepDie(frustum.die, frustum.marginLoop, [0, 0, 1]);
+    expect(result.syntheticTriangleCount).toBe(0);
+    expect(result.keptTriangleCount).toBe(frustum.die.indices.length / 3);
+    expect(Array.from(result.sourceTriangleIndices)).toEqual(
+      Array.from({ length: frustum.die.indices.length / 3 }, (_, t) => t),
+    );
+    expect(result.rimVertexCount).toBe(0);
+    expect(result.floorHeightMm).toBeNull();
+    expect(result.clearanceMm).toBe(Infinity);
+    expect(result.foldTrianglesDropped).toBe(0);
+    expect(result.volumeMm3).toBeCloseTo(frustum.volumeMm3, 10);
+    // Verbatim: every die triangle is its source triangle, corner for corner.
+    for (let t = 0; t < result.keptTriangleCount; t++) {
+      for (let k = 0; k < 3; k++) {
+        const dv = result.mesh.indices[t * 3 + k]!;
+        const sv = frustum.die.indices[t * 3 + k]!;
+        for (let c = 0; c < 3; c++) expect(result.mesh.positions[dv * 3 + c]).toBe(frustum.die.positions[sv * 3 + c]);
+      }
+    }
+  });
+
+  it('refuses a closed die that intersects itself', () => {
+    // The top fan's apex pushed below the bottom cap pierces it.
+    const pierced = closedFrustumDie({ topCentreZ: 0.2 });
+    let error: unknown;
+    try {
+      extractPrepDie(pierced.die, pierced.marginLoop, [0, 0, 1]);
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toBeInstanceOf(PrepDieInvalidError);
+  });
+});
+
+describe('the die certificate against the intaglio it serves', () => {
+  const gaps = { marginalGapMm: 0.02, cementGapMm: 0.05 };
+
+  it('needs the intaglio\'s own crop band laterally and the larger gap plus four pitches of clearance', () => {
+    const needs = prepDieInnerSurfaceNeeds(gaps, 0.08);
+    expect(needs.cropBandMm).toBe(innerSurfaceCropBandMm(0.05, 0.08));
+    expect(needs.requiredClearanceMm).toBeCloseTo(0.05 + 4 * 0.08, 12);
+    // The extraction defaults are exactly the needs of a 50 µm gap at a
+    // 50 µm pitch (clearance), and cover every pitch up to 0.15 mm (band).
+    expect(prepDieInnerSurfaceNeeds({ marginalGapMm: 0.05, cementGapMm: 0.05 }, 0.05).requiredClearanceMm).toBeCloseTo(
+      PREP_DIE_DEFAULT_REQUIRED_CLEARANCE_MM,
+      12,
+    );
+    expect(prepDieInnerSurfaceNeeds({ marginalGapMm: 0.05, cementGapMm: 0.05 }, 0.15).cropBandMm).toBeCloseTo(
+      PREP_DIE_DEFAULT_PROTECT_BAND_MM,
+      12,
+    );
+  });
+
+  it('accepts a certificate that covers the needs, and a die with no synthetic part', () => {
+    expect(() => assertPrepDieCoversInnerSurface({ clearanceMm: 0.6, protectBandMm: 0.5 }, gaps, 0.02)).not.toThrow();
+    expect(() => assertPrepDieCoversInnerSurface({ clearanceMm: Infinity, protectBandMm: 0.5 }, gaps, 0.1)).not.toThrow();
+  });
+
+  it('refuses a clearance short of the need, and a protect band narrower than the crop band, with both values', () => {
+    let error: unknown;
+    try {
+      assertPrepDieCoversInnerSurface({ clearanceMm: 0.3, protectBandMm: 0.5 }, gaps, 0.08);
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toBeInstanceOf(PrepDieCoverageError);
+    expect((error as PrepDieCoverageError).reason).toBe('clearance');
+    expect((error as PrepDieCoverageError).measuredMm).toBe(0.3);
+    expect((error as PrepDieCoverageError).requiredMm).toBeCloseTo(0.37, 12);
+
+    let bandError: unknown;
+    try {
+      assertPrepDieCoversInnerSurface({ clearanceMm: 5, protectBandMm: 0.2 }, gaps, 0.08);
+    } catch (e) {
+      bandError = e;
+    }
+    expect(bandError).toBeInstanceOf(PrepDieCoverageError);
+    expect((bandError as PrepDieCoverageError).reason).toBe('protect-band');
   });
 });

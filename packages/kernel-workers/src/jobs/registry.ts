@@ -31,6 +31,7 @@
 //   jobs/decimate.ts   decimateMesh (Phase 2 Task 10 — render LODs)
 //   jobs/export.ts     exportRestorationMesh (Phase 7 Task 3 — manufacturing bytes)
 //   jobs/neighbourRegion.ts extractNeighbourRegion (Phase 9 Task 3 — neighbour capture)
+//   jobs/prepDie.ts    extractPrepDie (Phase 10 Task 2 — the crown's closed prep die)
 //   jobs/toothAsset.ts loadToothAsset (Phase 9 Task 4 — verify a fetched library asset)
 //   jobs/bridgeCaseGeometry.ts fitRidgeCrest, bridgePonticUnit, placeBridgeConnectors
 //                      (Phase 9 Task 6 — the bridge built from the case)
@@ -229,6 +230,8 @@ import {
   type ExtractNeighbourRegionResult,
 } from './neighbourRegion.ts';
 export type { ExtractNeighbourRegionPayload, ExtractNeighbourRegionResult };
+import { extractPrepDieJob, type ExtractPrepDiePayload, type ExtractPrepDieResult } from './prepDie.ts';
+export type { ExtractPrepDiePayload, ExtractPrepDieResult };
 import {
   cavityProximalContactJob,
   type CavityProximalContactPayload,
@@ -508,6 +511,7 @@ export interface JobPayloadMap {
   cavityOcclusalPatch: CavityOcclusalPatchPayload;
   cavityProximalContact: CavityProximalContactPayload;
   extractNeighbourRegion: ExtractNeighbourRegionPayload;
+  extractPrepDie: ExtractPrepDiePayload;
   loadToothAsset: LoadToothAssetPayload;
   placeAnatomy: PlaceAnatomyPayload;
   morphAnatomy: MorphAnatomyPayload;
@@ -573,6 +577,7 @@ export interface JobResultMap {
   cavityOcclusalPatch: CavityOcclusalPatchResult;
   cavityProximalContact: CavityProximalContactResult;
   extractNeighbourRegion: ExtractNeighbourRegionResult;
+  extractPrepDie: ExtractPrepDieResult;
   loadToothAsset: LoadToothAssetResult;
   placeAnatomy: PlaceAnatomyResult;
   morphAnatomy: MorphAnatomyResult;
@@ -645,6 +650,7 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   cavityOcclusalPatch: cavityOcclusalPatchJob,
   cavityProximalContact: cavityProximalContactJob,
   extractNeighbourRegion: extractNeighbourRegionJob,
+  extractPrepDie: extractPrepDieJob,
   loadToothAsset: loadToothAssetJob,
   placeAnatomy: placeAnatomyJob,
   morphAnatomy: morphAnatomyJob,

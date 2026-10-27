@@ -89,6 +89,13 @@
 //     outer-envelope certification (Task 8):
 //     absent → 409 export-final-mesh-not-persisted;
 //     mismatch → 409 export-outer-envelope-mismatch
+// 10.6 crown only (Phase 10 Task 2, ADR-023): the
+//     prepared die re-extracted from the SAVED scan,
+//     margin and axis (export-die.ts): untraceable
+//     → 409 export-die-not-traceable; a die that
+//     differs from stages.prepDie or the riding
+//     dieSolid → 409 export-die-mismatch
+//     (+ PERSISTED ExportDiagnostic bundle)
 // 11. QC recompute on the re-imported solid;
 //     typed pipeline input errors                 → 400 qc-invalid-input
 // 12. exact diff vs request.qcReport              → 409 export-qc-mismatch
@@ -190,6 +197,7 @@ import {
 } from './export-validation.js';
 import { readFinalMesh } from './final-mesh-storage.js';
 import { assertTraceableProvenance } from './export-provenance.js';
+import { verifyCrownExportDie } from './export-die.js';
 import { renderTraceabilityHtml, type TraceabilityLocale } from '@dqcad/traceability';
 import { validateTraceabilityDocument } from '@dqcad/traceability/validate';
 import { resolveExportMaterialProfile, verifyProfileThresholds } from './export-profile.js';
@@ -499,6 +507,9 @@ export interface ExportRouteDeps {
    * keyed by `stages.finalMesh`; the outer-envelope certification's byte
    * provenance (Phase 7 Task 6 Part A, the F2 closure). */
   finalMeshDataDir: string;
+  /** Content-addressed scan store (mesh-storage.ts) — the crown's target scan
+   * the prepared die is re-extracted from (Phase 10 Task 2, step 10.6). */
+  meshDataDir: string;
   /** Body-size ceiling for the export POST. The body carries the base64
    * bytes (4/3 × raw + padding — the largest fixture solid is ~2.7 MB STL ≈
    * 3.6 MB base64) PLUS the riding qcContext meshes as JSON number arrays,
@@ -509,7 +520,7 @@ export interface ExportRouteDeps {
 }
 
 export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps): void {
-  const { prisma, exportsDataDir, finalMeshDataDir, meshMaxBytes } = deps;
+  const { prisma, exportsDataDir, finalMeshDataDir, meshDataDir, meshMaxBytes } = deps;
 
   app.post<{ Params: { id: string }; Body: ExportRequestBody }>(
     '/api/restorations/:id/export',
@@ -709,6 +720,46 @@ export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps
         // Reaching here: the outer envelope is certified (byte-provenance
         // asserted). The release document records `outerEnvelopeCertified:
         // true` by construction (schemaVersion 2) — see step 14.
+
+        // 10.6 (crown — Phase 10 Task 2, ADR-023): the seating gate below
+        // measures `crown ∩ dieSolid`, and `dieSolid` rides with the request.
+        // Re-derive the prepared die from the SAVED scan, margin and axis and
+        // refuse a die that differs (export-die.ts) — the server never
+        // trusts a client die. A mismatch persists a diagnostic bundle.
+        if (exportRequest.restorationType === 'crown') {
+          try {
+            await verifyCrownExportDie(
+              document,
+              restoration,
+              toIndexedMesh((qcContext as CrownExportQcContext).dieSolid),
+              meshDataDir,
+            );
+          } catch (error) {
+            if (error instanceof ExportRejectionError && error.code === 'export-die-mismatch') {
+              const diagnostic = await prisma.exportDiagnostic.create({
+                data: {
+                  caseId: exportRequest.caseId,
+                  restorationId: exportRequest.restorationId,
+                  reason: 'die-mismatch',
+                  bytesSha256: exportRequest.bytesSha256,
+                  bundleJson: JSON.stringify({
+                    reason: 'die-mismatch',
+                    caseId: exportRequest.caseId,
+                    restorationId: exportRequest.restorationId,
+                    kernelVersion: KERNEL_VERSION,
+                    message: error.message,
+                    ...error.details,
+                  }),
+                },
+              });
+              throw new ExportRejectionError(error.code, error.httpStatus, error.message, {
+                ...error.details,
+                diagnosticId: diagnostic.id,
+              });
+            }
+            throw error;
+          }
+        }
 
         // 11. Independent QC recompute (typed pipeline input errors → 400,
         // the validate-qc parity; anything else is a genuine server bug and

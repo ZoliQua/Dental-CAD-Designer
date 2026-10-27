@@ -550,7 +550,7 @@ describe('QC traceability document — server generation, storage, routes', () =
     // Pin preconditions — the pinned values are kernel-derived; a bump moves
     // them ONLY with a deliberate KERNEL_VERSION change + changelog entry
     // (the golden discipline).
-    expect(KERNEL_VERSION).toBe('0.32.0');
+    expect(KERNEL_VERSION).toBe('0.33.0');
     expect(installedManifoldVersion()).toBe('3.5.1');
 
     // Fixed identity/journal constants isolate the pin to the DETERMINISTIC
@@ -664,8 +664,15 @@ describe('QC traceability document — server generation, storage, routes', () =
     // (same proof: the "0.32.0" strings replaced by "0.31.0" reproduce the
     // previous hash). Previous (0.31.0):
     // 992123808d4cc21e5b8194dff30c7527d2d7f1e8b8814a09155c1fa010ac68ae.
+    //
+    // MOVED at KERNEL_VERSION 0.32.0 → 0.33.0 (Phase 10 Task 2): VERSION-ONLY
+    // (same proof: the "0.33.0" strings replaced by "0.32.0" reproduce the
+    // previous hash). The crown fixture's riding die is now the prepared die
+    // (the frustum scan passes through whole), and the seating gate's empty
+    // intersection is unchanged. Previous (0.32.0):
+    // d78b17c9ec8436e8879fd6448a1a0792fb5de1c11aa0334a728442d18018ac6c.
     expect(sha256Hex(json)).toBe(
-      'd78b17c9ec8436e8879fd6448a1a0792fb5de1c11aa0334a728442d18018ac6c',
+      '13249366f7d89bbb5ff551293eb7fefb0a4780908bc13150abee4c8998a388f0',
     );
   });
 });

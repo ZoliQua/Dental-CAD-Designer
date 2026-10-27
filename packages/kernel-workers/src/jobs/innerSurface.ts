@@ -30,6 +30,7 @@
 // `.ts` extension: reachable from the Node worker entry's import closure —
 // see CLAUDE.md's "Import extension convention".
 import {
+  assertPrepDieCoversInnerSurface,
   buildInnerSurface,
   blendZoneLipschitz,
   MIN_PITCH_MM,
@@ -54,6 +55,12 @@ export interface InnerSurfacePayload {
   marginLoop: Float64Array;
   /** Insertion axis (crown draw direction) — the blockout draft-closes along it. */
   insertionAxis: Vec3;
+  /** When the target is an extracted prep die (Phase 10 Task 2, ADR-023):
+   * its clearance certificate and protected band. The job refuses, before
+   * any heavy work, an intaglio this certificate does not cover
+   * (`PrepDieCoverageError` — kernel `assertPrepDieCoversInnerSurface`). It
+   * changes no computed value. */
+  prepDieCertificate?: { clearanceMm: number; protectBandMm: number };
 }
 
 export interface InnerSurfaceResult {
@@ -159,6 +166,9 @@ export const innerSurfaceJob = async (payload: InnerSurfacePayload, ctx: JobCont
   }
   if (!payload.marginLoop || payload.marginLoop.length < 9) {
     throw new TypeError(`innerSurface: marginLoop must have >= 3 points (>= 9 flat coords)`);
+  }
+  if (payload.prepDieCertificate) {
+    assertPrepDieCoversInnerSurface(payload.prepDieCertificate, gapParams, pitchMm);
   }
 
   if (await ctx.cancelled()) throw new JobCancelledError();

@@ -114,6 +114,58 @@ real scan:
   - the crown QC pins that move only by `dieSolid` or the version string are
     proven version-only or documented.
 
+**Landed (2026-10-27, kernel 0.33.0).** As planned, with these findings and
+decisions:
+- **The persisted form.** The server holds a scan only as binary STL
+  (float32, re-welded on reload), so a die cut from the client's Float64
+  scan could not be reproduced there. The job and the server both cut the die
+  from `persistedMeshForm(scan)`. It equals the real save-and-reload jobs'
+  mesh, which a kernel-workers test proves, and it is idempotent, so a
+  reopened case replays the identical die.
+- **The closed passthrough.** The Phase 4 dies (and the server crown fixture)
+  are closed scans lying wholly within the skirts. `extractPrepDie` used to
+  refuse them ("0 rim loops"). Now the kept surface passes through as the
+  die, with no synthetic part and an unbounded certificate, as the ADR
+  states. Inputs that extracted before extract identically.
+- **The coverage check.** The die's certificate is checked against the
+  intaglio actually built: clearance ≥ the larger gap + 4 pitches, and a
+  protected band ≥ the crop band (`PrepDieCoverageError`, raised by the
+  `innerSurface` job before any work).
+- **Margins must be on the scan.** A die needs every margin point within
+  0.1 µm of the kept surface. The margin editor's snapped points are; an
+  analytic circle on a faceted test die is not (up to 0.64 µm inside the
+  chords). The browser test and the server fixture now use the die's rim
+  vertices for the die margin. The tolerance is unchanged.
+- **Coarse test dies.** The e2e shoulder die's gingival collar was a single
+  1.5 mm band. The die keeps whole triangles above its depth skirt, so that
+  band was dropped and the cut rim sat on the shoulder edge with a clearance
+  of 0, and the die was refused, correctly. The e2e collar now carries two
+  intermediate rings, as a scan's dense surface does. Phase 7's export then
+  released through the server re-extraction: the client and server dies are
+  bit-identical end to end.
+- **The engine.** A new first stage, **1 · Prepared die** (the stage titles
+  are renumbered 1–7). It is journaled as `crown-die-extract` with the scan
+  mesh id in, the die hash out, and the margin, axis, skirts, certificate and
+  counts as params. It invalidates the intaglio onward. On reload the die is
+  re-derived by replay and must reproduce `stages.prepDie`
+  (`CrownDieReplayMismatchError` otherwise). The anatomy height is measured
+  on the die along the axis. Every die error has a localized hint in the
+  panel.
+- **The server.** Export step 10.6 re-extracts the die from the saved scan,
+  margin and axis, and refuses `export-die-not-traceable` /
+  `export-die-mismatch`, the latter with a persisted diagnostic.
+  `/validate-qc` has no case reference, so it stays a stateless parity
+  endpoint (ADR-023 updated). The pipeline twin needs no change:
+  `runCrownQc` already takes the die, and the innerSurface stage takes the
+  die as its target mesh. A pipeline die stage lands with Task 3's golden.
+- **Real scan (e2e phase9-crown).** On arch-case-01 tooth 11 the die is cut,
+  certified, and the intaglio is built on it through the real UI. Before,
+  that stage refused the open scan.
+- **Golden proof.** The whole golden suite passed at 0.32.0 with the new
+  code. At 0.33.0 the five `*-qc` pins and the server traceability golden
+  moved, version-only (replacing "0.33.0" with "0.32.0" reproduces the old
+  traceability hash).
+
 ## Task 3 — Open-arch crown acceptance (built-in template)
 
 - A golden `test/golden/crown-open-arch-acceptance.test.ts`, with the scans
@@ -125,7 +177,7 @@ real scan:
   goes through extraction and the intaglio, and the certificate and the
   intaglio's margin fit are recorded.
 
-## Task 4 — Cervical fit *(kernel 0.33.0, library asset 1.2.0)*
+## Task 4 — Cervical fit *(kernel 0.34.0, library asset 1.2.0)*
 
 - Tooth-library schema: an optional `cervicalRing` (ordered vertex indices).
   The generators emit it, assets are versioned 1.2.0, the server seeds them,
@@ -146,7 +198,7 @@ real scan:
   - the library incisor on the phase-4 shoulder die now passes the
     minimum-wall, seating and self-intersection gates. These are the gates
     that failed in Phase 9 Task 4.
-- `KERNEL_VERSION` 0.33.0 and a changelog entry. Existing placement and morph
+- `KERNEL_VERSION` 0.34.0 and a changelog entry. Existing placement and morph
   pins stay byte-identical, because the fit is a separate op.
 
 ## Task 5 — The library template becomes the crown default

@@ -33,6 +33,12 @@
 // triangles) and the dropped rim polygon is ear-clipped into a planar floor
 // cap.
 //
+// A scan that is ALREADY CLOSED within the skirts (a die scanned on its own,
+// trimmed close below the margin — the Phase 4 dies) has no rim: the kept
+// surface is the die, unchanged, with no synthetic part (`floorHeightMm` is
+// `null` and the certificate is `Infinity`). It is still validated; a
+// degenerate or self-intersecting closed scan is refused, never cut open.
+//
 // A real scan can FOLD at the rim (the surface turns under itself along the
 // axis — arch-case-01 tooth 12 does): the rim then does not project to a
 // simple polygon, or a wall crosses the kept surface. Every kept triangle
@@ -93,6 +99,7 @@ import {
   axisFrame,
   dedupLoop,
   distSqToPolyline2d,
+  innerSurfaceCropBandMm,
   MARGIN_DEDUP_EPSILON_MM,
   pointInPolygon2d,
 } from '../offset/innerSurfaceSolid.ts';
@@ -140,9 +147,11 @@ export interface PrepDieResult {
   /** The certificate: a lower bound on the distance from the synthetic
    * closure to the protected prism (mm) — see the module doc. */
   clearanceMm: number;
-  /** Heights are measured along the unit insertion axis from the origin. */
+  /** Heights are measured along the unit insertion axis from the origin.
+   * `floorHeightMm` is `null` when the kept surface is already closed (see
+   * the module doc) — then `clearanceMm` is `Infinity`. */
   marginMinHeightMm: number;
-  floorHeightMm: number;
+  floorHeightMm: number | null;
   volumeMm3: number;
   insertionAxis: Vec3;
   radialSkirtMm: number;
@@ -184,6 +193,75 @@ export class PrepDieClearanceError extends Error {
     this.name = 'PrepDieClearanceError';
     this.clearanceMm = clearanceMm;
     this.requiredMm = requiredMm;
+  }
+}
+
+/** The die's certificate does not cover the intaglio about to be built on it:
+ * its clearance is short of the need (`'clearance'`), or its protected prism
+ * is narrower than the intaglio's crop band (`'protect-band'`). */
+export class PrepDieCoverageError extends Error {
+  readonly reason: 'clearance' | 'protect-band';
+  readonly measuredMm: number;
+  readonly requiredMm: number;
+  constructor(reason: 'clearance' | 'protect-band', measuredMm: number, requiredMm: number) {
+    super(
+      reason === 'clearance'
+        ? `extractPrepDie: the die's certified clearance ${measuredMm.toFixed(4)} mm is short of the ` +
+            `${requiredMm.toFixed(4)} mm this intaglio needs (the larger gap plus four pitches) — use a finer pitch or a wider skirt`
+        : `extractPrepDie: the die's protected band ${measuredMm.toFixed(4)} mm is narrower than this intaglio's ` +
+            `crop band ${requiredMm.toFixed(4)} mm — use a finer pitch`,
+    );
+    this.name = 'PrepDieCoverageError';
+    this.reason = reason;
+    this.measuredMm = measuredMm;
+    this.requiredMm = requiredMm;
+  }
+}
+
+/**
+ * What an intaglio with these gaps, at this pitch, needs of the die it is
+ * built on (see the module doc's certificate):
+ *
+ *  - `cropBandMm`: its field is sampled within the crop band of the margin
+ *    polygon (`innerSurfaceCropBandMm`), so the protected prism must be at
+ *    least that wide;
+ *  - `requiredClearanceMm`: the larger gap plus four pitches. The iso
+ *    surface lies at most the larger gap from the die, and a marching-cubes
+ *    corner that takes part in it is within √3 pitches of the iso surface;
+ *    the blockout's running minimum only carries values down a column that
+ *    are already that close. Every such corner is therefore nearer the die
+ *    than the larger gap plus two pitches, and a clearance beyond that makes
+ *    its closest feature a kept scan feature. Four pitches leave a margin of
+ *    two.
+ */
+export function prepDieInnerSurfaceNeeds(
+  gaps: { readonly marginalGapMm: number; readonly cementGapMm: number },
+  pitchMm: number,
+): { cropBandMm: number; requiredClearanceMm: number } {
+  const maxGapMm = Math.max(gaps.marginalGapMm, gaps.cementGapMm);
+  return { cropBandMm: innerSurfaceCropBandMm(maxGapMm, pitchMm), requiredClearanceMm: maxGapMm + 4 * pitchMm };
+}
+
+/**
+ * Refuses an intaglio the die's certificate does not cover — see
+ * `prepDieInnerSurfaceNeeds`. A die with no synthetic part (clearance
+ * `Infinity`) covers every intaglio laterally too: nothing synthetic exists to
+ * be read.
+ *
+ * @throws {PrepDieCoverageError} with the measured and the required value.
+ */
+export function assertPrepDieCoversInnerSurface(
+  certificate: { readonly clearanceMm: number; readonly protectBandMm: number },
+  gaps: { readonly marginalGapMm: number; readonly cementGapMm: number },
+  pitchMm: number,
+): void {
+  const needs = prepDieInnerSurfaceNeeds(gaps, pitchMm);
+  if (certificate.clearanceMm === Infinity) return;
+  if (!(certificate.clearanceMm >= needs.requiredClearanceMm)) {
+    throw new PrepDieCoverageError('clearance', certificate.clearanceMm, needs.requiredClearanceMm);
+  }
+  if (!(certificate.protectBandMm >= needs.cropBandMm)) {
+    throw new PrepDieCoverageError('protect-band', certificate.protectBandMm, needs.cropBandMm);
   }
 }
 
@@ -328,7 +406,8 @@ interface ClosedDie {
   rimVertexCount: number;
   /** Surface-local vertex → scan vertex. */
   sourceOf: Int32Array;
-  floorHeightMm: number;
+  /** `null` when the kept surface is already closed (no floor). */
+  floorHeightMm: number | null;
   /** Patch-local kept triangles implicated in a fold (empty ⇒ valid). */
   offending: Set<number>;
 }
@@ -349,6 +428,20 @@ function closeDie(
   const { mesh: surface, remap } = compactSubmesh(scan, patch);
   const hm = buildHalfedge(surface);
   const heLoops = findBoundaryLoops(hm);
+  const surfaceVertexCount = surface.positions.length / 3;
+  const sourceOf = new Int32Array(surfaceVertexCount);
+  for (const [src, dst] of remap) sourceOf[dst] = src;
+  if (heLoops.length === 0) {
+    // Already closed within the skirts (a die scanned on its own): the kept
+    // surface IS the die. Nothing synthetic, so nothing to repair — a scan
+    // defect here is refused, never cut open.
+    const stats = analyzeMesh(surface);
+    if (stats.degenerateCount > 0) throw new PrepDieInvalidError(`${stats.degenerateCount} degenerate triangle(s) in the closed scan`);
+    let pairs = 0;
+    findSelfIntersections(surface, { onIntersectingPair: () => void pairs++ });
+    if (pairs > 0) throw new PrepDieInvalidError(`${pairs} self-intersecting triangle pair(s) in the closed scan`);
+    return { mesh: surface, surface, rimEdges: [], rimVertexCount: 0, sourceOf, floorHeightMm: null, offending: new Set() };
+  }
   if (heLoops.length !== 1) {
     throw new PrepDieRegionError(
       'rim-loops',
@@ -357,9 +450,6 @@ function closeDie(
   }
   const heLoop = heLoops[0]!;
   const rim = heLoop.map((he) => destinationVertex(hm, he));
-  const surfaceVertexCount = surface.positions.length / 3;
-  const sourceOf = new Int32Array(surfaceVertexCount);
-  for (const [src, dst] of remap) sourceOf[dst] = src;
   const heightOf = (local: number): number => rot[sourceOf[local]! * 3 + 2]!;
   let lowest = Infinity;
   for (let v = 0; v < surfaceVertexCount; v++) lowest = Math.min(lowest, heightOf(v));
@@ -590,7 +680,9 @@ export function extractPrepDie(
   }
 
   // ---- the certificate ---------------------------------------------------
-  let clearanceMm = marginMinHeightMm - floorHeightMm;
+  // A die closed by the scan itself has no synthetic part: nothing is
+  // closer to the prism than "infinitely far".
+  let clearanceMm = floorHeightMm === null ? Infinity : marginMinHeightMm - floorHeightMm;
   for (const [u, v] of rimEdges) {
     const a: P2 = [rot[sourceOf[u]! * 3]!, rot[sourceOf[u]! * 3 + 1]!];
     const b: P2 = [rot[sourceOf[v]! * 3]!, rot[sourceOf[v]! * 3 + 1]!];

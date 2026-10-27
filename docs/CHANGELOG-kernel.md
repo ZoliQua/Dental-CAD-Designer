@@ -59,6 +59,35 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.33.0] — Phase 10 Task 2: the crown designs on the extracted die
+
+**No existing geometry output changed. Every geometry stage pin and every
+journal-replay pin is BYTE-IDENTICAL to `[0.32.0]`. This was verified by
+running the whole golden suite at `0.32.0` with the new code. The acceptance
+`*-qc` pins and the server traceability byte-golden advance only because the
+QcReport embeds `kernelVersion`.**
+
+- **`extractPrepDie` passes a closed scan through.** A scan that is already
+  closed within the skirts (a die scanned on its own, trimmed close below the
+  margin; the Phase 4 dies) used to fail with "0 rim loops". Its kept surface
+  is now the die, unchanged: no synthetic part, `floorHeightMm` `null`, the
+  certificate `Infinity`. It is still validated, and a degenerate or
+  self-intersecting closed scan is refused (ADR-023: "goes through the same
+  op"). Inputs that extracted before extract identically.
+- **`persistedMeshForm` (new, `intake/persistedForm.ts`).** The mesh the
+  server rebuilds from a scan's stored binary STL: every coordinate rounded to
+  float32, the triangles re-welded at the intake epsilon. It is idempotent,
+  and equal to the client's save-and-reload jobs (proven in kernel-workers).
+  The crown's die is cut from this form on the client and on the server, so
+  the export can compare their hashes. `@errorBound`: half a float32 ULP per
+  coordinate (0.6 nm at 10 mm); zero for a scan imported from STL.
+- **`prepDieInnerSurfaceNeeds` / `assertPrepDieCoversInnerSurface` (new).**
+  What an intaglio at a given gap and pitch needs of its die: a protected band
+  at least its crop band (`innerSurfaceCropBandMm`, now shared with
+  `innerSurfaceSolid.ts`; same arithmetic, byte-identical output), and a
+  clearance of the larger gap plus four pitches. The `innerSurface` job
+  refuses an intaglio the die does not cover (`PrepDieCoverageError`).
+
 ## [0.32.0] — Phase 10 Task 1: a closed prep die extracted from an open scan
 
 **New op; no existing op changed. Every geometry stage pin and every

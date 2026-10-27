@@ -371,8 +371,17 @@
  * and a clearance certificate bounding the closure's distance from the
  * region the intaglio reads). No existing op changed: geometry +
  * journal-replay pins byte-identical; the acceptance QC pins advance
- * mechanically. See docs/CHANGELOG-kernel.md's `[0.32.0]` entry. */
-export const KERNEL_VERSION = '0.32.0';
+ * mechanically. See docs/CHANGELOG-kernel.md's `[0.32.0]` entry.
+ *
+ * 0.33.0 (Phase 10 Task 2, ADR-023): `extractPrepDie` passes a scan already
+ * closed within its skirts through unchanged (no synthetic part, certificate
+ * `Infinity`); NEW `intake/persistedForm.ts` (`persistedMeshForm`, the scan
+ * the server rebuilds from its stored STL) and the die-certificate coverage
+ * check for an intaglio (`prepDieInnerSurfaceNeeds`,
+ * `assertPrepDieCoversInnerSurface`). No existing output changed: geometry +
+ * journal-replay pins byte-identical; the acceptance QC pins advance
+ * mechanically. See docs/CHANGELOG-kernel.md's `[0.33.0]` entry. */
+export const KERNEL_VERSION = '0.33.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -399,6 +408,7 @@ export {
   countsOf,
   makeStepReport,
   intake,
+  persistedMeshForm,
   type DegenerateCheck,
   type DropDegenerateResult,
   type OrientComponentReport,
@@ -1068,6 +1078,9 @@ export {
   PrepDieRegionError,
   PrepDieInvalidError,
   PrepDieClearanceError,
+  PrepDieCoverageError,
+  prepDieInnerSurfaceNeeds,
+  assertPrepDieCoversInnerSurface,
   type PrepDieOptions,
   type PrepDieResult,
 } from './die/index.ts';

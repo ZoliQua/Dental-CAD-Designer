@@ -253,6 +253,9 @@ export interface Restoration {
    * `finalMesh`) works uniformly across restoration types. Every field is
    * optional: a given restoration only ever populates its own family's fields. */
   stages: {
+    /** Crown: the closed prep die extracted from the target scan (Phase 10
+     * Task 2, ADR-023) — the die the intaglio, seating QC and export use. */
+    prepDie?: string;
     innerSurface?: string;
     anatomyPlacement?: string;
     morphState?: string;
@@ -389,6 +392,17 @@ export const BRIDGE_ABUTMENT_SURFACES_OP = 'bridge-abutment-surfaces';
  * `inputHashes[0]` is the gingiva scan's mesh id.
  */
 export const BRIDGE_PONTIC_OP = 'bridge-pontic';
+
+/**
+ * Journal op name of a crown's prepared die (Phase 10 Task 2, ADR-023
+ * Decision 1): the closed prep die extracted from the target scan's persisted
+ * form. `params` carry `restorationId`, `tooth`, `scanNodeId`, the margin loop
+ * and insertion axis it was cut against, the skirts, the certificate and the
+ * counts; `inputHashes[0]` is the target scan's mesh id and `outputHashes[0]`
+ * the die's content hash (`stages.prepDie`). The server re-extracts the die
+ * from the stored scan and refuses an export whose die differs.
+ */
+export const CROWN_DIE_EXTRACT_OP = 'crown-die-extract';
 
 export interface QcGateResult {
   gate: string;

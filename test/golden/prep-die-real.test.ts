@@ -52,10 +52,13 @@ describe.skipIf(!RUN)('prep die — REAL arch-case-01 (open scan) [RUN_PREP_DIE_
       const die = extractPrepDie(scan, loop, axis);
       const ms = performance.now() - t0;
       const stats = analyzeMesh(die.mesh);
+      // An open arch always needs a synthetic floor.
+      expect(die.floorHeightMm).not.toBeNull();
+      const floorDepthMm = die.marginMinHeightMm - (die.floorHeightMm ?? NaN);
       console.log(
         `[PREP-DIE REAL #${tooth}] kept=${die.keptTriangleCount} synthetic=${die.syntheticTriangleCount} ` +
           `rim=${die.rimVertexCount} folds dropped=${die.foldTrianglesDropped} clearance=${die.clearanceMm.toFixed(4)} mm volume=${die.volumeMm3.toFixed(2)} mm³ ` +
-          `floor=${(die.marginMinHeightMm - die.floorHeightMm).toFixed(3)} mm below the margin, ${ms.toFixed(0)} ms`,
+          `floor=${floorDepthMm.toFixed(3)} mm below the margin, ${ms.toFixed(0)} ms`,
       );
       expect(stats.watertight).toBe(true);
       expect(stats.manifoldEdges).toBe(true);

@@ -360,10 +360,11 @@ describe('POST /api/restorations/:id/export — crown fixture (pass loop + falsi
     expect(res.statusCode).toBe(409);
     const body = res.json() as { error: string; details: Record<string, unknown> };
     expect(body.error).toBe('export-journal-hash-mismatch');
-    // Saved: only the contact-gate ack op (ADR-022 stand-in); the request
-    // also hashes the export op.
-    expect(body.details['savedOperationCount']).toBe(harness.ackOps.length);
-    expect(body.details['requestOperationCount']).toBe(harness.ackOps.length + 1);
+    // Saved: the crown's die op (Phase 10) and the contact-gate ack op
+    // (ADR-022 stand-in); the request also hashes the export op.
+    expect(body.details['savedOperationCount']).toBe(harness.persistedDocument.history.length);
+    expect(harness.persistedDocument.history.length).toBe(harness.ackOps.length + 1);
+    expect(body.details['requestOperationCount']).toBe(harness.ackOps.length + 2);
   }, 120_000);
 
   it('consistent-adversary journal tamper (export-op bytes hash) → 409 export-journal-verification-failed', async () => {

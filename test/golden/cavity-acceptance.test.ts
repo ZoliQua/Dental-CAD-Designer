@@ -58,7 +58,7 @@ const µm = (mm: number): string => `${(mm * 1000).toFixed(3)} µm`;
 // golden change (bump + changelog), never a silent regen (the WASM boolean is
 // manifoldVersion-guarded, the crown-acceptance precedent).
 // ---------------------------------------------------------------------------
-const EXPECTED_KERNEL_VERSION = '0.32.0';
+const EXPECTED_KERNEL_VERSION = '0.33.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 function installedManifoldVersion(): string {
   const pkg = JSON.parse(readFileSync(join(repoRoot, 'node_modules', 'manifold-3d', 'package.json'), 'utf8')) as { version: string };
@@ -128,7 +128,12 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // die/extractPrepDie op is not in this chain; hashQcReport tracks the embedded
   // kernelVersion, every geometry stage pin above BYTE-IDENTICAL (verified: the whole
   // golden suite passes at 0.31.0 with the new code). Old hash: abe67856ad3d823ba75db92a52124cb804cc0008e0cef3da69461364de8e765d. See docs/CHANGELOG-kernel.md's [0.32.0] entry.
-  'cavity-inlay-qc': 'c5c6d0bf6aceb68a676a1b7bfbe22f9166b4430ae22a738c81a2a9b1b43d9ff7',
+  // Advanced 0.32.0 → 0.33.0 (Phase 10 Task 2): MECHANICAL, metadata-only — the die
+  // passthrough, persistedMeshForm and the coverage check are not in this chain;
+  // hashQcReport tracks the embedded kernelVersion, every geometry stage pin above
+  // BYTE-IDENTICAL (verified: the whole golden suite passes at 0.32.0 with the new
+  // code). Old hash: c5c6d0bf6aceb68a676a1b7bfbe22f9166b4430ae22a738c81a2a9b1b43d9ff7. See docs/CHANGELOG-kernel.md's [0.33.0] entry.
+  'cavity-inlay-qc': '7fa0a288be393d80419af11f0234c0d841badbe8614a1d2ec5eab4ed1ce0157c',
   // --- onlay chain (incl. cuspCoverage.select) ---
   // NOTE: the cuspCoverage pin is BIT-IDENTICAL to the kernel op's committed
   // extended-outline golden (cuspCoverage.test.ts's sha at 0.21.0) — a strong
@@ -173,7 +178,12 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // die/extractPrepDie op is not in this chain; hashQcReport tracks the embedded
   // kernelVersion, every geometry stage pin above BYTE-IDENTICAL (verified: the whole
   // golden suite passes at 0.31.0 with the new code). Old hash: 70f07176bac686b00efcc1ac2f56af3d47bcbfce971084c379bf5a13008fc36a. See docs/CHANGELOG-kernel.md's [0.32.0] entry.
-  'cavity-onlay-qc': '6dce4f1fbb72188fa6cd762cf344febabc89600260e8b90bfaf2716f3eaed1af',
+  // Advanced 0.32.0 → 0.33.0 (Phase 10 Task 2): MECHANICAL, metadata-only — the die
+  // passthrough, persistedMeshForm and the coverage check are not in this chain;
+  // hashQcReport tracks the embedded kernelVersion, every geometry stage pin above
+  // BYTE-IDENTICAL (verified: the whole golden suite passes at 0.32.0 with the new
+  // code). Old hash: 6dce4f1fbb72188fa6cd762cf344febabc89600260e8b90bfaf2716f3eaed1af. See docs/CHANGELOG-kernel.md's [0.33.0] entry.
+  'cavity-onlay-qc': '46b0f174538a89f7d8766dccf93d64c0c8b0c15bdf9c0aa759c0dc13a8f608c2',
 };
 
 const INLAY_GATE_ORDER = ['watertight', 'manifold', 'selfIntersection', 'minWallThickness', 'marginFit', 'seamDihedral', 'seating', 'contact'];

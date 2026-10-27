@@ -55,6 +55,12 @@ class FakePool {
   failResolveMorph = false;
   /** Also return a proximal contact from the morph (ADR-022 provenance tests). */
   withProximalContact = false;
+  /** The extracted die's first coordinate (its hash is `region-<tag>`, so a
+   * replay reproduces it unless the tag changes). */
+  dieTag = 30;
+  /** The die's certificate (`Infinity`: the scan closed the die itself). */
+  dieClearanceMm = 0.73;
+  failDie = false;
 
   readonly run: RunnablePool['run'] = (async (job: string, payload: unknown): Promise<unknown> => {
     this.calls.push({ job, payload });
@@ -101,6 +107,34 @@ class FakePool {
         if (first >= 15) return { contentHash: `region-${first}` };
         this.hashCounter += 1;
         return { contentHash: `hash-${this.hashCounter}` };
+      }
+      case 'extractPrepDie': {
+        if (this.failDie) {
+          const err = new Error('extractPrepDie: the die\'s synthetic closure is only 0.1000 mm from the region the intaglio reads');
+          err.name = 'PrepDieClearanceError';
+          throw err;
+        }
+        return {
+          // A tall die (apex 4 mm up the axis) on a short scan: the anatomy
+          // height must come from the die.
+          positions: Float64Array.from([this.dieTag, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 4]),
+          indices: Uint32Array.from([0, 2, 1, 0, 1, 3, 1, 2, 3, 0, 3, 2]),
+          keptTriangleCount: 3,
+          syntheticTriangleCount: this.dieClearanceMm === Infinity ? 0 : 1,
+          sourceTriangleIndices: Uint32Array.from([0, 1, 2]),
+          rimVertexCount: this.dieClearanceMm === Infinity ? 0 : 3,
+          foldTrianglesDropped: 0,
+          clearanceMm: this.dieClearanceMm,
+          marginMinHeightMm: 0.5,
+          floorHeightMm: this.dieClearanceMm === Infinity ? null : -1,
+          volumeMm3: 2,
+          insertionAxis: (payload as { insertionAxis: number[] }).insertionAxis,
+          radialSkirtMm: 1.5,
+          depthSkirtMm: 1,
+          protectBandMm: 0.5,
+          floorGapMm: 0.5,
+          requiredClearanceMm: 0.25,
+        };
       }
       case 'innerSurface':
         return { ...tetra(2), stats: STATS, errorBoundMm: 0.005, flatZoneErrorBoundMm: 0.005, patchTriangleCount: 4, skirtTriangleCount: 2, marginVertexCount: 64, marginalGapMm: 0.02, cementGapMm: 0.05, spacerStartMm: 0.8, blendWidthMm: 0.3, pitchMm: 0.1 };
@@ -221,6 +255,7 @@ describe('crownDesign controller — order enforcement', () => {
 
   it('refuses to construct the shell before morph', async () => {
     crownDesignEngine.start(restorationId);
+    await crownDesignEngine.runPrepDie();
     await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
     await crownDesignEngine.placeAnatomy(anatomyInput());
     await expect(crownDesignEngine.constructShell()).rejects.toBeInstanceOf(CrownStageOrderError);
@@ -228,6 +263,7 @@ describe('crownDesign controller — order enforcement', () => {
 
   it('refuses QC before the shell', async () => {
     crownDesignEngine.start(restorationId);
+    await crownDesignEngine.runPrepDie();
     await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
     await crownDesignEngine.placeAnatomy(anatomyInput());
     await crownDesignEngine.runMorph();
@@ -235,9 +271,144 @@ describe('crownDesign controller — order enforcement', () => {
   });
 });
 
+describe('crownDesign controller — the prepared die (Phase 10 Task 2, ADR-023)', () => {
+  function dieOp() {
+    return caseStore.getDocument().history.filter((o) => o.name === 'crown-die-extract').pop();
+  }
+
+  it('cuts the die from the target scan as one journaled op: scan mesh in, die hash out, margin + axis + certificate in params', async () => {
+    crownDesignEngine.start(restorationId);
+    await crownDesignEngine.runPrepDie();
+    const call = fake.calls.find((c) => c.job === 'extractPrepDie')!;
+    expect(call.payload).toMatchObject({ contentHash: 'die', insertionAxis: [0, 0, 1] });
+    expect(currentRestoration().stages.prepDie).toBe('region-30');
+    const op = dieOp()!;
+    expect(op.inputHashes).toEqual(['die']);
+    expect(op.outputHashes).toEqual(['region-30']);
+    const node = caseStore.getDocument().scene.find((n) => n.meshId === 'die')!;
+    expect(op.params).toMatchObject({
+      restorationId,
+      tooth: 11,
+      scanNodeId: node.id,
+      scanForm: 'persisted-stl',
+      insertionAxis: [0, 0, 1],
+      keptTriangleCount: 3,
+      syntheticTriangleCount: 1,
+      foldTrianglesDropped: 0,
+      clearanceMm: 0.73,
+      radialSkirtMm: 1.5,
+      depthSkirtMm: 1,
+      protectBandMm: 0.5,
+      floorGapMm: 0.5,
+      requiredClearanceMm: 0.25,
+    });
+    expect((op.params.marginLoop as number[]).length).toBe(64 * 3);
+    expect(useCrownStore.getState().prepDie).toMatchObject({ keptTriangleCount: 3, syntheticTriangleCount: 1, clearanceMm: 0.73 });
+    expect(useCrownStore.getState().gates.find((g) => g.stage === 'innerSurface')?.allowed).toBe(true);
+  });
+
+  it('journals a die the scan closed itself with no certificate value (null), not Infinity', async () => {
+    fake.dieClearanceMm = Infinity;
+    crownDesignEngine.start(restorationId);
+    await crownDesignEngine.runPrepDie();
+    expect(dieOp()!.params.clearanceMm).toBeNull();
+    expect(dieOp()!.params.syntheticTriangleCount).toBe(0);
+    expect(useCrownStore.getState().prepDie?.clearanceMm).toBeNull();
+  });
+
+  it('the intaglio, seating QC and the export die are the extracted die, never the whole scan', async () => {
+    crownDesignEngine.start(restorationId);
+    await crownDesignEngine.runPrepDie();
+    await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
+    const bvh = fake.calls.filter((c) => c.job === 'buildBvh').map((c) => (c.payload as { contentHash: string }).contentHash);
+    expect(bvh).toContain('region-30');
+    const inner = fake.calls.find((c) => c.job === 'innerSurface')!.payload as {
+      contentHash: string;
+      prepDieCertificate: { clearanceMm: number; protectBandMm: number };
+    };
+    expect(inner.contentHash).toBe('region-30');
+    expect(inner.prepDieCertificate).toEqual({ clearanceMm: 0.73, protectBandMm: 0.5 });
+    const innerOp = caseStore.getDocument().history.filter((o) => o.name === 'crown-inner-surface').pop()!;
+    expect(innerOp.inputHashes).toEqual(['region-30']);
+
+    await crownDesignEngine.placeAnatomy(anatomyInput());
+    await crownDesignEngine.runMorph();
+    await crownDesignEngine.constructShell();
+    await crownDesignEngine.runQc();
+    const qc = fake.calls.find((c) => c.job === 'runQc')!.payload as { diePositions: Float64Array };
+    expect(qc.diePositions[0]).toBe(30);
+    expect(crownDesignEngine.exportQcContext(restorationId)!.dieSolid.positions[0]).toBe(30);
+  });
+
+  it('sizes the built-in anatomy from the die height ALONG the insertion axis', async () => {
+    const tilted: [number, number, number] = [0, Math.SQRT1_2, Math.SQRT1_2];
+    caseStore.updateRestoration(
+      { ...currentRestoration(), insertionAxis: tilted },
+      { id: 'a', name: 'axis-confirm', params: {}, inputHashes: [], outputHashes: [], kernelVersion: 'test', timestamp: new Date().toISOString() },
+    );
+    crownDesignEngine.start(restorationId);
+    await crownDesignEngine.runPrepDie();
+    await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
+    await crownDesignEngine.placeAnatomyAuto();
+    const place = fake.calls.find((c) => c.job === 'placeAnatomy')!.payload as { libraryPositions: Float64Array };
+    let maxZ = -Infinity;
+    for (let i = 2; i < place.libraryPositions.length; i += 3) maxZ = Math.max(maxZ, place.libraryPositions[i]!);
+    // The die apex (0, 0, 4) is (0, 0, 3.5) from the margin centroid: 3.5·√½
+    // along the axis, so the height is that × 1.3 + 0.5 (above 2 × 1.2).
+    const along = 3.5 * Math.SQRT1_2;
+    expect(maxZ - 0.5).toBeCloseTo(along * 1.3 + 0.5, 9);
+  });
+
+  it('a die the op refuses is surfaced on the die step and writes no stage', async () => {
+    fake.failDie = true;
+    crownDesignEngine.start(restorationId);
+    await expect(crownDesignEngine.runPrepDie()).rejects.toThrow(/synthetic closure/);
+    expect(currentRestoration().stages.prepDie).toBeUndefined();
+    expect(useCrownStore.getState().errorStage).toBe('prepDie');
+    expect(useCrownStore.getState().error).toMatch(/^PrepDieClearanceError/);
+    await expect(crownDesignEngine.runInnerSurface({ pitchMm: 0.1 })).rejects.toBeInstanceOf(CrownStageOrderError);
+  });
+
+  it('re-preparing the die invalidates the intaglio and everything after it', async () => {
+    crownDesignEngine.start(restorationId);
+    await crownDesignEngine.runPrepDie();
+    await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
+    await crownDesignEngine.placeAnatomy(anatomyInput());
+    await crownDesignEngine.runPrepDie();
+    expect(currentRestoration().stages.innerSurface).toBeUndefined();
+    expect(currentRestoration().stages.anatomyPlacement).toBeUndefined();
+    expect(useCrownStore.getState().inner).toBeNull();
+  });
+
+  it('after a reload the journaled die is re-derived by REPLAY (identical hash) before the intaglio runs', async () => {
+    crownDesignEngine.start(restorationId);
+    await crownDesignEngine.runPrepDie();
+    crownDesignEngine.clear();
+    crownDesignEngine.start(restorationId);
+    expect(useCrownStore.getState().prepDie).toMatchObject({ keptTriangleCount: 3 });
+    const before = fake.calls.filter((c) => c.job === 'extractPrepDie').length;
+    await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
+    expect(fake.calls.filter((c) => c.job === 'extractPrepDie').length).toBe(before + 1);
+    expect((fake.calls.find((c) => c.job === 'innerSurface')!.payload as { contentHash: string }).contentHash).toBe('region-30');
+    expect(opsNamed('crown-die-extract')).toBe(1);
+  });
+
+  it('a replay that does not reproduce the journaled die hash is refused, visibly', async () => {
+    crownDesignEngine.start(restorationId);
+    await crownDesignEngine.runPrepDie();
+    crownDesignEngine.clear();
+    fake.dieTag = 31;
+    crownDesignEngine.start(restorationId);
+    await expect(crownDesignEngine.runInnerSurface({ pitchMm: 0.1 })).rejects.toThrow(/replaying the journaled die/);
+    expect(useCrownStore.getState().error).toMatch(/^CrownDieReplayMismatchError/);
+    expect(fake.calls.some((c) => c.job === 'innerSurface')).toBe(false);
+  });
+});
+
 describe('crownDesign controller — happy path + stage hashes', () => {
   async function runToShell(): Promise<void> {
     crownDesignEngine.start(restorationId);
+    await crownDesignEngine.runPrepDie();
     await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
     await crownDesignEngine.placeAnatomy(anatomyInput());
     await crownDesignEngine.runMorph();
@@ -248,6 +419,7 @@ describe('crownDesign controller — happy path + stage hashes', () => {
     crownDesignEngine.start(restorationId);
     expect(currentRestoration().stages).toEqual({});
 
+    await crownDesignEngine.runPrepDie();
     await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
     expect(currentRestoration().stages.innerSurface).toBeTypeOf('string');
 
@@ -287,6 +459,7 @@ describe('crownDesign controller — finalMeshForExport (Phase 7 Task 3)', () =>
     expect(crownDesignEngine.finalMeshForExport(restorationId)).toBeNull();
     crownDesignEngine.start(restorationId);
     expect(crownDesignEngine.finalMeshForExport(restorationId)).toBeNull();
+    await crownDesignEngine.runPrepDie();
     await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
     await crownDesignEngine.placeAnatomy(anatomyInput());
     await crownDesignEngine.runMorph();
@@ -304,6 +477,7 @@ describe('crownDesign controller — neighbour provenance (ADR-022)', () => {
   it('auto-place tags the synthetic neighbour boxes placeholder: journaled, published, and carried on each proximal contact into QC + export', async () => {
     fake.withProximalContact = true;
     crownDesignEngine.start(restorationId);
+    await crownDesignEngine.runPrepDie();
     await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
     await crownDesignEngine.placeAnatomyAuto();
     const anatomyOp = caseStore.getDocument().history.filter((o) => o.name === 'crown-anatomy').pop()!;
@@ -324,6 +498,7 @@ describe('crownDesign controller — neighbour provenance (ADR-022)', () => {
 
   it('an anatomy input without a neighbour provenance (real geometry supplied) is journaled as case', async () => {
     crownDesignEngine.start(restorationId);
+    await crownDesignEngine.runPrepDie();
     await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
     await crownDesignEngine.placeAnatomy(anatomyInput());
     const anatomyOp = caseStore.getDocument().history.filter((o) => o.name === 'crown-anatomy').pop()!;
@@ -352,6 +527,7 @@ describe('crownDesign controller — neighbour + antagonist capture (Phase 9 Tas
 
   async function placeWithMorph(): Promise<void> {
     fake.withProximalContact = true;
+    await crownDesignEngine.runPrepDie();
     await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
     await crownDesignEngine.placeAnatomyAuto();
     await crownDesignEngine.runMorph();
@@ -373,6 +549,7 @@ describe('crownDesign controller — neighbour + antagonist capture (Phase 9 Tas
     crownDesignEngine.start(restorationId);
     expect(useCrownStore.getState().capture.archScanAvailable).toBe(true);
     expect(useCrownStore.getState().capture.neighbourTeeth).toEqual({ mesial: 21, distal: 12 });
+    await crownDesignEngine.runPrepDie();
     await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
     await crownDesignEngine.placeAnatomyAuto();
     expect(currentRestoration().stages.anatomyPlacement).toBeTypeOf('string');
@@ -440,6 +617,7 @@ describe('crownDesign controller — neighbour + antagonist capture (Phase 9 Tas
     crownDesignEngine.start(restorationId);
     expect(useCrownStore.getState().capture.oppositeArchAvailable).toBe(true);
     expect(useCrownStore.getState().capture.antagonistSource).toBeNull();
+    await crownDesignEngine.runPrepDie();
     await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
     await crownDesignEngine.placeAnatomyAuto();
     let place = [...fake.calls].reverse().find((c) => c.job === 'placeAnatomy')!.payload as { antagonistPositions: Float64Array | null };
@@ -491,6 +669,7 @@ describe('crownDesign controller — anatomy from the tooth library (Phase 9 Tas
     await crownDesignEngine.refreshLibraryAnatomy();
     expect(useCrownStore.getState().libraryAnatomy).toMatchObject({ origin: 'library', fdi: 11, assetKind: 'generator' });
     expect(useCrownStore.getState().useLibraryAnatomy).toBe(false);
+    await crownDesignEngine.runPrepDie();
     await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
     await crownDesignEngine.placeAnatomyAuto();
     expect(lastPlace().libraryPositions[0]).not.toBe(40);
@@ -500,6 +679,7 @@ describe('crownDesign controller — anatomy from the tooth library (Phase 9 Tas
   it('selecting the library template is one journaled op that invalidates anatomy onward, and survives a reload', async () => {
     crownDesignEngine.__setToothLibraryFetchForTests(libraryFetch);
     crownDesignEngine.start(restorationId);
+    await crownDesignEngine.runPrepDie();
     await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
     await crownDesignEngine.placeAnatomyAuto();
     expect(currentRestoration().stages.anatomyPlacement).toBeTypeOf('string');
@@ -516,6 +696,7 @@ describe('crownDesign controller — anatomy from the tooth library (Phase 9 Tas
     crownDesignEngine.__setToothLibraryFetchForTests(libraryFetch);
     crownDesignEngine.start(restorationId);
     crownDesignEngine.setUseLibraryAnatomy(true);
+    await crownDesignEngine.runPrepDie();
     await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
     await crownDesignEngine.placeAnatomyAuto();
     expect(lastPlace().libraryPositions[0]).toBe(40);
@@ -531,6 +712,7 @@ describe('crownDesign controller — anatomy from the tooth library (Phase 9 Tas
     crownDesignEngine.__setToothLibraryFetchForTests(libraryFetch);
     crownDesignEngine.start(restorationId);
     crownDesignEngine.setUseLibraryAnatomy(true);
+    await crownDesignEngine.runPrepDie();
     await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
     await crownDesignEngine.placeAnatomyAuto();
     expect(fake.calls.some((c) => c.job === 'loadToothAsset')).toBe(false);
@@ -543,6 +725,7 @@ describe('crownDesign controller — anatomy from the tooth library (Phase 9 Tas
     crownDesignEngine.__setToothLibraryFetchForTests(libraryFetch);
     crownDesignEngine.start(restorationId);
     crownDesignEngine.setUseLibraryAnatomy(true);
+    await crownDesignEngine.runPrepDie();
     await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
     await crownDesignEngine.placeAnatomyAuto();
     expect(lastPlace().libraryPositions[0]).not.toBe(40);
@@ -554,6 +737,7 @@ describe('crownDesign controller — anatomy from the tooth library (Phase 9 Tas
 describe('crownDesign controller — coalesced journaling', () => {
   it('journals exactly one op per completed stage', async () => {
     crownDesignEngine.start(restorationId);
+    await crownDesignEngine.runPrepDie();
     await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
     await crownDesignEngine.placeAnatomy(anatomyInput());
     await crownDesignEngine.runMorph();
@@ -566,6 +750,7 @@ describe('crownDesign controller — coalesced journaling', () => {
 
   it('a LIVE strength preview journals nothing; the commit journals exactly one', async () => {
     crownDesignEngine.start(restorationId);
+    await crownDesignEngine.runPrepDie();
     await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
     await crownDesignEngine.placeAnatomy(anatomyInput());
     await crownDesignEngine.runMorph();
@@ -583,6 +768,7 @@ describe('crownDesign controller — coalesced journaling', () => {
 
   it('each sculpt stroke is one coalesced op that re-writes finalMesh', async () => {
     crownDesignEngine.start(restorationId);
+    await crownDesignEngine.runPrepDie();
     await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
     await crownDesignEngine.placeAnatomy(anatomyInput());
     await crownDesignEngine.runMorph();
@@ -599,11 +785,13 @@ describe('crownDesign controller — coalesced journaling', () => {
 describe('crownDesign controller — session guards + UI-only actions', () => {
   it('throws CrownNoSessionError when acting without a session', async () => {
     await expect(crownDesignEngine.runInnerSurface()).rejects.toBeInstanceOf(CrownNoSessionError);
+    await expect(crownDesignEngine.runPrepDie()).rejects.toBeInstanceOf(CrownNoSessionError);
     await expect(crownDesignEngine.placeAnatomyAuto()).rejects.toBeInstanceOf(CrownNoSessionError);
   });
 
   it('previewMorphStrengths before a morph plan exists throws (order guard)', async () => {
     crownDesignEngine.start(restorationId);
+    await crownDesignEngine.runPrepDie();
     await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
     await crownDesignEngine.placeAnatomy(anatomyInput());
     await expect(
@@ -634,6 +822,7 @@ describe('crownDesign controller — session guards + UI-only actions', () => {
 
   it('exposes design render nodes (Float32, plus inner ghost) after stages run', async () => {
     crownDesignEngine.start(restorationId);
+    await crownDesignEngine.runPrepDie();
     await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
     await crownDesignEngine.placeAnatomy(anatomyInput());
     const nodes = crownDesignEngine.getDesignRenderNodes();
@@ -645,6 +834,7 @@ describe('crownDesign controller — session guards + UI-only actions', () => {
 
   it('a manual transform commit re-places the anatomy as one coalesced op (manual=true)', async () => {
     crownDesignEngine.start(restorationId);
+    await crownDesignEngine.runPrepDie();
     await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
     await crownDesignEngine.placeAnatomyAuto();
     expect(useCrownStore.getState().anatomy?.manual).toBe(false);
@@ -655,6 +845,7 @@ describe('crownDesign controller — session guards + UI-only actions', () => {
 
   it('applies a thickness heatmap colour buffer to the shell design node', async () => {
     crownDesignEngine.start(restorationId);
+    await crownDesignEngine.runPrepDie();
     await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
     await crownDesignEngine.placeAnatomy(anatomyInput());
     await crownDesignEngine.runMorph();
@@ -668,6 +859,7 @@ describe('crownDesign controller — session guards + UI-only actions', () => {
 
   it('clear() ends the session and empties the design render nodes', async () => {
     crownDesignEngine.start(restorationId);
+    await crownDesignEngine.runPrepDie();
     await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
     crownDesignEngine.clear();
     expect(useCrownStore.getState().active).toBe(false);
@@ -678,6 +870,7 @@ describe('crownDesign controller — session guards + UI-only actions', () => {
 describe('crownDesign controller — invalidation cascade (stale QC can never display)', () => {
   async function runToQc(): Promise<void> {
     crownDesignEngine.start(restorationId);
+    await crownDesignEngine.runPrepDie();
     await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
     await crownDesignEngine.placeAnatomy(anatomyInput());
     await crownDesignEngine.runMorph();
@@ -717,6 +910,7 @@ describe('crownDesign controller — invalidation cascade (stale QC can never di
 
   it('re-running the inner surface invalidates anatomy, morph, shell AND qc', async () => {
     await runToQc();
+    await crownDesignEngine.runPrepDie();
     await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
     const r = currentRestoration();
     expect(r.stages.anatomyPlacement).toBeUndefined();
@@ -832,6 +1026,7 @@ describe('crownDesign controller — previewMorphStrengths worker-reject safety 
   // never clears) AND the error is swallowed by the panel's run() wrapper.
   it('a worker rejection surfaces the error and clears morphBusy (never stuck on)', async () => {
     crownDesignEngine.start(restorationId);
+    await crownDesignEngine.runPrepDie();
     await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
     await crownDesignEngine.placeAnatomy(anatomyInput());
     await crownDesignEngine.runMorph(); // establishes the cached morph plan
@@ -853,6 +1048,7 @@ describe('crownDesign controller — HONEST failure surfacing', () => {
   it('a shell failure sets an error state and never writes finalMesh (QC stays blocked)', async () => {
     fake.failShell = true;
     crownDesignEngine.start(restorationId);
+    await crownDesignEngine.runPrepDie();
     await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
     await crownDesignEngine.placeAnatomy(anatomyInput());
     await crownDesignEngine.runMorph();
@@ -875,6 +1071,7 @@ describe('crownDesign controller — HONEST failure surfacing', () => {
 describe('crownDesign controller — material profile wiring (Feature #3)', () => {
   async function runToShell(): Promise<void> {
     crownDesignEngine.start(restorationId);
+    await crownDesignEngine.runPrepDie();
     await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
     await crownDesignEngine.placeAnatomy(anatomyInput());
     await crownDesignEngine.runMorph();

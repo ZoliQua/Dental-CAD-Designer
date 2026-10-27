@@ -5,7 +5,7 @@
 // state/caseStore.ts (the committed stages/QcReport in the case document) and
 // calls back into `crownDesignEngine` (engine/crownDesign.ts) — ZERO geometry
 // math, ZERO Three.js here (CLAUDE.md layer rule; the engine owns all of it).
-// Renders the six stage sub-panels in fixed order, each enabled/blocked by the
+// Renders the seven stage sub-panels in fixed order, each enabled/blocked by the
 // pure state machine's gate (crownStore.gates), plus an HONEST failure banner
 // that surfaces a stage error (e.g. the shell's NonManifoldInputError on the
 // real distorted tooth-11 morph — T9) and never hides it.
@@ -28,6 +28,7 @@ import {
 } from '../state/crownStore';
 
 const STAGE_TITLE_KEY: Record<CrownStageName, string> = {
+  prepDie: 'crown.prepDieTitle',
   innerSurface: 'crown.innerTitle',
   anatomy: 'crown.anatomyTitle',
   morph: 'crown.morphTitle',
@@ -39,6 +40,7 @@ const STAGE_TITLE_KEY: Record<CrownStageName, string> = {
 const REASON_KEY: Record<CrownPrerequisiteCode, string> = {
   noTargetScan: 'crown.reasonNoTargetScan',
   noMarginLine: 'crown.reasonNoMarginLine',
+  prepDieIncomplete: 'crown.reasonPrepDieIncomplete',
   innerSurfaceIncomplete: 'crown.reasonInnerSurfaceIncomplete',
   anatomyIncomplete: 'crown.reasonAnatomyIncomplete',
   morphIncomplete: 'crown.reasonMorphIncomplete',
@@ -56,6 +58,22 @@ function run(action: () => Promise<void>): void {
 
 function um(mm: number): string {
   return (mm * 1000).toFixed(0);
+}
+
+/** Engine errors whose cause and remedy the panel explains in the user's
+ * language (the banner still shows the engine's own message). */
+const ERROR_HINT_NAMES = new Set([
+  'PrepDieClearanceError',
+  'PrepDieRegionError',
+  'PrepDieInvalidError',
+  'PrepDieCoverageError',
+  'CrownDieReplayMismatchError',
+]);
+
+/** The error name the engine prefixes to its message (`Name: message`). */
+function errorName(message: string): string {
+  const colon = message.indexOf(':');
+  return colon > 0 ? message.slice(0, colon) : '';
 }
 
 export function CrownDesignPanel() {
@@ -158,12 +176,18 @@ function CrownWorkflow({ restorationId }: { restorationId: string }) {
       {error && (
         <div className="crown-panel__error-banner" role="alert" data-testid="crown-error">
           <span>{t('crown.errorBanner', { stage: errorStage ? t(STAGE_TITLE_KEY[errorStage]) : '', message: error })}</span>
+          {ERROR_HINT_NAMES.has(errorName(error)) && (
+            <span className="crown-panel__error-hint" data-testid="crown-error-hint">
+              {t(`crown.errorHint.${errorName(error)}`)}
+            </span>
+          )}
           <button type="button" onClick={() => crownDesignEngine.clearError()} data-testid="crown-error-clear">
             {t('crown.clearError')}
           </button>
         </div>
       )}
 
+      <PrepDieStage busy={busyStage === 'prepDie'} />
       <InnerSurfaceStage busy={busyStage === 'innerSurface'} />
       <CaptureSection busy={busyStage !== null} />
       <AnatomyStage busy={busyStage === 'anatomy'} />
@@ -214,6 +238,50 @@ function StageShell({
         children
       )}
     </div>
+  );
+}
+
+/** The prepared die (Phase 10 Task 2, ADR-023): the closed prep cut from the
+ * target scan, with what was kept, what was synthesised and its clearance
+ * certificate — all from the journaled op. */
+function PrepDieStage({ busy }: { busy: boolean }) {
+  const { t } = useTranslation();
+  const gate = useGate('prepDie');
+  const die = useCrownStore((state) => state.prepDie);
+  return (
+    <StageShell stage="prepDie" title={t('crown.prepDieTitle')} busy={busy}>
+      <p className="crown-stage__note">{t('crown.prepDieNote')}</p>
+      <button
+        type="button"
+        disabled={busy || !gate?.allowed}
+        onClick={() => run(() => crownDesignEngine.runPrepDie())}
+        data-testid="crown-prepdie-run"
+      >
+        {t('crown.prepDieRun')}
+      </button>
+      {die && (
+        <>
+          <p className="crown-stage__readout" data-testid="crown-prepdie-readout">
+            {t('crown.prepDieReadout', {
+              kept: die.keptTriangleCount,
+              synthetic: die.syntheticTriangleCount,
+              radial: die.radialSkirtMm.toFixed(1),
+              depth: die.depthSkirtMm.toFixed(1),
+            })}
+          </p>
+          <p className="crown-stage__readout" data-testid="crown-prepdie-certificate">
+            {die.clearanceMm === null
+              ? t('crown.prepDieClosedByScan')
+              : t('crown.prepDieCertificate', { clearance: um(die.clearanceMm), required: um(die.requiredClearanceMm) })}
+          </p>
+          {die.foldTrianglesDropped > 0 && (
+            <p className="crown-stage__note" data-testid="crown-prepdie-fold">
+              {t('crown.prepDieFoldRepair', { count: die.foldTrianglesDropped })}
+            </p>
+          )}
+        </>
+      )}
+    </StageShell>
   );
 }
 

@@ -1,6 +1,6 @@
 # ADR-023 — A closed prep die extracted from an open scan; library anatomy fitted to the margin
 
-**Status:** Accepted (2026-10-27; Phase 10 implements it — Task 1 lands Decision 1's op; see the Phase 10 plan)
+**Status:** Accepted (2026-10-27; Phase 10 implements it — Task 1 lands Decision 1's op, Task 2 puts the crown on it with the server re-extraction; see the Phase 10 plan)
 **Date:** 2026-10
 **Relates:** ADR-022 (case-derived design inputs, provenance), ADR-007
 (morph–shell coupling), ADR-013 (closed-form abutment scoping), ADR-017
@@ -93,11 +93,32 @@ The extracted die replaces the whole scan in:
 
 A scan that is already closed and covers only one tooth (the Phase 4 dies)
 goes through the same op. So does any other scan: there is one code path.
+When the kept surface is already closed (the whole scan lies within the
+skirts), it is the die, unchanged: nothing synthetic, nothing to certify.
+
+**The die is cut from the scan's persisted form.** The client keeps a scan in
+Float64, but the server stores it as binary STL (float32, re-welded on
+reload). Both sides therefore cut the die from that persisted form
+(`persistedMeshForm`: coordinates rounded to float32, re-welded at the intake
+epsilon). The form is idempotent, so a reopened case cuts the identical die,
+and the server can compare hashes. Its `@errorBound` is half a float32 ULP per
+coordinate, which is zero for a scan imported from STL.
+
+**The intaglio checks the certificate covers it.** The certificate is
+measured once, at extraction, against the protected prism. The intaglio at a
+given gap and pitch needs a clearance of the larger gap plus four pitches, and
+a protected band at least its own crop band. The `innerSurface` job refuses
+an intaglio the die does not cover, before any work.
 
 **Dual validation stays dual.** The server does not trust the client's
-`dieSolid`. It re-extracts the die from the saved case's scan (content
-addressed), confirmed margin and axis, and refuses the export (409) if the
-die's hash differs from the one the client used.
+`dieSolid`. At export it re-extracts the die from the saved case's scan
+(content addressed), confirmed margin and axis, and refuses the export if the
+die's hash differs from the journaled `stages.prepDie` or from the riding
+`dieSolid` (409 `export-die-mismatch`, with a persisted diagnostic bundle). A
+die it cannot trace to the case (no die op, a different scan, scan bytes not
+stored) is refused too (409 `export-die-not-traceable`). `/validate-qc` stays
+a stateless parity endpoint: its body names no case, so there is nothing to
+re-extract from. The export is the release gate.
 
 ### 2. Library anatomy is fitted to the margin before the morph
 

@@ -152,6 +152,25 @@ describe('innerSurface job', () => {
     ).rejects.toMatchObject({ name: 'BlendWidthTooNarrowError' });
   });
 
+  it('refuses, before any heavy work, a prep die whose certificate does not cover this intaglio', async () => {
+    const pool = createPool({ size: 1 });
+    const die = frustumDie(MARGIN_R, TOP_R, MARGIN_Z, TOP_Z);
+    const { flat } = marginLoop(MARGIN_R, MARGIN_Z, 32);
+    const contentHash = 'inner-surface-die-coverage';
+    await buildBvhFor(pool, contentHash, die.positions, die.indices);
+    // At a 0.1 mm pitch the intaglio needs the larger gap plus 0.4 mm.
+    await expect(
+      pool.run('innerSurface', {
+        contentHash,
+        ...GAPS,
+        pitchMm: 0.1,
+        marginLoop: flat.slice(),
+        insertionAxis: AXIS,
+        prepDieCertificate: { clearanceMm: 0.3, protectBandMm: 0.5 },
+      }),
+    ).rejects.toMatchObject({ name: 'PrepDieCoverageError' });
+  });
+
   it('is cancellable GENUINELY MID-COMPUTATION (abort from onProgress during the field-grid loop)', { timeout: 120_000 }, async () => {
     const pool = createPool({ size: 1 });
     const die = frustumDie(MARGIN_R, TOP_R, MARGIN_Z, TOP_Z);
