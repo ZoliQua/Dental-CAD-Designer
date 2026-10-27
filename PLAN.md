@@ -248,6 +248,15 @@ The core pipeline. Order of stages is fixed; each stage's output is journaled.
 
 **Acceptance:** no gate can pass on a stand-in; crown contacts measured against captured neighbours on real `arch-case-01`; a real-path 3-unit bridge on a closed-form arch fixture passes all gates; all existing kernel / pipeline golden files byte-identical (a traceability golden whose release now declares a stand-in moves only with a documented note). Detailed plan: [`docs/plans/phase-9-real-case-geometry.md`](docs/plans/phase-9-real-case-geometry.md).
 
+### Phase 10 — The crown on the real scan (post-MVP, [ADR-023](docs/adr/023-closed-prep-die-from-an-open-scan-and-cervical-fit.md))
+
+- A closed prep die extracted from an open intraoral scan. The kept scan surface is verbatim, and the synthetic closure carries a measured clearance certificate. The intaglio, the seating gate and the server re-validation all use this die.
+- Library anatomy fitted to the confirmed margin (cervical fit, margin-following shell trim); the library template becomes the crown default when it fits
+
+**Status:** planned (2026-10-27).
+
+**Acceptance:** a crown on a closed-form open-arch prep case passes every crown gate through the real path. On real `arch-case-01` the die extraction and the intaglio succeed; the unprepared tooth's later gates report honestly. The server re-extracts the die. Existing goldens stay byte-identical. Detailed plan: [`docs/plans/phase-10-crown-on-the-real-scan.md`](docs/plans/phase-10-crown-on-the-real-scan.md).
+
 ---
 
 ## 5. Repository Layout
