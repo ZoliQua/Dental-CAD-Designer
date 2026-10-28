@@ -21,6 +21,7 @@ import {
   measureWallThickness,
   autoThickenOuter,
   ShellClosedOuterNeedsMarginError,
+  ShellCervicalRingError,
   ShellNotWatertightError,
   volume,
   type IndexedMesh,
@@ -245,6 +246,65 @@ describe('constructShell — watertight crown shell', () => {
     expect(fractions[0]).toBe(0);
     expect(fractions[fractions.length - 1]).toBe(1);
     expect(fractions.every((f, i) => i === 0 || f >= fractions[i - 1]!)).toBe(true);
+  }, 120000);
+});
+
+// Phase 10 Task 4 (ADR-023 Decision 2): a FITTED template is trimmed along
+// its cervical ring, not by the plane — the outer rim IS the fitted ring, so
+// the seam follows the margin and nothing of the outer below it survives.
+describe('constructShell — the fitted template is trimmed along its cervical ring', () => {
+  /** closedTooth's bottom ring: the first 96 vertices (at the margin height,
+   * `out` mm outside the margin) — the cervical ring of this "template". */
+  const RING = Array.from({ length: 96 }, (_, i) => i);
+
+  it('cuts exactly along the ring: the outer rim is the ring, the cervical cap is gone, the shell is watertight', async () => {
+    const inner = await buildIntaglio();
+    const margin = marginCircle(MARGIN_R, MARGIN_Z, 240);
+    const closed = closedTooth(0.6);
+    const shell = await constructShell(closed, inner, { insertionAxis: AXIS, marginLoop: margin, outerCervicalRing: RING });
+    const stats = analyzeMesh(shell.mesh);
+    expect(stats.watertight).toBe(true);
+    expect(stats.componentCount).toBe(1);
+    expect(shell.outerRimVertexCount).toBe(96);
+    // The outer used = the closed tooth minus its 96-triangle cervical cap.
+    expect(shell.outerUsedMesh.indices.length / 3).toBe(closed.indices.length / 3 - 96);
+    const used = analyzeMesh(shell.outerUsedMesh);
+    expect(used.boundaryEdgeCount).toBe(96);
+    // Its rim is the ring itself, at the margin height (no trim offset).
+    let minZ = Infinity;
+    for (let i = 2; i < shell.outerUsedMesh.positions.length; i += 3) minZ = Math.min(minZ, shell.outerUsedMesh.positions[i]!);
+    expect(minZ).toBe(MARGIN_Z);
+    // The margin seal is the intaglio's, untouched.
+    const res = closestPointBatch(shell.mesh, buildBvh(shell.mesh), new Float64Array(margin.flatMap((p) => [p[0], p[1], p[2]])));
+    for (const r of res) expect(r.distance).toBeLessThanOrEqual(0.01);
+    // The wall above the ring is the full offset (no seam wedge).
+    const wall = measureWallThickness(inner, shell.outerUsedMesh, { insertionAxis: AXIS, marginLoop: margin, marginExclusionMm: 0.2 });
+    expect(wall.minAxialThicknessMm).toBeGreaterThan(0.45);
+  }, 120000);
+
+  it('is deterministic', async () => {
+    const inner = await buildIntaglio();
+    const margin = marginCircle(MARGIN_R, MARGIN_Z, 240);
+    const params = { insertionAxis: AXIS, marginLoop: margin, outerCervicalRing: RING };
+    const a = await constructShell(closedTooth(0.6), inner, params);
+    const b = await constructShell(closedTooth(0.6), inner, params);
+    expect(hashMesh(a.mesh)).toBe(hashMesh(b.mesh));
+  }, 120000);
+
+  it('refuses a ring that is not an edge loop of the outer', async () => {
+    const inner = await buildIntaglio();
+    const broken = [...RING];
+    [broken[10], broken[11]] = [broken[11]!, broken[10]!];
+    await expect(
+      constructShell(closedTooth(0.6), inner, { insertionAxis: AXIS, marginLoop: marginCircle(MARGIN_R, MARGIN_Z, 240), outerCervicalRing: broken }),
+    ).rejects.toBeInstanceOf(ShellCervicalRingError);
+  }, 120000);
+
+  it('refuses a ring on an outer that is already open', async () => {
+    const inner = await buildIntaglio();
+    await expect(constructShell(outerDome(0.7), inner, { insertionAxis: AXIS, outerCervicalRing: RING })).rejects.toBeInstanceOf(
+      ShellCervicalRingError,
+    );
   }, 120000);
 });
 

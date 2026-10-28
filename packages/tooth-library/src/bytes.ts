@@ -6,12 +6,13 @@
 // pulling in assets.ts, whose module body generates the whole starter set at
 // import time. Subpath export `@dqcad/tooth-library/bytes`; loader.ts
 // re-exports everything here, so the package's public surface is unchanged.
-import { intake } from '@dqcad/kernel';
+import { closedEdgeLoopProblem, intake } from '@dqcad/kernel';
 import type { IndexedMesh } from '@dqcad/kernel';
 import { parseStl } from '@dqcad/io';
 import {
   computeMeshChecksum,
   loadToothAssetMetadata,
+  ToothCervicalRingError,
   ToothMeshChecksumError,
   ToothMeshNotWatertightError,
   type CanonicalFrame,
@@ -61,6 +62,8 @@ export function toAsset(metadata: ToothAssetMetadata, mesh: IndexedMesh): ToothA
  *   parsed+welded mesh is not watertight.
  * @throws {ToothAssetMetadataChecksumError} if the metadata's own
  *   `metadataChecksum` doesn't match its content.
+ * @throws {ToothCervicalRingError} if a declared `cervicalRing` is not a
+ *   closed edge loop of the parsed mesh.
  */
 export function loadToothAssetFromBytes(
   rawMetadataJson: unknown,
@@ -86,6 +89,10 @@ export function loadToothAssetFromBytes(
   // Full validation, now WITH the real vertex count — catches a
   // vertexDeltas-length mismatch that a shape-only check couldn't.
   const metadata = loadToothAssetMetadata(rawMetadataJson, mesh.positions.length / 3);
+  if (metadata.cervicalRing !== undefined) {
+    const problem = closedEdgeLoopProblem(mesh, metadata.cervicalRing);
+    if (problem !== null) throw new ToothCervicalRingError(metadata.fdi, problem);
+  }
 
   return toAsset(metadata, mesh);
 }

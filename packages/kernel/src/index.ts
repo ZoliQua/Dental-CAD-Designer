@@ -380,8 +380,18 @@
  * check for an intaglio (`prepDieInnerSurfaceNeeds`,
  * `assertPrepDieCoversInnerSurface`). No existing output changed: geometry +
  * journal-replay pins byte-identical; the acceptance QC pins advance
- * mechanically. See docs/CHANGELOG-kernel.md's `[0.33.0]` entry. */
-export const KERNEL_VERSION = '0.33.0';
+ * mechanically. See docs/CHANGELOG-kernel.md's `[0.33.0]` entry.
+ *
+ * 0.34.0 (Phase 10 Task 4, ADR-023 Decision 2): NEW op — `anatomy/
+ * cervicalFit.ts` (`fitCervicalRing`: a placed template's cervical ring
+ * moved onto the margin's emergence loop by an RBF, the anatomy above the
+ * blend untouched; `cervicalEmergenceOffsetMm`); `constructShell` gains an
+ * optional trim ALONG a fitted template's cervical ring
+ * (`outerCervicalRing`, `trimClosedOuterAlongRing`); NEW `mesh/edgeLoop.ts`.
+ * No existing output changed: geometry + journal-replay pins byte-identical;
+ * the acceptance QC pins advance mechanically. See docs/CHANGELOG-kernel.md's
+ * `[0.34.0]` entry. */
+export const KERNEL_VERSION = '0.34.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export {
@@ -744,6 +754,19 @@ export {
   MorphContactMeshError,
   MorphNoAnchorsError,
   MorphDegenerateNeighborTriangleError,
+  fitCervicalRing,
+  emergenceLoop,
+  cervicalEmergenceOffsetMm,
+  CERVICAL_EMERGENCE_DESIGN_MARGIN_MM,
+  closedEdgeLoopProblem,
+  CervicalFitError,
+  DEFAULT_CERVICAL_BLEND_MM,
+  DEFAULT_CERVICAL_ANCHOR_BAND_MM,
+  DEFAULT_CERVICAL_MAX_ANCHORS,
+  type CervicalFitErrorReason,
+  type CervicalFitInput,
+  type CervicalFitOptions,
+  type CervicalFitResult,
   type CanonicalFrameAxes,
   type PlacementFrame,
   type AnatomyPlacementInput,
@@ -767,7 +790,9 @@ export {
   DEFAULT_MARGIN_TRIM_OFFSET_MM,
   ShellBoundaryError,
   ShellClosedOuterNeedsMarginError,
+  ShellCervicalRingError,
   ShellNotWatertightError,
+  trimClosedOuterAlongRing,
   type ConstructShellParams,
   type ConstructShellHooks,
   type ConstructShellResult,

@@ -593,6 +593,10 @@ export const toothAssetMetadataSchema = {
     landmarks: { type: 'object', additionalProperties: vec3TupleSchema },
     canonicalFrame: toothCanonicalFrameSchema,
     morphTargets: { type: 'array', items: toothMorphTargetSchema },
+    // Phase 10 Task 4 (ADR-023 Decision 2): the template's cervical ring
+    // (vertex indices). Optional — 1.1.0 assets have none; the loader checks
+    // it is an edge loop of the mesh.
+    cervicalRing: { type: 'array', minItems: 3, items: { type: 'integer', minimum: 0 } },
     meshChecksum: { type: 'string', pattern: '^[0-9a-f]{64}$' },
     metadataChecksum: { type: 'string', pattern: '^[0-9a-f]{64}$' },
   },

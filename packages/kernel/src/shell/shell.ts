@@ -119,6 +119,7 @@ import { orientNormalsConsistently } from '../intake/orient.ts';
 import { orthonormalBasis } from '../axis/hemisphere.ts';
 import { distanceToClosedPolyline } from '../offset/innerSurfaceOffset.ts';
 import { cleanupMesh } from '../boolean/manifold.ts';
+import { closedEdgeLoopProblem } from '../mesh/edgeLoop.ts';
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -186,6 +187,14 @@ export interface ConstructShellParams {
    * `trimClosedOuterToMargin`'s `@errorBound`. Ignored for an already-open
    * outer. */
   readonly marginTrimOffsetMm?: number;
+  /** Phase 10 Task 4 (ADR-023 Decision 2): the FITTED template's cervical
+   * ring (vertex indices of the CLOSED outer, a closed edge loop — the
+   * cervical fit put it on the emergence loop). When given, the closed outer
+   * is cut ALONG this ring instead of by the plane: the side holding the
+   * outer's most occlusal vertex is kept, so the outer rim IS the fitted ring
+   * and the seam follows the margin (`trimClosedOuterAlongRing`). Absent ⇒
+   * the plane trim, unchanged. Requires a closed outer. */
+  readonly outerCervicalRing?: readonly number[];
 }
 
 export interface ConstructShellHooks {
@@ -242,6 +251,97 @@ function pickRim(mesh: IndexedMesh, which: 'outer' | 'inner'): number[] {
 
 function meshVertex(mesh: IndexedMesh, i: number): Vec3 {
   return [mesh.positions[i * 3]!, mesh.positions[i * 3 + 1]!, mesh.positions[i * 3 + 2]!];
+}
+
+/** Thrown when `outerCervicalRing` cannot be cut along: the outer is not
+ * closed, the ring is not a closed edge loop of it, or the ring does not
+ * split it into exactly two sides. */
+export class ShellCervicalRingError extends Error {
+  constructor(detail: string) {
+    super(`constructShell: cannot trim the outer along its cervical ring — ${detail}`);
+    this.name = 'ShellCervicalRingError';
+  }
+}
+
+/**
+ * Cuts a CLOSED outer along `ring` (a closed edge loop): the triangles fall
+ * into two sides across the ring's edges; the side holding the vertex of
+ * greatest height along `axisUnit` (the occlusal/incisal tip — the crown
+ * body) is kept and compacted. Its single boundary loop is the ring.
+ * Exact (no new geometry), deterministic.
+ *
+ * @throws {ShellCervicalRingError} the ring is not an edge loop or does not
+ * split the outer into exactly two sides.
+ */
+export function trimClosedOuterAlongRing(mesh: IndexedMesh, ring: readonly number[], axisUnit: Vec3): IndexedMesh {
+  const problem = closedEdgeLoopProblem(mesh, ring);
+  if (problem !== null) throw new ShellCervicalRingError(problem);
+  const vertexCount = mesh.positions.length / 3;
+  const triCount = mesh.indices.length / 3;
+  const key = (a: number, b: number): number => (a < b ? a * vertexCount + b : b * vertexCount + a);
+  const ringEdges = new Set<number>();
+  for (let i = 0; i < ring.length; i++) ringEdges.add(key(ring[i]!, ring[(i + 1) % ring.length]!));
+  // Triangles sharing a non-ring edge are on the same side.
+  const byEdge = new Map<number, number[]>();
+  for (let t = 0; t < triCount; t++) {
+    for (let k = 0; k < 3; k++) {
+      const e = key(mesh.indices[t * 3 + k]!, mesh.indices[t * 3 + ((k + 1) % 3)]!);
+      if (ringEdges.has(e)) continue;
+      const list = byEdge.get(e);
+      if (list) list.push(t);
+      else byEdge.set(e, [t]);
+    }
+  }
+  const side = new Int32Array(triCount).fill(-1);
+  let sides = 0;
+  for (let seed = 0; seed < triCount; seed++) {
+    if (side[seed] !== -1) continue;
+    const stack = [seed];
+    side[seed] = sides;
+    while (stack.length > 0) {
+      const t = stack.pop()!;
+      for (let k = 0; k < 3; k++) {
+        const e = key(mesh.indices[t * 3 + k]!, mesh.indices[t * 3 + ((k + 1) % 3)]!);
+        for (const n of byEdge.get(e) ?? []) {
+          if (side[n] === -1) {
+            side[n] = sides;
+            stack.push(n);
+          }
+        }
+      }
+    }
+    sides++;
+  }
+  if (sides !== 2) throw new ShellCervicalRingError(`the ring splits the outer into ${sides} side(s), not 2`);
+  // The kept side holds the most occlusal vertex.
+  let topVertex = 0;
+  let topHeight = -Infinity;
+  for (let v = 0; v < vertexCount; v++) {
+    const h = mesh.positions[v * 3]! * axisUnit[0] + mesh.positions[v * 3 + 1]! * axisUnit[1] + mesh.positions[v * 3 + 2]! * axisUnit[2];
+    if (h > topHeight) {
+      topHeight = h;
+      topVertex = v;
+    }
+  }
+  let keep = -1;
+  for (let t = 0; t < triCount && keep === -1; t++) {
+    for (let k = 0; k < 3; k++) if (mesh.indices[t * 3 + k] === topVertex) keep = side[t]!;
+  }
+  const remap = new Int32Array(vertexCount).fill(-1);
+  const positions: number[] = [];
+  const indices: number[] = [];
+  for (let t = 0; t < triCount; t++) {
+    if (side[t] !== keep) continue;
+    for (let k = 0; k < 3; k++) {
+      const v = mesh.indices[t * 3 + k]!;
+      if (remap[v] === -1) {
+        remap[v] = positions.length / 3;
+        positions.push(mesh.positions[v * 3]!, mesh.positions[v * 3 + 1]!, mesh.positions[v * 3 + 2]!);
+      }
+      indices.push(remap[v]!);
+    }
+  }
+  return { positions: Float64Array.from(positions), indices: Uint32Array.from(indices) };
 }
 
 /** Thrown when the OUTER anatomy is a closed solid but no `marginLoop` was
@@ -550,7 +650,10 @@ export async function constructShell(
   // skips the trim.
   const outerIsClosed = boundaryVertexLoops(outerMesh).length === 0;
   let outerForStitch = outerMesh;
-  if (outerIsClosed) {
+  if (params.outerCervicalRing !== undefined) {
+    if (!outerIsClosed) throw new ShellCervicalRingError('the outer is not a closed solid');
+    outerForStitch = trimClosedOuterAlongRing(outerMesh, params.outerCervicalRing, axisUnit);
+  } else if (outerIsClosed) {
     if (!params.marginLoop || params.marginLoop.length < 3) {
       throw new ShellClosedOuterNeedsMarginError();
     }

@@ -47,7 +47,7 @@ describe('compareSemver', () => {
 });
 
 describe('seeding over a pre-Phase-9-Task-4 data directory', () => {
-  it('a stored 1.0.0 asset without assetKind still loads, and the seeded 1.1.0 supersedes it', async () => {
+  it('a stored 1.0.0 asset without assetKind still loads; 1.1.0 is still seeded and 1.2.0 supersedes both', async () => {
     const root = await mkdtemp(join(tmpdir(), 'tooth-lib-'));
     const metadataDir = join(root, 'meta');
     const meshDir = join(root, 'mesh');
@@ -55,15 +55,17 @@ describe('seeding over a pre-Phase-9-Task-4 data directory', () => {
     // The 1.0.0 shape: no assetKind, its own checksum.
     const legacyFields: Record<string, unknown> = { ...STARTER_TOOTH_ASSETS.get(11)!.metadata, version: '1.0.0' };
     delete legacyFields['assetKind'];
+    delete legacyFields['cervicalRing'];
     delete legacyFields['metadataChecksum'];
     const legacy = { ...legacyFields, metadataChecksum: computeToothAssetMetadataChecksum(legacyFields as Parameters<typeof computeToothAssetMetadataChecksum>[0]) };
     await writeFile(join(metadataDir, '11-1.0.0.json'), JSON.stringify(legacy), 'utf8');
 
     await seedStarterToothLibrary(metadataDir, meshDir);
     const versions = (await listToothLibraryAssets(metadataDir)).filter((a) => a.fdi === 11).map((a) => a.version);
-    expect(versions).toEqual(['1.0.0', '1.1.0']);
+    expect(versions).toEqual(['1.0.0', '1.1.0', '1.2.0']);
     const latest = await readLatestToothLibraryMetadata(metadataDir, 11);
-    expect(latest?.version).toBe('1.1.0');
+    expect(latest?.version).toBe('1.2.0');
+    expect(latest?.cervicalRing).toBeDefined();
     expect(latest?.assetKind).toBe('generator');
   });
 });

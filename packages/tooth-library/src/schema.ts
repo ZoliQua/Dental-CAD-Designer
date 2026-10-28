@@ -124,6 +124,15 @@ export interface ToothAssetMetadata {
   landmarks: ToothLandmarks;
   canonicalFrame: CanonicalFrame;
   morphTargets: readonly MorphTarget[];
+  /** Phase 10 Task 4 (ADR-023 Decision 2): the template's CERVICAL RING —
+   * ordered vertex indices (into the CANONICAL mesh, the one `loader.ts`
+   * re-welds from the mesh bytes) forming a closed edge loop on the cervical
+   * rim. The cervical fit moves this ring onto the margin's emergence loop
+   * and the shell trims along it. OPTIONAL: an asset without it (every
+   * 1.1.0 asset) still loads and verifies (an absent field is not part of
+   * its checksum); it is simply not fitted. `loader.ts` checks it IS an
+   * edge loop of the mesh. */
+  cervicalRing?: readonly number[];
   /** Lowercase 64-hex-char SHA-256 of the asset's mesh bytes (binary STL) —
    * the join key between this metadata and its mesh (see this module's top
    * doc: the two are separately addressable; a loader fetches/reads the
@@ -193,6 +202,15 @@ export class ToothMeshChecksumError extends Error {
         'or swapped for a different tooth.',
     );
     this.name = 'ToothMeshChecksumError';
+  }
+}
+
+/** Thrown by `loader.ts` when a shape-valid `cervicalRing` is not a closed
+ * edge loop of the asset's mesh — the fit would move the wrong vertices. */
+export class ToothCervicalRingError extends Error {
+  constructor(fdi: number, detail: string) {
+    super(`ToothCervicalRingError: the cervical ring of FDI ${fdi} is not a closed edge loop of its mesh (${detail})`);
+    this.name = 'ToothCervicalRingError';
   }
 }
 
@@ -387,6 +405,21 @@ function requireMorphTargets(value: unknown, fieldPath: string, expectedVertexCo
   });
 }
 
+function requireCervicalRing(value: unknown, fieldPath: string, expectedVertexCount: number | null): number[] {
+  if (!Array.isArray(value)) fail(`${fieldPath} must be an array of vertex indices`);
+  if (value.length < 3) fail(`${fieldPath} must have at least 3 vertices (got ${value.length})`);
+  const seen = new Set<number>();
+  return value.map((v: unknown, i) => {
+    if (typeof v !== 'number' || !Number.isInteger(v) || v < 0) fail(`${fieldPath}[${i}] must be a non-negative integer`);
+    if (seen.has(v)) fail(`${fieldPath}[${i}] repeats vertex ${v}`);
+    if (expectedVertexCount !== null && v >= expectedVertexCount) {
+      fail(`${fieldPath}[${i}] = ${v} is beyond the mesh's ${expectedVertexCount} vertices`);
+    }
+    seen.add(v);
+    return v;
+  });
+}
+
 const ALLOWED_TOP_LEVEL_KEYS = new Set([
   'fdi',
   'version',
@@ -396,6 +429,7 @@ const ALLOWED_TOP_LEVEL_KEYS = new Set([
   'landmarks',
   'canonicalFrame',
   'morphTargets',
+  'cervicalRing',
   'meshChecksum',
   'metadataChecksum',
 ]);
@@ -427,6 +461,8 @@ export function validateToothAssetMetadataShape(
   const landmarks = requireLandmarks(root['landmarks'], 'asset.landmarks');
   const canonicalFrame = requireCanonicalFrame(root['canonicalFrame'], 'asset.canonicalFrame');
   const morphTargets = requireMorphTargets(root['morphTargets'], 'asset.morphTargets', expectedVertexCount);
+  const cervicalRing =
+    root['cervicalRing'] === undefined ? undefined : requireCervicalRing(root['cervicalRing'], 'asset.cervicalRing', expectedVertexCount);
   const meshChecksum = requireHex64(root['meshChecksum'], 'asset.meshChecksum');
   const metadataChecksum = requireHex64(root['metadataChecksum'], 'asset.metadataChecksum');
 
@@ -445,6 +481,7 @@ export function validateToothAssetMetadataShape(
     landmarks,
     canonicalFrame,
     morphTargets,
+    ...(cervicalRing === undefined ? {} : { cervicalRing }),
     meshChecksum,
     metadataChecksum,
   };
@@ -497,5 +534,6 @@ export function loadToothAssetMetadata(raw: unknown, expectedVertexCount: number
     landmarks: Object.freeze({ ...metadata.landmarks }),
     canonicalFrame: Object.freeze({ ...metadata.canonicalFrame }),
     morphTargets: Object.freeze(metadata.morphTargets.map((m) => Object.freeze({ ...m }))),
+    ...(metadata.cervicalRing === undefined ? {} : { cervicalRing: Object.freeze([...metadata.cervicalRing]) }),
   });
 }

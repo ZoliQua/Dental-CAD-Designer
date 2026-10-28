@@ -59,6 +59,44 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.34.0] — Phase 10 Task 4: the cervical fit
+
+**New op; no existing output changed. Every geometry stage pin and every
+journal-replay pin is BYTE-IDENTICAL to `[0.33.0]`. This was verified by
+running the whole golden suite and the server traceability golden at
+`0.33.0` with the new code. The acceptance `*-qc` pins and the server
+traceability byte-golden advance only because the QcReport embeds
+`kernelVersion`.**
+
+- **`fitCervicalRing` (new, `anatomy/cervicalFit.ts`, ADR-023 Decision 2).**
+  A placed library template's cervical ring is moved onto the emergence
+  loop. That loop is the margin pushed outward, normal to the axis, by the
+  emergence offset, with each point at its own height. The pairing is by
+  azimuth around the margin centroid; the ring and the loop must both be
+  star-shaped, or the fit refuses. A φ(r) = r RBF with its affine term
+  interpolates the ring displacements, anchored at zero on the band just
+  above the blend height (the ring plus `cervicalBlendMm`, default 2 mm).
+  Vertices at or above the blend do not move, bit for bit. `@errorBound`:
+  the symmetric distance between the fitted ring polyline and the emergence
+  loop, which is dominated by the ring's own tessellation (11 µm for the
+  premolar 15 template on the Phase 4 shoulder die). Proven analytically on
+  an elliptic cylinder fitted to a circle and a circular template fitted to
+  a tilted margin, with property tests for determinism, rigid-motion
+  equivariance, and no motion above the blend.
+- **`cervicalEmergenceOffsetMm` (new).** The offset is built from the
+  profile's values, which are passed in: the larger of the marginal and
+  cement gaps, plus the minimum wall, plus the minimum-wall gate's sampling
+  margin (`DEFAULT_WALL_THICKNESS_SAMPLE_SPACING_MM`), plus a 1 µm design
+  margin. The emergence wall therefore clears the gate's conservative bound
+  strictly, and no gate is weakened.
+- **`constructShell` trims along a fitted ring (`outerCervicalRing`, new
+  `trimClosedOuterAlongRing`).** The closed outer is split exactly along
+  the ring's edges, and the side holding the most occlusal vertex is kept.
+  The outer rim is the fitted ring, so the seam follows the margin. Without
+  the parameter, the plane trim is unchanged.
+- **`mesh/edgeLoop.ts` (new).** `closedEdgeLoopProblem`, which the fit, the
+  shell and the tooth-library loader share.
+
 ## [0.33.0] — Phase 10 Task 2: the crown designs on the extracted die
 
 **No existing geometry output changed. Every geometry stage pin and every

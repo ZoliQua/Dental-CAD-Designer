@@ -51,6 +51,8 @@ export interface MolarAsset {
   mesh: IndexedMesh;
   landmarks: ToothLandmarks;
   canonicalFrame: CanonicalFrame;
+  /** The cervical ring, in this generator's vertex order (Phase 10 Task 4). */
+  cervicalRing: readonly number[];
   morphTargets: readonly MorphTarget[];
 }
 
@@ -81,13 +83,14 @@ export function generateMolarAsset(fdi: FdiTooth): MolarAsset {
   if (!params) {
     throw new RangeError(`generateMolarAsset: fdi ${fdi} is not a supported molar (see MOLAR_FDI_PARAMS)`);
   }
-  const { mesh, landmarks, wallTopZ } = buildPosteriorCrown(params, MOLAR_CUSPS, MOLAR_LANDMARK_ORDER);
+  const { mesh, landmarks, wallTopZ, cervicalRing } = buildPosteriorCrown(params, MOLAR_CUSPS, MOLAR_LANDMARK_ORDER);
   return {
     fdi,
     toothType: 'molar',
     mesh,
     landmarks,
     canonicalFrame: IDENTITY_FRAME,
+    cervicalRing,
     morphTargets: molarMorphTargets(mesh.positions, params, wallTopZ),
   };
 }

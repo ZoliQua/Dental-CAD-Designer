@@ -59,6 +59,8 @@ export interface IncisorAsset {
   mesh: IndexedMesh;
   landmarks: ToothLandmarks;
   canonicalFrame: CanonicalFrame;
+  /** The cervical ring, in this generator's vertex order (Phase 10 Task 4). */
+  cervicalRing: readonly number[];
   morphTargets: readonly MorphTarget[];
 }
 
@@ -190,6 +192,9 @@ export function generateIncisorAsset(fdi: FdiTooth): IncisorAsset {
     mesh,
     landmarks,
     canonicalFrame: IDENTITY_FRAME,
+    // The cervical ring: the lowest ring (z = 0), the fit's ring (Phase 10
+    // Task 4). Generator vertex order; assets.ts maps it to the canonical mesh.
+    cervicalRing: rings[0]!,
     morphTargets: incisorMorphTargets(mesh.positions, params.crownHeightMm),
   };
 }

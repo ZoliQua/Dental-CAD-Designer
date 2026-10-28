@@ -28,6 +28,7 @@ A tooth asset is **two separately-addressable files**:
        occlusoGingival: [number, number, number]; // unit vector, + = occlusal/incisal
      };
      morphTargets: Array<{ name: string; vertexDeltas: number[] }>;
+     cervicalRing?: number[]; // optional — the cervical ring (see below)
      meshChecksum: string; // SHA-256 hex of the mesh bytes (see above)
      metadataChecksum: string; // SHA-256 hex of every OTHER field, canonically serialized
    }
@@ -91,6 +92,19 @@ produces when parsed and welded by `@dqcad/kernel`'s `intake()`
 (`loader.ts`) performs. This package's own starter set follows exactly
 this rule (see `assets.ts`'s module doc for the full reasoning) — it does
 NOT use its procedural generators' own internal vertex ordering.
+
+## Cervical ring (Phase 10 Task 4)
+
+`cervicalRing` lists, in order, the vertex indices of the template's
+cervical rim: a closed edge loop of the mesh **as the loader re-welds it from
+the mesh bytes** (vertex numbering after the STL round trip, the same
+numbering `morphTargets` uses). The crown's cervical fit (kernel
+`fitCervicalRing`, ADR-023 Decision 2) moves this ring onto the margin's
+emergence loop, and the shell trims along it. The field is optional. An asset
+without it (every `1.1.0` asset) still loads and verifies, but it is not
+fitted. `loadToothAssetFromBytes` refuses a ring that is not an edge loop of
+the parsed mesh (`ToothCervicalRingError`). The starter generators emit the
+lowest ring of the crown wall.
 
 ## Asset kind (Phase 9 Task 4)
 
@@ -157,7 +171,7 @@ content-addressed" contract).
 
 ## Adding a tooth beyond this task's starter set
 
-The starter set (version `1.1.0`) ships 20 FDI codes: the upper incisors
+The starter set (version `1.2.0`, which adds `cervicalRing`; the meshes are byte-identical to `1.1.0`, and the server still seeds the `1.1.0` metadata next to it) ships 20 FDI codes: the upper incisors
 `12/11/21/22`, every premolar (`14/15/24/25/34/35/44/45`) and the first +
 second molars of every quadrant (`16/17/26/27/36/37/46/47`) — see `generate/README.md`'s YAGNI note for how to add the
 remaining 27 by either (a) adding a size-parameter entry to an EXISTING

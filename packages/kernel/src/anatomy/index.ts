@@ -38,3 +38,20 @@ export {
   type MorphContactResult,
   type AnatomyMorphResult,
 } from './morph.ts';
+
+// Phase 10 Task 4 (ADR-023 Decision 2): the cervical fit.
+export {
+  fitCervicalRing,
+  emergenceLoop,
+  cervicalEmergenceOffsetMm,
+  CERVICAL_EMERGENCE_DESIGN_MARGIN_MM,
+  closedEdgeLoopProblem,
+  CervicalFitError,
+  DEFAULT_CERVICAL_BLEND_MM,
+  DEFAULT_CERVICAL_ANCHOR_BAND_MM,
+  DEFAULT_CERVICAL_MAX_ANCHORS,
+  type CervicalFitErrorReason,
+  type CervicalFitInput,
+  type CervicalFitOptions,
+  type CervicalFitResult,
+} from './cervicalFit.ts';

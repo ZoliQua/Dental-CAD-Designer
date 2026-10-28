@@ -1,6 +1,6 @@
 # ADR-023 — A closed prep die extracted from an open scan; library anatomy fitted to the margin
 
-**Status:** Accepted (2026-10-27; Phase 10 implements it — Task 1 lands Decision 1's op, Task 2 puts the crown on it with the server re-extraction; see the Phase 10 plan)
+**Status:** Accepted (2026-10-27; Phase 10 implements it — Task 1 lands Decision 1's op, Task 2 puts the crown on it with the server re-extraction, Task 4 lands Decision 2's fit and ring trim; see the Phase 10 plan)
 **Date:** 2026-10
 **Relates:** ADR-022 (case-derived design inputs, provenance), ADR-007
 (morph–shell coupling), ADR-013 (closed-form abutment scoping), ADR-017
@@ -142,6 +142,17 @@ reports, as its `@errorBound`, the maximum distance between the fitted ring
 and the emergence loop. A template fold is caught by the existing shell
 self-intersection and minimum-wall gates, not hidden.
 
+**Refined at implementation (Task 4, 2026-10-28).** The emergence offset is
+`cervicalEmergenceOffsetMm`. It is the larger of the marginal and cement
+gaps (the intaglio may stand off the die by either), plus the minimum wall
+thickness, plus the minimum-wall gate's sampling margin (the gate subtracts
+its sample spacing before comparing), plus 1 µm. Without the last two terms
+the designed wall lands exactly on the gate's conservative bound, and
+rounding decides. The profile has no separate "minimum margin thickness", so
+`minWallThicknessMm` serves, and the profile is unchanged. The RBF anchors
+are the template vertices in a 1 mm band above the blend line, and nothing
+at or above that line moves.
+
 **The shell trims along the fitted ring.** It no longer uses a plane through
 the margin centroid. For a fitted template, the outer rim is the fitted ring
 itself, so the seam follows a non-planar margin. The existing azimuth zipper
@@ -177,6 +188,12 @@ Decision 5.
   export.
 
 **Not decided here**
+- The placeholder library INCISORS are about 3 mm bucco-lingually, against
+  a textbook 7 mm. A round, tall prep die therefore pierces their labial and
+  lingual walls whatever the cervix does: this is not a cervical problem.
+  The fit's acceptance runs on a premolar site (FDI 15), the shape a round
+  die is. The incisor proportions are a tracked open item
+  (2026-10-28 decision).
 - A crown on an *unprepared* tooth (both real cases) is not clinically
   meaningful. On `arch-case-01` extraction and the intaglio will run, but the
   thickness gates will honestly fail, because the natural crown fills the

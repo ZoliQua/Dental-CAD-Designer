@@ -39,10 +39,17 @@ export {
   loadToothAssetMetadata,
   resolveToothAssetKind,
   validateToothAssetMetadataShape,
+  ToothCervicalRingError,
 } from './schema.ts';
 
 export type { StarterToothAsset } from './assets.ts';
-export { STARTER_ASSET_VERSION, STARTER_FDI_CODES, STARTER_TOOTH_ASSETS } from './assets.ts';
+export {
+  STARTER_ASSET_VERSION,
+  STARTER_FDI_CODES,
+  STARTER_TOOTH_ASSETS,
+  PREVIOUS_STARTER_ASSET_VERSION,
+  PREVIOUS_STARTER_TOOTH_METADATA,
+} from './assets.ts';
 
 export type { ToothAsset } from './loader.ts';
 export {

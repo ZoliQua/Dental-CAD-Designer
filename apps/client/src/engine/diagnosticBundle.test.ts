@@ -50,7 +50,7 @@ describe('diagnosticBundle — structure & determinism', () => {
     );
     expect(bundle.schemaVersion).toBe(DIAGNOSTIC_BUNDLE_SCHEMA_VERSION);
     expect(bundle.app.appVersion).toBe(APP_VERSION);
-    expect(bundle.app.kernelVersion).toBe('0.33.0');
+    expect(bundle.app.kernelVersion).toBe('0.34.0');
     expect(bundle.app.manifoldVersion).toBeNull();
     expect(bundle.environment).toEqual(ENV);
   });

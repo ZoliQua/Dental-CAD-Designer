@@ -242,6 +242,43 @@ independent run. Findings and decisions:
   plane-trimmed wedge (0.20 mm at 0.2 mm above the margin) is the regression
   case.
 
+**Landed (2026-10-28, kernel 0.34.0, asset 1.2.0).** As planned, with these
+findings and decisions:
+- **Tooth library.** `cervicalRing` is an optional schema field, covered by
+  the checksum. The generators emit the lowest wall ring, which `assets.ts`
+  maps onto the canonical (re-welded) numbering by exact float32 position.
+  The meshes are byte-identical. The loader refuses a ring that is not an
+  edge loop (`ToothCervicalRingError`). The 1.1.0 metadata is rebuilt (with
+  no ring, at version 1.1.0) and reproduces every recorded 1.1.0 checksum.
+  The server seeds it next to 1.2.0, and its JSON schema now carries
+  `cervicalRing` (without it, serialization would have stripped the field).
+- **Kernel.** `fitCervicalRing` and the shell's trim along the ring
+  (`outerCervicalRing`) are implemented as the ADR describes. The shared
+  edge-loop check moved to `mesh/edgeLoop.ts`. The emergence offset is
+  refined in ADR-023: the larger gap plus the minimum wall plus the wall
+  gate's sampling margin plus 1 µm. With the smaller sum the wall measured
+  exactly 600 µm and sat on the gate's bound.
+- **The acceptance moved to a premolar (decision, 2026-10-28).** The
+  placeholder incisor 11 is about 3 mm bucco-lingually, against a textbook
+  7 mm. On the round Ø 8 mm shoulder die it self-intersects and has a 0 µm
+  wall with or without the fit, and even when stretched 2.3× in BL. That is
+  a template-shape problem, not a cervical one. `test/golden/
+  cervical-fit-acceptance.test.ts` runs the library premolar 15 on the
+  Phase 4 shoulder die. Fitted, it passes self-intersection (0 pairs), the
+  minimum wall (601 µm, conservatively 501 µm), seating (an empty
+  intersection), margin fit, watertight and manifold, with a fit residual
+  of 11 µm. Unfitted with the plane trim, it fails self-intersection (416
+  pairs) and the minimum wall (0 µm). **Open item:** the placeholder
+  incisor proportions.
+- **Strip-only worker loader.** A TypeScript parameter property in the new
+  error class crashed the Node workers ("not supported in strip-only mode").
+  The golden proof run caught it, and the class now assigns its field
+  explicitly.
+- **Golden proof.** The whole golden suite and the server traceability
+  golden passed at 0.33.0 with the new code. At 0.34.0 only the five `*-qc`
+  pins and the traceability golden moved, all version-only (replacing
+  "0.34.0" with "0.33.0" reproduces the old traceability hash).
+
 ## Task 5 — The library template becomes the crown default
 
 - `crownDesign.ts`:
@@ -253,7 +290,9 @@ independent run. Findings and decisions:
 - Update the affected tests: the default-template unit test, e2e phase4's
   auto-place and phase7.
 - The golden from Task 3 gains a library lane, pinned, in which every crown
-  gate passes (phase acceptance 1). The built-in lane keeps its honest
+  gate passes (phase acceptance 1). Per the Task 4 decision this lane is a
+  premolar site (FDI 15, neighbours 14 and 16), because the placeholder
+  incisor cannot cover a round die. The built-in lane keeps its honest
   verdict (its cervical wedge fails `minWallThickness`).
 
 ## Task 6 — Phase gate

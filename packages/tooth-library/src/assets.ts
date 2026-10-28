@@ -67,7 +67,13 @@ import {
 // 1.1.0 (Phase 9 Task 4): every asset declares `assetKind: 'generator'`
 // (a metadata change — the 1.0.0 meshes are byte-identical), and the set
 // grows by every premolar and the first + second molars of every quadrant.
-export const STARTER_ASSET_VERSION = '1.1.0';
+// 1.2.0 (Phase 10 Task 4, ADR-023 Decision 2): every asset declares its
+// `cervicalRing` (a metadata change — the meshes are byte-identical). The
+// 1.1.0 metadata is still built (`PREVIOUS_STARTER_TOOTH_METADATA`) and seeded
+// by the server, so a saved case that references 1.1.0 keeps verifying.
+export const STARTER_ASSET_VERSION = '1.2.0';
+/** The version before {@link STARTER_ASSET_VERSION}, still served. */
+export const PREVIOUS_STARTER_ASSET_VERSION = '1.1.0';
 
 function provenanceFor(kind: ToothType): string {
   return (
@@ -95,6 +101,30 @@ interface GeneratedAsset {
   mesh: { positions: Float64Array; indices: Uint32Array };
   landmarks: ToothLandmarks;
   canonicalFrame: ToothAssetMetadata['canonicalFrame'];
+  /** The cervical ring in the GENERATOR's vertex order. */
+  cervicalRing: readonly number[];
+}
+
+/** Maps the generator's cervical ring onto the CANONICAL mesh's vertex
+ * numbering: each generator vertex is found by its exact Float32-rounded
+ * position (what the STL bytes carry and the weld keeps). Throws if any is
+ * missing — a loud build-time failure, never a silently wrong ring. */
+function canonicalRing(
+  generated: GeneratedAsset,
+  canonicalMesh: { positions: Float64Array },
+): number[] {
+  const byPosition = new Map<string, number>();
+  const cp = canonicalMesh.positions;
+  for (let v = 0; v < cp.length / 3; v++) byPosition.set(`${cp[v * 3]},${cp[v * 3 + 1]},${cp[v * 3 + 2]}`, v);
+  const gp = generated.mesh.positions;
+  return generated.cervicalRing.map((g) => {
+    const key = `${Math.fround(gp[g * 3]!)},${Math.fround(gp[g * 3 + 1]!)},${Math.fround(gp[g * 3 + 2]!)}`;
+    const found = byPosition.get(key);
+    if (found === undefined) {
+      throw new Error(`buildStarterAsset: FDI ${generated.fdi} cervical ring vertex ${g} has no canonical vertex`);
+    }
+    return found;
+  });
 }
 
 function buildStarterAsset(generated: GeneratedAsset, morphTargetsFor: (positions: Float64Array) => MorphTarget[]): StarterToothAsset {
@@ -119,6 +149,7 @@ function buildStarterAsset(generated: GeneratedAsset, morphTargetsFor: (position
 
   const meshChecksum = computeMeshChecksum(meshBytes);
   const morphTargets = morphTargetsFor(canonicalMesh.positions);
+  const cervicalRing = canonicalRing(generated, canonicalMesh);
 
   const withoutChecksum = {
     fdi: generated.fdi,
@@ -129,6 +160,7 @@ function buildStarterAsset(generated: GeneratedAsset, morphTargetsFor: (position
     landmarks: generated.landmarks,
     canonicalFrame: generated.canonicalFrame,
     morphTargets,
+    cervicalRing,
     meshChecksum,
   };
   const metadataChecksum = computeToothAssetMetadataChecksum(withoutChecksum);
@@ -174,3 +206,20 @@ export const STARTER_TOOTH_ASSETS: ReadonlyMap<FdiTooth, StarterToothAsset> = ne
  * `assets.test.ts` and the server's seeding routine both iterate this
  * rather than re-deriving the list. */
 export const STARTER_FDI_CODES: readonly FdiTooth[] = [...STARTER_TOOTH_ASSETS.keys()];
+
+/** The 1.1.0 metadata of every starter asset: the 1.2.0 metadata without
+ * `cervicalRing`, at version 1.1.0, re-checksummed. The meshes are the same
+ * bytes, so this reproduces the 1.1.0 release exactly (assets.test.ts pins
+ * every recorded 1.1.0 checksum). The server seeds it next to 1.2.0. */
+export const PREVIOUS_STARTER_TOOTH_METADATA: ReadonlyMap<FdiTooth, ToothAssetMetadata> = new Map(
+  [...STARTER_TOOTH_ASSETS].map(([fdi, starter]) => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { metadataChecksum: _checksum, cervicalRing: _ring, ...rest } = starter.metadata;
+    const withoutChecksum = { ...rest, version: PREVIOUS_STARTER_ASSET_VERSION };
+    const metadata = loadToothAssetMetadata(
+      { ...withoutChecksum, metadataChecksum: computeToothAssetMetadataChecksum(withoutChecksum) },
+      starter.mesh.positions.length / 3,
+    );
+    return [fdi, metadata] as const;
+  }),
+);

@@ -25,6 +25,7 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import {
   loadToothAssetMetadata,
+  PREVIOUS_STARTER_TOOTH_METADATA,
   STARTER_TOOTH_ASSETS,
   type ToothAssetMetadata,
 } from '@dqcad/tooth-library';
@@ -97,13 +98,18 @@ export async function seedToothLibraryAsset(
   await rename(tmpPath, filePath);
 }
 
-/** Seeds every `@dqcad/tooth-library` starter asset — called once at
+/** Seeds every `@dqcad/tooth-library` starter asset — the current version
+ * and the previous one still served (Phase 10 Task 4: 1.2.0 next to 1.1.0,
+ * same mesh bytes, so a saved case referencing 1.1.0 keeps verifying) —
+ * called once at
  * server startup (`app.ts`'s `buildApp`). Deterministic and idempotent, so
  * calling it on every process start (including in tests, with a fresh temp
  * dir each time) is cheap and safe — no separate "has this already run"
  * flag needed. */
 export async function seedStarterToothLibrary(metadataDataDir: string, meshDataDir: string): Promise<void> {
-  for (const starter of STARTER_TOOTH_ASSETS.values()) {
+  for (const [fdi, starter] of STARTER_TOOTH_ASSETS) {
+    const previous = PREVIOUS_STARTER_TOOTH_METADATA.get(fdi);
+    if (previous) await seedToothLibraryAsset(metadataDataDir, meshDataDir, previous, starter.meshBytes);
     await seedToothLibraryAsset(metadataDataDir, meshDataDir, starter.metadata, starter.meshBytes);
   }
 }

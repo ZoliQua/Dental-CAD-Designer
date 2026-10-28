@@ -161,7 +161,7 @@ export function buildPosteriorCrown(
   params: MolarParams,
   cusps: readonly PosteriorCusp[],
   landmarkOrder: readonly string[],
-): { mesh: IndexedMesh; landmarks: ToothLandmarks; wallTopZ: number } {
+): { mesh: IndexedMesh; landmarks: ToothLandmarks; wallTopZ: number; cervicalRing: number[] } {
   const builder = createMeshBuilder();
   const wallRings: number[][] = [];
   for (let i = 0; i < WALL_RING_COUNT; i++) {
@@ -202,5 +202,6 @@ export function buildPosteriorCrown(
   const landmarks: Record<string, Vec3> = {};
   for (const name of landmarkOrder) landmarks[name] = byName[name]!;
 
-  return { mesh: toIndexedMesh(builder), landmarks, wallTopZ };
+  // The cervical ring: the lowest wall ring (Phase 10 Task 4, the fit's ring).
+  return { mesh: toIndexedMesh(builder), landmarks, wallTopZ, cervicalRing: wallRings[0]! };
 }

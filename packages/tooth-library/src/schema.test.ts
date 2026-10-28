@@ -212,3 +212,34 @@ describe('assetKind — where the anatomy came from (Phase 9 Task 4)', () => {
     expect(resolveToothAssetKind(loadToothAssetMetadata(withKind('licensed', 'Atlas Z')))).toBe('licensed');
   });
 });
+
+// Phase 10 Task 4 (ADR-023 Decision 2): the optional cervical ring.
+describe('cervicalRing', () => {
+  function withRing(ring: unknown): Record<string, unknown> {
+    const withoutChecksum = { ...baseMetadataWithoutChecksum(), cervicalRing: ring } as Omit<ToothAssetMetadata, 'metadataChecksum'>;
+    return { ...withoutChecksum, metadataChecksum: computeToothAssetMetadataChecksum(withoutChecksum) };
+  }
+
+  it('is optional, and accepted when well-formed (covered by the checksum)', () => {
+    expect(loadToothAssetMetadata(validRawMetadata()).cervicalRing).toBeUndefined();
+    const loaded = loadToothAssetMetadata(withRing([0, 1, 2, 3]));
+    expect(loaded.cervicalRing).toEqual([0, 1, 2, 3]);
+    const tampered = { ...withRing([0, 1, 2, 3]), cervicalRing: [0, 1, 3, 2] };
+    expect(() => loadToothAssetMetadata(tampered)).toThrow(ToothAssetMetadataChecksumError);
+  });
+
+  it.each([
+    ['not an array', 'ring'],
+    ['too short', [0, 1]],
+    ['a non-integer', [0, 1, 2.5]],
+    ['a negative index', [0, -1, 2]],
+    ['a repeated index', [0, 1, 1, 2]],
+  ])('rejects a ring that is %s', (_label, ring) => {
+    expect(() => validateToothAssetMetadataShape(withRing(ring))).toThrow(ToothAssetMetadataValidationError);
+  });
+
+  it('rejects a ring index beyond the mesh', () => {
+    // baseMetadata's morph target describes a 2-vertex mesh.
+    expect(() => validateToothAssetMetadataShape(withRing([0, 1, 2]), 2)).toThrow(/cervicalRing/);
+  });
+});

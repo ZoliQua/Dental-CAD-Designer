@@ -61,7 +61,7 @@ export function generatePremolarAsset(fdi: FdiTooth): PremolarAsset {
       `generatePremolarAsset: fdi ${fdi} is not a supported premolar (see PREMOLAR_FDI_PARAMS)`,
     );
   }
-  const { mesh, landmarks, wallTopZ } = buildPosteriorCrown(
+  const { mesh, landmarks, wallTopZ, cervicalRing } = buildPosteriorCrown(
     params,
     premolarCusps(params),
     PREMOLAR_LANDMARK_ORDER,
@@ -72,6 +72,7 @@ export function generatePremolarAsset(fdi: FdiTooth): PremolarAsset {
     mesh,
     landmarks,
     canonicalFrame: IDENTITY_FRAME,
+    cervicalRing,
     morphTargets: premolarMorphTargets(mesh.positions, params, wallTopZ),
   };
 }
