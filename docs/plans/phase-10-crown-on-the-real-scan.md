@@ -177,6 +177,43 @@ decisions:
   goes through extraction and the intaglio, and the certificate and the
   intaglio's margin fit are recorded.
 
+**Landed (2026-10-28, no kernel change).** The golden
+`test/golden/crown-open-arch-acceptance.test.ts` runs the open-arch fixture
+through the real crown controller on a Node worker pool. The steps are:
+STL import, Prepare die, intaglio (60 µm pitch, journaled), capture of 21 and
+12 with one pick each, the built-in anatomy, morph, shell and QC. Its stage
+hashes are pinned (`test-fixtures/golden/crown-open-arch.json`) from an
+independent run. Findings and decisions:
+- **The die is certified on the fixture.** 5184 kept triangles, 574
+  synthetic, no fold dropped, a clearance of 1.171 mm (≥ 0.25 mm required
+  and ≥ the intaglio's 0.29 mm), a floor 1.25 mm below the margin.
+- **Seven of eight gates pass on case geometry.** These are watertight,
+  manifold, self-intersection, margin fit (0.00 µm), seating on the extracted
+  die, connector (N/A), and contact against the captured neighbours (0.0 µm
+  residual).
+- **`minWallThickness` fails, honestly.** The built-in template is cut by a
+  plane at the margin, so its cervical wall is a wedge. It measures 0.20 mm
+  at 0.2 mm above the margin, just outside the profile's 0.2 mm finish-line
+  band. Measured on the crown solid as built (outer surface plus seam), the
+  value is the same. `autoThicken` cannot help: the shell's own thickness
+  readout measures only the trimmed outer surface (1.99 mm here), not the
+  seam band that forms the wedge. The gate is right, and nothing was
+  weakened. The fix is Task 4's cervical fit. The plan's "every crown gate
+  passes" for the built-in template is refuted by measurement, so the golden
+  asserts the honest verdict, and the all-gates lane moves to Task 5's
+  fitted library template. That lane is phase acceptance 1.
+- **The pipeline die stage.** `runPrepDieStage` (cad-pipeline) is the
+  pipeline twin of the engine stage. It cuts from the persisted form with
+  the confirmed margin as given and journals under `crown-die-extract`. The
+  golden proves it reproduces the engine's die hash, so the engine, the
+  pipeline and the server (export-die.test.ts) cut the same die.
+- **Real lane (`RUN_CROWN_REAL_DIE=1`).** arch-case-01 tooth 11 runs through
+  the pipeline twin: die stage, coverage check, then the intaglio on the die
+  with its margin-fit gate. Measured: 16375 kept triangles, 841 synthetic,
+  no fold dropped, a clearance of 0.731 mm (0.4 s); the intaglio has 53518
+  triangles at 60 µm (21 s), with a margin fit of 0.00 µm on the 450-point
+  loop. The engine on this scan is covered by e2e phase9-crown.
+
 ## Task 4 — Cervical fit *(kernel 0.34.0, library asset 1.2.0)*
 
 - Tooth-library schema: an optional `cervicalRing` (ordered vertex indices).
@@ -200,6 +237,10 @@ decisions:
     that failed in Phase 9 Task 4.
 - `KERNEL_VERSION` 0.34.0 and a changelog entry. Existing placement and morph
   pins stay byte-identical, because the fit is a separate op.
+- From Task 3: the margin-following trim must give the cervical wall the
+  profile minimum just outside the finish-line band. The open-arch crown's
+  plane-trimmed wedge (0.20 mm at 0.2 mm above the margin) is the regression
+  case.
 
 ## Task 5 — The library template becomes the crown default
 
@@ -212,7 +253,8 @@ decisions:
 - Update the affected tests: the default-template unit test, e2e phase4's
   auto-place and phase7.
 - The golden from Task 3 gains a library lane, pinned, in which every crown
-  gate passes.
+  gate passes (phase acceptance 1). The built-in lane keeps its honest
+  verdict (its cervical wedge fails `minWallThickness`).
 
 ## Task 6 — Phase gate
 

@@ -21,6 +21,7 @@
 import type { IndexedMesh } from '@dqcad/kernel';
 
 export type PipelineStageName =
+  | 'prepDie'
   | 'innerSurface'
   | 'anatomyPlacement'
   | 'morphing'

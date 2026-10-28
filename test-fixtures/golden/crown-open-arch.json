@@ -1,0 +1,11 @@
+{
+  "kernelVersion": "0.33.0",
+  "manifoldVersion": "3.5.1",
+  "stages": {
+    "prepDie": "a7b38bd925bb8cdaffdf35d51a541e84f113d14c8aa4a8e738292021fc75dec6",
+    "innerSurface": "41bf7f817cd388f1896b10b4f3558cc32d6bbfa7bc33114b0274fdf3cf6fc046",
+    "anatomyPlacement": "e18cbd0c01e7cb8c00ab45fa9f572999b386a4ddeebf4baa9c1d4f427533db73",
+    "morphState": "756b6915f027be3b4a02b227f442c92361cbbb0e3df6b752efb84651e758a65e",
+    "finalMesh": "2434df4b98d1db0754095e1ec3587f44d778267ea7c2fef18efde9787dc13b41"
+  }
+}

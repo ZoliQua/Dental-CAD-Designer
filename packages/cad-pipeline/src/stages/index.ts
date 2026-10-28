@@ -4,6 +4,13 @@
 // first real stage (`innerSurface.ts`, the two-zone cement-gap offset)
 // arrives Phase 4 Task 3.
 export {
+  runPrepDieStage,
+  MissingMarginLoopError as PrepDieMissingMarginLoopError,
+  type PrepDieStageOptions,
+  type PrepDieStageResult,
+} from './prepDie.ts';
+
+export {
   runInnerSurfaceStage,
   prepRegionRoiBbox,
   MissingMarginLoopError,
