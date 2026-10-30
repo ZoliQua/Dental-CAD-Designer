@@ -83,7 +83,12 @@ const SEGMENTS = 128;
 const CORNER_REFINEMENT_MM = 0.05;
 const SEED_HEIGHT_ABOVE_MARGIN_MM = 1.0;
 
-const CROWN_TOOTH = '11';
+/** A premolar (Phase 10 Task 5): the fitted library template is the crown
+ * default, and this round shoulder die is a premolar-shaped preparation —
+ * the placeholder library incisor cannot cover it (it self-intersects, the
+ * Phase 10 Task 4 finding), so a crown on 11 here would test the template's
+ * proportions, not the workflow. */
+const CROWN_TOOTH = '15';
 
 type Vec2 = readonly [number, number];
 type Vec3 = readonly [number, number, number];
@@ -393,7 +398,7 @@ test.describe.serial('Phase 7 export & manufacturing-handoff workflow (buildable
     // can re-select it after reload later if needed.
     const option = page.locator('[data-testid="export-restoration-select"] option').nth(1);
     restorationLabel = (await option.textContent())?.trim() ?? '';
-    expect(restorationLabel).toContain('11');
+    expect(restorationLabel).toContain(CROWN_TOOTH);
     await page.getByTestId('export-restoration-select').selectOption({ index: 1 });
 
     // --- ADR-022 DISCLOSURE PROOF: the banner follows the selected crown's

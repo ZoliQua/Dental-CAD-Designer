@@ -63,3 +63,19 @@ export const DEFAULT_RESTORATION_PARAMS = STANDARD_ZIRCONIA_PROFILE.restorationP
  * value is actually schema/checksum-VALIDATED against at startup.
  */
 export const DEFAULT_UNDERCUT_BLOCKOUT_THRESHOLD_MM = STANDARD_ZIRCONIA_PROFILE.undercutBlockoutThresholdMm;
+
+/**
+ * The largest cervical-fit residual (mm) at which a fitted library template
+ * becomes the crown's anatomy (Phase 10 Task 5, ADR-023 "the library template
+ * becomes the crown default when it … fits within the bound") — 0.05 mm
+ * (50 µm). The residual is the kernel `fitCervicalRing`'s `@errorBound`: the
+ * symmetric distance between the fitted cervical ring and the emergence loop
+ * the crown's cervical wall is designed on. Above it, the template's cervix
+ * departs from the designed emergence by more than the standard zirconia
+ * cement gap (`STANDARD_ZIRCONIA_PROFILE.restorationParams.cementGapMm`,
+ * 50 µm), and the engine places the built-in template instead, saying why.
+ * The Phase 10 Task 4 acceptance fit measured 11 µm (premolar 15 on the
+ * Phase 4 shoulder die). The QC gates still judge the crown either way; this
+ * only chooses the template.
+ */
+export const CERVICAL_FIT_MAX_RESIDUAL_MM = 0.05;

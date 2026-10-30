@@ -28,6 +28,11 @@ export interface LoadToothAssetResult {
   indices: Uint32Array;
   landmarks: Record<string, Vec3>;
   canonicalFrame: { origin: Vec3; mesialDistal: Vec3; buccoLingual: Vec3; occlusoGingival: Vec3 };
+  /** The asset's cervical ring (Phase 10 Task 5): ordered vertex indices of
+   * the canonical mesh, verified by the loader as a closed edge loop; `null`
+   * for an asset version without one (before 1.2.0) — the template can then
+   * not be fitted to the margin. */
+  cervicalRing: number[] | null;
   /** The verified identity of the asset (journaled by the engine). */
   metadata: {
     fdi: number;
@@ -76,6 +81,7 @@ export const loadToothAssetJob = async (
       buccoLingual: [...frame.buccoLingual],
       occlusoGingival: [...frame.occlusoGingival],
     },
+    cervicalRing: m.cervicalRing ? [...m.cervicalRing] : null,
     metadata: {
       fdi: m.fdi,
       version: m.version,

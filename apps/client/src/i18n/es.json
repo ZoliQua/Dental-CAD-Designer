@@ -493,7 +493,7 @@
     "innerReadout": "Cota de error {{error}} µm · {{tris}} triángulos · {{verts}} vértices de margen",
     "innerGhostToggle": "Mostrar fantasma de superficie interna",
     "anatomyTitle": "3 · Colocación de anatomía",
-    "anatomyLibraryNote": "Por defecto se coloca la plantilla paramétrica integrada. En su lugar se puede elegir la plantilla de este diente de la biblioteca (experimental).",
+    "anatomyLibraryNote": "Por defecto se coloca la plantilla de este diente de la biblioteca y se ajusta al margen: su anillo cervical se lleva al contorno de emergencia. Si no se puede ajustar, se coloca en su lugar la plantilla paramétrica integrada y se muestra el motivo.",
     "anatomyAutoPlace": "Colocación automática",
     "anatomyManualTitle": "Transformación manual",
     "anatomyTranslateX": "Mover X (mm)",
@@ -504,6 +504,7 @@
     "anatomyReadout": "Escala MD {{md}} · BL {{bl}} · OG {{og}}",
     "anatomyProximalGap": "Espacio proximal usado",
     "anatomyAntagonist": "Antagonista usado",
+    "anatomyCervicalFit": "Ajuste cervical: residuo {{residual}} µm (límite {{bound}} µm) · emergencia {{offset}} µm fuera del margen · anillo desplazado hasta {{moved}} µm",
     "morphTitle": "4 · Morphing (contactos)",
     "morphRun": "Ejecutar morphing",
     "morphStrengthMesial": "Contacto mesial",
@@ -890,10 +891,13 @@
       "fdiMissing": "la biblioteca de dientes no tiene un elemento para este diente.",
       "unavailable": "no se pudo acceder a la biblioteca de dientes.",
       "verificationFailed": "el elemento de la biblioteca no superó la verificación ({{detail}}) y no se usó.",
-      "notSelected": "está seleccionada la plantilla integrada."
+      "notSelected": "está seleccionada la plantilla integrada (se desactivó la plantilla de la biblioteca).",
+      "noCervicalRing": "esta versión del elemento de la biblioteca no tiene anillo cervical, por lo que no se puede ajustar al margen.",
+      "fitRefused": "el ajuste cervical rechazó este margen ({{detail}}).",
+      "fitOverBound": "el ajuste cervical quedó fuera del límite ({{detail}})."
     },
     "libraryAvailable": "Biblioteca de dientes: FDI {{fdi}}, versión {{version}} ({{kind}}) disponible.",
     "libraryUnavailable": "Biblioteca de dientes: no disponible — {{reason}}",
-    "useLibrary": "Usar la plantilla de la biblioteca de dientes (experimental: aún no se ajusta al margen, por lo que la corona puede no superar el QC estructural)"
+    "useLibrary": "Usar la plantilla de la biblioteca de dientes, ajustada al margen"
   }
 }

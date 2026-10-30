@@ -94,7 +94,12 @@ const CORNER_REFINEMENT_MM = 0.05;
  * "inside the prep", i.e. above the margin on the same tooth). */
 const SEED_HEIGHT_ABOVE_MARGIN_MM = 1.0;
 
-const CROWN_TOOTH = '11';
+/** A premolar (Phase 10 Task 5): the fitted library template is the crown
+ * default, and this round shoulder die is a premolar-shaped preparation —
+ * the placeholder library incisor cannot cover it (it self-intersects, the
+ * Phase 10 Task 4 finding), so a crown on 11 here would test the template's
+ * proportions, not the workflow. */
+const CROWN_TOOTH = '15';
 
 type Vec2 = readonly [number, number];
 type Vec3 = readonly [number, number, number];
@@ -312,7 +317,7 @@ test.describe.serial('Phase 4 crown-design workflow (buildable synthetic fixture
     await expect(page.getByTestId('scene-tree-row')).toHaveCount(1);
   });
 
-  test('wizard: creates a crown restoration on tooth 11', async () => {
+  test('wizard: creates a crown restoration on tooth 15', async () => {
     await page.getByTestId('restoration-type-crown').click();
     await page.getByTestId(`fdi-tooth-${CROWN_TOOTH}`).click();
     await page.getByTestId('restoration-target-select').selectOption({ index: 1 });
@@ -405,6 +410,10 @@ test.describe.serial('Phase 4 crown-design workflow (buildable synthetic fixture
     await page.getByTestId('crown-anatomy-autoplace').click();
     await expect(page.getByTestId('crown-anatomy-readout')).toBeVisible({ timeout: 60_000 });
     await expect(page.getByTestId('crown-error')).toHaveCount(0);
+    // Phase 10 Task 5: the default is the server library's template, fitted to
+    // the margin — the panel names it and shows the fit residual.
+    await expect(page.getByTestId('crown-anatomy-source')).toHaveAttribute('data-origin', 'library');
+    await expect(page.getByTestId('crown-anatomy-cervical-fit')).toContainText('µm');
 
     // Stage 3 — morph (biharmonic RBF to the synthetic proximal contacts).
     await page.getByTestId('crown-morph-run').click();

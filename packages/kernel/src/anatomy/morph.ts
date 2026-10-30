@@ -201,6 +201,13 @@ export interface AnatomyMorphInput {
   readonly marginLoop: readonly Vec3[];
   readonly contacts: readonly MorphContactInput[];
   readonly options?: Partial<MorphOptions>;
+  /** Vertices that must not move (Phase 10 Task 5): a fitted library
+   * template's cervical ring, which `fitCervicalRing` put on the emergence
+   * loop — usually outside the seal band, so without this the RBF would move
+   * it. Each is a zero-displacement anchor (never subsampled, never a contact
+   * vertex) and its output position is the placed position, bit for bit.
+   * Absent or empty ⇒ the plan is exactly the one without it. */
+  readonly fixedVertexIndices?: readonly number[];
 }
 
 interface ContactPlan {
@@ -244,6 +251,9 @@ export interface AnatomyMorphPlan {
    * check (see `marginSealMaxDeviationMm`). May be empty if the cervical region
    * is fully pinned. */
   readonly sealMeasureVertexIndices: Int32Array;
+  /** `AnatomyMorphInput.fixedVertexIndices` (validated); copied verbatim by
+   * the solve. */
+  readonly fixedVertexIndices: Int32Array;
   readonly options: MorphOptions;
 }
 
@@ -498,6 +508,16 @@ export function planAnatomyMorph(input: AnatomyMorphInput): AnatomyMorphPlan {
   const indices = input.placedMesh.indices;
   const vCount = positions.length / 3;
 
+  const fixed = input.fixedVertexIndices ?? [];
+  const fixedSet = new Set<number>();
+  for (const v of fixed) {
+    if (!Number.isInteger(v) || v < 0 || v >= vCount) {
+      throw new RangeError(`planAnatomyMorph: fixed vertex index ${v} is outside the mesh (0..${vCount - 1})`);
+    }
+    if (fixedSet.has(v)) throw new RangeError(`planAnatomyMorph: fixed vertex index ${v} is listed twice`);
+    fixedSet.add(v);
+  }
+
   const contacts: ContactPlan[] = [];
   const contactVertexSet = new Set<number>();
   for (const contact of input.contacts) {
@@ -509,10 +529,12 @@ export function planAnatomyMorph(input: AnatomyMorphInput): AnatomyMorphPlan {
     // and the solve-time measurement.
     const pseudonormals = computePseudonormals(contact.mesh);
     // Contact vertex = tooth vertex with the smallest distance to `mesh`
-    // (lowest index wins on an exact tie — deterministic).
+    // (lowest index wins on an exact tie — deterministic). A fixed vertex is
+    // never one: it cannot move.
     let bestIdx = -1;
     let bestDist = Infinity;
     for (let v = 0; v < vCount; v++) {
+      if (fixedSet.has(v)) continue;
       const cp = closestPoint(contact.mesh, bvh, [positions[v * 3]!, positions[v * 3 + 1]!, positions[v * 3 + 2]!]);
       if (cp.distance < bestDist) {
         bestDist = cp.distance;
@@ -564,7 +586,7 @@ export function planAnatomyMorph(input: AnatomyMorphInput): AnatomyMorphPlan {
   for (let v = 0; v < vCount; v++) {
     const d = minDistanceToLoop(positions[v * 3]!, positions[v * 3 + 1]!, positions[v * 3 + 2]!, input.marginLoop);
     loopDist[v] = d;
-    if (d <= options.cervicalSealBandMm && !contactVertexSet.has(v)) sealBand.push(v);
+    if (d <= options.cervicalSealBandMm && !contactVertexSet.has(v) && !fixedSet.has(v)) sealBand.push(v);
   }
   // Guarantee the cervical collar is pinned even when a coarse placement leaves
   // the tooth's cervical edge farther than the band from the confirmed finish
@@ -574,7 +596,7 @@ export function planAnatomyMorph(input: AnatomyMorphInput): AnatomyMorphPlan {
   let sealSetVerts = sealBand;
   if (sealBand.length < options.minCervicalAnchors) {
     const candidates: number[] = [];
-    for (let v = 0; v < vCount; v++) if (!contactVertexSet.has(v)) candidates.push(v);
+    for (let v = 0; v < vCount; v++) if (!contactVertexSet.has(v) && !fixedSet.has(v)) candidates.push(v);
     candidates.sort((a, b) => (loopDist[a]! - loopDist[b]!) || (a - b));
     sealSetVerts = candidates.slice(0, Math.min(options.minCervicalAnchors, candidates.length));
   }
@@ -586,7 +608,7 @@ export function planAnatomyMorph(input: AnatomyMorphInput): AnatomyMorphPlan {
   const sealSet = new Set(sealSetVerts);
   const farField: number[] = [];
   for (let v = 0; v < vCount; v++) {
-    if (sealSet.has(v) || contactVertexSet.has(v)) continue;
+    if (sealSet.has(v) || contactVertexSet.has(v) || fixedSet.has(v)) continue;
     let ok = true;
     for (const c of contacts) {
       const dx = positions[v * 3]! - c.center[0];
@@ -600,7 +622,8 @@ export function planAnatomyMorph(input: AnatomyMorphInput): AnatomyMorphPlan {
     if (ok) farField.push(v);
   }
 
-  const cervicalAnchors = strideSubsample(sealSetVerts, options.maxCervicalAnchors);
+  // The fixed vertices join the cervical anchors whole (never subsampled).
+  const cervicalAnchors = [...strideSubsample(sealSetVerts, options.maxCervicalAnchors), ...fixed];
   const farFieldAnchors = strideSubsample(farField, options.maxFarFieldAnchors);
   const anchorIndices = [...cervicalAnchors, ...farFieldAnchors];
   if (anchorIndices.length === 0) throw new MorphNoAnchorsError();
@@ -641,6 +664,7 @@ export function planAnatomyMorph(input: AnatomyMorphInput): AnatomyMorphPlan {
     sealBandVertexIndices: Int32Array.from(sealSetVerts),
     marginLoopFlat,
     sealMeasureVertexIndices: Int32Array.from(sealMeasure),
+    fixedVertexIndices: Int32Array.from(fixed),
     options,
   };
 }
@@ -687,6 +711,14 @@ export function solveAnatomyMorph(plan: AnatomyMorphPlan, strengths?: MorphStren
 
   const field = fitRbf(controls);
   const morphedPositions = applyRbfDisplacement(field, plan.positions);
+  // A fixed vertex is an anchor, so the field is ~0 there — but only to the
+  // solve's rounding (1e-16 mm). It must not move at all: copy it exactly.
+  for (let i = 0; i < plan.fixedVertexIndices.length; i++) {
+    const v = plan.fixedVertexIndices[i]!;
+    morphedPositions[v * 3] = plan.positions[v * 3]!;
+    morphedPositions[v * 3 + 1] = plan.positions[v * 3 + 1]!;
+    morphedPositions[v * 3 + 2] = plan.positions[v * 3 + 2]!;
+  }
   const mesh: IndexedMesh = { positions: morphedPositions, indices: plan.indices.slice() };
 
   // Per-contact residual + facing-region heatmap stats (reuses closestPoint).

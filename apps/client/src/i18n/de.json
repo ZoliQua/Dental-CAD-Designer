@@ -493,7 +493,7 @@
     "innerReadout": "Fehlergrenze {{error}} µm · {{tris}} Patch-Dreiecke · {{verts}} Randpunkte",
     "innerGhostToggle": "Innenflächen-Vorschau anzeigen",
     "anatomyTitle": "3 · Anatomie-Platzierung",
-    "anatomyLibraryNote": "Standardmäßig wird die eingebaute parametrische Vorlage platziert. Stattdessen kann die Vorlage dieses Zahns aus der Zahnbibliothek gewählt werden (experimentell).",
+    "anatomyLibraryNote": "Standardmäßig wird die Vorlage dieses Zahns aus der Zahnbibliothek platziert und an den Präparationsrand angepasst: ihr zervikaler Ring wird auf die Emergenzlinie verschoben. Lässt sie sich nicht anpassen, wird stattdessen die eingebaute parametrische Vorlage platziert und der Grund angezeigt.",
     "anatomyAutoPlace": "Auto-Platzierung",
     "anatomyManualTitle": "Manuelle Transformation",
     "anatomyTranslateX": "Verschieben X (mm)",
@@ -504,6 +504,7 @@
     "anatomyReadout": "Skalierung MD {{md}} · BL {{bl}} · OG {{og}}",
     "anatomyProximalGap": "Approximalspalt genutzt",
     "anatomyAntagonist": "Antagonist genutzt",
+    "anatomyCervicalFit": "Zervikale Anpassung: Residuum {{residual}} µm (Grenze {{bound}} µm) · Emergenz {{offset}} µm außerhalb des Randes · Ring um bis zu {{moved}} µm verschoben",
     "morphTitle": "4 · Morphing (Kontakte)",
     "morphRun": "Morphing ausführen",
     "morphStrengthMesial": "Mesialer Kontakt",
@@ -890,10 +891,13 @@
       "fdiMissing": "die Zahnbibliothek hat kein Element für diesen Zahn.",
       "unavailable": "die Zahnbibliothek war nicht erreichbar.",
       "verificationFailed": "das Bibliothekselement hat die Prüfung nicht bestanden ({{detail}}) und wurde nicht verwendet.",
-      "notSelected": "die eingebaute Vorlage ist ausgewählt."
+      "notSelected": "die eingebaute Vorlage ist ausgewählt (die Bibliotheksvorlage wurde abgewählt).",
+      "noCervicalRing": "diese Version des Bibliothekselements hat keinen zervikalen Ring und kann daher nicht an den Rand angepasst werden.",
+      "fitRefused": "die zervikale Anpassung hat diesen Rand abgelehnt ({{detail}}).",
+      "fitOverBound": "die zervikale Anpassung blieb außerhalb der Grenze ({{detail}})."
     },
     "libraryAvailable": "Zahnbibliothek: FDI {{fdi}}, Version {{version}} ({{kind}}) ist verfügbar.",
     "libraryUnavailable": "Zahnbibliothek: nicht verfügbar — {{reason}}",
-    "useLibrary": "Vorlage aus der Zahnbibliothek verwenden (experimentell: noch nicht an den Präparationsrand angepasst, daher kann die Krone die strukturelle QC nicht bestehen)"
+    "useLibrary": "Vorlage aus der Zahnbibliothek verwenden, an den Rand angepasst"
   }
 }

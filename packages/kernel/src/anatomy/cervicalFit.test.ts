@@ -229,6 +229,22 @@ describe('fitCervicalRing — properties', () => {
     expect(fit.blendHeightMm).toBeGreaterThanOrEqual(DEFAULT_CERVICAL_BLEND_MM);
   });
 
+  it('a margin with repeated points (as the UI resamples it: one shared point per segment boundary, and the closing point) fits exactly like the clean one', () => {
+    // Regression (Phase 10 Task 5): a duplicate gives a zero azimuth step,
+    // which refused the margin as "not star-shaped".
+    const dup: Vec3[] = [];
+    margin.forEach((p, i) => {
+      dup.push(p);
+      if (i % 16 === 0) dup.push([p[0], p[1], p[2]]);
+    });
+    dup.push([margin[0]![0], margin[0]![1], margin[0]![2]]);
+    const clean = fitCervicalRing({ mesh: base.mesh, cervicalRing: base.ring, marginLoop: margin, insertionAxis: [0, 0, 1], emergenceOffsetMm: OFFSET_MM });
+    const withDup = fitCervicalRing({ mesh: base.mesh, cervicalRing: base.ring, marginLoop: dup, insertionAxis: [0, 0, 1], emergenceOffsetMm: OFFSET_MM });
+    expect(Buffer.from(withDup.mesh.positions.buffer).equals(Buffer.from(clean.mesh.positions.buffer))).toBe(true);
+    expect(withDup.errorBoundMm).toBe(clean.errorBoundMm);
+    expect(emergenceLoop(dup, [0, 0, 1], OFFSET_MM)).toEqual(emergenceLoop(margin, [0, 0, 1], OFFSET_MM));
+  });
+
   it('is equivariant under rigid motions', () => {
     const rotate = (q: Vec3, ax: number, ay: number, az: number, t: Vec3): Vec3 => {
       let [x, y, z] = q;

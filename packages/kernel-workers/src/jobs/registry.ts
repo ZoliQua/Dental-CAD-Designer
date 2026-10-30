@@ -33,6 +33,7 @@
 //   jobs/neighbourRegion.ts extractNeighbourRegion (Phase 9 Task 3 — neighbour capture)
 //   jobs/prepDie.ts    extractPrepDie (Phase 10 Task 2 — the crown's closed prep die)
 //   jobs/toothAsset.ts loadToothAsset (Phase 9 Task 4 — verify a fetched library asset)
+//   jobs/cervicalFit.ts fitCervicalRing (Phase 10 Task 5 — fit a library template's cervix)
 //   jobs/bridgeCaseGeometry.ts fitRidgeCrest, bridgePonticUnit, placeBridgeConnectors
 //                      (Phase 9 Task 6 — the bridge built from the case)
 //   jobs/registry.ts   this file — types + runJob + registry assembly
@@ -224,6 +225,8 @@ export type {
 };
 import { loadToothAssetJob, type LoadToothAssetPayload, type LoadToothAssetResult } from './toothAsset.ts';
 export type { LoadToothAssetPayload, LoadToothAssetResult };
+import { fitCervicalRingJob, type FitCervicalRingPayload, type FitCervicalRingResult } from './cervicalFit.ts';
+export type { FitCervicalRingPayload, FitCervicalRingResult };
 import {
   extractNeighbourRegionJob,
   type ExtractNeighbourRegionPayload,
@@ -513,6 +516,7 @@ export interface JobPayloadMap {
   extractNeighbourRegion: ExtractNeighbourRegionPayload;
   extractPrepDie: ExtractPrepDiePayload;
   loadToothAsset: LoadToothAssetPayload;
+  fitCervicalRing: FitCervicalRingPayload;
   placeAnatomy: PlaceAnatomyPayload;
   morphAnatomy: MorphAnatomyPayload;
   resolveMorph: ResolveMorphPayload;
@@ -579,6 +583,7 @@ export interface JobResultMap {
   extractNeighbourRegion: ExtractNeighbourRegionResult;
   extractPrepDie: ExtractPrepDieResult;
   loadToothAsset: LoadToothAssetResult;
+  fitCervicalRing: FitCervicalRingResult;
   placeAnatomy: PlaceAnatomyResult;
   morphAnatomy: MorphAnatomyResult;
   resolveMorph: MorphAnatomyResult;
@@ -652,6 +657,7 @@ const registry: { [J in JobName]: JobHandler<J> } = {
   extractNeighbourRegion: extractNeighbourRegionJob,
   extractPrepDie: extractPrepDieJob,
   loadToothAsset: loadToothAssetJob,
+  fitCervicalRing: fitCervicalRingJob,
   placeAnatomy: placeAnatomyJob,
   morphAnatomy: morphAnatomyJob,
   resolveMorph: resolveMorphJob,

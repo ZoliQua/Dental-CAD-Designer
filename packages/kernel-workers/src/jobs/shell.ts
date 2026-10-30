@@ -45,6 +45,12 @@ export interface ConstructShellPayload {
    * downstream contact gate SUMS it (see `contact.ts`'s `outerShiftBoundMm`
    * + the kernel `healOuterAnatomy` @errorBound doc). */
   healOuterPitchMm?: number;
+  /** A fitted library template's cervical ring (Phase 10 Task 5): ordered
+   * vertex indices of the CLOSED outer; the shell trims along it instead of
+   * the margin plane (kernel `constructShell`'s `outerCervicalRing`). The
+   * morph and auto-thicken keep the topology, so the indices stay valid; the
+   * heal re-meshes, so a ring with `healOuterPitchMm` is refused. */
+  outerCervicalRing?: readonly number[];
   /** Bounded outward auto-thicken BEFORE stitching (user-invoked). */
   autoThicken?: boolean;
   autoThickenMinThicknessMm?: number;
@@ -99,8 +105,9 @@ function rebuildLoop(flat: Float64Array | undefined): Vec3[] | undefined {
  * checked up front and through the kernel op's `checkCancel` hook.
  *
  * @throws {JobCancelledError} if cancelled.
+ * @throws {TypeError} for a cervical ring combined with the heal.
  * @throws propagates @dqcad/kernel's `ShellBoundaryError` / `NonManifoldInputError`
- * / `ShellNotWatertightError`.
+ * / `ShellNotWatertightError` / `ShellCervicalRingError`.
  */
 export const constructShellJob = async (
   payload: ConstructShellPayload,
@@ -119,6 +126,9 @@ export const constructShellJob = async (
   // absent ⇒ byte-identical to the pre-heal job. Its @errorBound is surfaced so
   // the contact gate can SUM it (an under-reported residual otherwise).
   let healOuterErrorBoundMm: number | undefined;
+  if (payload.outerCervicalRing !== undefined && payload.healOuterPitchMm !== undefined) {
+    throw new TypeError('constructShell job: outerCervicalRing cannot be combined with healOuterPitchMm (the heal re-meshes the outer)');
+  }
   if (payload.healOuterPitchMm !== undefined) {
     const healed = await healOuterAnatomy(outerMesh, { pitchMm: payload.healOuterPitchMm });
     outerMesh = healed.mesh;
@@ -155,7 +165,11 @@ export const constructShellJob = async (
   const shell = await constructShell(
     outerMesh,
     innerMesh,
-    { insertionAxis: payload.insertionAxis, marginLoop },
+    {
+      insertionAxis: payload.insertionAxis,
+      marginLoop,
+      ...(payload.outerCervicalRing !== undefined ? { outerCervicalRing: payload.outerCervicalRing } : {}),
+    },
     {
       onProgress: (f) => ctx.progress(0.15 + 0.75 * f),
       checkCancel: async () => {

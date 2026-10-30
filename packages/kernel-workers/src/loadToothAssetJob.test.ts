@@ -4,7 +4,7 @@
 // FETCHED asset (metadata JSON + mesh bytes) exactly like the package loader,
 // and refuses a tampered one loudly.
 import { afterEach, describe, expect, it } from 'vitest';
-import { STARTER_TOOTH_ASSETS, loadToothAssetFromBytes } from '@dqcad/tooth-library';
+import { PREVIOUS_STARTER_TOOTH_METADATA, STARTER_TOOTH_ASSETS, loadToothAssetFromBytes } from '@dqcad/tooth-library';
 import { WorkerPool } from './pool.js';
 
 const pools: WorkerPool[] = [];
@@ -45,6 +45,17 @@ describe('loadToothAsset job', () => {
       meshChecksum: direct.metadata.meshChecksum,
       metadataChecksum: direct.metadata.metadataChecksum,
     });
+    // Phase 10 Task 5: the verified cervical ring rides along (the fit needs it).
+    expect(direct.metadata.cervicalRing?.length).toBeGreaterThan(8);
+    expect(result.cervicalRing).toEqual([...direct.metadata.cervicalRing!]);
+  });
+
+  it('returns a null cervical ring for an asset version without one (1.1.0)', async () => {
+    const pool = createPool();
+    const metadataJson = JSON.parse(JSON.stringify(PREVIOUS_STARTER_TOOTH_METADATA.get(14))) as unknown;
+    const result = await pool.run('loadToothAsset', { metadataJson, meshBytes: STARTER_TOOTH_ASSETS.get(14)!.meshBytes.slice() });
+    expect(result.metadata.version).toBe('1.1.0');
+    expect(result.cervicalRing).toBeNull();
   });
 
   it('refuses mesh bytes that do not hash to the metadata (ToothMeshChecksumError)', async () => {

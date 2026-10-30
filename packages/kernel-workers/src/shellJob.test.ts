@@ -145,6 +145,51 @@ describe('constructShell worker job', () => {
     expect(healed.watertight).toBe(true);
   }, 120000);
 
+  it('Phase 10 Task 5: trims along a fitted cervical ring, byte-identical to the direct call', async () => {
+    const inner = await intaglio();
+    // A closed tooth whose bottom ring (vertices 0..95) is its cervical ring.
+    const closed = buildFrustum(MARGIN_R + 0.7, TOP_R + 0.7, MARGIN_Z, TOP_Z + 0.7, 96, true, true);
+    const ring = Array.from({ length: 96 }, (_, i) => i);
+    const margin = marginFlat(MARGIN_R, MARGIN_Z, 240);
+    const marginLoop: Vec3[] = [];
+    for (let i = 0; i < margin.length; i += 3) marginLoop.push([margin[i]!, margin[i + 1]!, margin[i + 2]!]);
+    const direct = await constructShell(closed, inner, { insertionAxis: AXIS, marginLoop, outerCervicalRing: ring });
+    const job = await constructShellJob(
+      {
+        outerPositions: closed.positions,
+        outerIndices: closed.indices,
+        innerPositions: inner.positions,
+        innerIndices: inner.indices,
+        insertionAxis: AXIS,
+        marginLoop: margin,
+        outerCervicalRing: ring,
+      },
+      NOOP_CTX,
+    );
+    expect(job.watertight).toBe(true);
+    expect(hash(job.positions, job.indices)).toBe(hash(direct.mesh.positions, direct.mesh.indices));
+    expect(hash(job.outerUsedPositions, job.outerUsedIndices)).toBe(
+      hash(direct.outerUsedMesh.positions, direct.outerUsedMesh.indices),
+    );
+    // The heal re-meshes the outer, so ring indices would no longer refer to
+    // it: refused, never silently trimmed along the wrong vertices.
+    await expect(
+      constructShellJob(
+        {
+          outerPositions: closed.positions,
+          outerIndices: closed.indices,
+          innerPositions: inner.positions,
+          innerIndices: inner.indices,
+          insertionAxis: AXIS,
+          marginLoop: margin,
+          outerCervicalRing: ring,
+          healOuterPitchMm: 0.1,
+        },
+        NOOP_CTX,
+      ),
+    ).rejects.toThrow(TypeError);
+  }, 120000);
+
   it('reports monotonic progress ending at 1', async () => {
     const inner = await intaglio();
     const o = outer(0.7);

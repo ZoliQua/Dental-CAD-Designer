@@ -38,12 +38,13 @@
 // marginStore document for their duplicated summary shapes).
 import {
   KERNEL_VERSION,
+  cervicalEmergenceOffsetMm,
   type JobName,
   type JobPayloadMap,
   type JobResultMap,
   type RunJobOptions,
 } from '@dqcad/kernel-workers';
-import { DEFAULT_OFFSET_VOXEL_PITCH_MM } from '@dqcad/clinical-profiles';
+import { CERVICAL_FIT_MAX_RESIDUAL_MM, DEFAULT_OFFSET_VOXEL_PITCH_MM } from '@dqcad/clinical-profiles';
 import {
   ANTAGONIST_CONFIRM_OP,
   CROWN_DIE_EXTRACT_OP,
@@ -87,13 +88,14 @@ import {
   useCrownStore,
   type CaptureState,
   type CaptureSummary,
+  type CervicalFitSummary,
   type CrownStageGateSnapshot,
   type MorphStrengthsUi,
   type PrepDieSummary,
 } from '../state/crownStore';
 import { useCaseStore } from '../state/caseStore';
 import { useServerStatusStore } from '../state/serverStatusStore';
-import { resolveLibraryTooth, type AnatomySource, type ResolvedAnatomy } from './toothLibrary';
+import { builtin, resolveLibraryTooth, type AnatomySource, type ResolvedAnatomy } from './toothLibrary';
 
 /** Minimal structural view of a pool that can dispatch a job — `WorkerPool`
  * satisfies it; node-lane tests inject a fake implementing exactly this. */
@@ -220,6 +222,10 @@ export interface AnatomyPlacementInput {
   /** Where `library` came from (Phase 9 Task 4): a verified tooth-library
    * asset, or the built-in placeholder and why. Journaled; disclosed. */
   anatomySource?: AnatomySource;
+  /** The library template's verified cervical ring (Phase 10 Task 5): with a
+   * library `anatomySource`, the placed template is fitted to the margin
+   * along it. `null`/absent: an asset version without one. */
+  cervicalRing?: readonly number[] | null;
   mesialNeighbor?: IndexedBuffers;
   distalNeighbor?: IndexedBuffers;
   /** Provenance of `mesialNeighbor` / `distalNeighbor` — the worse of the
@@ -276,6 +282,14 @@ interface Session {
    * journaled param the server export re-validation receives, keeping the
    * client-attested contact verdict in agreement. */
   shellHealErrorBoundMm: number | null;
+  /** The fitted library template's cervical ring (Phase 10 Task 5): vertex
+   * indices into `placed`/`morphOuter` (the morph keeps the topology). The
+   * shell trims along it, and QC then measures `shellOuterUsed`. `null` for
+   * the built-in template. */
+  cervicalRing: readonly number[] | null;
+  cervicalFit: CervicalFitSummary | null;
+  /** The outer surface the shell actually stitched (from the shell job). */
+  shellOuterUsed: IndexedBuffers | null;
   /** Neighbour / antagonist regions captured from the case's scans this
    * session (or replayed from the journal). */
   captures: Partial<Record<CaptureRole, CapturedNeighbour>>;
@@ -312,11 +326,10 @@ class CrownDesignEngine {
     });
   }
 
-  /** The template the anatomy stage places: the built-in tooth unless the
-   * user selected the library template (Phase 9 Task 4 decision — the
-   * library anatomy is not yet fitted to the margin, so on a prep die it
-   * yields a crown that fails structural QC; it is opt-in until a cervical
-   * fit step lands). */
+  /** The template the anatomy stage places (Phase 10 Task 5, ADR-023): the
+   * verified library tooth by default — fitted to the margin after placement,
+   * with the built-in tooth as the disclosed fallback — unless the user opted
+   * out (journaled). */
   private async resolveAnatomy(): Promise<ResolvedAnatomy> {
     if (!this.libraryAnatomySelected()) {
       return { tooth: null, source: { origin: 'builtin', reason: 'notSelected', detail: null } };
@@ -342,7 +355,9 @@ class CrownDesignEngine {
         return op.params['template'] === 'library';
       }
     }
-    return false;
+    // Phase 10 Task 5: with no journaled choice the library template is the
+    // default (it is fitted to the margin; the fallback says why when not).
+    return true;
   }
 
   /** Selects the anatomy template (library asset vs built-in). One
@@ -441,6 +456,9 @@ class CrownDesignEngine {
       shell: null,
       shellThicknessHeatmap: null,
       shellHealErrorBoundMm: null,
+      cervicalRing: null,
+      cervicalFit: null,
+      shellOuterUsed: null,
       captures: {},
     };
     caseStore.setSelectedRestorationId(restorationId);
@@ -564,7 +582,11 @@ class CrownDesignEngine {
         if (session) session.inner = null;
         storePatch.inner = null;
       } else if (field === 'anatomyPlacement') {
-        if (session) session.placed = null;
+        if (session) {
+          session.placed = null;
+          session.cervicalRing = null;
+          session.cervicalFit = null;
+        }
         storePatch.anatomy = null;
       } else if (field === 'morphState') {
         if (session) {
@@ -578,6 +600,7 @@ class CrownDesignEngine {
         if (session) {
           session.shell = null;
           session.shellThicknessHeatmap = null;
+          session.shellOuterUsed = null;
         }
         storePatch.shell = null;
         storePatch.sculpt = null;
@@ -1049,7 +1072,19 @@ class CrownDesignEngine {
     // with the anatomy op, disclosed in the panel, and the contact gate fails
     // closed on it, naming why ("no neighbour geometry in this case" without
     // an arch scan, else "not yet captured").
-    const gap = 0.1;
+    // A fitted library template emerges `cervicalEmergenceOffsetMm` outside
+    // the margin (Phase 10 Task 5), so a synthetic box flanking the MARGIN
+    // would sit inside the crown's cervix and the morph would drive the
+    // contacts into it: the boxes then flank the emergence outline instead.
+    const emergenceMm =
+      anatomy.tooth?.cervicalRing != null
+        ? cervicalEmergenceOffsetMm({
+            marginalGapMm: session.params.marginalGapMm,
+            cementGapMm: session.params.cementGapMm,
+            minWallThicknessMm: session.params.minWallThicknessMm,
+          })
+        : 0;
+    const gap = 0.1 + emergenceMm;
     const width = marginR;
     const yMin = -marginR;
     const yMax = marginR;
@@ -1088,6 +1123,7 @@ class CrownDesignEngine {
     return {
       library,
       anatomySource: anatomy.source,
+      cervicalRing: anatomy.tooth?.cervicalRing ?? null,
       mesialNeighbor,
       distalNeighbor,
       neighbourProvenance,
@@ -1123,7 +1159,6 @@ class CrownDesignEngine {
   async placeAnatomy(input: AnatomyPlacementInput): Promise<void> {
     const session = this.requireSession();
     this.assertRunnable('anatomy');
-    session.anatomyInput = input;
     const manual = input.manualOverride !== undefined;
     this.publish({ busyStage: 'anatomy', progress: 0, error: null, errorStage: null });
     try {
@@ -1139,8 +1174,45 @@ class CrownDesignEngine {
         landmarks: input.library.landmarks,
         manualOverride: input.manualOverride,
       });
-      const contentHash = await this.hashMesh(result.positions, result.indices);
-      session.placed = { positions: result.positions, indices: result.indices, contentHash };
+      // Phase 10 Task 5 (ADR-023 Decision 2): a library template is fitted to
+      // the margin before it becomes the anatomy. When it cannot be — no
+      // cervical ring, a refused fit, a residual over the bound — the built-in
+      // template is placed instead, the reason disclosed and journaled.
+      let fit: Extract<JobResultMap['fitCervicalRing'], { ok: true }> | null = null;
+      if (input.anatomySource?.origin === 'library') {
+        const ring = input.cervicalRing ?? null;
+        if (ring === null) {
+          return await this.placeAnatomy(this.buildAnatomyInput(input.manualOverride, builtin('noCervicalRing', null)));
+        }
+        const fitted = await this.pool().run('fitCervicalRing', {
+          positions: result.positions,
+          indices: result.indices,
+          cervicalRing: ring,
+          marginLoop: session.marginLoopFlat,
+          insertionAxis: session.insertionAxis,
+          marginalGapMm: session.params.marginalGapMm,
+          cementGapMm: session.params.cementGapMm,
+          minWallThicknessMm: session.params.minWallThicknessMm,
+        });
+        if (!fitted.ok) {
+          return await this.placeAnatomy(
+            this.buildAnatomyInput(input.manualOverride, builtin('fitRefused', `${fitted.reason}: ${fitted.message}`)),
+          );
+        }
+        if (!(fitted.errorBoundMm <= CERVICAL_FIT_MAX_RESIDUAL_MM)) {
+          const um = (mm: number): string => `${Math.round(mm * 1000)} µm`;
+          return await this.placeAnatomy(
+            this.buildAnatomyInput(
+              input.manualOverride,
+              builtin('fitOverBound', `residual ${um(fitted.errorBoundMm)} > bound ${um(CERVICAL_FIT_MAX_RESIDUAL_MM)}`),
+            ),
+          );
+        }
+        fit = fitted;
+      }
+      session.anatomyInput = input;
+      const placedHash = await this.hashMesh(result.positions, result.indices);
+      session.placed = { positions: result.positions, indices: result.indices, contentHash: placedHash };
       // Placing anew invalidates any downstream morph/shell preview.
       session.morphOuter = null;
       session.morphPlanId = null;
@@ -1148,7 +1220,7 @@ class CrownDesignEngine {
       this.commitStage(
         'anatomy',
         'anatomyPlacement',
-        contentHash,
+        placedHash,
         'crown-anatomy',
         {
           manual,
@@ -1168,6 +1240,45 @@ class CrownDesignEngine {
           ...(input.anatomySource?.origin === 'library' ? [input.anatomySource.meshChecksum] : []),
         ],
       );
+      let cervicalFit: CervicalFitSummary | null = null;
+      if (fit !== null && input.cervicalRing) {
+        // The fit is its own journaled op: placed mesh in, fitted mesh out —
+        // the fitted mesh is the anatomy stage's output the morph consumes.
+        const fittedHash = await this.hashMesh(fit.positions, fit.indices);
+        session.placed = { positions: fit.positions, indices: fit.indices, contentHash: fittedHash };
+        cervicalFit = {
+          errorBoundMm: fit.errorBoundMm,
+          maxResidualMm: CERVICAL_FIT_MAX_RESIDUAL_MM,
+          emergenceOffsetMm: fit.emergenceOffsetMm,
+          maxRingDisplacementMm: fit.maxRingDisplacementMm,
+        };
+        this.commitStage(
+          'anatomy',
+          'anatomyPlacement',
+          fittedHash,
+          'crown-cervical-fit',
+          {
+            errorBoundMm: fit.errorBoundMm,
+            maxResidualMm: CERVICAL_FIT_MAX_RESIDUAL_MM,
+            ringToLoopMm: fit.ringToLoopMm,
+            loopToRingMm: fit.loopToRingMm,
+            maxRingDisplacementMm: fit.maxRingDisplacementMm,
+            ringVertexCount: fit.ringVertexCount,
+            anchorCount: fit.anchorCount,
+            movedVertexCount: fit.movedVertexCount,
+            emergenceOffsetMm: fit.emergenceOffsetMm,
+            cervicalBlendMm: fit.cervicalBlendMm,
+            blendHeightMm: fit.blendHeightMm,
+            marginalGapMm: session.params.marginalGapMm,
+            cementGapMm: session.params.cementGapMm,
+            minWallThicknessMm: session.params.minWallThicknessMm,
+          },
+          [placedHash],
+        );
+      }
+      // Set after the commits (their invalidation clears the previous fit).
+      session.cervicalRing = cervicalFit !== null ? (input.cervicalRing ?? null) : null;
+      session.cervicalFit = cervicalFit;
       this.publish({
         busyStage: null,
         progress: 1,
@@ -1179,6 +1290,7 @@ class CrownDesignEngine {
           antagonistUsed: result.antagonistUsed,
           neighbourProvenance: input.neighbourProvenance ?? 'case',
           anatomySource: input.anatomySource ?? null,
+          cervicalFit,
           manual,
         },
         morph: null,
@@ -1261,6 +1373,9 @@ class CrownDesignEngine {
           contacts,
           strengths,
           computeHeatmaps: true,
+          // A fitted template's cervical ring stays exactly on the emergence
+          // loop the fit put it on (Phase 10 Task 5).
+          ...(session.cervicalRing !== null ? { fixedVertexIndices: [...session.cervicalRing] } : {}),
         },
         { affinityKey: planId },
       );
@@ -1324,6 +1439,7 @@ class CrownDesignEngine {
           maxContactResidualMm: result.maxContactResidualMm,
           marginSealMaxDeviationMm: result.marginSealMaxDeviationMm,
           clampedContacts: result.clampedContacts,
+          ...(session.cervicalRing !== null ? { fixedCervicalRingVertexCount: session.cervicalRing.length } : {}),
         },
         session.placed ? [session.placed.contentHash] : [],
       );
@@ -1446,9 +1562,13 @@ class CrownDesignEngine {
         autoThicken,
         autoThickenMinThicknessMm: autoThicken ? session.params.minWallThicknessMm : undefined,
         autoThickenMaxDisplacementMm: autoThicken ? session.params.minWallThicknessMm : undefined,
+        // A fitted library template is trimmed along its cervical ring (Phase
+        // 10 Task 5); everything else keeps the margin-plane trim.
+        ...(session.cervicalRing !== null ? { outerCervicalRing: [...session.cervicalRing] } : {}),
       });
       const contentHash = await this.hashMesh(result.positions, result.indices);
       session.shell = { positions: result.positions, indices: result.indices, contentHash };
+      session.shellOuterUsed = { positions: result.outerUsedPositions, indices: result.outerUsedIndices };
       session.shellThicknessHeatmap = result.thicknessHeatmap;
       // The morph→shell heal @errorBound (mm) when the outer was healed —
       // captured here, journaled on the shell op, and SUMMED onto every contact
@@ -1471,6 +1591,7 @@ class CrownDesignEngine {
           ...(result.healOuterErrorBoundMm !== undefined
             ? { healOuterErrorBoundMm: result.healOuterErrorBoundMm }
             : {}),
+          ...(session.cervicalRing !== null ? { cervicalRingTrim: true } : {}),
         },
         [session.morphOuter.contentHash, session.inner.contentHash],
       );
@@ -1492,6 +1613,16 @@ class CrownDesignEngine {
       this.failStage('shell', error);
       throw error;
     }
+  }
+
+  /** The outer surface QC measures: for a fitted library template the one
+   * the shell actually stitched (trimmed along the cervical ring — the
+   * morph outer still carries the cervix below it), else the morph outer
+   * (Phase 10 Task 5). */
+  private qcOuter(session: Session): IndexedBuffers {
+    if (session.cervicalRing !== null && session.shellOuterUsed !== null) return session.shellOuterUsed;
+    if (!session.morphOuter) throw new CrownStageOrderError('qc', 'shellIncomplete');
+    return session.morphOuter;
   }
 
   // ---- stage 5: freeform sculpt ----------------------------------------
@@ -1595,8 +1726,8 @@ class CrownDesignEngine {
         crownIndices: session.shell.indices,
         innerPositions: session.inner.positions,
         innerIndices: session.inner.indices,
-        outerPositions: session.morphOuter.positions,
-        outerIndices: session.morphOuter.indices,
+        outerPositions: this.qcOuter(session).positions,
+        outerIndices: this.qcOuter(session).indices,
         // Seating is measured against the PREPARED DIE (ADR-023): the
         // prep alone, never the arch with its proximal contacts.
         diePositions: session.die.positions,
@@ -1657,8 +1788,8 @@ class CrownDesignEngine {
         crownIndices: session.shell.indices,
         innerPositions: session.inner.positions,
         innerIndices: session.inner.indices,
-        outerPositions: session.morphOuter.positions,
-        outerIndices: session.morphOuter.indices,
+        outerPositions: this.qcOuter(session).positions,
+        outerIndices: this.qcOuter(session).indices,
         // Seating is measured against the PREPARED DIE (ADR-023): the
         // prep alone, never the arch with its proximal contacts.
         diePositions: session.die.positions,
@@ -1761,7 +1892,7 @@ class CrownDesignEngine {
     const profile = resolveFullMaterialProfile(caseStore.getDocument());
     return {
       innerSurfaceMesh: meshJson(session.inner.positions, session.inner.indices),
-      outerSurfaceMesh: meshJson(session.morphOuter.positions, session.morphOuter.indices),
+      outerSurfaceMesh: meshJson(this.qcOuter(session).positions, this.qcOuter(session).indices),
       // The prepared die — the server re-extracts it from the saved scan and
       // refuses an export whose die differs (ADR-023, invariant 6).
       dieSolid: meshJson(session.die.positions, session.die.indices),

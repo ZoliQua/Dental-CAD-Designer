@@ -91,8 +91,23 @@ export interface AnatomySummary {
    * tooth-library asset, or the built-in placeholder and why; `null` when
    * the caller supplied its own template. Disclosed; never fails a gate. */
   anatomySource: AnatomySourceSummary | null;
+  /** The library template's cervical fit (Phase 10 Task 5) — its residual
+   * (the fit's @errorBound) against the bound it was accepted under; `null`
+   * for the built-in template (never fitted). */
+  cervicalFit: CervicalFitSummary | null;
   /** `true` after a manual gizmo transform, `false` after auto-place. */
   manual: boolean;
+}
+
+export interface CervicalFitSummary {
+  /** @errorBound: the fitted ring's distance from the emergence loop (mm). */
+  errorBoundMm: number;
+  /** The bound the fit was accepted under (mm). */
+  maxResidualMm: number;
+  /** How far outside the margin the cervical wall emerges (mm). */
+  emergenceOffsetMm: number;
+  /** How far the template's ring was moved (mm). */
+  maxRingDisplacementMm: number;
 }
 
 /** Mirrors engine/toothLibrary.ts's `AnatomySource` (state may not import
@@ -110,7 +125,15 @@ export type AnatomySourceSummary =
     }
   | {
       origin: 'builtin';
-      reason: 'notSelected' | 'offline' | 'fdiMissing' | 'unavailable' | 'verificationFailed';
+      reason:
+        | 'notSelected'
+        | 'offline'
+        | 'fdiMissing'
+        | 'unavailable'
+        | 'verificationFailed'
+        | 'noCervicalRing'
+        | 'fitRefused'
+        | 'fitOverBound';
       detail: string | null;
     };
 

@@ -1,5 +1,5 @@
 {
-  "kernelVersion": "0.35.0",
+  "kernelVersion": "0.36.0",
   "manifoldVersion": "3.5.1",
   "stages": {
     "hygienic": {

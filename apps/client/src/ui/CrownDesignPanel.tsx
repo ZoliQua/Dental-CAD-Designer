@@ -397,6 +397,16 @@ function AnatomyStage({ busy }: { busy: boolean }) {
             {anatomy.usedProximalGap && ` · ${t('crown.anatomyProximalGap')}`}
             {anatomy.antagonistUsed && ` · ${t('crown.anatomyAntagonist')}`}
           </p>
+          {anatomy.cervicalFit && (
+            <p className="crown-stage__readout" data-testid="crown-anatomy-cervical-fit">
+              {t('crown.anatomyCervicalFit', {
+                residual: Math.round(anatomy.cervicalFit.errorBoundMm * 1000),
+                bound: Math.round(anatomy.cervicalFit.maxResidualMm * 1000),
+                offset: Math.round(anatomy.cervicalFit.emergenceOffsetMm * 1000),
+                moved: Math.round(anatomy.cervicalFit.maxRingDisplacementMm * 1000),
+              })}
+            </p>
+          )}
           {anatomy.anatomySource && <AnatomySourceNote source={anatomy.anatomySource} />}
           {anatomy.neighbourProvenance !== 'case' && (
             <StandInDisclosure

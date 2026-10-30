@@ -11,6 +11,7 @@
 // future callers — same native-Node-resolution rationale as
 // packages/kernel/src/index.ts (see boolean/manifold.ts's module doc).
 export {
+  CERVICAL_FIT_MAX_RESIDUAL_MM,
   DEFAULT_OFFSET_VOXEL_PITCH_MM,
   DEFAULT_RESTORATION_PARAMS,
   DEFAULT_UNDERCUT_BLOCKOUT_THRESHOLD_MM,

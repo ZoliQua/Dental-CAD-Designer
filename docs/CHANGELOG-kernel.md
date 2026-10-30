@@ -59,6 +59,51 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.36.0] — Phase 10 Task 5: the morph holds a fitted cervical ring
+
+**A new optional input; no existing output changed. Every geometry stage pin
+and every journal-replay pin is BYTE-IDENTICAL to `[0.35.0]`. This was
+verified by running the whole golden suite and the server traceability
+golden at `0.35.0` with the new code. The acceptance `*-qc` pins and the
+server traceability byte-golden advance only because the QcReport embeds
+`kernelVersion`.**
+
+- **`planAnatomyMorph` / `morphAnatomy`: `fixedVertexIndices` (new,
+  optional).** These are vertices the morph must not move.
+  - The default library template is fitted to the margin (`fitCervicalRing`,
+    kernel 0.34.0), and its cervical ring then sits on the emergence loop.
+    That is usually outside the 0.6 mm cervical seal band. The minimum-anchor
+    fallback pinned only part of the ring, so the RBF moved the rest by about
+    1 µm.
+  - On the open-arch premolar this pushed the ring 1 µm into the die's
+    shoulder: the seating gate measured 1.3·10⁻⁴ mm³ of interference.
+  - Each fixed vertex is now a zero-displacement anchor. It is never
+    subsampled and is never chosen as a contact vertex. Its output position
+    is copied from the placed mesh, because an RBF anchor alone holds it only
+    to the solve's rounding (about 10⁻¹⁶ mm).
+  - Indices outside the mesh, or repeated, are refused with a `RangeError`.
+  - Absent or empty, the plan is exactly the previous one.
+- **`fitCervicalRing` / `emergenceLoop`: a margin with repeated points is
+  cleaned first.** These functions now apply the same `dedupLoop` (weld
+  epsilon) that every other margin consumer applies.
+  - A margin resampled by the UI shares a point at each segment boundary.
+    The repeated point read as a zero azimuth step, so the fit refused the
+    margin as "not star-shaped". This was found on the Phase 4 e2e shoulder
+    die, where the fit refused and the panel fell back to the built-in
+    template with the kernel reason.
+  - A margin without repeats is unchanged, bit for bit. A regression test
+    shows that a margin with repeats fits byte-identically to the clean one.
+- **Tests.** A ring the morph would otherwise move stays bit-identical when
+  it is listed as fixed, and the contacts are still reached. An empty list
+  gives a byte-identical result. Bad indices are refused. The worker job
+  passes the input through.
+- **Where it is used.** The crown engine passes the fitted ring to the morph
+  (journaled as `fixedCervicalRingVertexCount` on `crown-morph`) and to the
+  shell (`outerCervicalRing`). On the open-arch case (premolar 15, library
+  template) every crown gate passes: seating interference is 6·10⁻²⁰ mm³,
+  the wall is 643 µm, and the fit residual is 8 µm
+  (`test/golden/crown-open-arch-acceptance.test.ts`, library lane).
+
 ## [0.35.0] — Cross-platform determinism: the transcendental functions
 
 **A deliberate numeric change: kernel outputs are now bit-identical on every

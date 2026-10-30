@@ -294,6 +294,35 @@ describe('morphAnatomy — cervical anchor fallback (coarse placement off the fi
   });
 });
 
+describe('morphAnatomy — fixed vertices (Phase 10 Task 5: a fitted cervical ring stays put)', () => {
+  // Ring 2 (z = 1.0) lies 1.0 mm above the margin — outside the 0.6 mm seal
+  // band — like a fitted template's ring sits outside the margin.
+  const RING2 = Array.from({ length: 24 }, (_, s) => 2 * 24 + s);
+
+  it('a free ring moves under the contacts; listed as fixed, every one of its vertices is bit-identical to the placed mesh', () => {
+    const placed = baseInput().placedMesh;
+    const free = morphAnatomy(baseInput()).mesh;
+    const moved = RING2.some((v) => [0, 1, 2].some((k) => free.positions[v * 3 + k] !== placed.positions[v * 3 + k]));
+    expect(moved, 'the test needs a ring the morph would otherwise move').toBe(true);
+
+    const fixed = morphAnatomy(baseInput({ fixedVertexIndices: RING2 }));
+    for (const v of RING2) {
+      for (let k = 0; k < 3; k++) expect(fixed.mesh.positions[v * 3 + k]).toBe(placed.positions[v * 3 + k]);
+    }
+    // The contacts are still reached.
+    for (const c of fixed.contacts) expect(c.clampBound).toBe(false);
+  });
+
+  it('an empty list is the same plan as none (byte-identical)', () => {
+    expect(hashMesh(morphAnatomy(baseInput({ fixedVertexIndices: [] })).mesh)).toBe(hashMesh(morphAnatomy(baseInput()).mesh));
+  });
+
+  it('refuses an index outside the mesh or a duplicate (RangeError)', () => {
+    expect(() => planAnatomyMorph(baseInput({ fixedVertexIndices: [0, 99_999] }))).toThrow(RangeError);
+    expect(() => planAnatomyMorph(baseInput({ fixedVertexIndices: [3, 3] }))).toThrow(RangeError);
+  });
+});
+
 // --- M1: penetration sign from the angle-weighted pseudonormal, not a single
 // face normal. A watertight L-shaped prism (one REFLEX/concave vertical edge):
 // a point in the concave wedge is genuinely INSIDE the solid, but the single

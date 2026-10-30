@@ -50,6 +50,11 @@ class FakePool {
   calls: FakeCall[] = [];
   extractCalls = 0;
   failToothAsset = false;
+  /** The fetched asset's cervical ring (`null`: an asset version without one). */
+  assetCervicalRing: number[] | null = [0, 1, 2];
+  /** The cervical fit's residual, or a refusal reason. */
+  fitErrorBoundMm = 0.011;
+  fitRefusal: string | null = null;
   private hashCounter = 0;
   failShell = false;
   failResolveMorph = false;
@@ -76,8 +81,26 @@ class FakePool {
         return {
           ...tetra(40),
           landmarks: { incisalEdge: [0, 0, 10] },
+          cervicalRing: this.assetCervicalRing,
           canonicalFrame: { origin: [0, 0, 0], mesialDistal: [1, 0, 0], buccoLingual: [0, 1, 0], occlusoGingival: [0, 0, 1] },
           metadata: { fdi: 11, version: '1.1.0', toothType: 'incisor', provenance: 'PLACEHOLDER-ANATOMY: generated', assetKind: 'generator', meshChecksum: 'c'.repeat(64), metadataChecksum: 'd'.repeat(64) },
+        };
+      }
+      case 'fitCervicalRing': {
+        if (this.fitRefusal !== null) return { ok: false, reason: this.fitRefusal, message: `cervicalFit: ${this.fitRefusal} — test` };
+        return {
+          ok: true,
+          ...tetra(41),
+          errorBoundMm: this.fitErrorBoundMm,
+          ringToLoopMm: this.fitErrorBoundMm,
+          loopToRingMm: this.fitErrorBoundMm / 2,
+          maxRingDisplacementMm: 0.8,
+          ringVertexCount: 3,
+          anchorCount: 64,
+          movedVertexCount: 120,
+          emergenceOffsetMm: 0.651,
+          cervicalBlendMm: 2,
+          blendHeightMm: 2.4,
         };
       }
       case 'extractNeighbourRegion': {
@@ -173,7 +196,7 @@ class FakePool {
           err.name = 'NonManifoldInputError';
           throw err;
         }
-        return { ...tetra(5), watertight: true, componentCount: 1, seamTriangleCount: 8, outerRimVertexCount: 64, innerRimVertexCount: 64, volumeMm3: 12.5, minWallThicknessMm: 0.6, minOcclusalWallThicknessMm: 0.7, minAxialWallThicknessMm: 0.6, thicknessSampleSpacingMm: 0.2, errorBoundMm: 0.01, autoThickenApplied: false, autoThickenDisplacedVertexCount: 0, autoThickenClampedVertexCount: 0, autoThickenMaxAppliedMm: 0, thicknessHeatmap: Float64Array.from([0.5, 0.6, 0.7, 0.8]) };
+        return { ...tetra(5), watertight: true, componentCount: 1, seamTriangleCount: 8, outerRimVertexCount: 64, innerRimVertexCount: 64, volumeMm3: 12.5, minWallThicknessMm: 0.6, minOcclusalWallThicknessMm: 0.7, minAxialWallThicknessMm: 0.6, thicknessSampleSpacingMm: 0.2, errorBoundMm: 0.01, autoThickenApplied: false, autoThickenDisplacedVertexCount: 0, autoThickenClampedVertexCount: 0, autoThickenMaxAppliedMm: 0, thicknessHeatmap: Float64Array.from([0.5, 0.6, 0.7, 0.8]), outerUsedPositions: tetra(7).positions, outerUsedIndices: tetra(7).indices };
       case 'applySculptStroke':
         return { ...tetra(6), watertight: true, componentCount: 1, movedVertexCount: 5, peakDisplacementMm: 0.08, clampedStrokeCount: 0, lockedVertexCount: 3, sculptableVertexCount: 20 };
       case 'runQc': {
@@ -644,7 +667,7 @@ describe('crownDesign controller — neighbour + antagonist capture (Phase 9 Tas
   });
 });
 
-describe('crownDesign controller — anatomy from the tooth library (Phase 9 Task 4)', () => {
+describe('crownDesign controller — anatomy from the tooth library (Phase 9 Task 4, Phase 10 Task 5)', () => {
   const libraryFetch = (async (url: string) => {
     if (url === '/api/tooth-library/11') return Response.json({ fdi: 11, meshChecksum: 'c'.repeat(64) });
     if (url === `/api/meshes/${'c'.repeat(64)}`) return new Response(new Uint8Array([1, 2, 3]));
@@ -656,67 +679,139 @@ describe('crownDesign controller — anatomy from the tooth library (Phase 9 Tas
     __resetToothLibraryCacheForTests();
   });
 
+  function lastCall<T>(job: string): T {
+    return [...fake.calls].reverse().find((c) => c.job === job)!.payload as T;
+  }
   function lastPlace() {
-    return [...fake.calls].reverse().find((c) => c.job === 'placeAnatomy')!.payload as { libraryPositions: Float64Array; landmarks: Record<string, number[]> };
+    return lastCall<{ libraryPositions: Float64Array; landmarks: Record<string, number[]> }>('placeAnatomy');
   }
-  function anatomyOp() {
-    return caseStore.getDocument().history.filter((o) => o.name === 'crown-anatomy').pop()!;
+  function lastOp(name: string) {
+    return caseStore.getDocument().history.filter((o) => o.name === name).pop()!;
   }
-
-  it('by default the built-in template is placed; the verified library asset is shown as available, not used', async () => {
-    crownDesignEngine.__setToothLibraryFetchForTests(libraryFetch);
-    crownDesignEngine.start(restorationId);
-    await crownDesignEngine.refreshLibraryAnatomy();
-    expect(useCrownStore.getState().libraryAnatomy).toMatchObject({ origin: 'library', fdi: 11, assetKind: 'generator' });
-    expect(useCrownStore.getState().useLibraryAnatomy).toBe(false);
+  async function toAnatomy(): Promise<void> {
     await crownDesignEngine.runPrepDie();
     await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
     await crownDesignEngine.placeAnatomyAuto();
-    expect(lastPlace().libraryPositions[0]).not.toBe(40);
-    expect(anatomyOp().params.anatomySource).toEqual({ origin: 'builtin', reason: 'notSelected', detail: null });
+  }
+
+  it('by default the verified library template is placed AND fitted: a crown-anatomy op, then a crown-cervical-fit op whose output is the anatomy stage', async () => {
+    crownDesignEngine.__setToothLibraryFetchForTests(libraryFetch);
+    crownDesignEngine.start(restorationId);
+    expect(useCrownStore.getState().useLibraryAnatomy).toBe(true);
+    await toAnatomy();
+    expect(lastPlace().libraryPositions[0]).toBe(40);
+    // The fit gets the asset's ring, the margin, the axis and the profile values.
+    const fit = lastCall<{ positions: Float64Array; cervicalRing: number[]; marginalGapMm: number; cementGapMm: number; minWallThicknessMm: number }>('fitCervicalRing');
+    expect(fit.positions[0]).toBe(3); // the PLACED mesh
+    expect(fit.cervicalRing).toEqual([0, 1, 2]);
+    const rp = currentRestoration().params;
+    expect(fit).toMatchObject({ marginalGapMm: rp.marginalGapMm, cementGapMm: rp.cementGapMm, minWallThicknessMm: rp.minWallThicknessMm });
+    const place = lastOp('crown-anatomy');
+    const fitOp = lastOp('crown-cervical-fit');
+    expect(caseStore.getDocument().history.indexOf(fitOp)).toBeGreaterThan(caseStore.getDocument().history.indexOf(place));
+    expect(fitOp.inputHashes).toEqual([place.outputHashes[0]]);
+    expect(fitOp.outputHashes).toEqual(['region-41']);
+    expect(fitOp.params).toMatchObject({ errorBoundMm: 0.011, maxResidualMm: 0.05, emergenceOffsetMm: 0.651, ringVertexCount: 3 });
+    expect(currentRestoration().stages.anatomyPlacement).toBe('region-41');
+    expect(place.params.anatomySource).toMatchObject({ origin: 'library', fdi: 11, version: '1.1.0' });
+    expect(place.inputHashes).toContain('c'.repeat(64));
+    expect(useCrownStore.getState().anatomy?.cervicalFit).toMatchObject({ errorBoundMm: 0.011, maxResidualMm: 0.05 });
   });
 
-  it('selecting the library template is one journaled op that invalidates anatomy onward, and survives a reload', async () => {
+  it('the shell trims along the fitted ring, and QC measures the outer surface the shell used', async () => {
     crownDesignEngine.__setToothLibraryFetchForTests(libraryFetch);
     crownDesignEngine.start(restorationId);
-    await crownDesignEngine.runPrepDie();
-    await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
-    await crownDesignEngine.placeAnatomyAuto();
-    expect(currentRestoration().stages.anatomyPlacement).toBeTypeOf('string');
-    crownDesignEngine.setUseLibraryAnatomy(true);
-    const op = caseStore.getDocument().history.filter((o) => o.name === 'crown-anatomy-template').pop()!;
-    expect(op.params).toMatchObject({ restorationId, template: 'library' });
+    await toAnatomy();
+    await crownDesignEngine.runMorph();
+    // The morph holds the fitted ring exactly where the fit put it.
+    expect(lastCall<{ fixedVertexIndices?: number[] }>('morphAnatomy').fixedVertexIndices).toEqual([0, 1, 2]);
+    expect(lastOp('crown-morph').params).toMatchObject({ fixedCervicalRingVertexCount: 3 });
+    await crownDesignEngine.constructShell();
+    expect(lastCall<{ outerCervicalRing?: number[] }>('constructShell').outerCervicalRing).toEqual([0, 1, 2]);
+    expect(lastOp('crown-shell').params).toMatchObject({ cervicalRingTrim: true });
+    await crownDesignEngine.runQc();
+    expect(lastCall<{ outerPositions: Float64Array }>('runQc').outerPositions[0]).toBe(7);
+    expect(crownDesignEngine.exportQcContext(restorationId)?.outerSurfaceMesh.positions[0]).toBe(7);
+  });
+
+  it('opting out is one journaled op that invalidates anatomy onward and survives a reload; the built-in template then shells with the plane trim', async () => {
+    crownDesignEngine.__setToothLibraryFetchForTests(libraryFetch);
+    crownDesignEngine.start(restorationId);
+    await toAnatomy();
+    crownDesignEngine.setUseLibraryAnatomy(false);
+    expect(lastOp('crown-anatomy-template').params).toMatchObject({ restorationId, template: 'builtin' });
     expect(currentRestoration().stages.anatomyPlacement).toBeUndefined();
     crownDesignEngine.clear();
     crownDesignEngine.start(restorationId);
-    expect(useCrownStore.getState().useLibraryAnatomy).toBe(true);
+    expect(useCrownStore.getState().useLibraryAnatomy).toBe(false);
+    const fitsBefore = fake.calls.filter((c) => c.job === 'fitCervicalRing').length;
+    await toAnatomy();
+    expect(fake.calls.filter((c) => c.job === 'fitCervicalRing').length).toBe(fitsBefore);
+    expect(lastOp('crown-anatomy').params.anatomySource).toEqual({ origin: 'builtin', reason: 'notSelected', detail: null });
+    expect(useCrownStore.getState().anatomy?.cervicalFit).toBeNull();
+    await crownDesignEngine.runMorph();
+    expect(lastCall<{ fixedVertexIndices?: number[] }>('morphAnatomy').fixedVertexIndices).toBeUndefined();
+    await crownDesignEngine.constructShell();
+    expect(lastCall<{ outerCervicalRing?: number[] }>('constructShell').outerCervicalRing).toBeUndefined();
+    await crownDesignEngine.runQc();
+    expect(lastCall<{ outerPositions: Float64Array }>('runQc').outerPositions[0]).toBe(4); // the morph outer
   });
 
-  it('with the library template selected, places the verified asset and journals which one (input hash = its mesh checksum)', async () => {
+  it('with no captured neighbours, the placeholder boxes flank the fitted template emergence outline, not the margin', async () => {
+    const boxMinX = () => {
+      const p = lastCall<{ distalNeighborPositions: Float64Array }>('placeAnatomy').distalNeighborPositions;
+      let m = Infinity;
+      for (let i = 0; i < p.length; i += 3) m = Math.min(m, p[i]!);
+      return m;
+    };
     crownDesignEngine.__setToothLibraryFetchForTests(libraryFetch);
     crownDesignEngine.start(restorationId);
-    crownDesignEngine.setUseLibraryAnatomy(true);
-    await crownDesignEngine.runPrepDie();
-    await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
+    await toAnatomy();
+    // margin radius 1.2; emergence 0.651 (zirconia: 0.05 + 0.5 + 0.1 + 0.001); gap 0.1
+    expect(boxMinX()).toBeCloseTo(1.2 + 0.651 + 0.1, 9);
+    crownDesignEngine.setUseLibraryAnatomy(false);
     await crownDesignEngine.placeAnatomyAuto();
-    expect(lastPlace().libraryPositions[0]).toBe(40);
-    expect(lastPlace().landmarks).toEqual({ incisalEdge: [0, 0, 10] });
-    const op = anatomyOp();
-    expect(op.params.anatomySource).toMatchObject({ origin: 'library', fdi: 11, version: '1.1.0', assetKind: 'generator' });
-    expect(op.inputHashes).toContain('c'.repeat(64));
-    expect(useCrownStore.getState().anatomy?.anatomySource).toMatchObject({ origin: 'library', assetKind: 'generator' });
+    expect(boxMinX()).toBeCloseTo(1.2 + 0.1, 9);
+  });
+
+  it('an asset without a cervical ring is not fitted: the built-in template, labelled noCervicalRing', async () => {
+    fake.assetCervicalRing = null;
+    crownDesignEngine.__setToothLibraryFetchForTests(libraryFetch);
+    crownDesignEngine.start(restorationId);
+    await toAnatomy();
+    expect(fake.calls.some((c) => c.job === 'fitCervicalRing')).toBe(false);
+    expect(lastPlace().libraryPositions[0]).not.toBe(40);
+    expect(lastOp('crown-anatomy').params.anatomySource).toMatchObject({ origin: 'builtin', reason: 'noCervicalRing' });
+    expect(opsNamed('crown-cervical-fit')).toBe(0);
+  });
+
+  it('a refused fit: the built-in template, the kernel reason named', async () => {
+    fake.fitRefusal = 'ring-not-star-shaped';
+    crownDesignEngine.__setToothLibraryFetchForTests(libraryFetch);
+    crownDesignEngine.start(restorationId);
+    await toAnatomy();
+    expect(lastPlace().libraryPositions[0]).not.toBe(40);
+    expect(lastOp('crown-anatomy').params.anatomySource).toMatchObject({ origin: 'builtin', reason: 'fitRefused', detail: expect.stringMatching(/ring-not-star-shaped/) });
+    expect(opsNamed('crown-cervical-fit')).toBe(0);
+  });
+
+  it('a fit over the bound: the built-in template, the residual and the bound named', async () => {
+    fake.fitErrorBoundMm = 0.08;
+    crownDesignEngine.__setToothLibraryFetchForTests(libraryFetch);
+    crownDesignEngine.start(restorationId);
+    await toAnatomy();
+    expect(lastPlace().libraryPositions[0]).not.toBe(40);
+    expect(lastOp('crown-anatomy').params.anatomySource).toMatchObject({ origin: 'builtin', reason: 'fitOverBound', detail: expect.stringMatching(/80 µm.*50 µm/) });
+    expect(opsNamed('crown-cervical-fit')).toBe(0);
   });
 
   it('client-only mode: the built-in placeholder, labelled with why', async () => {
     useServerStatusStore.getState().setStatus('offline');
     crownDesignEngine.__setToothLibraryFetchForTests(libraryFetch);
     crownDesignEngine.start(restorationId);
-    crownDesignEngine.setUseLibraryAnatomy(true);
-    await crownDesignEngine.runPrepDie();
-    await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
-    await crownDesignEngine.placeAnatomyAuto();
+    await toAnatomy();
     expect(fake.calls.some((c) => c.job === 'loadToothAsset')).toBe(false);
-    expect(anatomyOp().params.anatomySource).toEqual({ origin: 'builtin', reason: 'offline', detail: null });
+    expect(lastOp('crown-anatomy').params.anatomySource).toEqual({ origin: 'builtin', reason: 'offline', detail: null });
     expect(useCrownStore.getState().anatomy?.anatomySource).toEqual({ origin: 'builtin', reason: 'offline', detail: null });
   });
 
@@ -724,12 +819,9 @@ describe('crownDesign controller — anatomy from the tooth library (Phase 9 Tas
     fake.failToothAsset = true;
     crownDesignEngine.__setToothLibraryFetchForTests(libraryFetch);
     crownDesignEngine.start(restorationId);
-    crownDesignEngine.setUseLibraryAnatomy(true);
-    await crownDesignEngine.runPrepDie();
-    await crownDesignEngine.runInnerSurface({ pitchMm: 0.1 });
-    await crownDesignEngine.placeAnatomyAuto();
+    await toAnatomy();
     expect(lastPlace().libraryPositions[0]).not.toBe(40);
-    expect(anatomyOp().params.anatomySource).toMatchObject({ origin: 'builtin', reason: 'verificationFailed' });
+    expect(lastOp('crown-anatomy').params.anatomySource).toMatchObject({ origin: 'builtin', reason: 'verificationFailed' });
     expect(useCrownStore.getState().anatomy?.anatomySource).toMatchObject({ detail: expect.stringMatching(/^ToothMeshChecksumError/) });
   });
 });

@@ -96,6 +96,13 @@ describe('morphAnatomyJob', () => {
     expect(progress).toHaveBeenCalledWith(1);
   });
 
+  it('holds the fixed vertices exactly (Phase 10 Task 5: a fitted cervical ring)', async () => {
+    const ring = Array.from({ length: 24 }, (_, s) => 2 * 24 + s);
+    const placed = basePayload().placedPositions;
+    const r = await morphAnatomyJob(basePayload({ planId: 'fixed', fixedVertexIndices: ring }), NOOP_CTX);
+    for (const v of ring) for (let k = 0; k < 3; k++) expect(r.positions[v * 3 + k]).toBe(placed[v * 3 + k]);
+  });
+
   it('computes per-vertex contact heatmaps when requested (reuses closestPointBatch)', async () => {
     const r = await morphAnatomyJob(basePayload({ computeHeatmaps: true }), NOOP_CTX);
     expect(r.heatmaps).toBeDefined();

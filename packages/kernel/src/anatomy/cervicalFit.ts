@@ -45,6 +45,7 @@
 import type { Vec3 } from '../bvh/geometry.ts';
 import type { IndexedMesh } from '../mesh/types.ts';
 import { distanceToClosedPolyline } from '../offset/innerSurfaceOffset.ts';
+import { dedupLoop, MARGIN_DEDUP_EPSILON_MM } from '../offset/innerSurfaceSolid.ts';
 import { fitRbf, evaluateRbf, type RbfControlPoint } from '../rbf/rbf.ts';
 import { closedEdgeLoopProblem } from '../mesh/edgeLoop.ts';
 import { DEFAULT_WALL_THICKNESS_SAMPLE_SPACING_MM } from '../shell/shell.ts';
@@ -225,6 +226,14 @@ function windingOrientation(points2d: ReadonlyArray<readonly [number, number]>):
   return sign > 0 ? 1 : -1;
 }
 
+/** The margin without consecutive repeated points (within the weld
+ * epsilon), the closing one included — the rule every margin consumer
+ * applies (`dedupLoop`): a resampled margin shares a point at each segment
+ * boundary, and a repeat would read as a zero azimuth step. */
+function cleanMargin(marginLoop: readonly Vec3[]): Vec3[] {
+  return marginLoop.length > 0 ? dedupLoop(marginLoop, MARGIN_DEDUP_EPSILON_MM) : [];
+}
+
 /**
  * The emergence loop: `marginLoop` pushed outward, normal to `insertionAxis`,
  * by `offsetMm`, each point at its own height — see the module doc.
@@ -232,10 +241,11 @@ function windingOrientation(points2d: ReadonlyArray<readonly [number, number]>):
  * @throws {CervicalFitError} 'degenerate-margin' (fewer than 3 points or a
  * zero tangent) or 'margin-not-star-shaped'.
  */
-export function emergenceLoop(marginLoop: readonly Vec3[], insertionAxis: Vec3, offsetMm: number): Vec3[] {
+export function emergenceLoop(marginLoopIn: readonly Vec3[], insertionAxis: Vec3, offsetMm: number): Vec3[] {
   if (!(offsetMm > 0) || !Number.isFinite(offsetMm)) {
     throw new RangeError(`cervicalFit: emergence offset must be a positive finite mm value (got ${offsetMm})`);
   }
+  const marginLoop = cleanMargin(marginLoopIn);
   const n = marginLoop.length;
   if (n < 3) throw new CervicalFitError('degenerate-margin', `${n} margin point(s)`);
   const axis = unitAxis(insertionAxis);
@@ -310,7 +320,7 @@ export function fitCervicalRing(input: CervicalFitInput, options: CervicalFitOpt
 
   const axis = unitAxis(input.insertionAxis);
   const { u, v } = planeBasis(axis);
-  const f: Frame = { c: centroidOf(input.marginLoop), axis, u, v };
+  const f: Frame = { c: centroidOf(cleanMargin(input.marginLoop)), axis, u, v };
   const loop2d = loop.map((p) => project(f, p));
   if (windingOrientation(loop2d) === 0) {
     throw new CervicalFitError('margin-not-star-shaped', 'the emergence loop does not wind once around the margin centroid');

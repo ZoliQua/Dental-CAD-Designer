@@ -399,8 +399,16 @@
  * compiled per target). Outputs are now bit-identical on every platform;
  * the values move by at most 1 ulp in each transcendental, which changes
  * the hashed bytes of every op downstream of one. See
- * docs/CHANGELOG-kernel.md's `[0.35.0]` entry. */
-export const KERNEL_VERSION = '0.35.0';
+ * docs/CHANGELOG-kernel.md's `[0.35.0]` entry.
+ *
+ * 0.36.0 (Phase 10 Task 5): `planAnatomyMorph` gains optional
+ * `fixedVertexIndices` — vertices the morph must not move (a fitted library
+ * template's cervical ring), each an unsubsampled zero-displacement anchor
+ * whose output position is copied bit for bit. Absent or empty, the plan is
+ * exactly the previous one: geometry + journal-replay pins byte-identical;
+ * the acceptance QC pins advance mechanically. See docs/CHANGELOG-kernel.md's
+ * `[0.36.0]` entry. */
+export const KERNEL_VERSION = '0.36.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export { detSin, detCos, detAtan, detAtan2, detAsin, detAcos, detExp, detPow } from './math/detMath.ts';

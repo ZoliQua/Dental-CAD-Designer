@@ -24,10 +24,20 @@ const API_BASE = '/api';
 export type AnatomyAssetKind = 'generator' | 'scanned' | 'licensed' | 'unspecified';
 
 /** Why the built-in placeholder is used instead of a library asset.
- * `notSelected`: the built-in template is the user's (default) choice — the
- * library template is not yet fitted to the margin, so it is opt-in. */
+ * `notSelected`: the user opted out of the library template (journaled).
+ * The fit reasons (Phase 10 Task 5) come from the crown engine, after the
+ * asset verified: `noCervicalRing` (an asset version without one cannot be
+ * fitted), `fitRefused` (the kernel fit refused, its reason in `detail`),
+ * `fitOverBound` (the fit residual exceeds the clinical bound). */
 export type AnatomyFallbackReason =
-  'notSelected' | 'offline' | 'fdiMissing' | 'unavailable' | 'verificationFailed';
+  | 'notSelected'
+  | 'offline'
+  | 'fdiMissing'
+  | 'unavailable'
+  | 'verificationFailed'
+  | 'noCervicalRing'
+  | 'fitRefused'
+  | 'fitOverBound';
 
 export type AnatomySource =
   | {
@@ -48,6 +58,9 @@ export interface LibraryTooth {
   indices: Uint32Array;
   canonicalFrame: { origin: Vec3; mesialDistal: Vec3; buccoLingual: Vec3; occlusoGingival: Vec3 };
   landmarks: Record<string, Vec3>;
+  /** The verified cervical ring (ordered vertex indices), or `null` for an
+   * asset version without one — then the template cannot be fitted. */
+  cervicalRing: readonly number[] | null;
 }
 
 export interface ToothLibraryDeps {
@@ -80,7 +93,7 @@ function describe(error: unknown): string {
   return error instanceof Error ? `${error.name}: ${error.message}` : String(error);
 }
 
-function builtin(reason: AnatomyFallbackReason, detail: string | null): ResolvedAnatomy {
+export function builtin(reason: AnatomyFallbackReason, detail: string | null): ResolvedAnatomy {
   return { tooth: null, source: { origin: 'builtin', reason, detail } };
 }
 
@@ -122,6 +135,7 @@ export async function resolveLibraryTooth(
         indices: r.indices,
         canonicalFrame: r.canonicalFrame,
         landmarks: r.landmarks,
+        cervicalRing: r.cervicalRing,
       },
       source: {
         origin: 'library',

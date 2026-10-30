@@ -7,11 +7,21 @@
 // imported through binary STL as the app imports it, and driven through the
 // REAL client controller (engine/crownDesign.ts) on a real Node WorkerPool:
 //
-//   prepare die → intaglio → capture 21 / 12 from the scan (one pick each)
-//   → anatomy (the BUILT-IN template, the current default) → morph → shell
-//   → QC.
+//   prepare die → intaglio → capture the neighbours from the scan (one pick
+//   each) → anatomy → morph → shell → QC,
 //
-// Asserted:
+// in two lanes:
+//
+//   - the BUILT-IN template on tooth 11 (Task 3; the user opts out of the
+//     library template, journaled);
+//   - the fitted LIBRARY template on premolar 15 (Task 5 — the default when
+//     the server's library is reachable; a premolar site per the Task 4
+//     decision: the round die is a premolar-shaped preparation). Here EVERY
+//     crown gate passes on case geometry (phase acceptance 1): the template
+//     is fitted to the margin (crown-cervical-fit), the morph holds the
+//     fitted ring, and the shell trims along it.
+//
+// Asserted for the built-in lane:
 //   1. the QC verdict, measured on case geometry (no stand-in): seven of the
 //      eight crown gates pass — watertight, manifold, self-intersection,
 //      margin fit (0.00 µm), seating on the extracted die, connector (N/A)
@@ -20,7 +30,7 @@
 //      cervical wall is a wedge, ~0.20 mm thick 0.2 mm above the margin (just
 //      outside the profile's 0.2 mm finish-line band) on the crown solid as
 //      built. The gate is right; the cure is the cervical fit (Task 4), and
-//      the all-gates-pass lane is the fitted library template's (Task 5);
+//      the all-gates-pass lane is the fitted library template's (below);
 //   2. the die is certified: a synthetic floor closes the open scan, and its
 //      clearance (≥ the required clearance, and covering the intaglio built)
 //      is journaled with the die op;
@@ -31,7 +41,7 @@
 //      server agree;
 //   5. a fresh session rebuilt from the same case reproduces every stage hash
 //      bit-identically (pinned in test-fixtures/golden/crown-open-arch.json,
-//      version-guarded).
+//      version-guarded; both lanes).
 //
 // Plus an env-gated real lane (RUN_CROWN_REAL_DIE=1): real arch-case-01 tooth
 // 11 through die extraction and the intaglio, recording the certificate and
@@ -62,20 +72,26 @@ import {
 } from '@dqcad/kernel';
 import { openArchPrepCase } from '@dqcad/kernel/die-fixtures';
 import { marginFitGate, runInnerSurfaceStage, runPrepDieStage, type PipelineMaterialProfile } from '@dqcad/cad-pipeline';
+import { STARTER_TOOTH_ASSETS } from '@dqcad/tooth-library';
 import { CROWN_DIE_EXTRACT_OP, NEIGHBOUR_CAPTURE_OP, type FdiTooth, type QcReport, type Vec3 } from '@dqcad/shared-types';
 import { caseStore } from '../../apps/client/src/engine/caseStore.ts';
 import { crownDesignEngine, type RunnablePool } from '../../apps/client/src/engine/crownDesign.ts';
 import { createRestoration } from '../../apps/client/src/engine/restorations.ts';
 import { useServerStatusStore } from '../../apps/client/src/state/serverStatusStore.ts';
+import { __resetToothLibraryCacheForTests } from '../../apps/client/src/engine/toothLibrary.ts';
 import type { MeshStats } from '../../apps/client/src/engine/repair.ts';
 import { repoRoot } from '../../scripts/kernel-ops-lib.ts';
 import { loadUpperjawMesh } from './upperjaw-mesh.ts';
 
 const TOOTH = 11 as FdiTooth;
+/** The library lane's site (Phase 10 Task 5, the Task 4 decision): a
+ * premolar — the round prep die is a premolar/molar-shaped preparation, and
+ * the placeholder library incisor cannot cover it. */
+const LIBRARY_TOOTH = 15 as FdiTooth;
 /** The intaglio pitch (a journaled parameter): coarser than the clinical
  * 20 µm to keep the golden in minutes — the bridge-case golden's pitch. */
 const PITCH_MM = 0.06;
-const EXPECTED_KERNEL_VERSION = '0.35.0';
+const EXPECTED_KERNEL_VERSION = '0.36.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 const PRINT = process.env['PRINT_CROWN_OPEN_ARCH_PINS'] === '1';
 const RUN_REAL = process.env['RUN_CROWN_REAL_DIE'] === '1';
@@ -83,7 +99,10 @@ const RUN_REAL = process.env['RUN_CROWN_REAL_DIE'] === '1';
 interface Pin {
   kernelVersion: string;
   manifoldVersion: string;
+  /** The built-in lane (Task 3). */
   stages: Record<string, string>;
+  /** The fitted library lane (Task 5). */
+  libraryStages: Record<string, string>;
 }
 const PIN_PATH = join(repoRoot, 'test-fixtures', 'golden', 'crown-open-arch.json');
 const PIN = PRINT ? null : (JSON.parse(readFileSync(PIN_PATH, 'utf8')) as Pin);
@@ -142,10 +161,21 @@ const scan = viaStl(arch.scan);
 /** The confirmed margin as the imported (Float32) scan holds it. */
 const marginLoop: Vec3[] = arch.marginLoop.map((p): Vec3 => [Math.fround(p[0]), Math.fround(p[1]), Math.fround(p[2])]);
 
-/** A fresh case: the open scan + a crown on 11 with its margin and axis. */
-async function setupCase(): Promise<{ restorationId: string; scanMeshId: string }> {
+/** The server's tooth library, as `GET /api/tooth-library/:fdi` and
+ * `GET /api/meshes/:hash` serve it (the starter set, current version). */
+const libraryFetch = (async (url: string) => {
+  for (const asset of STARTER_TOOTH_ASSETS.values()) {
+    if (url === `/api/tooth-library/${asset.metadata.fdi}`) return Response.json(asset.metadata);
+    if (url === `/api/meshes/${asset.metadata.meshChecksum}`) return new Response(asset.meshBytes.slice());
+  }
+  return new Response('', { status: 404 });
+}) as typeof fetch;
+
+/** A fresh case: the open scan + a crown on `tooth` with its margin and axis. */
+async function setupCase(tooth: FdiTooth = TOOTH): Promise<{ restorationId: string; scanMeshId: string }> {
   caseStore.resetForTests();
   crownDesignEngine.resetForTests();
+  __resetToothLibraryCacheForTests();
   crownDesignEngine.__setPoolForTests(pool as unknown as RunnablePool);
   useServerStatusStore.getState().setStatus('online');
   const { contentHash } = await pool.run('hashMesh', { positions: scan.positions.slice(), indices: scan.indices.slice() });
@@ -160,11 +190,11 @@ async function setupCase(): Promise<{ restorationId: string; scanMeshId: string 
     operations: [],
   });
   const node = caseStore.addSceneNode(contentHash, 'upperJaw');
-  const restoration = createRestoration({ type: 'crown', teeth: [TOOTH], targetNodeId: node.id });
+  const restoration = createRestoration({ type: 'crown', teeth: [tooth], targetNodeId: node.id });
   caseStore.updateRestoration(
     {
       ...restoration,
-      marginLines: { [TOOTH]: { anchors: [], closed: true, resampledPoints: marginLoop } },
+      marginLines: { [tooth]: { anchors: [], closed: true, resampledPoints: marginLoop } },
       insertionAxis: arch.insertionAxis,
     },
     {
@@ -188,12 +218,20 @@ function opOf(name: string) {
   return caseStore.getDocument().history.filter((o) => o.name === name).pop()!;
 }
 
-/** The whole crown through the real controller. Mesial (21) lies at −X, the
- * built-in placement's convention; each neighbour is picked on its crown. */
-async function designCrown(): Promise<{ restorationId: string; scanMeshId: string; report: QcReport; stages: Record<string, string> }> {
-  const ids = await setupCase();
+/** The whole crown through the real controller. Mesial lies at −X, the
+ * built-in placement's convention; each neighbour is picked on its crown.
+ * `builtin`: the user opts out of the library template (journaled); with
+ * `library` the server's starter library is reachable and the default — the
+ * fitted library template — applies. */
+async function designCrown(
+  template: 'builtin' | 'library' = 'builtin',
+  tooth: FdiTooth = TOOTH,
+): Promise<{ restorationId: string; scanMeshId: string; report: QcReport; stages: Record<string, string> }> {
+  const ids = await setupCase(tooth);
   const n = arch.params.neighbours!;
+  if (template === 'library') crownDesignEngine.__setToothLibraryFetchForTests(libraryFetch);
   crownDesignEngine.start(ids.restorationId);
+  if (template === 'builtin') crownDesignEngine.setUseLibraryAnatomy(false);
   await crownDesignEngine.runPrepDie();
   await crownDesignEngine.runInnerSurface({ pitchMm: PITCH_MM });
   await crownDesignEngine.captureNeighbour('mesial', pickOn(scan, [-n.centreMm, 0, n.heightMm]));
@@ -317,6 +355,42 @@ describe('Phase 10 Task 3 — the crown on an open scan (built-in template)', ()
     // (PRINT_CROWN_OPEN_ARCH_PINS=1, after a deliberate change) prints them.
     if (PIN) expect(stages).toEqual(PIN.stages);
     else console.log(`[crown-open-arch][pins] ${JSON.stringify(stages)}`);
+  }, 1_800_000);
+});
+
+describe('Phase 10 Task 5 — the crown on an open scan, fitted library template (premolar 15)', () => {
+  it('EVERY crown gate passes on case geometry; the fit and the ring-held morph and trim are journaled; the hashes are pinned', async () => {
+    const { report, stages } = await designCrown('library', LIBRARY_TOOTH);
+    const fitOp = opOf('crown-cervical-fit');
+    console.log(
+      `[crown-open-arch library] fit residual ${((fitOp.params['errorBoundMm'] as number) * 1000).toFixed(1)} µm, ` +
+        `emergence ${String(fitOp.params['emergenceOffsetMm'])} mm, ring ${String(fitOp.params['ringVertexCount'])} verts\n${table(report)}`,
+    );
+
+    // 1. Phase acceptance 1: every crown gate passes, measured on case
+    // geometry (no stand-in input).
+    expect(report.gates.map((g) => g.gate)).toEqual(GATES);
+    for (const g of report.gates) {
+      expect(g.inputProvenance, g.gate).toBeUndefined();
+      expect(g.passed, `${g.gate}: ${g.message}`).toBe(true);
+    }
+    expect(report.passed).toBe(true);
+
+    // 2. The template: the verified library premolar, fitted within the bound.
+    const anatomy = opOf('crown-anatomy');
+    expect(anatomy.params['anatomySource']).toMatchObject({ origin: 'library', fdi: 15, version: '1.2.0' });
+    expect(anatomy.inputHashes).toContain(STARTER_TOOTH_ASSETS.get(LIBRARY_TOOTH)!.metadata.meshChecksum);
+    expect(fitOp.inputHashes).toEqual([anatomy.outputHashes[0]]);
+    expect(fitOp.outputHashes).toEqual([stages['anatomyPlacement']]);
+    expect(fitOp.params['errorBoundMm'] as number).toBeLessThanOrEqual(fitOp.params['maxResidualMm'] as number);
+
+    // 3. The morph held the fitted ring, and the shell trimmed along it.
+    expect(opOf('crown-morph').params['fixedCervicalRingVertexCount']).toBe(fitOp.params['ringVertexCount']);
+    expect(opOf('crown-shell').params['cervicalRingTrim']).toBe(true);
+
+    // 4. The pins.
+    if (PIN) expect(stages).toEqual(PIN.libraryStages);
+    else console.log(`[crown-open-arch][library-pins] ${JSON.stringify(stages)}`);
   }, 1_800_000);
 });
 

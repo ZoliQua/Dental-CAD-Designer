@@ -105,7 +105,7 @@ const µm = (mm: number): string => `${(mm * 1000).toFixed(3)} µm`;
 // proof this qc diff is the version string alone, not numerical drift (the same
 // mechanical churn documented at 0.16.0-0.19.0). See docs/CHANGELOG-kernel.md's
 // [0.20.0] entry.
-const EXPECTED_KERNEL_VERSION = '0.35.0';
+const EXPECTED_KERNEL_VERSION = '0.36.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 function installedManifoldVersion(): string {
   const pkg = JSON.parse(readFileSync(join(repoRoot, 'node_modules', 'manifold-3d', 'package.json'), 'utf8')) as {
@@ -213,7 +213,12 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // through detMath (pure-IEEE fdlibm) instead of Math.*, ≤ 1 ulp per call; the
   // hashes are now the same on darwin-arm64 and x64 (verified under both).
   // Old hash: b66c208a568ad731d7f311b031f6880451396daded0f2515943c12a1dbd1b425. See docs/CHANGELOG-kernel.md's [0.35.0] entry.
-  'crown-standin-qc': '3904c0aabe313f0555123b2c667084e48aa6a22c2fcc0c6bb54621b580730574',
+  // Advanced 0.35.0 → 0.36.0 (Phase 10 Task 5): MECHANICAL, metadata-only — the morph's
+  // new fixed vertices are not used in this chain; hashQcReport tracks the embedded
+  // kernelVersion, every geometry stage pin above BYTE-IDENTICAL (verified: the whole
+  // golden suite passes at 0.35.0 with the new code). Old hash: 3904c0aabe313f0555123b2c667084e48aa6a22c2fcc0c6bb54621b580730574. See
+  // docs/CHANGELOG-kernel.md's [0.36.0] entry.
+  'crown-standin-qc': 'c6b9862bedf03c3278513ed910bad62b3e4761decabb8e3592e59197648fa8ca',
 };
 
 const GATE_ORDER = ['watertight', 'manifold', 'selfIntersection', 'minWallThickness', 'marginFit', 'seating', 'connectorCrossSection', 'contact'];

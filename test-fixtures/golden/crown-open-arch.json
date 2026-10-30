@@ -1,5 +1,5 @@
 {
-  "kernelVersion": "0.35.0",
+  "kernelVersion": "0.36.0",
   "manifoldVersion": "3.5.1",
   "stages": {
     "prepDie": "a7b38bd925bb8cdaffdf35d51a541e84f113d14c8aa4a8e738292021fc75dec6",
@@ -7,5 +7,12 @@
     "anatomyPlacement": "2e5a2171c6052c00b73744c1be510bb143991d92547d8248b534f1d6642e3764",
     "morphState": "9043ef24a30ddace05b87d5252068a6c1013bf2bdd8d68f9e645162033e46039",
     "finalMesh": "2434df4b98d1db0754095e1ec3587f44d778267ea7c2fef18efde9787dc13b41"
+  },
+  "libraryStages": {
+    "prepDie": "a7b38bd925bb8cdaffdf35d51a541e84f113d14c8aa4a8e738292021fc75dec6",
+    "innerSurface": "41bf7f817cd388f1896b10b4f3558cc32d6bbfa7bc33114b0274fdf3cf6fc046",
+    "anatomyPlacement": "73713c30460b4656e3666c583fdd66c7f4adac232b5443ec44988dfd24b1a61c",
+    "morphState": "6fa1b17133b5cf1a486b01e710693a4c7e07a170da3877650a820d93b8ed35f8",
+    "finalMesh": "50d60a4b9099867460143e8292d9013f9c6082236e2f1ea78698935fa78b3955"
   }
 }

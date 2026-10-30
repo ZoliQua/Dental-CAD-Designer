@@ -155,3 +155,7 @@ export { sectionToSvg } from '@dqcad/kernel';
 // crown rings) must compute it bit-identically to the server's Node kernel.
 // Pure scalar functions — the same re-export precedent as `sectionToSvg`.
 export { detSin, detCos, detAtan, detAtan2, detAsin, detAcos, detExp, detPow } from '@dqcad/kernel';
+// The crown's cervical emergence offset (Phase 10 Task 5): the engine sizes
+// its synthetic placeholder neighbours around where a fitted template
+// emerges. A pure function of profile values — the same precedent.
+export { cervicalEmergenceOffsetMm } from '@dqcad/kernel';

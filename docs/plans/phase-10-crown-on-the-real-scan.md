@@ -295,6 +295,45 @@ findings and decisions:
   incisor cannot cover a round die. The built-in lane keeps its honest
   verdict (its cervical wedge fails `minWallThickness`).
 
+**Landed (2026-10-30, kernel 0.36.0).** As planned, with these findings:
+- **Engine.** With no journaled choice, the library template is the
+  default; opting out is one journaled op, as before. The placed template is
+  fitted (`fitCervicalRing` worker job, journaled `crown-cervical-fit`: placed
+  mesh in, fitted mesh out). The fit bound is
+  `CERVICAL_FIT_MAX_RESIDUAL_MM` (50 µm, `clinical-profiles`). The built-in
+  template is placed instead, with the reason disclosed, in these cases:
+  `noCervicalRing` (asset 1.1.0), `fitRefused` (the kernel reason), and
+  `fitOverBound` (the residual and the bound). The shell trims along the
+  ring, and QC and the export context measure the outer surface the shell
+  used. The panel shows the residual, the emergence and how far the ring
+  moved, in all four locales.
+- **Three findings on the way, all fixed and tested:**
+  - **The morph moved the fitted ring by about 1 µm.** The ring lies outside
+    its 0.6 mm seal band. On the open-arch shoulder this gave 1.3·10⁻⁴ mm³ of
+    seating interference. Kernel 0.36.0 adds `fixedVertexIndices`, and the
+    ring is now held bit for bit.
+  - **The UI-resampled margin repeats points**, and the fit refused it as not
+    star-shaped. It now applies the same `dedupLoop` as every other margin
+    consumer.
+  - **Placeholder neighbour boxes flanking the margin sat inside the fitted
+    crown's cervix.** The morph then drove the contacts into it, and the
+    crown self-intersected. They now flank the emergence outline.
+- **Golden library lane** (`crown-open-arch-acceptance.test.ts`), premolar 15
+  with captured neighbours. **Every crown gate passes**: the wall is 643 µm,
+  seating interference is 6·10⁻²⁰ mm³, the fit residual is 8 µm, and the
+  contact residual is 0.0 µm. The pins are in `crown-open-arch.json`
+  (`libraryStages`). The built-in lane now opts out explicitly, and its pins
+  are unchanged.
+- **e2e phase4 and phase7** design on tooth 15 instead of 11. The round
+  shoulder die is a premolar-shaped preparation, and the placeholder incisor
+  self-intersects on it (the Task 4 finding). Phase 4 asserts that the
+  library template is placed and that the fit readout appears. With
+  placeholder neighbours and a 150 µm intaglio pitch, the remaining failing
+  gates are acknowledged, as before.
+- **Golden proof.** The whole golden suite and the server traceability golden
+  passed at 0.35.0 with the new code. At 0.36.0 only the five `*-qc` pins and
+  the traceability golden moved, all version-only.
+
 ## Task 6 — Phase gate
 
 - e2e `phase10.spec.ts`. On the open-arch fixture through the real UI: import

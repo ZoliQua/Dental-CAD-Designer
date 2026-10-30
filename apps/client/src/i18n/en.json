@@ -493,7 +493,7 @@
     "innerReadout": "Error bound {{error}} µm · {{tris}} patch triangles · {{verts}} margin vertices",
     "innerGhostToggle": "Show inner-surface ghost",
     "anatomyTitle": "3 · Anatomy placement",
-    "anatomyLibraryNote": "The built-in parametric template is placed by default. The tooth-library template for this tooth can be selected instead (experimental).",
+    "anatomyLibraryNote": "The tooth-library template for this tooth is placed by default and fitted to the margin: its cervical ring is moved onto the emergence outline. When it cannot be fitted, the built-in parametric template is placed instead, and the reason is shown.",
     "anatomyAutoPlace": "Auto-place",
     "anatomyManualTitle": "Manual transform",
     "anatomyTranslateX": "Move X (mm)",
@@ -504,6 +504,7 @@
     "anatomyReadout": "Scale MD {{md}} · BL {{bl}} · OG {{og}}",
     "anatomyProximalGap": "Proximal gap used",
     "anatomyAntagonist": "Antagonist used",
+    "anatomyCervicalFit": "Cervical fit: residual {{residual}} µm (bound {{bound}} µm) · emergence {{offset}} µm outside the margin · ring moved up to {{moved}} µm",
     "morphTitle": "4 · Morphing (contacts)",
     "morphRun": "Run morph",
     "morphStrengthMesial": "Mesial contact",
@@ -890,10 +891,13 @@
       "fdiMissing": "the tooth library has no asset for this tooth.",
       "unavailable": "the tooth library could not be reached.",
       "verificationFailed": "the library asset failed verification ({{detail}}) and was not used.",
-      "notSelected": "the built-in template is selected."
+      "notSelected": "the built-in template is selected (the library template was opted out).",
+      "noCervicalRing": "this library asset version has no cervical ring, so it cannot be fitted to the margin.",
+      "fitRefused": "the cervical fit refused this margin ({{detail}}).",
+      "fitOverBound": "the cervical fit stayed outside the bound ({{detail}})."
     },
     "libraryAvailable": "Tooth library: FDI {{fdi}}, version {{version}} ({{kind}}) is available.",
     "libraryUnavailable": "Tooth library: not available — {{reason}}",
-    "useLibrary": "Use the tooth-library template (experimental: it is not yet fitted to the margin, so the crown may fail structural QC)"
+    "useLibrary": "Use the tooth-library template, fitted to the margin"
   }
 }

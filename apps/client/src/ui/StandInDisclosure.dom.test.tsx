@@ -38,6 +38,7 @@ const ANATOMY: Omit<AnatomySummary, 'neighbourProvenance'> = {
   antagonistUsed: false,
   manual: false,
   anatomySource: null,
+  cervicalFit: null,
 };
 
 beforeEach(() => {

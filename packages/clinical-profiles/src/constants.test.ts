@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_RESTORATION_PARAMS, DEFAULT_UNDERCUT_BLOCKOUT_THRESHOLD_MM } from './constants.ts';
+import { CERVICAL_FIT_MAX_RESIDUAL_MM, DEFAULT_RESTORATION_PARAMS, DEFAULT_UNDERCUT_BLOCKOUT_THRESHOLD_MM } from './constants.ts';
 import { STANDARD_ZIRCONIA_PROFILE } from './profiles.ts';
 
 describe('DEFAULT_RESTORATION_PARAMS', () => {
@@ -26,5 +26,11 @@ describe('DEFAULT_UNDERCUT_BLOCKOUT_THRESHOLD_MM', () => {
 
   it('stays in sync with STANDARD_ZIRCONIA_PROFILE.undercutBlockoutThresholdMm (single source of truth)', () => {
     expect(DEFAULT_UNDERCUT_BLOCKOUT_THRESHOLD_MM).toBe(STANDARD_ZIRCONIA_PROFILE.undercutBlockoutThresholdMm);
+  });
+});
+
+describe('CERVICAL_FIT_MAX_RESIDUAL_MM', () => {
+  it('is 50 µm, the cited value', () => {
+    expect(CERVICAL_FIT_MAX_RESIDUAL_MM).toBe(0.05);
   });
 });

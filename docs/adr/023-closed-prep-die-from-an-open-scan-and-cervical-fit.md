@@ -1,6 +1,6 @@
 # ADR-023 — A closed prep die extracted from an open scan; library anatomy fitted to the margin
 
-**Status:** Accepted (2026-10-27; Phase 10 implements it — Task 1 lands Decision 1's op, Task 2 puts the crown on it with the server re-extraction, Task 4 lands Decision 2's fit and ring trim; see the Phase 10 plan)
+**Status:** Accepted (2026-10-27; Phase 10 implements it — Task 1 lands Decision 1's op, Task 2 puts the crown on it with the server re-extraction, Task 4 lands Decision 2's fit and ring trim, Task 5 makes the fitted library template the crown default; see the Phase 10 plan)
 **Date:** 2026-10
 **Relates:** ADR-022 (case-derived design inputs, provenance), ADR-007
 (morph–shell coupling), ADR-013 (closed-form abutment scoping), ADR-017
@@ -165,6 +165,30 @@ fits within the bound. Otherwise the built-in template is used, with the
 reason disclosed (as in Phase 9 Task 4). The choice and the fit are journaled.
 Anatomy provenance still does not decide any gate by itself, per ADR-022
 Decision 5.
+
+**Refined at implementation (Task 5, 2026-10-30).**
+- **The bound.** The fit residual's bound is 50 µm, the standard zirconia
+  cement gap. It is a clinical value, so it lives in `clinical-profiles`
+  (`CERVICAL_FIT_MAX_RESIDUAL_MM`) and is journaled on the fit op.
+- **The fit is its own journaled op.** `crown-cervical-fit` takes the placed
+  mesh and produces the fitted mesh, which becomes the anatomy stage's
+  output. A refusal places the built-in template instead and names the kernel
+  reason; so does a residual over the bound. An asset version with no ring is
+  not fitted.
+- **The morph holds the fitted ring** (kernel 0.36.0: `fixedVertexIndices`).
+  The ring sits on the emergence loop, which is outside the morph's 0.6 mm
+  cervical seal band, so otherwise the RBF moved it by about 1 µm. On a
+  shoulder that is enough to make the die penetrate the crown.
+- **QC measures the outer surface the shell used.** For a fitted template
+  this surface is trimmed along the ring; the morph outer still carries the
+  cervix below it.
+- **Placeholder neighbour boxes.** With no captured neighbours, the
+  synthetic boxes flank the emergence outline instead of the margin. Otherwise
+  they sit inside the fitted crown's cervix and the morph drives the contacts
+  into it.
+- **The margin is cleaned before the fit.** A margin resampled by the UI
+  repeats a point at each segment boundary. The fit now applies the same
+  `dedupLoop` that every other margin consumer applies.
 
 ## Consequences
 

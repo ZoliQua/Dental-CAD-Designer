@@ -493,7 +493,7 @@
     "innerReadout": "Hibahatár {{error}} µm · {{tris}} folt-háromszög · {{verts}} határ-csúcs",
     "innerGhostToggle": "Belső felület árnykép",
     "anatomyTitle": "3 · Anatómia elhelyezése",
-    "anatomyLibraryNote": "Alapértelmezésben a beépített parametrikus sablont helyezzük el. Helyette a fog fogkönyvtári sablonja is választható (kísérleti).",
+    "anatomyLibraryNote": "Alapértelmezésben a fog fogkönyvtári sablonját helyezzük el, és a margóhoz illesztjük: a cervikális gyűrűje az emergencia-körvonalra kerül. Ha nem illeszthető, helyette a beépített parametrikus sablont helyezzük el, és megmutatjuk az okát.",
     "anatomyAutoPlace": "Automatikus elhelyezés",
     "anatomyManualTitle": "Kézi transzformáció",
     "anatomyTranslateX": "Mozgatás X (mm)",
@@ -504,6 +504,7 @@
     "anatomyReadout": "Méret MD {{md}} · BL {{bl}} · OG {{og}}",
     "anatomyProximalGap": "Approximális rés felhasználva",
     "anatomyAntagonist": "Antagonista felhasználva",
+    "anatomyCervicalFit": "Cervikális illesztés: reziduum {{residual}} µm (korlát {{bound}} µm) · emergencia {{offset}} µm-rel a margón kívül · a gyűrű legfeljebb {{moved}} µm-t mozdult",
     "morphTitle": "4 · Morfing (kontaktok)",
     "morphRun": "Morfing futtatása",
     "morphStrengthMesial": "Meziális kontakt",
@@ -890,10 +891,13 @@
       "fdiMissing": "a fogkönyvtárban nincs elem ehhez a foghoz.",
       "unavailable": "a fogkönyvtár nem érhető el.",
       "verificationFailed": "a könyvtári elem ellenőrzése nem sikerült ({{detail}}), ezért nem használtuk.",
-      "notSelected": "a beépített sablon van kiválasztva."
+      "notSelected": "a beépített sablon van kiválasztva (a könyvtári sablont kikapcsolták).",
+      "noCervicalRing": "ennek a könyvtári elemverziónak nincs cervikális gyűrűje, ezért nem illeszthető a margóhoz.",
+      "fitRefused": "a cervikális illesztés elutasította ezt a margót ({{detail}}).",
+      "fitOverBound": "a cervikális illesztés a korláton kívül maradt ({{detail}})."
     },
     "libraryAvailable": "Fogkönyvtár: FDI {{fdi}}, {{version}} verzió ({{kind}}) elérhető.",
     "libraryUnavailable": "Fogkönyvtár: nem érhető el — {{reason}}",
-    "useLibrary": "A fogkönyvtári sablon használata (kísérleti: még nincs a margóhoz illesztve, ezért a korona elbukhat a szerkezeti QC-n)"
+    "useLibrary": "A fogkönyvtári sablon használata, a margóhoz illesztve"
   }
 }

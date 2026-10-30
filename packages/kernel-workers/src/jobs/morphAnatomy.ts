@@ -66,6 +66,9 @@ export interface MorphAnatomyPayload {
   contacts: MorphAnatomyContactPayload[];
   strengths?: MorphStrengths;
   options?: Partial<MorphOptions>;
+  /** Vertices the morph must not move (Phase 10 Task 5: a fitted template's
+   * cervical ring) — kernel `AnatomyMorphInput.fixedVertexIndices`. */
+  fixedVertexIndices?: readonly number[];
   /** When true, return per-vertex signed contact-distance heatmaps. */
   computeHeatmaps?: boolean;
 }
@@ -248,6 +251,7 @@ export const morphAnatomyJob = async (payload: MorphAnatomyPayload, ctx: JobCont
     marginLoop: rebuildLoop(payload.marginLoop),
     contacts,
     options: payload.options,
+    ...(payload.fixedVertexIndices !== undefined ? { fixedVertexIndices: payload.fixedVertexIndices } : {}),
   });
   ctx.progress(0.6);
   if (await ctx.cancelled()) throw new JobCancelledError();

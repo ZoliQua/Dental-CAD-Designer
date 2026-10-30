@@ -175,6 +175,9 @@ export interface DqcadTestHooks {
    * op named `name` (a read of the case journal — what a spec asserts a stage
    * consumed). */
   getLatestOperation(name: string): Pick<Operation, 'params' | 'inputHashes' | 'outputHashes'> | null;
+  /** DEV/TEST-ONLY, Phase 10 Task 5: the first restoration's confirmed margin
+   * points (dense, resampled) — what the crown's cervical fit receives. */
+  getMarginPoints(): readonly (readonly [number, number, number])[] | null;
 }
 
 declare global {
@@ -251,6 +254,11 @@ const hooks: DqcadTestHooks = {
   },
   getRestorationAxis(restorationId) {
     return caseStore.getDocument().restorations.find((r) => r.id === restorationId)?.insertionAxis ?? null;
+  },
+  getMarginPoints() {
+    const restoration = caseStore.getDocument().restorations[0];
+    const line = restoration ? Object.values(restoration.marginLines)[0] : undefined;
+    return line?.resampledPoints ?? null;
   },
   getLatestOperation(name) {
     const history = caseStore.getDocument().history;
