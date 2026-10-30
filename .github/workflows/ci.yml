@@ -25,7 +25,10 @@ jobs:
     # job still runs then too, which is harmless/cheap and keeps a
     # scheduled/manual run's normal test suite results visible as well).
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 60: the unit suite (~17 min, golden lane included), the golden step
+    # (~8 min) and the whole e2e suite (~10 min) on a hosted runner exceed 30
+    # — first seen once the unit suite passed on Linux (kernel 0.35.0).
+    timeout-minutes: 60
     steps:
       - name: Checkout (with Git LFS)
         uses: actions/checkout@v4
