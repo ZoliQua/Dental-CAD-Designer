@@ -104,6 +104,7 @@ import type { AxisRegion } from '../axis/roi.ts';
 import { regionAreaWeightedNormalSum, regionTriangleAreasMm2 } from '../axis/roi.ts';
 import { dot, normalizeOrZero, sub, triangleUnitNormal, triangleVertexPositions } from '../axis/vec.ts';
 import { undercutScanIndices, type UndercutScanIndicesResult, type UndercutScanOptions } from '../undercut/undercutScan.ts';
+import { detCos } from '../math/detMath.ts';
 
 // ---------------------------------------------------------------------------
 // Documented algorithmic defaults
@@ -453,7 +454,7 @@ export function classifyCavityRegions(
   const axisUnit = normalizeAxis(insertionAxisUnit, 'classifyCavityRegions');
   const floorMaxAngleDeg = options.floorMaxAngleDeg ?? CAVITY_FLOOR_MAX_ANGLE_DEG;
   const floorStepMinMm = options.floorStepMinMm ?? CAVITY_FLOOR_STEP_MIN_MM;
-  const floorMinDot = Math.cos((floorMaxAngleDeg * Math.PI) / 180);
+  const floorMinDot = detCos((floorMaxAngleDeg * Math.PI) / 180);
 
   // 1) The outline through the margin machinery (dedup/closure — reused).
   const loop = marginLoopPolyline({ closed: true, resampledPoints: cavityOutline });

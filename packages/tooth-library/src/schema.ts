@@ -32,6 +32,7 @@ import type { FdiTooth, Vec3 } from '@dqcad/shared-types';
 // entry (the `loadToothAsset` job), where the package index's JSON imports
 // would not load.
 import { canonicalStringify, sha256Bytes, sha256HexOfString } from '@dqcad/clinical-profiles/checksum';
+import { detAcos } from '@dqcad/kernel';
 
 /** Broad tooth-shape family — drives which landmark SET is anatomically
  * meaningful (an incisor has no cusps; a molar has no incisal edge). Only
@@ -348,7 +349,7 @@ export function assertOrthonormalFrame(frame: CanonicalFrame, fieldPath = 'canon
       const [nameA, a] = axes[i]!;
       const [nameB, b] = axes[j]!;
       // acos(dot) is the angle between two unit vectors; orthogonal == PI/2.
-      const angle = Math.acos(Math.min(1, Math.max(-1, dot(a, b))));
+      const angle = detAcos(Math.min(1, Math.max(-1, dot(a, b))));
       if (Math.abs(angle - Math.PI / 2) > FRAME_ORTHOGONALITY_TOLERANCE_RAD) {
         fail(
           `${fieldPath}.${nameA} and ${fieldPath}.${nameB} must be orthogonal, got angle ` +

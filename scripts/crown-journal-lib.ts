@@ -77,6 +77,8 @@ import {
   type IndexedMesh,
   type SculptStroke,
   type Vec3,
+  detCos,
+  detSin,
 } from '@dqcad/kernel';
 import type { FdiTooth, Operation, QcReport } from '@dqcad/shared-types';
 import {
@@ -139,11 +141,11 @@ function buildFrustum(mR: number, tR: number, mZ: number, tZ: number, seg: numbe
   const t: number[] = [];
   for (let s = 0; s < seg; s++) {
     const th = (2 * Math.PI * s) / seg;
-    b.push(push(mR * Math.cos(th), mR * Math.sin(th), mZ));
+    b.push(push(mR * detCos(th), mR * detSin(th), mZ));
   }
   for (let s = 0; s < seg; s++) {
     const th = (2 * Math.PI * s) / seg;
-    t.push(push(tR * Math.cos(th), tR * Math.sin(th), tZ));
+    t.push(push(tR * detCos(th), tR * detSin(th), tZ));
   }
   const tr: number[] = [];
   for (let s = 0; s < seg; s++) {
@@ -172,7 +174,7 @@ function marginCircle(r: number, z: number, n: number): { closed: true; resample
   const resampledPoints: Vec3[] = [];
   for (let i = 0; i < n; i++) {
     const th = (2 * Math.PI * i) / n;
-    resampledPoints.push([r * Math.cos(th), r * Math.sin(th), z]);
+    resampledPoints.push([r * detCos(th), r * detSin(th), z]);
   }
   return { closed: true, resampledPoints };
 }
@@ -203,7 +205,7 @@ function barrelTooth(profile: readonly [number, number][], seg: number): Indexed
     const ring: number[] = [];
     for (let s = 0; s < seg; s++) {
       const th = (2 * Math.PI * s) / seg;
-      ring.push(push(r * Math.cos(th), r * Math.sin(th), z));
+      ring.push(push(r * detCos(th), r * detSin(th), z));
     }
     rings.push(ring);
   }

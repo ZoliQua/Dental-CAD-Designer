@@ -41,6 +41,7 @@ import { DEGENERATE_CROSS_NORM_SQ_THRESHOLD_MM4 } from '../intake/degenerate.ts'
 import type { IndexedMesh } from '../mesh/types.ts';
 import { jacobiEigenSymmetric3x3 } from '../register/kabsch.ts';
 import type { RidgeCrestCylinder } from './ponticInterface.ts';
+import { detAtan } from '../math/detMath.ts';
 
 /** Default facing threshold: face normals within ≈ 78° of the up hint. */
 export const RIDGE_CREST_DEFAULT_MIN_UP_COS = 0.2;
@@ -235,7 +236,7 @@ export function fitRidgeCrestCylinder(
   if (!(ratio > RIDGE_CREST_DEGENERATE_RATIO)) throw new RidgeCrestDegenerateError(ratio);
   const k = order[0]!;
   let axis = unit([eigenvectors[0][k]!, eigenvectors[1][k]!, eigenvectors[2][k]!], 'axis');
-  const axisSpreadRad = Math.atan(Math.sqrt(lMin / lMid));
+  const axisSpreadRad = detAtan(Math.sqrt(lMin / lMid));
 
   // ---- 3. cross-section circle ------------------------------------------
   const along = dot(upHint, axis);

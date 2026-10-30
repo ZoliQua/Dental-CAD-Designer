@@ -128,6 +128,7 @@ import { computeCotanWeights } from './cotan.ts';
 import { computeMixedVoronoiAreas } from './mixedArea.ts';
 import { computeVertexNormals } from './normals.ts';
 import { vertexPosition } from './vec.ts';
+import { detAtan2 } from '../math/detMath.ts';
 
 export interface CurvatureResult {
   /** Signed mean curvature per vertex, mm^-1 — see this file's module doc
@@ -172,7 +173,7 @@ function triangleAngleAt(p: Vec3, q: Vec3, r: Vec3): number {
   const crossZ = ux * vy - uy * vx;
   const crossLen = Math.hypot(crossX, crossY, crossZ);
   const dotVal = ux * vx + uy * vy + uz * vz;
-  return Math.atan2(crossLen, dotVal);
+  return detAtan2(crossLen, dotVal);
 }
 
 /**

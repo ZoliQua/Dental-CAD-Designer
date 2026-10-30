@@ -105,7 +105,7 @@ const µm = (mm: number): string => `${(mm * 1000).toFixed(3)} µm`;
 // proof this qc diff is the version string alone, not numerical drift (the same
 // mechanical churn documented at 0.16.0-0.19.0). See docs/CHANGELOG-kernel.md's
 // [0.20.0] entry.
-const EXPECTED_KERNEL_VERSION = '0.34.0';
+const EXPECTED_KERNEL_VERSION = '0.35.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 function installedManifoldVersion(): string {
   const pkg = JSON.parse(readFileSync(join(repoRoot, 'node_modules', 'manifold-3d', 'package.json'), 'utf8')) as {
@@ -123,10 +123,19 @@ function installedManifoldVersion(): string {
 // morphing, shell, freeform and qc hashes all shifted deliberately (only
 // innerSurface, the SAME die/intaglio, is byte-identical to 0.14.0). See
 // docs/CHANGELOG-kernel.md's [0.15.0] entry.
+//
+// Changed at 0.35.0 (cross-platform determinism): the fixture's die/margin/barrel
+// rings and the kernel's transcendentals now use detMath (pure-IEEE fdlibm), so
+// innerSurface, anatomyPlacement and morphing moved (≤ 1 ulp per sin/cos/atan2;
+// shell and freeform, through the voxel heal, are byte-identical). Old: innerSurface
+// 77c5130e52b07e4c424f2ecfa6fb07f130248cd570ad8984a7184da283a93160, anatomyPlacement
+// 5fec17c04eb69a0093db97e63828b5564220cba2d1cdc82ed5e2bc0e20f97d87, morphing
+// ad276e88def5a72c327389af57bc5e7acb3cc03802b631d5ac7402445a7b4d88. The new values
+// are the same on darwin-arm64 and x64 — the old ones were not (Linux CI drifted).
 const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
-  'crown-standin-innerSurface': '77c5130e52b07e4c424f2ecfa6fb07f130248cd570ad8984a7184da283a93160',
-  'crown-standin-anatomyPlacement': '5fec17c04eb69a0093db97e63828b5564220cba2d1cdc82ed5e2bc0e20f97d87',
-  'crown-standin-morphing': 'ad276e88def5a72c327389af57bc5e7acb3cc03802b631d5ac7402445a7b4d88',
+  'crown-standin-innerSurface': '5b6015d53c597672cd937f4bec23129336c910d679ecf122aa9f1290b86020f3',
+  'crown-standin-anatomyPlacement': '86ce5e7328e5cd456ed9199f4fb4ea6258f9c33692529e5678346acecc1fe1c0',
+  'crown-standin-morphing': 'd17295e303d4fe1dbe4e07eab32e75f14a2f6254c6a64b875b0118efec913e0c',
   'crown-standin-shell': 'c472c6ea74c84b741fd47d925241c2c8d21d3caff8fb640d4877e724e49e5764',
   'crown-standin-freeform': 'f48f898de08bb7d1e4bc6a89758ec4d83339bd50040bd7f92010d1e98647d833',
   // Changed at 0.20.0: version-string-only (QcReport embeds kernelVersion —
@@ -199,7 +208,12 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // fit and the ring trim are not in this chain; hashQcReport tracks the embedded
   // kernelVersion, every geometry stage pin above BYTE-IDENTICAL (verified: the whole
   // golden suite passes at 0.33.0 with the new code). Old hash: af42db46047a39efaca01188c593d49ce14f4f63c4af655689891026c22cc78f. See docs/CHANGELOG-kernel.md's [0.34.0] entry.
-  'crown-standin-qc': 'b66c208a568ad731d7f311b031f6880451396daded0f2515943c12a1dbd1b425',
+  // Advanced 0.34.0 → 0.35.0 (cross-platform determinism): NUMERIC — the chain's
+  // transcendentals (the fixture's ring sin/cos, the kernel's atan2/acos) now go
+  // through detMath (pure-IEEE fdlibm) instead of Math.*, ≤ 1 ulp per call; the
+  // hashes are now the same on darwin-arm64 and x64 (verified under both).
+  // Old hash: b66c208a568ad731d7f311b031f6880451396daded0f2515943c12a1dbd1b425. See docs/CHANGELOG-kernel.md's [0.35.0] entry.
+  'crown-standin-qc': '3904c0aabe313f0555123b2c667084e48aa6a22c2fcc0c6bb54621b580730574',
 };
 
 const GATE_ORDER = ['watertight', 'manifold', 'selfIntersection', 'minWallThickness', 'marginFit', 'seating', 'connectorCrossSection', 'contact'];

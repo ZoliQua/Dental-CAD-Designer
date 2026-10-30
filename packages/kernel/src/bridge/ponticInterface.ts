@@ -59,6 +59,7 @@ import type { Vec3 } from '../bvh/geometry.ts';
 import type { Bvh } from '../bvh/types.ts';
 import type { Pseudonormals } from '../sdf/pseudonormals.ts';
 import { signedClosestPoint } from '../sdf/signedDistance.ts';
+import { detCos, detSin } from '../math/detMath.ts';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -295,7 +296,7 @@ export function ponticStyleTargetField(style: PonticInterfaceStyle, params: Pont
 /** Base surface point at station x (along md, relative to axisPoint's md coord)
  * + angle φ, offset by signed t (mm) along the outward radial normal. */
 function basepoint(crest: RidgeCrestCylinder, x: number, phi: number, t: number): Vec3 {
-  const radial: Vec3 = add(scale(crest.upDir, Math.cos(phi)), scale(crest.buccalDir, Math.sin(phi)));
+  const radial: Vec3 = add(scale(crest.upDir, detCos(phi)), scale(crest.buccalDir, detSin(phi)));
   const r = crest.radiusMm + t;
   return add(add(crest.axisPointMm, scale(crest.mesialDistalDir, x)), scale(radial, r));
 }
@@ -330,8 +331,8 @@ export function synthPonticSeatRing(
   const ring: Vec3[] = [];
   for (let i = 0; i < segments; i++) {
     const theta = (2 * Math.PI * i) / segments;
-    const c = Math.cos(theta);
-    const s = Math.sin(theta);
+    const c = detCos(theta);
+    const s = detSin(theta);
     ring.push(add(apex, add(scale(crest.mesialDistalDir, radiusMm * c), scale(crest.buccalDir, radiusMm * s))));
   }
   return ring;
@@ -449,7 +450,7 @@ export function shapePonticBase(
  * accounts for the GINGIVA MESH's crest resolution (the test reports both). */
 export function crestSagittaBoundMm(radiusMm: number, phiHalf: number, angularSegments: number): number {
   const dphi = (2 * phiHalf) / angularSegments;
-  return radiusMm * (1 - Math.cos(dphi / 2));
+  return radiusMm * (1 - detCos(dphi / 2));
 }
 
 // ---------------------------------------------------------------------------

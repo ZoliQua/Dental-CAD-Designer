@@ -57,6 +57,7 @@ import type { IndexedMesh } from '../mesh/types.ts';
 import type { Vec3 } from '../bvh/geometry.ts';
 import { dot, triangleUnitNormal, triangleVertexPositions } from '../axis/vec.ts';
 import { classifyCavityRegions } from './regions.ts';
+import { detCos } from '../math/detMath.ts';
 
 // ---------------------------------------------------------------------------
 // Documented algorithm parameters (NOT clinical values)
@@ -218,7 +219,7 @@ export function identifyCuspRegions(mesh: IndexedMesh, insertionAxis: Vec3, opti
   const axisUnit = normalizeAxis(insertionAxis, 'identifyCuspRegions');
   const occlusalMaxAngleDeg = options.occlusalMaxAngleDeg ?? CUSP_OCCLUSAL_MAX_ANGLE_DEG;
   const minProminenceMm = options.minProminenceMm ?? CUSP_MIN_PROMINENCE_MM;
-  const minDot = Math.cos((occlusalMaxAngleDeg * Math.PI) / 180);
+  const minDot = detCos((occlusalMaxAngleDeg * Math.PI) / 180);
 
   const occlusal = occlusalMask(mesh, axisUnit, minDot);
   const nb = occlusalVertexNeighbours(mesh, occlusal);

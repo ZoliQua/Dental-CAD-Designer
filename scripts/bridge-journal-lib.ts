@@ -74,6 +74,8 @@ import {
   type PonticBaseFootprint,
   type PonticBaseResolution,
   type PonticInterfaceStyle,
+  detCos,
+  detSin,
 } from '@dqcad/kernel';
 import type { FdiTooth, Operation, QcReport } from '@dqcad/shared-types';
 import {
@@ -251,8 +253,8 @@ function cappedCylinder(cx: number, rad: number, height: number, segments: numbe
   const top: number[] = [];
   for (let s = 0; s < segments; s++) {
     const th = (2 * Math.PI * s) / segments;
-    bottom.push(pushV(cx + rad * Math.cos(th), rad * Math.sin(th), 0));
-    top.push(pushV(cx + rad * Math.cos(th), rad * Math.sin(th), height));
+    bottom.push(pushV(cx + rad * detCos(th), rad * detSin(th), 0));
+    top.push(pushV(cx + rad * detCos(th), rad * detSin(th), height));
   }
   const cb = pushV(cx, 0, 0);
   const ct = pushV(cx, 0, height);

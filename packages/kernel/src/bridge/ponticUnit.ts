@@ -65,6 +65,7 @@ import {
   type RidgeCrestCylinder,
   type ShapePonticBaseResult,
 } from './ponticInterface.ts';
+import { detAtan2, detCos, detSin } from '../math/detMath.ts';
 
 /** Angular half-span (rad) of the "below" cut solid — wide enough to take every
  * body vertex above the crest axis' plane, below 90° so the crest frame stays a
@@ -151,13 +152,13 @@ function crestCoords(crest: RidgeCrestCylinder, x: number, y: number, z: number)
   const s = dx * crest.mesialDistalDir[0] + dy * crest.mesialDistalDir[1] + dz * crest.mesialDistalDir[2];
   const b = dx * crest.buccalDir[0] + dy * crest.buccalDir[1] + dz * crest.buccalDir[2];
   const u = dx * crest.upDir[0] + dy * crest.upDir[1] + dz * crest.upDir[2];
-  return { s, r: Math.hypot(b, u), phi: Math.atan2(b, u) };
+  return { s, r: Math.hypot(b, u), phi: detAtan2(b, u) };
 }
 
 /** The point at (s, φ, r) of the crest frame. */
 function crestPoint(crest: RidgeCrestCylinder, s: number, phi: number, r: number): Vec3 {
-  const c = Math.cos(phi) * r;
-  const b = Math.sin(phi) * r;
+  const c = detCos(phi) * r;
+  const b = detSin(phi) * r;
   return [
     crest.axisPointMm[0] + s * crest.mesialDistalDir[0] + c * crest.upDir[0] + b * crest.buccalDir[0],
     crest.axisPointMm[1] + s * crest.mesialDistalDir[1] + c * crest.upDir[1] + b * crest.buccalDir[1],
@@ -236,7 +237,7 @@ const CHORD_INSET_SUBSAMPLES = 32;
 function chordInsetMm(radiusAt: (phi: number) => number, halfSpanRad: number, segments: number): number {
   const point = (phi: number): [number, number] => {
     const r = radiusAt(phi);
-    return [r * Math.sin(phi), r * Math.cos(phi)];
+    return [r * detSin(phi), r * detCos(phi)];
   };
   let worst = 0;
   for (let j = 0; j < segments; j++) {

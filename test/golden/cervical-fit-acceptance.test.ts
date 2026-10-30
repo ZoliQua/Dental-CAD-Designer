@@ -30,6 +30,7 @@ import {
   fitCervicalRing,
   type IndexedMesh,
   type Vec3,
+  detAtan2,
 } from '@dqcad/kernel';
 import { shoulderPrepMesh } from '@dqcad/kernel/margin-fixtures';
 import { loadToothAssetInProcess } from '@dqcad/tooth-library';
@@ -76,7 +77,7 @@ const margin: Vec3[] = (() => {
     const x = die.positions[v * 3]!, y = die.positions[v * 3 + 1]!, z = die.positions[v * 3 + 2]!;
     if (z === MARGIN_Z && Math.abs(Math.hypot(x, y) - MARGIN_R) < 1e-9) out.push([x, y, z]);
   }
-  return out.sort((a, b) => Math.atan2(a[1], a[0]) - Math.atan2(b[1], b[0]));
+  return out.sort((a, b) => detAtan2(a[1], a[0]) - detAtan2(b[1], b[0]));
 })();
 
 const PROFILE = STANDARD_ZIRCONIA_PROFILE as unknown as PipelineMaterialProfile;

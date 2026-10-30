@@ -30,6 +30,8 @@ import {
   solveAnatomyMorph,
   suggestInsertionAxis,
   type IndexedMesh,
+  detCos,
+  detSin,
 } from '@dqcad/kernel';
 import { parseStl } from '@dqcad/io';
 import { loadToothAssetInProcess } from '@dqcad/tooth-library';
@@ -57,7 +59,7 @@ function cylinderTooth(radius: number, height: number, rings: number, segments: 
     const z = (height * r) / (rings - 1);
     for (let s = 0; s < segments; s++) {
       const th = (2 * Math.PI * s) / segments;
-      positions.push(radius * Math.cos(th), radius * Math.sin(th), z);
+      positions.push(radius * detCos(th), radius * detSin(th), z);
     }
   }
   const indices: number[] = [];
@@ -77,7 +79,7 @@ function marginCircle(radius: number, z: number, n = 48): Vec3[] {
   const loop: Vec3[] = [];
   for (let i = 0; i < n; i++) {
     const th = (2 * Math.PI * i) / n;
-    loop.push([radius * Math.cos(th), radius * Math.sin(th), z]);
+    loop.push([radius * detCos(th), radius * detSin(th), z]);
   }
   return loop;
 }

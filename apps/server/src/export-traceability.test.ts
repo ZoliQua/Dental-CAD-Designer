@@ -550,7 +550,7 @@ describe('QC traceability document — server generation, storage, routes', () =
     // Pin preconditions — the pinned values are kernel-derived; a bump moves
     // them ONLY with a deliberate KERNEL_VERSION change + changelog entry
     // (the golden discipline).
-    expect(KERNEL_VERSION).toBe('0.34.0');
+    expect(KERNEL_VERSION).toBe('0.35.0');
     expect(installedManifoldVersion()).toBe('3.5.1');
 
     // Fixed identity/journal constants isolate the pin to the DETERMINISTIC
@@ -677,8 +677,14 @@ describe('QC traceability document — server generation, storage, routes', () =
     // previous hash). The cervical fit and the ring trim are not in this
     // export. Previous (0.33.0):
     // 13249366f7d89bbb5ff551293eb7fefb0a4780908bc13150abee4c8998a388f0.
+    //
+    // MOVED at KERNEL_VERSION 0.34.0 → 0.35.0 (cross-platform determinism):
+    // VERSION-ONLY (verified: the whole server lane passes at 0.34.0 with the
+    // new code — the fixture's rings now use detMath, and its frustum, margin
+    // and QC numbers come out byte-identical). Previous (0.34.0):
+    // 02d5d32620b0fb6a04d2fb0a4be90a0f0e7c220624b35e00296b951284fe7ad3.
     expect(sha256Hex(json)).toBe(
-      '02d5d32620b0fb6a04d2fb0a4be90a0f0e7c220624b35e00296b951284fe7ad3',
+      '9a9e33c48b5019828d83c8766cbabdeac5bae0b9fb68a3aaa4249f7095df39ed',
     );
   });
 });

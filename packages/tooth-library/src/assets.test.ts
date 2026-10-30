@@ -13,28 +13,33 @@ import { loadToothAssetFromBytes } from './bytes.ts';
 
 /** Every 1.1.0 starter asset's metadataChecksum, recorded from the 1.1.0
  * build before 1.2.0 landed (Phase 10 Task 4): the 1.1.0 metadata the server
- * still seeds must reproduce them exactly, so saved cases keep verifying. */
+ * still seeds must reproduce them exactly, so saved cases keep verifying.
+ * Re-recorded at kernel 0.35.0, when the generators moved to the kernel's
+ * deterministic transcendentals (detMath): the 14 posterior assets' Float64
+ * metadata moved by ≤ 1 ulp (their mesh bytes are unchanged, and so are the
+ * assets 11, 12, 21, 22, 34 and 44 entirely). The Math.* values were not
+ * reproducible across platforms — x64 already produced other checksums. */
 const RECORDED_1_1_0_METADATA_CHECKSUMS: Record<number, string> = {
   11: '5dccac847a65ab50e78693c81c7e398fc1bbb540226a6469048b8fc8c627b995',
   12: '9acaa2f1a11e5bf3ab3fb872afc56c6f01aba895b48b1a861d1fb8a1f17c69ea',
-  14: 'e8c125c59d3897639a1b8385cc4e326b4e5fab1a674bd022e1231c5c2f6f1c94',
-  15: '4767a530cf81fc3b19a0b50329fe7b02ab5a7c969818fee17569c72052556963',
-  16: '22bfe3cc200444ee0fda8ea0545379ac51907fa830d0a9513ab23b426ba0bafb',
-  17: '24ffe632d663b9e68a132bec17472846ba468715db22d9c73d99bb408ed04cf3',
+  14: '584b14670f478ad8a475fd65777e7e0e1a4d777f74d08ae3f2781940a5a9c252',
+  15: '000d1d135f8d2ebc1466713cefc717aa04fd74e883cffeedd367817cd676c236',
+  16: '9554e838ae53660f43ed22a30c1540bf38000ca0bfb9ec549f9ec7417a196b89',
+  17: '27235838302c3810679bb4efc3899881a2e9adbaacba3a67f16925db562aaf54',
   21: '54c7f2e62a9a7ce47a51a3408a0f672ab0776bb31c112935695bcd2c3b08bcd0',
   22: '808cb9579a9376fe070b9d3ac99cf67d1b751454a03b8f22cd7aae86e698901c',
-  24: '74b17362ecc4fc1f61415769115cba52c0029b823f81e3b0bb078d964b967ffd',
-  25: '4b36dc588d920f37e3d8d194a06675686c35e1c336389e57ec0a387b472c6c31',
-  26: '68ad995ca364cd41ef76190ca41bfbafa7e540eb5d23ec893368d5e618f6dc94',
-  27: '183bf58e2d99911371a093c137a83fd85e3bd4d11c74e01eeb7bf8cc49b515e6',
+  24: 'b2008b058ec2d2f2481acd5c9cc56e22f0c94f1f6aa04ea07e4951631a50527f',
+  25: '0b848ad7518adb8b3de958f633cbfef6879ef0b00164c327be7d5773b33a9e13',
+  26: '2b17fbe92f49fa3ff48a33566cb46e453acddc3d2d8d938941ed656a1c21ec44',
+  27: 'd099fd17b632ff767c209d993758c5b718db65a91c98654fd50419f8a249f683',
   34: '9e8fcfe7fd8121c1d8d4c0a2aad1ff329e13522068a124e7bf1587243f329046',
-  35: 'fbf4b56dded6bff204777988397070bbb0c03180dd100e6c2ec4de5cd338eac5',
-  36: '70aedadc29d95b19c7b340e9d1452e03cad1aa09460e8d3b555b45869ded01d9',
-  37: '9bb23ef0167d72e1fa0d41cb4ec69c80d20af2e70cac2a3f8d56936dfba1290a',
+  35: '6d076cbfaae01dc5ab1fc41200cb6b2678c90477af48ba780f39e07dc39f2487',
+  36: '672f0258701606984e909411cf4f98d299e2370e67ad1e2687af1a3d8be20786',
+  37: 'cccc7c7d6d59765214e07e5cfe80e3fc9c330309183e4de3feb42bcdb58570ac',
   44: '1ed0635745f9fd1ce39f75f0d04cb76b7e5cf143dce8ba8d015721f25bb9b9a5',
-  45: 'd023eae7aee07980d808bb3184c6cef00fa4a59d2827d2bcde34c3414fe56793',
-  46: 'c1318ef555e3e922b57c54ebb9c741bdba11dbc4410e3406c992e18e7c85e752',
-  47: 'c78d983b5ac0f73c4da79dfb943fe220e7aff128b237b185ae4d8989237c19b5',
+  45: '13d3753e6c0cf4bc8f3a0a7c924df28fe96f527530e70b65df1c3765038efccf',
+  46: 'a257f238d6f70e4081ecc9c73ec1f291846b9a64c0d52cf2c9d0fceeb99c7fe6',
+  47: '0da34134fcabb1be3b311b78b0dc54a5f7144901ceea4efbe11767dff34161f9',
 };
 
 describe('STARTER_TOOTH_ASSETS', () => {

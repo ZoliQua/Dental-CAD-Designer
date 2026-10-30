@@ -92,6 +92,7 @@
 // small-radius feature — see that test file for the exact derivation), not
 // a fresh closed-form re-derivation of the blended arc's own curve.
 import type { IndexedMesh } from '../mesh/types.ts';
+import { detAtan2, detCos, detSin } from '../math/detMath.ts';
 
 type Vec2 = readonly [number, number]; // (r, z)
 type Vec3 = readonly [number, number, number];
@@ -148,7 +149,7 @@ function revolveProfile(profile: readonly Vec2[], segments: number): IndexedMesh
     const [radius, z] = profile[r]!;
     for (let s = 0; s < segments; s++) {
       const theta = (2 * Math.PI * s) / segments;
-      positions.push([radius * Math.cos(theta), radius * Math.sin(theta), z]);
+      positions.push([radius * detCos(theta), radius * detSin(theta), z]);
     }
   }
   const bottomCenterIndex = positions.length;
@@ -255,8 +256,8 @@ function filletCorner(
   const tangentOut: Vec2 = [corner[0] + tOut * dOut[0], corner[1] + tOut * dOut[1]];
   const center: Vec2 = [tangentIn[0] + fr * nIn[0], tangentIn[1] + fr * nIn[1]];
 
-  const startAngle = Math.atan2(tangentIn[1] - center[1], tangentIn[0] - center[0]);
-  let endAngle = Math.atan2(tangentOut[1] - center[1], tangentOut[0] - center[0]);
+  const startAngle = detAtan2(tangentIn[1] - center[1], tangentIn[0] - center[0]);
+  let endAngle = detAtan2(tangentOut[1] - center[1], tangentOut[0] - center[0]);
   // Sweep the SHORT way (the fillet blends a single corner, never more than
   // a half turn) — normalize endAngle to within +/-PI of startAngle.
   while (endAngle - startAngle > Math.PI) endAngle -= 2 * Math.PI;
@@ -266,7 +267,7 @@ function filletCorner(
   for (let i = 1; i < arcSegments; i++) {
     const t = i / arcSegments;
     const angle = startAngle + (endAngle - startAngle) * t;
-    arcPoints.push([center[0] + fr * Math.cos(angle), center[1] + fr * Math.sin(angle)]);
+    arcPoints.push([center[0] + fr * detCos(angle), center[1] + fr * detSin(angle)]);
   }
   return { tangentIn, tangentOut, arcPoints };
 }

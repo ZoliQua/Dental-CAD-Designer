@@ -105,6 +105,7 @@ import { marginLoopPolyline } from '../margin/band.ts';
 import { dedupLoop, MARGIN_DEDUP_EPSILON_MM } from '../offset/innerSurfaceSolid.ts';
 import { classifyCavityRegions } from './regions.ts';
 import type { SeamEdge } from './seamDihedral.ts';
+import { detAcos, detCos } from '../math/detMath.ts';
 
 // ---------------------------------------------------------------------------
 // Documented algorithm parameters (NOT clinical values)
@@ -413,7 +414,7 @@ export function buildOcclusalPatch(
     throw new TypeError(`buildOcclusalPatch: crossSegments must be an integer >= 2, got ${crossSegments}`);
   }
   const seamAngleDeg = options.seamSurroundingMaxAngleDeg ?? SEAM_SURROUNDING_MAX_ANGLE_DEG;
-  const seamCos = Math.cos((seamAngleDeg * Math.PI) / 180);
+  const seamCos = detCos((seamAngleDeg * Math.PI) / 180);
 
   const part = partition(mesh, cavityOutline, axisUnit, seamCos);
   const { labels, surroundingNormal, outline } = part;
@@ -631,7 +632,7 @@ function angleDeg(a: Vec3, b: Vec3): number {
   const lb = Math.hypot(b[0], b[1], b[2]);
   if (!(la > 0 && lb > 0)) return 0;
   const c = Math.max(-1, Math.min(1, dot(a, b) / (la * lb)));
-  return (Math.acos(c) * 180) / Math.PI;
+  return (detAcos(c) * 180) / Math.PI;
 }
 
 /** Flip all triangle windings if the area-weighted normal sum faces AGAINST the

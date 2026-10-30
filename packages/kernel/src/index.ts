@@ -390,10 +390,20 @@
  * (`outerCervicalRing`, `trimClosedOuterAlongRing`); NEW `mesh/edgeLoop.ts`.
  * No existing output changed: geometry + journal-replay pins byte-identical;
  * the acceptance QC pins advance mechanically. See docs/CHANGELOG-kernel.md's
- * `[0.34.0]` entry. */
-export const KERNEL_VERSION = '0.34.0';
+ * `[0.34.0]` entry.
+ *
+ * 0.35.0 (cross-platform determinism): every transcendental the kernel
+ * computes — sin, cos, atan, atan2, asin, acos, exp, pow — goes through
+ * NEW `math/detMath.ts`, a pure-IEEE port of fdlibm, instead of `Math.*`,
+ * whose results differ in the last bit between arm64 and x64 (V8's libm is
+ * compiled per target). Outputs are now bit-identical on every platform;
+ * the values move by at most 1 ulp in each transcendental, which changes
+ * the hashed bytes of every op downstream of one. See
+ * docs/CHANGELOG-kernel.md's `[0.35.0]` entry. */
+export const KERNEL_VERSION = '0.35.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
+export { detSin, detCos, detAtan, detAtan2, detAsin, detAcos, detExp, detPow } from './math/detMath.ts';
 export {
   initManifold,
   union,

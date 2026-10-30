@@ -171,6 +171,7 @@ import type { SurfacePoint } from '../geodesic/types.ts';
 import { evaluateSurfacePoint, triangleVertexIndices } from '../geodesic/surfacePoint.ts';
 import { oneRingVertices } from '../halfedge/iterate.ts';
 import { MinHeap } from '../geodesic/heap.ts';
+import { detAcos } from '../math/detMath.ts';
 
 // ---------------------------------------------------------------------------
 // Documented algorithmic defaults (kernel-level, NOT clinical-profiles: these
@@ -1217,7 +1218,7 @@ export function simplifyRidgeLoopIndices(
     const inTangent = normalize3(sub3(vertexPos(mesh, cur), vertexPos(mesh, prev)));
     const outTangent = normalize3(sub3(vertexPos(mesh, next), vertexPos(mesh, cur)));
     const cosAngle = Math.max(-1, Math.min(1, dot3(inTangent, outTangent)));
-    const turnAngle = Math.acos(cosAngle);
+    const turnAngle = detAcos(cosAngle);
     accumAngle += turnAngle;
     if (accumAngle >= angleBudgetRad || accumLen >= maxSpacingMm) {
       anchors.push(cur);

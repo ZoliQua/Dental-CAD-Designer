@@ -27,6 +27,7 @@ import {
   type MeshBuilder,
 } from '../geometry/ringMesh.ts';
 import type { MolarParams } from './toothParams.ts';
+import { detAtan2, detCos, detPow, detSin } from '@dqcad/kernel';
 
 export const SEGMENTS = 72;
 /** Wall rings from the cervical margin (i=0, v=0) up to AND INCLUDING the
@@ -55,7 +56,7 @@ function wallCrossSection(
   const ry =
     mix(params.ryCervicalMm, params.ryWallTopMm, smoothstep(0, 1, v)) +
     params.ryContactBulgeMm * gaussianBump(v, params.vContact, params.sigmaContactV);
-  return (theta: number) => ({ x: rx * Math.cos(theta), y: ry * Math.sin(theta) });
+  return (theta: number) => ({ x: rx * detCos(theta), y: ry * detSin(theta) });
 }
 
 /** Occlusal-table elevation above `wallTopZ` at radial position `s` in
@@ -67,7 +68,7 @@ function tableElevation(
   s: number,
   theta: number,
 ): number {
-  const dome = params.occlusalTableReliefMm * Math.sin(Math.PI * s);
+  const dome = params.occlusalTableReliefMm * detSin(Math.PI * s);
   let cuspBump = 0;
   for (const cusp of cusps) {
     cuspBump +=
@@ -87,7 +88,7 @@ function tableElevation(
  * `s === 1` the table collapses to a point with no meaningful `theta`). */
 function centerElevation(params: MolarParams): number {
   return (
-    params.occlusalTableReliefMm * Math.sin(Math.PI) -
+    params.occlusalTableReliefMm * detSin(Math.PI) -
     params.fossaDepthMm * gaussianBump(1, 1, params.sigmaSFossa)
   );
 }
@@ -99,13 +100,13 @@ function addCapRing(
   s: number,
   wallTopZ: number,
 ): number[] {
-  const rx = params.rxWallTopMm * Math.pow(1 - s, params.radialShrinkPower);
-  const ry = params.ryWallTopMm * Math.pow(1 - s, params.radialShrinkPower);
+  const rx = params.rxWallTopMm * detPow(1 - s, params.radialShrinkPower);
+  const ry = params.ryWallTopMm * detPow(1 - s, params.radialShrinkPower);
   const ring: number[] = new Array(SEGMENTS);
   for (let i = 0; i < SEGMENTS; i++) {
     const theta = (2 * Math.PI * i) / SEGMENTS;
-    const x = rx * Math.cos(theta);
-    const y = ry * Math.sin(theta);
+    const x = rx * detCos(theta);
+    const y = ry * detSin(theta);
     const z = wallTopZ + tableElevation(params, cusps, s, theta);
     ring[i] = addVertex(builder, x, y, z);
   }
@@ -132,7 +133,7 @@ export function posteriorMorphTargets(
     const y = positions[i * 3 + 1]!;
     const z = positions[i * 3 + 2]!;
     if (z < wallTopZ - 1e-9) continue; // axial wall vertex: neither morph touches it.
-    const theta = Math.atan2(y, x);
+    const theta = detAtan2(y, x);
     let cuspWeight = 0;
     for (const cusp of cusps) {
       cuspWeight += angularWindow(theta, cusp.angleRad, params.cuspAngularHalfWidthRad);

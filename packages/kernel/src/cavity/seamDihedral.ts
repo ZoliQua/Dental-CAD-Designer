@@ -55,6 +55,7 @@
 import type { IndexedMesh } from '../mesh/types.ts';
 import type { Vec3 } from '../bvh/geometry.ts';
 import { dot, triangleUnitNormal, triangleVertexPositions } from '../axis/vec.ts';
+import { detAcos } from '../math/detMath.ts';
 
 /** One seam edge to measure across — an outline segment `(a, b)` whose endpoints
  * are (bit-exact) vertices of BOTH the patch and the tooth mesh. `segment` is a
@@ -205,7 +206,7 @@ export function measureSeamDihedral(
     const toothNormal = triangleUnitNormal(ta, tb, tc);
 
     const c = Math.max(-1, Math.min(1, dot(patchNormal, toothNormal)));
-    const dihedralDeg = (Math.acos(c) * 180) / Math.PI;
+    const dihedralDeg = (detAcos(c) * 180) / Math.PI;
 
     samples.push({ a: e.a, b: e.b, segment: e.segment, patchNormal, toothNormal, dihedralDeg });
     if (dihedralDeg > maxDeg) maxDeg = dihedralDeg;

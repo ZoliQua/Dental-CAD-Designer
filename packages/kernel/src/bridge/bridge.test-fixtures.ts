@@ -84,6 +84,7 @@
 import type { IndexedMesh } from '../mesh/types.ts';
 import { orientNormalsConsistently } from '../intake/orient.ts';
 import { shoulderPrepMesh, type ShoulderPrepMeshOptions } from '../margin/marginRidge.test-fixtures.ts';
+import { detCos, detSin } from '../math/detMath.ts';
 
 type Vec3 = readonly [number, number, number];
 
@@ -261,7 +262,7 @@ function localMarginRing(marginRadiusMm: number, marginHeightMm: number, segment
   const ring: Vec3[] = [];
   for (let s = 0; s < segments; s++) {
     const theta = (2 * Math.PI * s) / segments;
-    ring.push([marginRadiusMm * Math.cos(theta), marginRadiusMm * Math.sin(theta), marginHeightMm]);
+    ring.push([marginRadiusMm * detCos(theta), marginRadiusMm * detSin(theta), marginHeightMm]);
   }
   return ring;
 }
@@ -354,8 +355,8 @@ function buildDie(
 ): BridgeAbutmentDie {
   const { mesh: local, marginRadiusMm, marginHeightMm } = shoulderPrepMesh(dieOptions);
   const segments = dieOptions?.segments ?? 128;
-  const cos = Math.cos(tiltRad);
-  const sin = Math.sin(tiltRad);
+  const cos = detCos(tiltRad);
+  const sin = detSin(tiltRad);
   const mesh = placeMesh(local, cos, sin, translationMm);
   const ring = localMarginRing(marginRadiusMm, marginHeightMm, segments);
   const worldMarginRing = ring.map((p) => placePoint(p, cos, sin, translationMm));

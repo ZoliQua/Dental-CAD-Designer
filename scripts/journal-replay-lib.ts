@@ -62,6 +62,8 @@ import {
   type IndexedMesh,
   type SurfacePoint,
   type Vec3,
+  detCos,
+  detSin,
 } from '@dqcad/kernel';
 import { runMorphingStage, type PipelineContext, type PipelineMaterialProfile, type PipelineMeshHandle } from '@dqcad/cad-pipeline';
 import type { FdiTooth, MarginReferenceExport, Operation } from '@dqcad/shared-types';
@@ -667,7 +669,7 @@ function crownMorphCylinder(radius: number, height: number, rings: number, segme
     const z = (height * r) / (rings - 1);
     for (let s = 0; s < segments; s++) {
       const th = (2 * Math.PI * s) / segments;
-      positions.push(radius * Math.cos(th), radius * Math.sin(th), z);
+      positions.push(radius * detCos(th), radius * detSin(th), z);
     }
   }
   const indices: number[] = [];
@@ -685,7 +687,7 @@ function crownMorphMarginCircle(radius: number, z: number, n: number): Vec3[] {
   const loop: Vec3[] = [];
   for (let i = 0; i < n; i++) {
     const th = (2 * Math.PI * i) / n;
-    loop.push([radius * Math.cos(th), radius * Math.sin(th), z]);
+    loop.push([radius * detCos(th), radius * detSin(th), z]);
   }
   return loop;
 }

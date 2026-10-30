@@ -101,6 +101,7 @@ import type { IndexedMesh } from '../mesh/types.ts';
 import type { Vec3 } from '../bvh/geometry.ts';
 import { analyzeMesh } from '../intake/analyze.ts';
 import { distanceToClosedPolyline } from '../offset/innerSurfaceOffset.ts';
+import { detAcos, detCos } from '../math/detMath.ts';
 
 /** Thrown for an invalid cutback parameter (never defaulted here — the pipeline
  * resolves `veneeringSpaceMm` from the material profile). */
@@ -238,7 +239,7 @@ function vertexNormals(mesh: IndexedMesh): { normals: Float64Array; maxFacetAngl
     for (let c = 0; c < 3; c++) {
       const vi = mesh.indices[t * 3 + c]!;
       const dot = Math.min(1, Math.max(-1, normals[vi * 3]! * ufx + normals[vi * 3 + 1]! * ufy + normals[vi * 3 + 2]! * ufz));
-      const ang = Math.acos(dot);
+      const ang = detAcos(dot);
       if (ang > maxFacetAngle[vi]!) maxFacetAngle[vi] = ang;
     }
   }
@@ -297,7 +298,7 @@ export function frameworkCutback(mesh: IndexedMesh, options: FrameworkCutbackOpt
     positions[i * 3 + 2] = mesh.positions[i * 3 + 2]! - applied * normals[i * 3 + 2]!;
   }
 
-  const errorBoundMm = d * (1 - Math.cos(maxMovedFacetAngle));
+  const errorBoundMm = d * (1 - detCos(maxMovedFacetAngle));
   const outMesh: IndexedMesh = { positions, indices: new Uint32Array(mesh.indices) };
   return {
     mesh: outMesh,

@@ -16,16 +16,37 @@
  *    `e = floor(log2 |x|)` — a float32 mantissa has 23 fraction bits;
  *  - subnormal range (|x| < 2^-126, including 0): the fixed subnormal
  *    spacing `2^-149`.
- * Pure closed-form arithmetic — no environment dependence.
+ * Exact bit arithmetic — no environment dependence: `e` is read from the
+ * double's exponent field and `2^(e-23)` is built from bits, never through
+ * `Math.log2`/`Math.pow` (implementation-approximated in ECMAScript, and
+ * `floor(log2 |x|)` can round up to the next exponent just below a power
+ * of two).
  */
 export function f32UlpAt(x: number): number {
   const magnitude = Math.abs(x);
-  if (magnitude < 2 ** -126) {
-    return 2 ** -149;
+  if (magnitude < F32_MIN_NORMAL) {
+    return F32_SUBNORMAL_SPACING;
   }
-  const exponent = Math.min(Math.floor(Math.log2(magnitude)), 127);
-  return 2 ** (exponent - 23);
+  const exponent = Math.min(binaryExponent(magnitude), 127);
+  return powerOfTwo(exponent - 23);
 }
+
+const WORDS = new DataView(new ArrayBuffer(8));
+/** `floor(log2 |x|)` for a finite, normal, non-zero double — exact. */
+function binaryExponent(x: number): number {
+  WORDS.setFloat64(0, x);
+  return ((WORDS.getUint32(0) >>> 20) & 0x7ff) - 1023;
+}
+/** `2^e` for an integer e in the double's normal range — exact. */
+function powerOfTwo(e: number): number {
+  WORDS.setUint32(0, (e + 1023) << 20);
+  WORDS.setUint32(4, 0);
+  return WORDS.getFloat64(0);
+}
+/** 2^-126, the smallest normal float32. */
+const F32_MIN_NORMAL = 1.1754943508222875e-38;
+/** 2^-149, the float32 subnormal spacing. */
+const F32_SUBNORMAL_SPACING = 1.401298464324817e-45;
 
 /** What `measureF32NarrowingError` measured over a coordinate buffer. All
  * values in mm (the package-wide unit). */

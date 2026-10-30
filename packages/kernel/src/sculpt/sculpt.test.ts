@@ -28,6 +28,7 @@ import {
   type SculptStroke,
   type Vec3,
 } from '../index.ts';
+import { detCos, detSin } from '../math/detMath.ts';
 
 // NB measureMarginFit is a cad-pipeline gate (layer rule: kernel imports nothing
 // upward), so this kernel test proves margin-fit preservation directly from the
@@ -61,7 +62,7 @@ function uvSphere(R: number, stacks: number, slices: number, radial?: (lat: numb
     for (let j = 0; j < slices; j++) {
       const th = (2 * Math.PI * j) / slices;
       const rr = R * (radial ? radial(i, j) : 1);
-      row.push(push(rr * Math.sin(phi) * Math.cos(th), rr * Math.sin(phi) * Math.sin(th), rr * Math.cos(phi)));
+      row.push(push(rr * detSin(phi) * detCos(th), rr * detSin(phi) * detSin(th), rr * detCos(phi)));
     }
     indexAt.push(row);
   }
@@ -213,7 +214,10 @@ describe('sculpt determinism + replay', () => {
     const out = applySculptGesture(sphere, gesture, ZERO_LOCK(sphere));
     const h = hashMesh(out.mesh);
     console.log(`[golden] sculpt gesture hash = ${h}`);
-    expect(h).toBe('ca23f0777ed0db25764b1b418b0f018a99a4c70f44a34ea213905ae06d1c314d');
+    // Re-pinned at 0.35.0 (cross-platform determinism): uvSphere's rings use
+    // detSin/detCos — the Math.* ones hashed differently on x64 (old:
+    // ca23f0777ed0db25764b1b418b0f018a99a4c70f44a34ea213905ae06d1c314d).
+    expect(h).toBe('bb4c3dfc8be4405b142f9e10e61a154f5c22a1a705294d2f822456f4f5034426');
   });
 });
 
@@ -312,7 +316,7 @@ function buildFrustum(mR: number, tR: number, mZ: number, tZ: number, seg: numbe
     const ring: number[] = [];
     for (let s = 0; s < seg; s++) {
       const th = (2 * Math.PI * s) / seg;
-      ring.push(push(r * Math.cos(th), r * Math.sin(th), z));
+      ring.push(push(r * detCos(th), r * detSin(th), z));
     }
     rings.push(ring);
   }
@@ -349,7 +353,7 @@ function marginCircle(r: number, z: number, n: number): Vec3[] {
   const loop: Vec3[] = [];
   for (let i = 0; i < n; i++) {
     const th = (2 * Math.PI * i) / n;
-    loop.push([r * Math.cos(th), r * Math.sin(th), z]);
+    loop.push([r * detCos(th), r * detSin(th), z]);
   }
   return loop;
 }

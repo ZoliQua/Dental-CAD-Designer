@@ -121,6 +121,7 @@ import {
   computeTwoZoneSdfGridSlice,
   type InnerSurfaceGapParams,
 } from './innerSurfaceOffset.ts';
+import { detAtan2 } from '../math/detMath.ts';
 
 /** Slices computed between event-loop yields (pure scheduling — see
  * innerSurfaceOffset.ts's identical constant). */
@@ -556,7 +557,7 @@ export function skirtToMargin(
     const dz = p[2] - cz;
     const pu = dx * u[0] + dy * u[1] + dz * u[2];
     const pv = dx * v[0] + dy * v[1] + dz * v[2];
-    return Math.atan2(pv, pu);
+    return detAtan2(pv, pu);
   };
 
   const patchVertexCount = patchWorld.positions.length / 3;

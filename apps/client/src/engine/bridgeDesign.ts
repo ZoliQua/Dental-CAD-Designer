@@ -66,6 +66,7 @@ import {
   type PonticStyleName,
 } from '../state/bridgeStore';
 import { useCaseStore } from '../state/caseStore';
+import { detCos, detSin } from '@dqcad/kernel-workers';
 
 /** Re-export the pontic-style union so the panel imports it from one place. */
 export type { PonticStyleName };
@@ -164,7 +165,7 @@ function ellipseProfileFlat(semiAxisMm: number, segments: number): number[] {
   const out: number[] = [];
   for (let s = 0; s < segments; s++) {
     const th = (2 * Math.PI * s) / segments;
-    out.push(semiAxisMm * Math.cos(th), semiAxisMm * Math.sin(th));
+    out.push(semiAxisMm * detCos(th), semiAxisMm * detSin(th));
   }
   return out;
 }

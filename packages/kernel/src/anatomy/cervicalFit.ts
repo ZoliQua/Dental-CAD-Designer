@@ -48,6 +48,7 @@ import { distanceToClosedPolyline } from '../offset/innerSurfaceOffset.ts';
 import { fitRbf, evaluateRbf, type RbfControlPoint } from '../rbf/rbf.ts';
 import { closedEdgeLoopProblem } from '../mesh/edgeLoop.ts';
 import { DEFAULT_WALL_THICKNESS_SAMPLE_SPACING_MM } from '../shell/shell.ts';
+import { detAtan2 } from '../math/detMath.ts';
 
 export { closedEdgeLoopProblem } from '../mesh/edgeLoop.ts';
 
@@ -211,7 +212,7 @@ function windingOrientation(points2d: ReadonlyArray<readonly [number, number]>):
   for (let i = 0; i < n; i++) {
     const a = points2d[i]!, b = points2d[(i + 1) % n]!;
     if (a[0] === 0 && a[1] === 0) return 0;
-    let d = Math.atan2(b[1], b[0]) - Math.atan2(a[1], a[0]);
+    let d = detAtan2(b[1], b[0]) - detAtan2(a[1], a[0]);
     if (d > Math.PI) d -= 2 * Math.PI;
     else if (d <= -Math.PI) d += 2 * Math.PI;
     const s = Math.sign(d);

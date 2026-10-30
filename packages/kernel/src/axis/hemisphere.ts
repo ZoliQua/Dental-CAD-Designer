@@ -22,6 +22,7 @@
 // (index 0 is always nearest `pole` — see each function's doc).
 import type { Vec3 } from '../bvh/geometry.ts';
 import { cross, normalizeOrZero } from './vec.ts';
+import { detCos, detSin } from '../math/detMath.ts';
 
 /** The golden angle (radians): Vogel's formula's fixed per-sample azimuth
  * step, `pi * (3 - sqrt(5))` (~2.3999 rad, ~137.5 degrees). */
@@ -93,7 +94,7 @@ export function fibonacciHemisphereDirections(count: number, pole: Vec3): Vec3[]
     const z = 1 - (i + 0.5) / count; // in (0, 1] for every i in [0, count) — a genuine hemisphere, never crossing the equator.
     const r = Math.sqrt(Math.max(0, 1 - z * z));
     const theta = i * GOLDEN_ANGLE_RAD;
-    directions[i] = localToWorld(u, v, poleUnit, r * Math.cos(theta), r * Math.sin(theta), z);
+    directions[i] = localToWorld(u, v, poleUnit, r * detCos(theta), r * detSin(theta), z);
   }
   return directions;
 }
@@ -120,13 +121,13 @@ export function fibonacciCapDirections(count: number, pole: Vec3, maxAngleRad: n
   }
   const poleUnit = requireUnitPole(pole, 'fibonacciCapDirections');
   const { u, v } = orthonormalBasis(poleUnit);
-  const zMin = Math.cos(maxAngleRad);
+  const zMin = detCos(maxAngleRad);
   const directions: Vec3[] = new Array(count);
   for (let i = 0; i < count; i++) {
     const z = 1 - ((i + 0.5) / count) * (1 - zMin); // i=0 nearest pole (z near 1), i=count-1 nearest the cap boundary (z near zMin) — mirrors fibonacciHemisphereDirections' own i=0-nearest-pole convention.
     const r = Math.sqrt(Math.max(0, 1 - z * z));
     const theta = i * GOLDEN_ANGLE_RAD;
-    directions[i] = localToWorld(u, v, poleUnit, r * Math.cos(theta), r * Math.sin(theta), z);
+    directions[i] = localToWorld(u, v, poleUnit, r * detCos(theta), r * detSin(theta), z);
   }
   return directions;
 }

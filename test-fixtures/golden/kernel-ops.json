@@ -1,5 +1,5 @@
 {
-  "kernelVersion": "0.26.0",
+  "kernelVersion": "0.35.0",
   "manifoldVersion": "3.5.1",
   "notes": [
     "Runtime budget: every param here is chosen to keep this suite fast (target: whole suite well under the ~2 min CI budget) — see scripts/kernel-ops-lib.ts's module doc for each choice.",
@@ -35,7 +35,7 @@
       "op": "computeCurvature",
       "fixture": "arch-case-01 upperjaw (post-intake)",
       "params": {},
-      "hash": "6a7a205ea7368d1cdef8d695c5fee3f545784707ef0ceec1668ac1e9af12d603",
+      "hash": "2fd60aff219957799cd1f87e7c4b884e866734bbcb8b47529f7d55f0c653c1ed",
       "meta": {
         "vertexCount": 126377
       }
@@ -308,7 +308,7 @@
           10.945829391479492
         ]
       },
-      "hash": "96d3a057eb7c6e1ac6cac09ba2e8bdcad8ff492123c407cfd472fc8d8d2fe182",
+      "hash": "1a488c1e2f58de1421b09ac9d2c049873ac9b38cdb615d58d199242ad9770a50",
       "meta": {
         "anchorCount": 261,
         "walkVertexCount": 319,

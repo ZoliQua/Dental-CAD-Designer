@@ -1,5 +1,5 @@
 {
-  "kernelVersion": "0.4.1",
+  "kernelVersion": "0.35.0",
   "summary": {
     "vertexCount": 126377,
     "boundaryCount": 2624,
@@ -11,5 +11,5 @@
     "maxK": 2053.892846115758,
     "meanK": 0.16830766605464365
   },
-  "resultSha256": "186e9853f14c02e447ef0de745825367dd983f3891464bef5f8a4eb092c89ab2"
+  "resultSha256": "ce877b86a611c2e997efc9ecf8e25112c5df08ddf8b8f58ea86c0404823bfe0c"
 }

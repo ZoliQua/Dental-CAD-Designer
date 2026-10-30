@@ -104,7 +104,7 @@ export function parseBinaryStl(buffer: Buffer, filePath: string): ParsedStlMesh 
     const crossX = e1[1] * e2[2] - e1[2] * e2[1];
     const crossY = e1[2] * e2[0] - e1[0] * e2[2];
     const crossZ = e1[0] * e2[1] - e1[1] * e2[0];
-    areaAcc += Math.sqrt(crossX ** 2 + crossY ** 2 + crossZ ** 2) / 2;
+    areaAcc += Math.sqrt(crossX * crossX + crossY * crossY + crossZ * crossZ) / 2;
   }
 
   return {

@@ -31,13 +31,14 @@ import { signedClosestPoint } from '../sdf/signedDistance.ts';
 import { undercutScan } from '../undercut/undercutScan.ts';
 import { shoulderPrepMesh } from '../margin/marginRidge.test-fixtures.ts';
 import { buildInnerSurface, distanceToClosedPolyline, type InnerSurfaceSolidResult } from './index.ts';
+import { detCos, detSin } from '../math/detMath.ts';
 
 const COMPACT = { gingivalRadiusMm: 1.5, marginRadiusMm: 1.2, topRadiusMm: 0.8, marginHeightMm: 0.5, totalHeightMm: 2.0, segments: 96 };
 const GAP = { marginalGapMm: 0.02, cementGapMm: 0.05, spacerStartMm: 0.8, blendWidthMm: 0.3 };
 
 function circle(r: number, z: number, n: number): Vec3[] {
   const l: Vec3[] = [];
-  for (let i = 0; i < n; i++) { const t = (2 * Math.PI * i) / n; l.push([r * Math.cos(t), r * Math.sin(t), z]); }
+  for (let i = 0; i < n; i++) { const t = (2 * Math.PI * i) / n; l.push([r * detCos(t), r * detSin(t), z]); }
   return l;
 }
 
@@ -149,8 +150,11 @@ const MARGIN_FIT_GATE_MM = 0.010;
 // 0.06 mm, margin loop of 240 points. This pins buildInnerSurface's output
 // against regression — it may change ONLY with a KERNEL_VERSION bump + a
 // docs/CHANGELOG-kernel.md entry (CLAUDE.md golden discipline). Generated
-// under KERNEL_VERSION 0.10.0.
-const GOLDEN_COMPACT_DIE_HASH = '691d1d6285ec9247cffc15cd35d9c1715fceb09b62da847e1a84a2403bcdbdb6';
+// under KERNEL_VERSION 0.10.0. Re-pinned at 0.35.0 (cross-platform
+// determinism): the die and margin rings are built with detSin/detCos — the
+// Math.* ones hashed differently on x64 (old: 691d1d6285ec9247cffc15cd35d9c171
+// 5fceb09b62da847e1a84a2403bcdbdb6).
+const GOLDEN_COMPACT_DIE_HASH = 'f616f1e6367b3c47c7cda295c106bb1d848ac85164c86c58e0097e7ee396a852';
 
 describe('buildInnerSurface — ANALYTIC: margin fit + skirt continuity (die, axis +Z, coarse pitch)', () => {
   let res: InnerSurfaceSolidResult;
@@ -216,7 +220,7 @@ describe('buildInnerSurface — SELF-CONSISTENCY: undercut blockout', () => {
   // folded/torn skirt would surface here); it is NOT a favourable subset.
   it.each([
     { label: '+Z (on-axis)', axis: [0, 0, 1] as Vec3 },
-    { label: '~11.5deg in-taper', axis: [Math.sin(0.2), 0, Math.cos(0.2)] as Vec3 },
+    { label: '~11.5deg in-taper', axis: [detSin(0.2), 0, detCos(0.2)] as Vec3 },
   ])('WHOLE finished intaglio has ZERO undercut on a valid in-taper axis ($label)', { timeout: 120_000 }, async ({ axis }) => {
     const die = shoulderPrepMesh(COMPACT);
     const res = await buildInnerSurface(die.mesh, { ...GAP, pitchMm: 0.06, marginLoop: loop, insertionAxis: axis });
@@ -240,7 +244,7 @@ describe('buildInnerSurface — SELF-CONSISTENCY: undercut blockout', () => {
   // skirt near the margin on an axis that is itself invalid.
   it('the die has real undercut; on a >taper (unseatable) axis, the blocked PATCH is still 0 undercut (any residual is the skirt only)', { timeout: 120_000 }, async () => {
     const die = shoulderPrepMesh(COMPACT);
-    const axis: Vec3 = [Math.sin(0.5), 0, Math.cos(0.5)]; // ~28.6deg, beyond the ~15deg taper
+    const axis: Vec3 = [detSin(0.5), 0, detCos(0.5)]; // ~28.6deg, beyond the ~15deg taper
 
     const dieScan = undercutScan(die.mesh, buildBvh(die.mesh), axis);
     expect(dieScan.undercutTriangleCount).toBeGreaterThan(50); // control: real undercut to block

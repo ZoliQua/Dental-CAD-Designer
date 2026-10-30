@@ -150,3 +150,8 @@ export { IDENTITY_MAT4 } from '@dqcad/kernel';
 // compute), the same "re-export what engine legitimately needs" precedent
 // as the type-only re-exports above.
 export { sectionToSvg } from '@dqcad/kernel';
+// The deterministic transcendentals (kernel 0.35.0): engine modules whose
+// geometry feeds kernel jobs (axis directions, connector outlines, stand-in
+// crown rings) must compute it bit-identically to the server's Node kernel.
+// Pure scalar functions — the same re-export precedent as `sectionToSvg`.
+export { detSin, detCos, detAtan, detAtan2, detAsin, detAcos, detExp, detPow } from '@dqcad/kernel';

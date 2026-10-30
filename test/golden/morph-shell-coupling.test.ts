@@ -33,7 +33,7 @@
 import { createHash } from 'node:crypto';
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { FdiTooth, Vec3 } from '@dqcad/shared-types';
-import { analyzeMesh, buildBvh, buildInnerSurface, closestPointBatch, constructShell, healOuterAnatomy, type IndexedMesh } from '@dqcad/kernel';
+import { analyzeMesh, buildBvh, buildInnerSurface, closestPointBatch, constructShell, healOuterAnatomy, type IndexedMesh, detCos, detSin } from '@dqcad/kernel';
 import { runMorphingStage, type PipelineContext, type PipelineMeshHandle } from '@dqcad/cad-pipeline';
 import { PROFILE } from '../../scripts/crown-journal-lib.ts';
 
@@ -54,7 +54,7 @@ function marginCircle(r: number, z: number, n: number): { closed: true; resample
   const p: Vec3[] = [];
   for (let i = 0; i < n; i++) {
     const t = (2 * Math.PI * i) / n;
-    p.push([r * Math.cos(t), r * Math.sin(t), z]);
+    p.push([r * detCos(t), r * detSin(t), z]);
   }
   return { closed: true, resampledPoints: p };
 }
@@ -72,7 +72,7 @@ function barrelTooth(profile: readonly [number, number][], seg: number): Indexed
   const rings: number[][] = [];
   for (const [z, r] of profile) {
     const ring: number[] = [];
-    for (let s = 0; s < seg; s++) { const th = (2 * Math.PI * s) / seg; ring.push(push(r * Math.cos(th), r * Math.sin(th), z)); }
+    for (let s = 0; s < seg; s++) { const th = (2 * Math.PI * s) / seg; ring.push(push(r * detCos(th), r * detSin(th), z)); }
     rings.push(ring);
   }
   const tr: number[] = [];
@@ -95,8 +95,8 @@ function frustumDie(): IndexedMesh {
   const P: number[] = [];
   const push = (x: number, y: number, z: number): number => { P.push(x, y, z); return P.length / 3 - 1; };
   const b: number[] = [], t: number[] = [];
-  for (let s = 0; s < seg; s++) { const th = (2 * Math.PI * s) / seg; b.push(push(mR * Math.cos(th), mR * Math.sin(th), mZ)); }
-  for (let s = 0; s < seg; s++) { const th = (2 * Math.PI * s) / seg; t.push(push(tR * Math.cos(th), tR * Math.sin(th), tZ)); }
+  for (let s = 0; s < seg; s++) { const th = (2 * Math.PI * s) / seg; b.push(push(mR * detCos(th), mR * detSin(th), mZ)); }
+  for (let s = 0; s < seg; s++) { const th = (2 * Math.PI * s) / seg; t.push(push(tR * detCos(th), tR * detSin(th), tZ)); }
   const tr: number[] = [];
   for (let s = 0; s < seg; s++) { const sn = (s + 1) % seg; tr.push(b[s]!, b[sn]!, t[sn]!); tr.push(b[s]!, t[sn]!, t[s]!); }
   const bc = push(0, 0, mZ); for (let s = 0; s < seg; s++) { const sn = (s + 1) % seg; tr.push(bc, b[sn]!, b[s]!); }

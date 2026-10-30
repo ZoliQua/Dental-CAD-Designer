@@ -85,6 +85,7 @@
 // signed volume / zero degenerate triangles via `analyzeMesh`.
 import type { IndexedMesh } from '../mesh/types.ts';
 import { orientNormalsConsistently } from '../intake/orient.ts';
+import { detCos, detSin } from '../math/detMath.ts';
 
 type Vec3 = readonly [number, number, number];
 
@@ -266,7 +267,7 @@ export function modCavityMesh(opts: ModCavityMeshOptions = {}): ModCavityMesh {
   const isthmusHalfLenMm = halfLen - boxLengthMm;
   const isthmusHalfWidthMm = isthmusWidthMm / 2;
   const taperRad = (taperDeg * Math.PI) / 180;
-  const tan = Math.tan(taperRad);
+  const tan = detSin(taperRad) / detCos(taperRad);
   const floorZ = tableZ - isthmusDepthMm;
   const gingivalFloorZ = tableZ - boxDepthMm;
   const isthmusFloorHalfWidthMm = isthmusHalfWidthMm - isthmusDepthMm * tan;
@@ -615,7 +616,7 @@ export function modOnlayCavityMesh(opts: ModOnlayCavityMeshOptions = {}): ModOnl
   const isthmusHalfLenMm = halfLen - boxLengthMm;
   const isthmusHalfWidthMm = isthmusWidthMm / 2;
   const taperRad = (taperDeg * Math.PI) / 180;
-  const tan = Math.tan(taperRad);
+  const tan = detSin(taperRad) / detCos(taperRad);
   const floorZ = tableZ - isthmusDepthMm;
   const gingivalFloorZ = tableZ - boxDepthMm;
   const isthmusFloorHalfWidthMm = isthmusHalfWidthMm - isthmusDepthMm * tan;

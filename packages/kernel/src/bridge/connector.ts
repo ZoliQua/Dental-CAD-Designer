@@ -71,6 +71,7 @@ import { normalizePlane, type Plane } from '../section/plane.ts';
 import { sectionMesh } from '../section/polyline.ts';
 import { buildBvh } from '../bvh/build.ts';
 import { raycast } from '../bvh/raycast.ts';
+import { detCos, detSin } from '../math/detMath.ts';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -369,7 +370,7 @@ export function makeEllipseConnectorProfile(semiE1Mm: number, semiE2Mm: number, 
   const out: Vec2[] = [];
   for (let i = 0; i < segments; i++) {
     const theta = (2 * Math.PI * i) / segments;
-    out.push([semiE1Mm * Math.cos(theta), semiE2Mm * Math.sin(theta)]);
+    out.push([semiE1Mm * detCos(theta), semiE2Mm * detSin(theta)]);
   }
   return out;
 }
@@ -378,7 +379,7 @@ export function makeEllipseConnectorProfile(semiE1Mm: number, semiE2Mm: number, 
  * `½·n·a·b·sin(2π/n)` — the analytic golden the area instrument is validated
  * against (an inscribed regular-in-angle ellipse polygon). */
 export function ellipseConnectorProfileAreaMm2(semiE1Mm: number, semiE2Mm: number, segments: number): number {
-  return 0.5 * segments * semiE1Mm * semiE2Mm * Math.sin((2 * Math.PI) / segments);
+  return 0.5 * segments * semiE1Mm * semiE2Mm * detSin((2 * Math.PI) / segments);
 }
 
 // ---------------------------------------------------------------------------

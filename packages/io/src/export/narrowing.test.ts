@@ -29,6 +29,16 @@ describe('f32UlpAt: closed-form float32 ULP values', () => {
     expect(f32UlpAt(0)).toBe(2 ** -149);
     expect(f32UlpAt(1e-40)).toBe(2 ** -149);
   });
+
+  it('reads the exponent exactly just below a power of two (regression: floor(log2) rounded up)', () => {
+    // The largest double below 1024: log2 of it rounds to exactly 10, so
+    // floor(Math.log2(x)) said 10 — the ULP of [1024, 2048) — not 9.
+    const below1024 = 1023.9999999999999;
+    expect(below1024).toBeLessThan(1024);
+    expect(f32UlpAt(below1024)).toBe(2 ** (9 - 23));
+    expect(f32UlpAt(1024)).toBe(2 ** (10 - 23));
+    expect(f32UlpAt(-below1024)).toBe(2 ** (9 - 23));
+  });
 });
 
 describe('measureF32NarrowingError', () => {

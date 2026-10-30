@@ -95,6 +95,7 @@ import { closestPoint } from '../bvh/closestPoint.ts';
 import type { Vec3 } from '../bvh/geometry.ts';
 import { applyMat4ToPoint, IDENTITY_MAT4, multiplyMat4, type Mat3, type Mat4 } from './transform.ts';
 import { samplePointsOnMesh } from './sampling.ts';
+import { detCos, detSin } from '../math/detMath.ts';
 
 function sub(a: Vec3, b: Vec3): Vec3 {
   return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -195,8 +196,8 @@ function rodrigues(r: Vec3): Mat3 {
   }
   const axis: Vec3 = [r[0] / theta, r[1] / theta, r[2] / theta];
   const [x, y, z] = axis;
-  const s = Math.sin(theta);
-  const c = Math.cos(theta);
+  const s = detSin(theta);
+  const c = detCos(theta);
   const t = 1 - c;
   return [
     [t * x * x + c, t * x * y - s * z, t * x * z + s * y],

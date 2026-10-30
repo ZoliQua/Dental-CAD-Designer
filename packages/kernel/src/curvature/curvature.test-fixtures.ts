@@ -18,6 +18,7 @@
 // float parameters, matching this project's determinism invariant.
 
 import type { IndexedMesh } from '../mesh/types.ts';
+import { detCos, detSin } from '../math/detMath.ts';
 
 type Vec3 = readonly [number, number, number];
 
@@ -58,7 +59,7 @@ export function cappedCylinderMesh(radius: number, height: number, segments: num
     const z = -halfHeight + (height * r) / heightSegments;
     for (let s = 0; s < segments; s++) {
       const theta = (2 * Math.PI * s) / segments;
-      positions.push([radius * Math.cos(theta), radius * Math.sin(theta), z]);
+      positions.push([radius * detCos(theta), radius * detSin(theta), z]);
     }
   }
   const bottomCenterIndex = positions.length;

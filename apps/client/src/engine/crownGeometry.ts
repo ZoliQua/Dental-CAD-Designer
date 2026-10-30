@@ -18,6 +18,7 @@
 // so the rest of the pipeline (morph -> shell -> QC) is runnable end to end.
 // This is called out as a reviewer-attention item, not hidden.
 import type { Vec3 } from '@dqcad/shared-types';
+import { detCos, detSin } from '@dqcad/kernel-workers';
 
 export interface IndexedBuffers {
   positions: Float64Array;
@@ -61,15 +62,15 @@ export function buildFrustum(
   const topRing: number[] = [];
   for (let s = 0; s < segments; s++) {
     const theta = (2 * Math.PI * s) / segments;
-    const cos = Math.cos(theta);
-    const sin = Math.sin(theta);
+    const cos = detCos(theta);
+    const sin = detSin(theta);
     bottomRing.push(positions.length / 3);
     positions.push(marginR * cos, marginR * sin, marginZ);
   }
   for (let s = 0; s < segments; s++) {
     const theta = (2 * Math.PI * s) / segments;
-    const cos = Math.cos(theta);
-    const sin = Math.sin(theta);
+    const cos = detCos(theta);
+    const sin = detSin(theta);
     topRing.push(positions.length / 3);
     positions.push(topR * cos, topR * sin, topZ);
   }
@@ -110,8 +111,8 @@ export function marginCircleFlat(cx: number, cy: number, r: number, z: number, n
   const out = new Float64Array(n * 3);
   for (let i = 0; i < n; i++) {
     const theta = (2 * Math.PI * i) / n;
-    out[i * 3] = cx + r * Math.cos(theta);
-    out[i * 3 + 1] = cy + r * Math.sin(theta);
+    out[i * 3] = cx + r * detCos(theta);
+    out[i * 3 + 1] = cy + r * detSin(theta);
     out[i * 3 + 2] = z;
   }
   return out;
@@ -122,7 +123,7 @@ export function marginCircleVecs(cx: number, cy: number, r: number, z: number, n
   const out: Vec3[] = [];
   for (let i = 0; i < n; i++) {
     const theta = (2 * Math.PI * i) / n;
-    out.push([cx + r * Math.cos(theta), cy + r * Math.sin(theta), z]);
+    out.push([cx + r * detCos(theta), cy + r * detSin(theta), z]);
   }
   return out;
 }
@@ -201,7 +202,7 @@ export function builtinLibraryTooth(
     for (let s = 0; s < segments; s++) {
       const theta = (2 * Math.PI * s) / segments;
       ring.push(positions.length / 3);
-      positions.push(radius * Math.cos(theta), radius * Math.sin(theta), z);
+      positions.push(radius * detCos(theta), radius * detSin(theta), z);
     }
     rings.push(ring);
   }

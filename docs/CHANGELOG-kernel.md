@@ -59,6 +59,84 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.35.0] — Cross-platform determinism: the transcendental functions
+
+**A deliberate numeric change: kernel outputs are now bit-identical on every
+platform. Before this version they were not. Linux x64 CI has failed the
+same golden pins for as far back as its run history goes, while darwin-arm64
+passed them.**
+
+- **The cause.** ECMAScript leaves `Math.sin`, `cos`, `atan2`, `acos`,
+  `exp`, `pow` (and the rest of the transcendentals) implementation-
+  approximated. V8 computes them with a C++ libm that is compiled per target,
+  and the compiler fuses multiply-adds on one target and not on the other.
+  The same Node version therefore returns results that differ in the last
+  bit on darwin-arm64 and on x64. This was measured on 200 000 random inputs
+  per function: sin, cos, tan, atan, atan2, acos, asin, exp, log, pow, log10,
+  expm1, log1p, sinh, cosh and tanh all differ. sqrt, hypot, cbrt, log2 and
+  `x ** 2` did not. Every op downstream of a sine therefore hashed
+  differently on CI: curvature, proposeMargin, the bridge and crown journal
+  chains, the open-arch crown, and the client fixture assets. Determinism is
+  hard invariant 2, and the server's dual validation runs on whatever
+  architecture it is deployed on, so this was a correctness defect and not
+  only a CI one.
+- **`math/detMath.ts` (new).** A pure-TypeScript port of FreeBSD msun
+  (fdlibm 5.3), providing `detSin`, `detCos`, `detAtan`, `detAtan2`,
+  `detAsin`, `detAcos`, `detExp` and `detPow`. It uses only `+ - * /`,
+  `Math.sqrt` and typed-array word views, all of which ECMAScript specifies
+  exactly, so every conforming engine returns the same bits.
+  - `@errorBound`: fdlibm's, below 1 ulp. Tested within 1 ulp of `Math.*`
+    with 20 000 property-test runs per function, on darwin-arm64 and on x64.
+    IEEE special values follow ECMAScript; `pow` differs from C99 in two
+    cases, `NaN` exponents and `(±1)^±∞`.
+  - `detSin` and `detCos` reduce arguments with fdlibm's three-step
+    Cody–Waite reduction for |x| ≤ 2^20·π/2, and throw a `RangeError`
+    beyond that instead of porting the Payne–Hanek path, which no kernel
+    angle needs.
+  - A pinned SHA-256 over a fixed input grid is identical under both
+    architectures.
+- **Callers.**
+  - Every kernel op, kernel test fixture, the server crown fixture, the
+    golden harness libraries (`scripts/*-lib.ts`) and the golden tests now
+    call detMath.
+  - So do the client engine modules whose geometry feeds kernel jobs: the
+    axis direction, the connector outlines and the stand-in rings. The
+    function is re-exported through `@dqcad/kernel-workers`.
+  - A lint rule (`no-restricted-properties` / `no-restricted-syntax`)
+    forbids `Math.<transcendental>` and `**` in that code.
+  - The tooth-library starter-asset generators call detMath too. Every
+    asset's mesh bytes (Float32) are unchanged at 1.1.0 and at 1.2.0. The
+    Float64 metadata of the 14 posterior assets moved by ≤ 1 ulp, so their
+    metadata checksums changed, and the recorded 1.1.0 checksums were
+    re-recorded. Those values had never been platform-stable: under x64 the
+    `Math.*` generators already produced other checksums.
+  - A server data directory that had already seeded those versions must
+    drop its tooth-library metadata cache. Its write-once guard refuses the
+    changed bytes, as it should.
+- **io (not kernel, same root cause).** `f32UlpAt` now reads the exponent
+  from the double's bits instead of using `floor(Math.log2(x))`. The log
+  rounded up just below a power of two: for the largest double below 1024 it
+  reported the ULP of [1024, 2048), which is a conservative 2× bound, not
+  the exact one. A regression test covers it.
+- **What moved.**
+  - **Numeric** (≤ 1 ulp per transcendental; the new values are the same
+    on darwin-arm64 and on x64, verified by running the suite under both):
+    - the `curvature` and `proposeMargin` kernel-op hashes (both now equal
+      Linux CI's old values: there, `atan2` matched fdlibm);
+    - the curvature golden;
+    - the crown stand-in innerSurface, anatomyPlacement, morphing and qc
+      pins (its fixture rings use sin/cos);
+    - the bridge journal's abutmentSurfaces, ponticInterface, connectors,
+      framework and qc pins;
+    - the bridge-case abutment-surface and connector pins;
+    - the open-arch crown's anatomyPlacement and morphState pins;
+    - both client bridge fixture assets.
+  - **Unchanged:** the shell and freeform stages (behind the voxel heal),
+    the bridge assembly, and the die, inner surface and final mesh of the
+    open-arch crown.
+  - **Version-only:** the cavity `*-qc` pins and the server traceability
+    byte-golden. This was verified by running at `0.34.0` with the new code.
+
 ## [0.34.0] — Phase 10 Task 4: the cervical fit
 
 **New op; no existing output changed. Every geometry stage pin and every

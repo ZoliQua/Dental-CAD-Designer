@@ -24,6 +24,7 @@
 // Frame: X mesio-distal, Z occlusal. Units mm. Deterministic Float64.
 import type { Vec3 } from '../bvh/geometry.ts';
 import type { IndexedMesh } from '../mesh/types.ts';
+import { detCos, detSin } from '../math/detMath.ts';
 
 export interface OpenArchPrepParams {
   readonly segments: number;
@@ -83,7 +84,7 @@ function dieProfile(p: OpenArchPrepParams): Array<[number, number]> {
   const prof: Array<[number, number]> = [[0, p.topZMm + p.domeMm]];
   for (let k = DOME_RINGS - 1; k >= 1; k--) {
     const a = (k / DOME_RINGS) * (Math.PI / 2);
-    prof.push([p.topRadiusMm * Math.cos(a), p.topZMm + p.domeMm * Math.sin(a)]);
+    prof.push([p.topRadiusMm * detCos(a), p.topZMm + p.domeMm * detSin(a)]);
   }
   prof.push([p.topRadiusMm, p.topZMm]);
   const taper: [number, number] = [p.topRadiusMm - p.marginRadiusMm, p.topZMm - mz];
@@ -109,7 +110,7 @@ function neighbourLift(x: number, y: number, p: OpenArchPrepParams): number {
   let lift = 0;
   for (const cx of [-n.centreMm, n.centreMm]) {
     const d = Math.hypot(x - cx, y) / n.radiusMm;
-    if (d < 1) lift = Math.max(lift, n.heightMm * Math.sqrt(1 - d ** 4));
+    if (d < 1) lift = Math.max(lift, n.heightMm * Math.sqrt(1 - d * d * d * d));
   }
   return lift;
 }
@@ -131,8 +132,8 @@ export function openArchPrepCase(overrides: Partial<OpenArchPrepParams> = {}): O
     const [r, z] = kept[k]!;
     for (let s = 0; s < n; s++) {
       const th = (2 * Math.PI * s) / n;
-      const x = r * Math.cos(th);
-      const y = r * Math.sin(th);
+      const x = r * detCos(th);
+      const y = r * detSin(th);
       positions.push(x, y, z ?? neighbourLift(x, y, p));
     }
   }
@@ -173,7 +174,7 @@ export function dieVolumeAnalytic(
   rimRadius: number,
   floorZ: number,
 ): number {
-  const c = (segments / 2) * Math.sin((2 * Math.PI) / segments);
+  const c = (segments / 2) * detSin((2 * Math.PI) / segments);
   let v = 0;
   for (let k = 0; k + 1 < profile.length; k++) {
     const [a, za] = profile[k]!;
@@ -183,7 +184,7 @@ export function dieVolumeAnalytic(
     // ∫_a^b 2ρ (z(ρ) − floor) dρ, z linear from za to zb.
     const m = (zb - za) / (b - a);
     const z0 = za - floorZ - m * a; // z(ρ) − floor = z0 + mρ
-    v += z0 * (b * b - a * a) + ((2 * m) / 3) * (b ** 3 - a ** 3);
+    v += z0 * (b * b - a * a) + ((2 * m) / 3) * (b * b * b - a * a * a);
   }
   return c * v;
 }
@@ -207,11 +208,11 @@ export function closedFrustumDie(
   const positions: number[] = [];
   for (let s = 0; s < n; s++) {
     const th = (2 * Math.PI * s) / n;
-    positions.push(marginR * Math.cos(th), marginR * Math.sin(th), marginZ);
+    positions.push(marginR * detCos(th), marginR * detSin(th), marginZ);
   }
   for (let s = 0; s < n; s++) {
     const th = (2 * Math.PI * s) / n;
-    positions.push(topR * Math.cos(th), topR * Math.sin(th), topZ);
+    positions.push(topR * detCos(th), topR * detSin(th), topZ);
   }
   const bottomCentre = 2 * n;
   const topCentre = 2 * n + 1;
@@ -226,7 +227,7 @@ export function closedFrustumDie(
   const marginLoop: Vec3[] = [];
   for (let s = 0; s < n; s++) marginLoop.push([positions[s * 3]!, positions[s * 3 + 1]!, positions[s * 3 + 2]!]);
   // Similar n-gon cross-sections: V = h/3 · (A₁ + A₂ + √(A₁A₂)).
-  const c = (n / 2) * Math.sin((2 * Math.PI) / n);
+  const c = (n / 2) * detSin((2 * Math.PI) / n);
   const a1 = c * marginR * marginR;
   const a2 = c * topR * topR;
   const volumeMm3 = ((topZ - marginZ) / 3) * (a1 + a2 + Math.sqrt(a1 * a2));

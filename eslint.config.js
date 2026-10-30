@@ -16,6 +16,48 @@ const boundaryElements = [
   { type: 'shared-types', pattern: 'packages/shared-types/**' },
 ];
 
+/** Cross-platform determinism rules — see the block that applies them. */
+const DETERMINISTIC_MATH_RULES = {
+  'no-restricted-properties': [
+    'error',
+    ...[
+      'sin',
+      'cos',
+      'tan',
+      'asin',
+      'acos',
+      'atan',
+      'atan2',
+      'exp',
+      'expm1',
+      'log',
+      'log1p',
+      'log2',
+      'log10',
+      'pow',
+      'sinh',
+      'cosh',
+      'tanh',
+      'asinh',
+      'acosh',
+      'atanh',
+      'cbrt',
+    ].map((property) => ({
+      object: 'Math',
+      property,
+      message:
+        'Math transcendentals are not bit-identical across platforms — use the detMath port (detSin, detCos, detAtan2, …) from @dqcad/kernel.',
+    })),
+  ],
+  'no-restricted-syntax': [
+    'error',
+    {
+      selector: "BinaryExpression[operator='**'], AssignmentExpression[operator='**=']",
+      message: '`**` is Math.pow (not bit-identical across platforms) — multiply, or use detPow.',
+    },
+  ],
+};
+
 export default tseslint.config(
   {
     ignores: [
@@ -169,6 +211,33 @@ export default tseslint.config(
         },
       ],
     },
+  },
+  {
+    // Determinism across platforms (CLAUDE.md hard invariant 2): ECMAScript's
+    // transcendental Math functions are implementation-approximated, and V8's
+    // differ in the last bit between arm64 and x64. Geometry code calls the
+    // kernel's pure-IEEE fdlibm port (packages/kernel/src/math/detMath.ts)
+    // instead; `**` is `Math.pow`. Tests may compare against `Math.*`.
+    files: [
+      'packages/kernel/src/**',
+      'packages/io/src/**',
+      'packages/cad-pipeline/src/**',
+      'packages/tooth-library/src/**',
+      'apps/server/src/**',
+      // the client engine modules whose geometry feeds kernel jobs
+      'apps/client/src/engine/axis.ts',
+      'apps/client/src/engine/bridgeCaseGeometry.ts',
+      'apps/client/src/engine/bridgeDesign.ts',
+      'apps/client/src/engine/crownGeometry.ts',
+    ],
+    ignores: ['**/*.test.ts', 'packages/kernel/src/math/detMath.ts'],
+    rules: DETERMINISTIC_MATH_RULES,
+  },
+  {
+    // The golden harness libraries and golden tests BUILD the geometry whose
+    // hashes are pinned — the same rule, tests included.
+    files: ['scripts/*-lib.ts', 'test/golden/**/*.ts'],
+    rules: DETERMINISTIC_MATH_RULES,
   },
   {
     files: ['apps/client/src/ui/**', 'apps/client/src/state/**'],

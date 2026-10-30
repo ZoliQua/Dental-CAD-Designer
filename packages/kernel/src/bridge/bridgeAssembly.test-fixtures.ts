@@ -40,6 +40,7 @@ import { closedShellUnit, submeshFromTriRange, type ClosedShellUnit } from './fr
 import { buildConnectorFrame, loftConnectorProfiles, makeEllipseConnectorProfile, measureConnectorMinArea } from './connector.ts';
 import type { FitRegionDescriptor } from './bridgeAssembly.ts';
 import { orientNormalsConsistently } from '../intake/orient.ts';
+import { detCos, detSin } from '../math/detMath.ts';
 
 /** Translate a mesh by (dx,0,0) — a pure X translation (topology + winding
  * preserved; triangle ranges stay valid). */
@@ -66,8 +67,8 @@ function cappedCylinder(cx: number, rad: number, height: number, segments: numbe
   const top: number[] = [];
   for (let s = 0; s < segments; s++) {
     const th = (2 * Math.PI * s) / segments;
-    bottom.push(pushV(cx + rad * Math.cos(th), rad * Math.sin(th), 0));
-    top.push(pushV(cx + rad * Math.cos(th), rad * Math.sin(th), height));
+    bottom.push(pushV(cx + rad * detCos(th), rad * detSin(th), 0));
+    top.push(pushV(cx + rad * detCos(th), rad * detSin(th), height));
   }
   const cb = pushV(cx, 0, 0);
   const ct = pushV(cx, 0, height);

@@ -36,6 +36,7 @@ import type { RunnablePool } from './bridgeDesign';
 import { abutmentMarginPoints, bridgeAbutmentTeeth } from './bridgeWorkflow';
 import { builtinLibraryTooth, flattenLoop } from './crownGeometry';
 import type { ResolvedAnatomy } from './toothLibrary';
+import { detCos, detSin } from '@dqcad/kernel-workers';
 
 type Buffers = { positions: Float64Array; indices: Uint32Array };
 type PonticStyle = 'hygienic' | 'ridgeLap' | 'ovate';
@@ -244,7 +245,7 @@ function ellipseProfileFlat(semiAxisMm: number, segments: number): number[] {
   const out: number[] = [];
   for (let s = 0; s < segments; s++) {
     const th = (2 * Math.PI * s) / segments;
-    out.push(semiAxisMm * Math.cos(th), semiAxisMm * Math.sin(th));
+    out.push(semiAxisMm * detCos(th), semiAxisMm * detSin(th));
   }
   return out;
 }

@@ -76,6 +76,8 @@ import {
   type SurfaceSpline,
   type SurfacePoint,
   type Vec3,
+  detCos,
+  detSin,
 } from '@dqcad/kernel';
 import { DEFAULT_UNDERCUT_BLOCKOUT_THRESHOLD_MM } from '@dqcad/clinical-profiles';
 
@@ -307,11 +309,11 @@ function shellFrustum(marginR: number, topR: number, topZ: number, capBottom: bo
   const top: number[] = [];
   for (let s = 0; s < segments; s++) {
     const th = (2 * Math.PI * s) / segments;
-    bottom.push(push(marginR * Math.cos(th), marginR * Math.sin(th), SHELL_MARGIN_Z));
+    bottom.push(push(marginR * detCos(th), marginR * detSin(th), SHELL_MARGIN_Z));
   }
   for (let s = 0; s < segments; s++) {
     const th = (2 * Math.PI * s) / segments;
-    top.push(push(topR * Math.cos(th), topR * Math.sin(th), topZ));
+    top.push(push(topR * detCos(th), topR * detSin(th), topZ));
   }
   const tris: number[] = [];
   for (let s = 0; s < segments; s++) {
@@ -338,7 +340,7 @@ function shellMarginLoop(n: number): Vec3[] {
   const loop: Vec3[] = [];
   for (let i = 0; i < n; i++) {
     const th = (2 * Math.PI * i) / n;
-    loop.push([SHELL_MARGIN_R * Math.cos(th), SHELL_MARGIN_R * Math.sin(th), SHELL_MARGIN_Z]);
+    loop.push([SHELL_MARGIN_R * detCos(th), SHELL_MARGIN_R * detSin(th), SHELL_MARGIN_Z]);
   }
   return loop;
 }
@@ -577,8 +579,9 @@ export async function computeKernelOpsSnapshot(): Promise<KernelOpsSnapshot> {
   {
     const r = 3;
     const d = 3; // boolean-pair-a/b centers are 1.5 apart from origin each way.
-    const lens = (Math.PI * (4 * r + d) * (2 * r - d) ** 2) / 12;
-    const single = (4 / 3) * Math.PI * r ** 3;
+    const capHeightSq = (2 * r - d) * (2 * r - d);
+    const lens = (Math.PI * (4 * r + d) * capHeightSq) / 12;
+    const single = (4 / 3) * Math.PI * (r * r * r);
     const analytic = { union: 2 * single - lens, subtract: single - lens, intersect: lens };
     // The committed fixture's OWN sidecar tolerance (see
     // test-fixtures/synthetic/boolean-pair-a.expected.json's

@@ -53,6 +53,8 @@ import {
   offsetMesh,
   union,
   type IndexedMesh,
+  detCos,
+  detSin,
 } from '@dqcad/kernel';
 import { parseStl, writeStlBinary } from '@dqcad/io';
 
@@ -303,9 +305,9 @@ describe.skipIf(!RUN_PERF)('Phase 8 perf harness — representative ops (env-gat
         const phi = (Math.PI * (i + 0.5)) / queryCount;
         const theta = (2 * Math.PI * i * 0.618) % (2 * Math.PI);
         const r = 7; // outside the radius-6 sphere
-        points[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-        points[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-        points[i * 3 + 2] = r * Math.cos(phi);
+        points[i * 3] = r * detSin(phi) * detCos(theta);
+        points[i * 3 + 1] = r * detSin(phi) * detSin(theta);
+        points[i * 3 + 2] = r * detCos(phi);
       }
       let results: ReturnType<typeof closestPointBatch> | undefined;
       const elapsedQuery = ms(() => {

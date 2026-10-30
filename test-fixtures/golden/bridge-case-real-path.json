@@ -1,25 +1,25 @@
 {
-  "kernelVersion": "0.34.0",
+  "kernelVersion": "0.35.0",
   "manifoldVersion": "3.5.1",
   "stages": {
     "hygienic": {
-      "bridgeAbutmentSurfaces": "557213bff86cda8943b7d33050f87e4abb0dc9c64371f398ef77657c21aa4740",
+      "bridgeAbutmentSurfaces": "f0619822d5226eb225d5b2e6194bccb5cdfe15e46b39f177d437ca9fa3b76625",
       "bridgePontic": "3d2c690ace0fff23019069d15965c264828e3ed620cb411eda560777314b1107",
-      "bridgeConnectors": "98a0b8f05da046da79c87d35846e5a1d71de48b0f59004d291614fc7aa249739",
+      "bridgeConnectors": "99219d42e65822783ce9a6d9bdbf6381f34dd2a2507b373cd897323d90051b72",
       "bridgeFramework": "framework:fullContour",
       "finalMesh": "5006b9ba9ceab389b87c8994788a5f9d4dfc51794fb7d265b5da7e47d01f2443"
     },
     "ridgeLap": {
-      "bridgeAbutmentSurfaces": "557213bff86cda8943b7d33050f87e4abb0dc9c64371f398ef77657c21aa4740",
+      "bridgeAbutmentSurfaces": "f0619822d5226eb225d5b2e6194bccb5cdfe15e46b39f177d437ca9fa3b76625",
       "bridgePontic": "7af32cfc172c54109a5dc248304d70d48fd6bc64eab7995ebdf871eca9a50669",
-      "bridgeConnectors": "013f2a1c38691e344e6e0f9c3e27cfb24e71964c350a2bb842f1545c9188a3bb",
+      "bridgeConnectors": "20ec331f6773aaa40b389101b30a097d166e5556dabda46606d74671654f5844",
       "bridgeFramework": "framework:fullContour",
       "finalMesh": "416dbe128723c101d497bb21edb066a05f85ab1879b9ae8b27d26373d3e856f2"
     },
     "ovate": {
-      "bridgeAbutmentSurfaces": "557213bff86cda8943b7d33050f87e4abb0dc9c64371f398ef77657c21aa4740",
+      "bridgeAbutmentSurfaces": "f0619822d5226eb225d5b2e6194bccb5cdfe15e46b39f177d437ca9fa3b76625",
       "bridgePontic": "0790adbebaa0edf47762d4a6d6856f66f03ba3a46ade64e6f21e092f8e9833ed",
-      "bridgeConnectors": "e9dd9c96b9e3528ea2013673e88e78c2f28c96834f978b8fa69d274d6c7490cf",
+      "bridgeConnectors": "429d5a719f769a0443592d1cb159617f6bd66fcf3edde705816fa51af153c909",
       "bridgeFramework": "framework:fullContour",
       "finalMesh": "df9e34e524a371d705d1ef764a1d45f6efbf52737a98549d877f9dfef1217990"
     }

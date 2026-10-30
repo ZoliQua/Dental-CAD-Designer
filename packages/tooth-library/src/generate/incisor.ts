@@ -37,6 +37,7 @@ import {
   vertexAt,
 } from '../geometry/ringMesh.ts';
 import { INCISOR_FDI_PARAMS, type IncisorTypeParams } from './toothParams.ts';
+import { detCos, detSin } from '@dqcad/kernel';
 
 /** Ring tessellation density — divisible by 4 and 8 so every cardinal
  * landmark angle (0/45/90/135/180/225/270/315 degrees) lands on an EXACT
@@ -82,16 +83,16 @@ function crossSection(
   const ryLingualBaseline = mix(params.ryLingualCervicalMm, params.ryLingualIncisalMm, smoothstep(0, 1, v));
 
   return (theta: number) => {
-    const x = rx * Math.cos(theta);
-    if (Math.sin(theta) >= 0) {
-      return { x, y: ryBuccal * Math.sin(theta) };
+    const x = rx * detCos(theta);
+    if (detSin(theta) >= 0) {
+      return { x, y: ryBuccal * detSin(theta) };
     }
     const w = angularWindow(theta, 1.5 * Math.PI, params.lingualAngularHalfWidthRad);
     const ryLingual =
       ryLingualBaseline
       + params.cingulumBulgeMm * gaussianBump(v, params.vCingulum, params.sigmaCingulumV) * w
       - params.fossaDepthMm * gaussianBump(v, params.vFossa, params.sigmaFossaV) * w;
-    return { x, y: ryLingual * Math.sin(theta) };
+    return { x, y: ryLingual * detSin(theta) };
   };
 }
 

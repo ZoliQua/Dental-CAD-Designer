@@ -7,6 +7,7 @@
 // shipped kernel API" convention as halfedge.test-fixtures.ts).
 import type { Vec3 } from '../bvh/geometry.ts';
 import type { Mat3 } from './transform.ts';
+import { detCos, detSin } from '../math/detMath.ts';
 
 /** A known rotation about an arbitrary axis, via the exact (not linearized)
  * Rodrigues formula — deliberately NOT reusing icpRefine.ts's own
@@ -15,8 +16,8 @@ import type { Mat3 } from './transform.ts';
 export function rotationAboutAxis(axisIn: Vec3, angleRad: number): Mat3 {
   const len = Math.hypot(axisIn[0], axisIn[1], axisIn[2]);
   const [x, y, z] = [axisIn[0] / len, axisIn[1] / len, axisIn[2] / len];
-  const s = Math.sin(angleRad);
-  const c = Math.cos(angleRad);
+  const s = detSin(angleRad);
+  const c = detCos(angleRad);
   const t = 1 - c;
   return [
     [t * x * x + c, t * x * y - s * z, t * x * z + s * y],

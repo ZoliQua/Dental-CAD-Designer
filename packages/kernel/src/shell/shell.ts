@@ -120,6 +120,7 @@ import { orthonormalBasis } from '../axis/hemisphere.ts';
 import { distanceToClosedPolyline } from '../offset/innerSurfaceOffset.ts';
 import { cleanupMesh } from '../boolean/manifold.ts';
 import { closedEdgeLoopProblem } from '../mesh/edgeLoop.ts';
+import { detAtan2 } from '../math/detMath.ts';
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -542,7 +543,7 @@ function stitchMarginBand(
   };
   const az = (p: Vec3): number => {
     const [pu, pv] = projUV(p);
-    return Math.atan2(pv, pu);
+    return detAtan2(pv, pu);
   };
   const signedArea = (idxs: number[], get: (i: number) => Vec3): number => {
     let a = 0;

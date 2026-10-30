@@ -43,7 +43,7 @@ Layer rule (lint-enforced): `ui → engine → kernel-workers → kernel`. `kern
 ## Hard invariants — never break these
 
 1. **Float64 in the kernel.** All coordinates, transforms, and math in `kernel/`, `io/`, `cad-pipeline/` use Float64. `Float32Array` may only appear in `engine/` render copies. Adding a `Float32Array` to the kernel is a bug even if tests pass.
-2. **Determinism.** Same inputs + params + kernel version ⇒ bit-identical outputs. No unseeded randomness, no `Date.now()` in computations, no results dependent on worker scheduling. Every op is a pure function of its inputs.
+2. **Determinism.** Same inputs + params + kernel version ⇒ bit-identical outputs. No unseeded randomness, no `Date.now()` in computations, no results dependent on worker scheduling. Every op is a pure function of its inputs. Bit-identical across platforms too: `Math.sin`/`cos`/`atan2`/`acos`/`exp`/`pow` (and `**`) differ in the last bit between arm64 and x64 — geometry code uses the kernel's `detSin`, `detCos`, `detAtan2`, … (`kernel/src/math/detMath.ts`, lint-enforced).
 3. **Journal everything.** Every destructive operation appends an `Operation` (name, params, input/output hashes) to the case journal. Replaying the journal must reproduce identical hashes — CI checks this. If your feature mutates geometry and doesn't journal, it's incomplete.
 4. **QC gates block export.** Watertight, manifold, no self-intersections, min wall thickness, connector cross-section, margin-fit deviation, seating penetration. Gates may be *acknowledged with a warning* (journaled, in the report) — never silently bypassed. Never weaken a gate threshold to make a test pass.
 5. **No silent data mutation.** Unit rescale, mesh repair, normal flips → explicit user confirmation + journal entry.

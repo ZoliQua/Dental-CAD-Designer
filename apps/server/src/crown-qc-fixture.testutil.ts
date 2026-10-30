@@ -20,6 +20,7 @@ import {
   type RunCrownQcInput,
 } from '@dqcad/cad-pipeline';
 import { hashMesh } from './journal-replay.js';
+import { detCos, detSin } from '@dqcad/kernel';
 
 // --- geometry builders (ported verbatim from cad-pipeline/report.test.ts) ---
 const MARGIN_R = 1.2,
@@ -47,11 +48,11 @@ function buildFrustum(
     t: number[] = [];
   for (let s = 0; s < seg; s++) {
     const th = (2 * Math.PI * s) / seg;
-    b.push(push(mR * Math.cos(th), mR * Math.sin(th), mZ));
+    b.push(push(mR * detCos(th), mR * detSin(th), mZ));
   }
   for (let s = 0; s < seg; s++) {
     const th = (2 * Math.PI * s) / seg;
-    t.push(push(tR * Math.cos(th), tR * Math.sin(th), tZ));
+    t.push(push(tR * detCos(th), tR * detSin(th), tZ));
   }
   const tr: number[] = [];
   for (let s = 0; s < seg; s++) {
@@ -80,7 +81,7 @@ function marginCircle(r: number, z: number, n: number): { closed: true; resample
   const resampledPoints: Vec3[] = [];
   for (let i = 0; i < n; i++) {
     const th = (2 * Math.PI * i) / n;
-    resampledPoints.push([r * Math.cos(th), r * Math.sin(th), z]);
+    resampledPoints.push([r * detCos(th), r * detSin(th), z]);
   }
   return { closed: true, resampledPoints };
 }
@@ -103,7 +104,7 @@ function cylinderTooth(radius: number, height: number, rings: number, segments: 
     const z = (height * r) / (rings - 1);
     for (let s = 0; s < segments; s++) {
       const th = (2 * Math.PI * s) / segments;
-      positions.push(radius * Math.cos(th), radius * Math.sin(th), z);
+      positions.push(radius * detCos(th), radius * detSin(th), z);
     }
   }
   const indices: number[] = [];

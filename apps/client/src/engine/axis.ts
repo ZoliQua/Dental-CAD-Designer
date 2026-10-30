@@ -58,6 +58,7 @@ import {
   type AxisCandidateSummary,
   type AxisSearchMode,
 } from '../state/axisStore';
+import { detAsin, detAtan2, detCos, detSin } from '@dqcad/kernel-workers';
 
 const DEG2RAD = Math.PI / 180;
 const RAD2DEG = 180 / Math.PI;
@@ -69,8 +70,8 @@ const RAD2DEG = 180 / Math.PI;
 export function sphericalToDirection(azimuthDeg: number, elevationDeg: number): Vec3 {
   const az = azimuthDeg * DEG2RAD;
   const el = elevationDeg * DEG2RAD;
-  const cosEl = Math.cos(el);
-  return [cosEl * Math.cos(az), cosEl * Math.sin(az), Math.sin(el)];
+  const cosEl = detCos(el);
+  return [cosEl * detCos(az), cosEl * detSin(az), detSin(el)];
 }
 
 /** Inverse of `sphericalToDirection` — `direction` need not be unit length
@@ -82,8 +83,8 @@ export function directionToSpherical(direction: Vec3): { azimuthDeg: number; ele
   const len = Math.hypot(direction[0], direction[1], direction[2]);
   if (!(len > 0)) return { azimuthDeg: 0, elevationDeg: 90 };
   const [x, y, z] = [direction[0] / len, direction[1] / len, direction[2] / len];
-  const elevationDeg = Math.asin(Math.min(1, Math.max(-1, z))) * RAD2DEG;
-  const azimuthDeg = Math.hypot(x, y) > 1e-12 ? Math.atan2(y, x) * RAD2DEG : 0;
+  const elevationDeg = detAsin(Math.min(1, Math.max(-1, z))) * RAD2DEG;
+  const azimuthDeg = Math.hypot(x, y) > 1e-12 ? detAtan2(y, x) * RAD2DEG : 0;
   return { azimuthDeg, elevationDeg };
 }
 

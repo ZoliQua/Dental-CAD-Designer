@@ -55,7 +55,7 @@ const µm = (mm: number): string => `${(mm * 1000).toFixed(3)} µm`;
 // change (bump + changelog), never a silent regen (the WASM union is
 // manifoldVersion-guarded, the crown/cavity-acceptance precedent).
 // ---------------------------------------------------------------------------
-const EXPECTED_KERNEL_VERSION = '0.34.0';
+const EXPECTED_KERNEL_VERSION = '0.35.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 function installedManifoldVersion(): string {
   const pkg = JSON.parse(
@@ -71,16 +71,25 @@ function installedManifoldVersion(): string {
 // version-string bump, same as the crown/cavity-standin-qc pins. Change ONLY with a
 // deliberate kernel/manifold version bump + changelog entry (CLAUDE.md testing
 // expectations) — NEVER a silent regen.
+//
+// Changed at 0.35.0 (cross-platform determinism): the bridge fixture's rings and
+// the kernel's transcendentals now use detMath (pure-IEEE fdlibm), so
+// abutmentSurfaces, ponticInterface, connectors and framework moved (≤ 1 ulp per
+// sin/cos/atan2/acos; the assembly, through manifold's union, is byte-identical).
+// Old abutmentSurfaces 217b2b13…|d64954bd…, ponticInterface 33a62fdc…|64124f36…,
+// connectors 87fdfd93…|d1d0100a…, fullContour framework c33569d4…, framework-chain
+// framework 6d7932a3… (full values in git history). The new values are the same
+// on darwin-arm64 and x64 — the old ones were not (Linux CI drifted).
 const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // --- full-contour chain ---
   'bridge-fullContour-abutmentSurfaces':
-    '217b2b13d6d41e657f9b652009a4efe1d3c285a6c4fa428b0030eb0c5070cc8c|d64954bd314424813eed60441adc74dce985310d225e5a9702499bc633f7261c',
+    '1e1565f6e650bf24b7c54ca7456abfd9e535ffd11b41561278f3c392cf9bfda2|781ac6db8a515739137d04dc7a05418f8a7e78978e0d413de29f9dd8b619f36f',
   'bridge-fullContour-ponticInterface':
-    '33a62fdc617b6a33c1b3e29547bad02af39874129864e7793ae4662cc11fe430|64124f36c092bf29f4734e1d048cdc161bae31bdebc2d3cb6b082e09eec0229a',
+    '635da922576298f1715f0f3ccff2497ca28eff9484ca9038a1b193de5f9a786b|3bbc98c2af73164e80a5cd108ccba1354c88206d6083a0497c13e409a8f5ab96',
   'bridge-fullContour-connectors':
-    '87fdfd93ad0a7ae8b458cf2464ce83001359ea945ed496867ef4c1af02faea4d|d1d0100a85ee171588af936fd69b51ec23c3d1519ea838ec93c38bbd0e693a77',
+    'd731e0767efed948ee7fd2c507b1ee017fee24808227ba0b1dc581c6af8ad6e3|76f56c82d81ff3e434fd322635d77d13e2c2b0e50aabb77453da86b21a6423ee',
   'bridge-fullContour-framework':
-    'c33569d42f32dd2066ee979259b5486f754dd509f7f0cd6c309136779586e1ca|33a62fdc617b6a33c1b3e29547bad02af39874129864e7793ae4662cc11fe430|1924382f4133673a8bed9e244e3773974c2ec992af8ff3b249b248b07d672958',
+    'b2cfd81d09fefe8a384a7d16119175cfbadc2e537a2db25db0856b989838930a|635da922576298f1715f0f3ccff2497ca28eff9484ca9038a1b193de5f9a786b|e6d453318bdd249819495f8439042db79ad43c213206f4faeb60e5c1b9f9a56d',
   'bridge-fullContour-assembly': 'e90ab9ccdedcdbf34c508b4abf033940b5718b2aa2f74bd1741221bb801108cb',
   // Advanced 0.26.0 → 0.27.0 (Feature #4): DELIBERATE, message+version — the
   // selfIntersection gate is now a TRUE geometric tri-tri determination (was a
@@ -120,16 +129,21 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // fit and the ring trim are not in this chain; hashQcReport tracks the embedded
   // kernelVersion, every geometry stage pin above BYTE-IDENTICAL (verified: the whole
   // golden suite passes at 0.33.0 with the new code). Old hash: 300309b51f9d94ff4c66eebe0adc0c203a01067fc998c48f835a3a74d80de24d. See docs/CHANGELOG-kernel.md's [0.34.0] entry.
-  'bridge-fullContour-qc': '9b770eaec9a4163032daccb99f92d80a061850d24eb84fc35d7fea2fd2ad8eda',
+  // Advanced 0.34.0 → 0.35.0 (cross-platform determinism): NUMERIC — the chain's
+  // transcendentals (the fixture's ring sin/cos, the kernel's atan2/acos) now go
+  // through detMath (pure-IEEE fdlibm) instead of Math.*, ≤ 1 ulp per call; the
+  // hashes are now the same on darwin-arm64 and x64 (verified under both).
+  // Old hash: 9b770eaec9a4163032daccb99f92d80a061850d24eb84fc35d7fea2fd2ad8eda. See docs/CHANGELOG-kernel.md's [0.35.0] entry.
+  'bridge-fullContour-qc': '38817a0ee5b3a08cc368e1e010f9227edaf433fc05b7107d223c0ba8bbf0e62a',
   // --- framework chain (bridge.framework outputs the cut-back unit hashes) ---
   'bridge-framework-abutmentSurfaces':
-    '217b2b13d6d41e657f9b652009a4efe1d3c285a6c4fa428b0030eb0c5070cc8c|d64954bd314424813eed60441adc74dce985310d225e5a9702499bc633f7261c',
+    '1e1565f6e650bf24b7c54ca7456abfd9e535ffd11b41561278f3c392cf9bfda2|781ac6db8a515739137d04dc7a05418f8a7e78978e0d413de29f9dd8b619f36f',
   'bridge-framework-ponticInterface':
-    '33a62fdc617b6a33c1b3e29547bad02af39874129864e7793ae4662cc11fe430|64124f36c092bf29f4734e1d048cdc161bae31bdebc2d3cb6b082e09eec0229a',
+    '635da922576298f1715f0f3ccff2497ca28eff9484ca9038a1b193de5f9a786b|3bbc98c2af73164e80a5cd108ccba1354c88206d6083a0497c13e409a8f5ab96',
   'bridge-framework-connectors':
-    '87fdfd93ad0a7ae8b458cf2464ce83001359ea945ed496867ef4c1af02faea4d|d1d0100a85ee171588af936fd69b51ec23c3d1519ea838ec93c38bbd0e693a77',
+    'd731e0767efed948ee7fd2c507b1ee017fee24808227ba0b1dc581c6af8ad6e3|76f56c82d81ff3e434fd322635d77d13e2c2b0e50aabb77453da86b21a6423ee',
   'bridge-framework-framework':
-    '6d7932a386428e8584b9599a7096d046b1ec78b675fdd071778724271ca1cd5e|7cfcb5def527d11d5234feaaa8ce84b3a3327072561e1bae5b2a5dd88091ba5a|3cac84e76abe26f4f3db514c13d1c10e55e92c4037041897fd64df7ae38016f0',
+    '40b7d0ebd760926fef36c60a03720f22467a46988412b992a51c343c959a3dc8|d97b259dec72587be24c5a664968e995e774282bad97efe922b6d6f7666b6bc7|3b76167d6a71ba19c8d84f0d492b4cc81567463c0207730d5543c584f8b63dba',
   'bridge-framework-assembly': '77a8988146b20582b507cbdedaccde425bce95d3bd67f9d2670e232c1777dde6',
   // Advanced 0.26.0 → 0.27.0 (Feature #4): DELIBERATE, message+version (as
   // bridge-fullContour-qc above). Old hash:
@@ -164,7 +178,12 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // fit and the ring trim are not in this chain; hashQcReport tracks the embedded
   // kernelVersion, every geometry stage pin above BYTE-IDENTICAL (verified: the whole
   // golden suite passes at 0.33.0 with the new code). Old hash: e039b039fae0ff68cabfab16113a4fec0f479c2d2fc53025c6666fcbac039475. See docs/CHANGELOG-kernel.md's [0.34.0] entry.
-  'bridge-framework-qc': '1a0bc8a648bcde8c04f3cc622a157c9524e3b668585107f572d55af529a058c3',
+  // Advanced 0.34.0 → 0.35.0 (cross-platform determinism): NUMERIC — the chain's
+  // transcendentals (the fixture's ring sin/cos, the kernel's atan2/acos) now go
+  // through detMath (pure-IEEE fdlibm) instead of Math.*, ≤ 1 ulp per call; the
+  // hashes are now the same on darwin-arm64 and x64 (verified under both).
+  // Old hash: 1a0bc8a648bcde8c04f3cc622a157c9524e3b668585107f572d55af529a058c3. See docs/CHANGELOG-kernel.md's [0.35.0] entry.
+  'bridge-framework-qc': '4ba64eefca9ae43da50b4e50f776d7905e7f52b2685fa3b361aa7a18d862f047',
 };
 
 const FULL_GATE_ORDER = [

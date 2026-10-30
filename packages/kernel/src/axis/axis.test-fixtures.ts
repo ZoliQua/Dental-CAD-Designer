@@ -7,6 +7,7 @@
 // No `Math.random`/`Date.now` anywhere below — closed-form over integer/
 // float parameters, matching this project's determinism invariant.
 import type { IndexedMesh } from '../mesh/types.ts';
+import { detCos, detSin } from '../math/detMath.ts';
 
 type Vec3 = readonly [number, number, number];
 
@@ -105,7 +106,7 @@ export function coneFrustumMesh(
     const radius = bottomRadius + (topRadius - bottomRadius) * t;
     for (let s = 0; s < segments; s++) {
       const theta = (2 * Math.PI * s) / segments;
-      positions.push([center[0] + radius * Math.cos(theta), center[1] + radius * Math.sin(theta), z]);
+      positions.push([center[0] + radius * detCos(theta), center[1] + radius * detSin(theta), z]);
     }
   }
   const bottomCenterIndex = positions.length;

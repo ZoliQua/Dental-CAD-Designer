@@ -23,6 +23,7 @@
 // than silently shipping an inside-out mesh).
 import type { IndexedMesh } from '@dqcad/kernel';
 import type { Vec3 } from '@dqcad/shared-types';
+import { detCos, detExp } from '@dqcad/kernel';
 
 /** Accumulates flat position/index arrays; converted to an `IndexedMesh`
  * once via `toIndexedMesh`. Deliberately plain arrays (not typed arrays)
@@ -165,7 +166,7 @@ export function mix(a: number, b: number, t: number): number {
  * naturally decays toward 0 without needing an explicit clamp. */
 export function gaussianBump(x: number, center: number, width: number): number {
   const t = (x - center) / width;
-  return Math.exp(-(t * t));
+  return detExp(-(t * t));
 }
 
 /** Angular distance between two angles (radians), wrapped into `[0, PI]` —
@@ -184,7 +185,7 @@ export function angularDistance(a: number, b: number): number {
 export function angularWindow(theta: number, center: number, halfWidthRad: number): number {
   const d = angularDistance(theta, center);
   if (d >= halfWidthRad) return 0;
-  return 0.5 * (1 + Math.cos((Math.PI * d) / halfWidthRad));
+  return 0.5 * (1 + detCos((Math.PI * d) / halfWidthRad));
 }
 
 /** Rounds `theta` (radians) to the nearest of `segments` ring sample angles

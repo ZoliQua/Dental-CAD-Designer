@@ -7,6 +7,7 @@
 // cross-cutting dependency — see curvature/vec.ts's own doc for the same
 // rationale).
 import type { Vec3 } from '../bvh/geometry.ts';
+import { detAtan2 } from '../math/detMath.ts';
 
 export function sub(a: Vec3, b: Vec3): Vec3 {
   return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -48,5 +49,5 @@ export function triangleAngleAt(p: Vec3, q: Vec3, r: Vec3): number {
   const u = sub(q, p);
   const v = sub(r, p);
   const crossLen = length(cross(u, v));
-  return Math.atan2(crossLen, dot(u, v));
+  return detAtan2(crossLen, dot(u, v));
 }

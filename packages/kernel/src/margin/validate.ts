@@ -167,6 +167,7 @@ import type { Bvh } from '../bvh/types.ts';
 import { closestPoint } from '../bvh/closestPoint.ts';
 import { MESH_WELD_EPSILON_MM } from '../intake/weld.ts';
 import type { MarginLineLike } from '../spline/marginLine.ts';
+import { detAcos } from '../math/detMath.ts';
 
 // ---------------------------------------------------------------------------
 // Documented algorithmic defaults (kernel-level, not clinical-profiles — see
@@ -706,7 +707,7 @@ function turningAngleRad(prev: Vec3, cur: Vec3, next: Vec3): number {
   const inTangent = normalize3(sub3(cur, prev));
   const outTangent = normalize3(sub3(next, cur));
   const cosAngle = Math.max(-1, Math.min(1, dot3(inTangent, outTangent)));
-  return Math.acos(cosAngle);
+  return detAcos(cosAngle);
 }
 
 /** Discrete curvature (turning angle / local mean segment length) at every

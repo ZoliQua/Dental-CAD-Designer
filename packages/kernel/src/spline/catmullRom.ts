@@ -108,6 +108,7 @@
 // operating range.
 import type { Vec3 } from '../bvh/geometry.ts';
 import { MESH_WELD_EPSILON_MM } from '../intake/weld.ts';
+import { detPow } from '../math/detMath.ts';
 
 /** Centripetal parametrization exponent — see this module's top doc. Not
  * exposed as a caller-configurable option: alpha=0.5 is the property this
@@ -278,9 +279,9 @@ export function centripetalKnots(role: readonly [Vec3, Vec3, Vec3, Vec3]): [numb
   const d12 = dist(role[1], role[2]);
   const d23 = dist(role[2], role[3]);
   const t0 = 0;
-  const t1 = t0 + Math.pow(d01, CENTRIPETAL_ALPHA);
-  const t2 = t1 + Math.pow(d12, CENTRIPETAL_ALPHA);
-  const t3 = t2 + Math.pow(d23, CENTRIPETAL_ALPHA);
+  const t1 = t0 + detPow(d01, CENTRIPETAL_ALPHA);
+  const t2 = t1 + detPow(d12, CENTRIPETAL_ALPHA);
+  const t3 = t2 + detPow(d23, CENTRIPETAL_ALPHA);
   return [t0, t1, t2, t3];
 }
 

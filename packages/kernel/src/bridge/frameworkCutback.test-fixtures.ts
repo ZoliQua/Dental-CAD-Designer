@@ -52,6 +52,7 @@
 import type { IndexedMesh } from '../mesh/types.ts';
 import type { Vec3 } from '../bvh/geometry.ts';
 import { orientNormalsConsistently } from '../intake/orient.ts';
+import { detCos, detSin } from '../math/detMath.ts';
 
 export interface ClosedShellUnitOptions {
   /** Outer radius R (mm). Default 3.0. */
@@ -128,7 +129,7 @@ export function closedShellUnit(options: ClosedShellUnitOptions = {}): ClosedShe
   for (let ri = 0; ri <= kW; ri++) {
     const z = (ri / kW) * H;
     const ring: number[] = [];
-    for (let s = 0; s < n; s++) ring.push(pushVertex(R * Math.cos(angle(s)), R * Math.sin(angle(s)), z, false));
+    for (let s = 0; s < n; s++) ring.push(pushVertex(R * detCos(angle(s)), R * detSin(angle(s)), z, false));
     outerWallRingIndices.push(ring);
   }
   // Outer DOME (fit = false): sphere centre (0,0,H), radius R. Intermediate
@@ -137,10 +138,10 @@ export function closedShellUnit(options: ClosedShellUnitOptions = {}): ClosedShe
   const domeRingIndices: number[][] = [];
   for (let j = 1; j < kD; j++) {
     const phi = (Math.PI / 2) * ((kD - j) / kD); // j=1 → near base; j=kD-1 → near apex
-    const ringRadius = R * Math.sin(phi);
-    const ringZ = H + R * Math.cos(phi);
+    const ringRadius = R * detSin(phi);
+    const ringZ = H + R * detCos(phi);
     const ring: number[] = [];
-    for (let s = 0; s < n; s++) ring.push(pushVertex(ringRadius * Math.cos(angle(s)), ringRadius * Math.sin(angle(s)), ringZ, false));
+    for (let s = 0; s < n; s++) ring.push(pushVertex(ringRadius * detCos(angle(s)), ringRadius * detSin(angle(s)), ringZ, false));
     domeRingIndices.push(ring);
   }
   const outerTopCenterIndex = pushVertex(0, 0, H + R, false); // dome apex (sphere pole)
@@ -150,7 +151,7 @@ export function closedShellUnit(options: ClosedShellUnitOptions = {}): ClosedShe
   for (let ri = 0; ri <= kI; ri++) {
     const z = (ri / kI) * h;
     const ring: number[] = [];
-    for (let s = 0; s < n; s++) ring.push(pushVertex(r * Math.cos(angle(s)), r * Math.sin(angle(s)), z, true));
+    for (let s = 0; s < n; s++) ring.push(pushVertex(r * detCos(angle(s)), r * detSin(angle(s)), z, true));
     innerWallRingIndices.push(ring);
   }
   const innerTopCenterIndex = pushVertex(0, 0, h, true);

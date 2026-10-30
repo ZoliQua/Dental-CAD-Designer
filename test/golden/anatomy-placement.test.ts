@@ -30,6 +30,8 @@ import {
   marginLoopPolyline,
   suggestInsertionAxis,
   type IndexedMesh,
+  detCos,
+  detSin,
 } from '@dqcad/kernel';
 import { parseStl } from '@dqcad/io';
 import { loadToothAssetInProcess } from '@dqcad/tooth-library';
@@ -52,7 +54,7 @@ function marginCircle(c: Vec3, r: number, n = 64): Vec3[] {
   const loop: Vec3[] = [];
   for (let i = 0; i < n; i++) {
     const th = (2 * Math.PI * i) / n;
-    loop.push([c[0] + r * Math.cos(th), c[1] + r * Math.sin(th), c[2]]);
+    loop.push([c[0] + r * detCos(th), c[1] + r * detSin(th), c[2]]);
   }
   return loop;
 }

@@ -33,6 +33,7 @@ import { analyzeMesh } from '../intake/analyze.ts';
 import { orientNormalsConsistently } from '../intake/orient.ts';
 import { bridgeFixture } from './bridge.test-fixtures.ts';
 import type { RidgeCrestCylinder } from './ponticInterface.ts';
+import { detCos, detSin } from '../math/detMath.ts';
 
 export interface ArchPrepDieParams {
   /** FDI tooth. */
@@ -108,7 +109,7 @@ function revolve(cx: number, profile: readonly (readonly [number, number])[], ap
   for (const [r, z] of profile) {
     for (let s = 0; s < segments; s++) {
       const th = (2 * Math.PI * s) / segments;
-      positions.push(cx + r * Math.cos(th), r * Math.sin(th), z);
+      positions.push(cx + r * detCos(th), r * detSin(th), z);
     }
   }
   const bottom = positions.length / 3;
@@ -148,13 +149,13 @@ export function archPrepDie(p: ArchPrepDieParams, segments = ARCH_DIE_SEGMENTS):
   ];
   for (let k = 1; k < DOME_RINGS; k++) {
     const a = (k / DOME_RINGS) * (Math.PI / 2);
-    profile.push([p.topRadiusMm * Math.cos(a), p.topZMm + p.domeMm * Math.sin(a)]);
+    profile.push([p.topRadiusMm * detCos(a), p.topZMm + p.domeMm * detSin(a)]);
   }
   const die = revolve(p.centreXMm, profile, p.topZMm + p.domeMm, segments);
   const marginLoop: Vec3[] = [];
   for (let s = 0; s < segments; s++) {
     const th = (2 * Math.PI * s) / segments;
-    marginLoop.push([p.centreXMm + p.marginRadiusMm * Math.cos(th), p.marginRadiusMm * Math.sin(th), mz]);
+    marginLoop.push([p.centreXMm + p.marginRadiusMm * detCos(th), p.marginRadiusMm * detSin(th), mz]);
   }
   return { tooth: p.tooth, die, marginLoop, marginCenterMm: [p.centreXMm, 0, mz], marginRadiusMm: p.marginRadiusMm };
 }

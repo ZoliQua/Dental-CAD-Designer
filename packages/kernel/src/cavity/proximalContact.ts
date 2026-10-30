@@ -90,6 +90,7 @@ import type { Bvh } from '../bvh/types.ts';
 import { buildBvh } from '../bvh/build.ts';
 import { computePseudonormals, type Pseudonormals } from '../sdf/pseudonormals.ts';
 import { signedClosestPoint } from '../sdf/signedDistance.ts';
+import { detSin } from '../math/detMath.ts';
 
 // ---------------------------------------------------------------------------
 // Documented ALGORITHM parameters (NOT clinical values — the clinical target
@@ -443,7 +444,8 @@ export function adaptProximalContacts(
       const s = arc[k]!;
       if (s <= seamAnchorBandMm || s >= arcLen - seamAnchorBandMm) continue; // pinned band
       const t = (s - seamAnchorBandMm) / support;
-      const w = Math.sin(Math.PI * t) ** 2;
+      const sinPt = detSin(Math.PI * t);
+      const w = sinPt * sinPt;
       weights[k] = w;
       if (w > wMax) {
         wMax = w;

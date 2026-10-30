@@ -4,6 +4,7 @@
 // `icosphereMesh` polyline.test.ts also reuses directly for the
 // acceptance-critical sphere tests).
 import type { IndexedMesh } from '../mesh/types.ts';
+import { detCos, detSin } from '../math/detMath.ts';
 
 /**
  * A UV (latitude/longitude) sphere: every vertex is placed by its exact
@@ -39,9 +40,9 @@ export function uvSphereMesh(radius: number, latSegments: number, lonSegments: n
     const ring: number[] = [];
     for (let j = 0; j < lonSegments; j++) {
       const theta = (j * 2 * Math.PI) / lonSegments;
-      const x = radius * Math.sin(phi) * Math.cos(theta);
-      const y = radius * Math.sin(phi) * Math.sin(theta);
-      const z = radius * Math.cos(phi);
+      const x = radius * detSin(phi) * detCos(theta);
+      const y = radius * detSin(phi) * detSin(theta);
+      const z = radius * detCos(phi);
       ring.push(positions.length / 3);
       positions.push(x, y, z);
     }
@@ -78,7 +79,7 @@ export function uvSphereMesh(radius: number, latSegments: number, lonSegments: n
  * without re-deriving the parametrization. */
 export function uvSphereRingZ(radius: number, latSegments: number, k: number): number {
   const phi = (k * Math.PI) / latSegments;
-  return radius * Math.cos(phi);
+  return radius * detCos(phi);
 }
 
 /**
@@ -113,9 +114,9 @@ export function openHemisphereMesh(radius: number, latSegments: number, lonSegme
       const theta = (j * 2 * Math.PI) / lonSegments;
       ring.push(positions.length / 3);
       positions.push(
-        radius * Math.sin(phi) * Math.cos(theta),
-        radius * Math.sin(phi) * Math.sin(theta),
-        radius * Math.cos(phi),
+        radius * detSin(phi) * detCos(theta),
+        radius * detSin(phi) * detSin(theta),
+        radius * detCos(phi),
       );
     }
     ringIndices.push(ring);
@@ -167,8 +168,8 @@ export function torusMesh(
     const theta = (i * 2 * Math.PI) / majorSegments;
     for (let j = 0; j < minorSegments; j++) {
       const phi = Math.PI / minorSegments + (j * 2 * Math.PI) / minorSegments;
-      const r = majorRadius + minorRadius * Math.cos(phi);
-      positions.push(r * Math.cos(theta), r * Math.sin(theta), minorRadius * Math.sin(phi));
+      const r = majorRadius + minorRadius * detCos(phi);
+      positions.push(r * detCos(theta), r * detSin(theta), minorRadius * detSin(phi));
     }
   }
 

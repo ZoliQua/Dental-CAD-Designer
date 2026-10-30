@@ -21,6 +21,7 @@
 // `unitCubeMesh` doc).
 
 import type { IndexedMesh } from '../mesh/types.ts';
+import { detCos, detSin } from '../math/detMath.ts';
 
 type Vec3 = readonly [number, number, number];
 
@@ -260,12 +261,12 @@ export function torusMesh(
   const positions: Vec3[] = [];
   for (let i = 0; i < majorSegments; i++) {
     const theta = (2 * Math.PI * i) / majorSegments;
-    const cosT = Math.cos(theta);
-    const sinT = Math.sin(theta);
+    const cosT = detCos(theta);
+    const sinT = detSin(theta);
     for (let j = 0; j < minorSegments; j++) {
       const phi = (2 * Math.PI * j) / minorSegments;
-      const r = majorRadius + minorRadius * Math.cos(phi);
-      positions.push([r * cosT, r * sinT, minorRadius * Math.sin(phi)]);
+      const r = majorRadius + minorRadius * detCos(phi);
+      positions.push([r * cosT, r * sinT, minorRadius * detSin(phi)]);
     }
   }
   const triangles: [number, number, number][] = [];
