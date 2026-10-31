@@ -91,7 +91,8 @@ reused unrelated dev server would otherwise answer the specs.
    needs a closed die. A real arch scan is open (`arch-case-01`: 2624
    boundary edges), and the existing repair (small-hole fill) cannot close an
    arch's base. What is needed: an open-surface offset, or a cap/die
-   extraction step.
+   extraction step. **Closed by Phase 10** (the prepared die, ADR-023;
+   [phase-10.md](phase-10.md)).
 2. **A real bridge scan** (prepped abutments + edentulous ridge) to certify
    the bridge built from the case on patient data.
 3. **A real inlay/onlay scan**; the onlay coverage divider has no
@@ -99,7 +100,8 @@ reused unrelated dev server would otherwise answer the specs.
 4. **Automatic tooth segmentation** (captures need one pick per side today).
 5. **Library anatomy fitted to the margin** (cervical fit); until then the
    built-in template is the crown default and the library template is
-   opt-in (Task 4).
+   opt-in (Task 4). **Closed by Phase 10** (the cervical fit; the fitted
+   library template is the default).
 6. **Bridge abutments: the morph step and outer-neighbour capture.** The
    abutments of a bridge built from the case are not morphed, because their
    outer neighbours are not captured yet.

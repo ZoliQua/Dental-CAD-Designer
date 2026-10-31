@@ -30,11 +30,12 @@ import { skipOnboardingTour } from './support';
 // surface (2624 boundary edges on this one), and the intaglio's signed-distance
 // offset needs a closed die. Phase 10 (ADR-023) closes that gap: the
 // "Prepare die" step cuts the closed prep from the scan, with a clearance
-// certificate, and the intaglio is built on it. The later stages on this
-// UNPREPARED tooth are Phase 10 Task 6's (their thickness and seating verdicts
-// honestly fail). The contact gate measured on these captured neighbours is
-// proven at the pipeline level by test/golden/neighbour-capture-acceptance.
-// test.ts (RUN_NEIGHBOUR_CAPTURE_REAL=1).
+// certificate, and the intaglio is built on it. Phase 10 Task 6 carries the
+// crown on through the anatomy, morph, shell and QC. The tooth is UNPREPARED,
+// so the wall-thickness and seating gates fail, visibly and honestly; every
+// other gate passes on case geometry, with no stand-in input. The contact
+// gate on these captured neighbours is also proven at the pipeline level by
+// test/golden/neighbour-capture-acceptance.test.ts (RUN_NEIGHBOUR_CAPTURE_REAL=1).
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 const UPPER_PATH = join(repoRoot, 'test-fixtures', 'real-scans', 'arch-case-01', 'arch-case-01-upperjaw.stl');
@@ -191,5 +192,48 @@ test.describe.serial('Phase 9 — a crown on the real arch-case-01 with captured
     await expect(page.getByTestId('crown-error')).toHaveCount(0);
     const innerOp = await hook<{ inputHashes: string[] }>(page, 'getLatestOperation', 'crown-inner-surface');
     expect(innerOp.inputHashes[0]).toBe(dieOp.outputHashes[0]);
+  });
+
+  test('the later stages run on the real scan, and QC reports the unprepared tooth honestly: wall and seating fail, nothing is stood in (Phase 10)', async () => {
+    // The anatomy: the library default is tried, and the cervical fit
+    // refuses this margin. Offset 0.65 mm outward along its local normals, the
+    // dense hand-traced incisor margin (a point every ~36 µm, concave
+    // interproximally) folds back on itself (docs/demos/phase-10.md, open
+    // item). The built-in template is placed instead, with the reason shown.
+    await page.getByTestId('crown-anatomy-autoplace').click();
+    await expect(page.getByTestId('crown-anatomy-readout')).toBeVisible({ timeout: 300_000 });
+    await expect(page.getByTestId('crown-error')).toHaveCount(0);
+    await expect(page.getByTestId('crown-anatomy-source')).toHaveAttribute('data-origin', 'builtin');
+    const anatomyOp = await hook<{ params: Record<string, unknown> }>(page, 'getLatestOperation', 'crown-anatomy');
+    expect(anatomyOp.params['neighbourProvenance']).toBe('case');
+    expect(anatomyOp.params['anatomySource']).toMatchObject({ origin: 'builtin', reason: 'fitRefused' });
+
+    await page.getByTestId('crown-morph-run').click();
+    await expect(page.getByTestId('crown-morph-readout')).toBeVisible({ timeout: 300_000 });
+    await expect(page.getByTestId('crown-error')).toHaveCount(0);
+
+    await page.getByTestId('crown-shell-construct').click();
+    await Promise.race([
+      expect(page.getByTestId('crown-shell-readout')).toBeVisible({ timeout: 600_000 }),
+      expect(page.getByTestId('crown-error')).toBeVisible({ timeout: 600_000 }),
+    ]);
+    await expect(page.getByTestId('crown-error')).toHaveCount(0);
+    await expect(page.getByTestId('crown-shell-done')).toBeVisible();
+
+    // QC on case geometry: the tooth is not prepared, so there is no room for
+    // a crown wall and the crown cannot seat. Those two gates fail, visibly;
+    // every other gate passes, and no gate was measured on a stand-in.
+    await page.getByTestId('crown-qc-run').click();
+    await expect(page.getByTestId('crown-qc-table')).toBeVisible({ timeout: 300_000 });
+    await expect(page.getByTestId('crown-error')).toHaveCount(0);
+    await expect(page.getByTestId('crown-qc-failed')).toBeVisible();
+    await expect(page.locator('[data-testid^="crown-qc-gate-"]')).toHaveCount(8);
+    const failing = await page
+      .locator('[data-testid^="crown-qc-gate-"][data-passed="false"]')
+      .evaluateAll((rows) => rows.map((r) => r.getAttribute('data-testid')));
+    expect(failing.sort()).toEqual(['crown-qc-gate-minWallThickness', 'crown-qc-gate-seating']);
+    await expect(page.locator('[data-testid^="crown-qc-provenance-"]')).toHaveCount(0);
+    await expect(page.getByTestId('crown-qc-ack-minWallThickness')).toBeVisible();
+    await expect(page.getByTestId('crown-qc-ack-seating')).toBeVisible();
   });
 });

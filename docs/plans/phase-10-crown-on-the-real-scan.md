@@ -347,3 +347,21 @@ findings and decisions:
 - Run the whole acceptance chain (Vitest, e2e, lint, typecheck, build) with
   exit codes.
 - `docs/demos/phase-10.md`; PLAN.md and README status updated.
+
+**Landed (2026-10-31, no kernel change).** As planned; the evidence and the
+open items are in [docs/demos/phase-10.md](../demos/phase-10.md). Findings:
+- **`e2e/phase10.spec.ts`** drives the open-arch case through the real UI.
+  Every crown gate passes with no acknowledgement, and the export is released
+  after the server re-extracts the die. The released STL re-imports
+  watertight.
+- **The axis suggestion's tie-break.** On the height-field die every
+  direction near +Z has zero undercut, and the suggestion lands ~12° off the
+  die's axis. The spec sets the elevation slider to 90° (the clinician's
+  correction). This is an open item.
+- **Real `arch-case-01` tooth 11** (`e2e/phase9-crown.spec.ts`) now runs to
+  QC. Exactly minWallThickness and seating fail (the tooth is unprepared),
+  the other six gates pass, and no gate was measured on a stand-in. The
+  cervical fit refuses the margin: the 0.65 mm normal offset of the dense,
+  interproximally concave margin folds back (50 of 450 azimuth steps
+  reverse). The built-in template is placed, with the reason shown. A
+  fold-free emergence offset is an open item.
