@@ -257,6 +257,17 @@ The core pipeline. Order of stages is fixed; each stage's output is journaled.
 
 **Acceptance:** a crown on a closed-form open-arch prep case passes every crown gate through the real path. On real `arch-case-01` the die extraction and the intaglio succeed; the unprepared tooth's later gates report honestly. The server re-extracts the die. Existing goldens stay byte-identical. Detailed plan: [`docs/plans/phase-10-crown-on-the-real-scan.md`](docs/plans/phase-10-crown-on-the-real-scan.md).
 
+### Phase 11 — The library template on real margins (post-MVP, [ADR-024](docs/adr/024-fold-free-emergence-outline-and-axis-tie-break.md))
+
+- A fold-free emergence outline: the exact outer boundary of the margin's projection dilated by the emergence offset, so the cervical fit takes dense real margins
+- The axis suggestion's tie-break resolves toward the ROI normal, so a symmetric prep needs no correction
+- Placeholder incisors with textbook cervical proportions (library asset 1.3.0); every served asset version stays verifiable
+- CI: the golden suite runs once; the `phase3` drag flake is fixed at its cause
+
+**Status:** planned (2026-11-01).
+
+**Acceptance:** on real `arch-case-01` tooth 11 the cervical fit no longer refuses the margin (fitted within 50 µm, or refused `fitOverBound` with the measured residual); the open-arch axis is suggested within 0.5° with no correction; a crown on 11 with the fitted library incisor passes every gate on the open-arch case, or its measured verdict is documented; cases referencing 1.1.0 / 1.2.0 keep verifying; pins move only under the three named changes. Detailed plan: [`docs/plans/phase-11-library-template-on-real-margins.md`](docs/plans/phase-11-library-template-on-real-margins.md).
+
 ---
 
 ## 5. Repository Layout
