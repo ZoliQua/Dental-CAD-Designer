@@ -115,7 +115,12 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Unit tests
-        run: npm test
+        # Every Vitest project EXCEPT `golden`, which the "Golden fixture
+        # tests" step below runs — before Phase 11 Task 5 `npm test` ran the
+        # golden suite here too, so CI ran it twice. Vitest 3.2's project
+        # negation (`--project '!golden'`) keeps every other project,
+        # including the browser-mode client-dom one.
+        run: npx vitest run --project '!golden'
 
       - name: Fuzz suite (packages/io parsers)
         # Separate vitest project/config (vitest.fuzz.config.ts), excluded
@@ -184,7 +189,10 @@ jobs:
           path: |
             playwright-report/
             test-results/
-          retention-days: 7
+          # 30 days (was 7): a flake's trace must outlive the time it takes
+          # to get to it (Phase 11 Task 5 — the phase3 drag flake's trace had
+          # expired before it could be read).
+          retention-days: 30
 
   perf-guard:
     # Task 12: e2e/perf.spec.ts asserts the UI thread stays responsive (a
@@ -304,4 +312,7 @@ jobs:
           path: |
             playwright-report/
             test-results/
-          retention-days: 7
+          # 30 days (was 7): a flake's trace must outlive the time it takes
+          # to get to it (Phase 11 Task 5 — the phase3 drag flake's trace had
+          # expired before it could be read).
+          retention-days: 30

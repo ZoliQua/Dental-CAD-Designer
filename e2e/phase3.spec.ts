@@ -335,6 +335,12 @@ test.describe.serial('Phase 3 acceptance flow', () => {
     const neighborNext = anchors![1]!;
     const neighborPrev = anchors![anchors!.length - 1]!;
 
+    // Reproduction knob for a slow CI runner (Phase 11 Task 5):
+    // DQCAD_E2E_CPU_THROTTLE=4 slows the page's CPU 4× (CDP) for this drag.
+    const throttle = Number(process.env['DQCAD_E2E_CPU_THROTTLE'] ?? '1');
+    const cdp = throttle > 1 ? await page.context().newCDPSession(page) : null;
+    if (cdp) await cdp.send('Emulation.setCPUThrottlingRate', { rate: throttle });
+
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     for (let i = 0; i < 10; i++) {
       await page.mouse.wheel(0, -200);
@@ -361,6 +367,25 @@ test.describe.serial('Phase 3 acceptance flow', () => {
     const fromPage = { x: box.x + fromCanvas.x, y: box.y + fromCanvas.y };
     const targetPage = { x: box.x + targetCanvas.x, y: box.y + targetCanvas.y };
 
+    // The drag's inputs, attached to every run (Phase 11 Task 5): a CI flake
+    // once left this drag without any effect (no anchor moved), and its trace
+    // had expired before it could be read. The camera is settled when the
+    // anchor is projected (measured: identical before and 2 frames / 1 s
+    // after the wheel, also under a 4× CPU throttle), so that is ruled out;
+    // the next failure carries what it needs.
+    await test.info().attach('drag-inputs.json', {
+      contentType: 'application/json',
+      body: JSON.stringify({
+        camera: await page.evaluate(() => (window as unknown as { __dqcadTestHooks__?: { getCameraState(): unknown } }).__dqcadTestHooks__?.getCameraState() ?? null),
+        canvasBox: box,
+        anchor: from,
+        fromCanvas,
+        targetCanvas,
+        anchorCount: anchors!.length,
+        throttle,
+      }),
+    });
+
     await page.mouse.move(fromPage.x, fromPage.y);
     await page.mouse.down();
     await page.mouse.move(targetPage.x, targetPage.y, { steps: 8 });
@@ -371,6 +396,7 @@ test.describe.serial('Phase 3 acceptance flow', () => {
     // deterministic proof the drag->endAnchorDrag->commit pipeline ran for
     // real, without reaching into engine internals for this assertion.
     await expect(page.getByTestId('margin-accept-button')).toHaveCount(0, { timeout: 15_000 });
+    if (cdp) await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
 
     // A real geometric move happened too (not just a no-op commit): at
     // least one anchor's ambient position shifted by a non-trivial amount.

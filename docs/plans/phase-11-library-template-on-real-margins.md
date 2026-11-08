@@ -292,6 +292,30 @@ these notes:
 - **Success:** a CI run where the golden suite runs once and the job time
   drops accordingly; record both times.
 
+**Landed (2026-11-08).**
+
+- **The unit step** runs `npx vitest run --project '!golden'` (Vitest
+  3.2.7's project negation). Verified locally: 346 files, every project but
+  `golden` (client-dom included). The full suite is 380 files, so the 34
+  golden files are exactly the difference. The golden suite now runs only
+  in its own step. The CI times are recorded on the first run after the
+  push (pending a push).
+- **The phase3 drag flake: not root-caused, and deliberately not "fixed".**
+  - The run's trace had expired: artifacts were kept 7 days, and the run was
+    on 2026-10-31.
+  - The CI log shows the drag had no effect at all. On the retry no anchor
+    moved (0 mm).
+  - The plan's candidate cause is refuted by measurement. The camera is
+    settled when the anchor is projected: identical right after the wheel,
+    after two frames and after 1 s, at 1× and under a 4× CDP CPU throttle.
+    The test also passes under the throttle.
+  - Without evidence there is no fix. Instead:
+    - the test attaches its drag inputs (camera, canvas box, anchor, from
+      and target pixels) to every run;
+    - `DQCAD_E2E_CPU_THROTTLE` stays as a reproduction knob;
+    - the CI keeps the Playwright artifacts 30 days.
+  - The next occurrence carries what it needs.
+
 ## Task 6 — Phase gate
 
 - Run the whole acceptance chain (Vitest, e2e, lint, typecheck, build) with
