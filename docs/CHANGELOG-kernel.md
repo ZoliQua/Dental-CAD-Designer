@@ -59,6 +59,50 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.38.0] — Phase 11 Task 2: the axis suggestion's tie-break
+
+**One op's output changes, and only in a count. Verified by running the
+whole golden suite and the server project at `0.37.0` with the new code: the
+only pin that moves is the kernel-ops `suggestAxis` hash, by its
+`rankedCount` (32 → 33). Its winner — direction, score 0.7336 mm³ and stats
+— the pole, `coarseCount` and `refineCount` are bit-identical. The
+acceptance `*-qc` pins and the server traceability golden advance only
+because the QcReport embeds `kernelVersion`.**
+
+- **The pole is a candidate, and ties resolve toward it** (ADR-024
+  Decision 2).
+  - The coarse sweep is now `[pole, ...fibonacciHemisphereDirections]`. The
+    Fibonacci index 0 is only the sample NEAREST the pole (~12° off on the
+    open-arch prep case). On a die that is a height field over its margin
+    plane, every direction near the axis scores zero undercut, and the old
+    first-generated tie-break kept that sample. The clinician had to correct
+    the axis with the elevation slider (Phase 10 open item 3).
+  - A candidate replaces the best on a strictly lower score, or on an equal
+    score with a strictly larger `dot(direction, pole)`. `ranked` sorts by
+    `(scoreMm3 ascending, dot descending)`, stably, so `ranked[0] === best`.
+  - **The refine cap stays centred on the Fibonacci sweep's winner.** A first
+    draft centred it on the overall winner. When the pole won the coarse
+    stage, the cap then searched around the pole, and on real `arch-case-01`
+    tooth 11 the final winner got WORSE: 1.66 mm³ instead of 0.73 mm³. That
+    is the alarm the plan names (a moved winner must score ≤ the old one),
+    and it was found by the golden proof. With the cap on the sweep's winner
+    the candidate set is the pre-0.38.0 set plus the pole, so the winner
+    never scores worse. A new golden (`test/golden/axis-tie-break.test.ts`)
+    recomputes the old search independently on the real scan and asserts
+    it.
+  - Progress reports `coarseCount + 1 + refineCount` steps.
+- **What moved.**
+  - The open-arch prep die: the suggestion is +Z exactly (it was 11.7° off).
+  - The synthetic cone frustum and the two-abutment bridge: the suggestion
+    is the construction axis at score 0. Before, the default budget left
+    28.8 mm³ and 25.8 mm³ per abutment at 9.6°. Their area-weighted ROI
+    normal IS that axis, and it had never been evaluated.
+  - The real scans: unchanged winners. No other golden moved.
+- **Tests.** The sphere patch's winner is the pole, bit-exactly. The
+  height-field die is within 0.5° of +Z at score 0. Ties in `ranked` are
+  ordered toward the pole. For poles tilted 0–40° off a frustum's axis, the
+  winner scores ≤ the old search's. On the real scan, the same holds.
+
 ## [0.37.0] — Phase 11 Task 1: the fold-free emergence outline
 
 **A deliberate numeric change in one op, `fitCervicalRing` /

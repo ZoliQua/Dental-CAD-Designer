@@ -416,8 +416,16 @@
  * margins. The fit's ring targets are the outline at each ring vertex's
  * azimuth. Only the fitted library lane moves (≤ d(1 − cos(π/192)) ≈ 0.09 µm
  * on the 192-gon); every other geometry + journal-replay pin byte-identical.
- * See docs/CHANGELOG-kernel.md's `[0.37.0]` entry. */
-export const KERNEL_VERSION = '0.37.0';
+ * See docs/CHANGELOG-kernel.md's `[0.37.0]` entry.
+ *
+ * 0.38.0 (Phase 11 Task 2, ADR-024 Decision 2): `suggestInsertionAxis`
+ * evaluates the hemisphere pole itself as candidate 0, and a tie resolves
+ * toward the pole (equal score, larger dot with it); `ranked` sorts ties the
+ * same way. The refine cap stays on the Fibonacci sweep's winner, so the
+ * winner never scores worse. Only the kernel-ops `suggestAxis` pin moves (by
+ * `rankedCount`, 32 → 33); every other pin byte-identical. See
+ * docs/CHANGELOG-kernel.md's `[0.38.0]` entry. */
+export const KERNEL_VERSION = '0.38.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export { detSin, detCos, detAtan, detAtan2, detAsin, detAcos, detExp, detPow } from './math/detMath.ts';

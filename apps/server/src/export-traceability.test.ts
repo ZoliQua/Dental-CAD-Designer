@@ -550,7 +550,7 @@ describe('QC traceability document — server generation, storage, routes', () =
     // Pin preconditions — the pinned values are kernel-derived; a bump moves
     // them ONLY with a deliberate KERNEL_VERSION change + changelog entry
     // (the golden discipline).
-    expect(KERNEL_VERSION).toBe('0.37.0');
+    expect(KERNEL_VERSION).toBe('0.38.0');
     expect(installedManifoldVersion()).toBe('3.5.1');
 
     // Fixed identity/journal constants isolate the pin to the DETERMINISTIC
@@ -693,8 +693,13 @@ describe('QC traceability document — server generation, storage, routes', () =
     // (verified: the server lane passes at 0.36.0 with the new code; the
     // cervical fit is not in this export). Previous (0.36.0):
     // 83f3c2c5a8b73a3f1a8219b6de6b6338eb5593d0021f5d500296b2ff861962d7.
+    //
+    // MOVED at KERNEL_VERSION 0.37.0 → 0.38.0 (Phase 11 Task 2): VERSION-ONLY
+    // (verified: the server lane passes at 0.37.0 with the new code; no
+    // suggested axis winner changed). Previous (0.37.0):
+    // 372f55d960e8a444e8202951ae3c9f6ffe43fc2057b9a9bcf25959491b0858fe.
     expect(sha256Hex(json)).toBe(
-      '372f55d960e8a444e8202951ae3c9f6ffe43fc2057b9a9bcf25959491b0858fe',
+      '392c62c3dfb7eb25c8b4921666d89ea96664919035847aa3f3336858d86b541d',
     );
   });
 });

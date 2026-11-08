@@ -60,14 +60,14 @@ describe('suggestInsertionAxis — option handling & errors', () => {
     expect(() => suggestInsertionAxis(mesh, bvh, region, { pole: [0, 0, 1], coarseCount: 4, refineCount: 0 })).not.toThrow();
   });
 
-  it('refineCount: 0 disables refinement — result.refineCount is 0 and ranked has exactly coarseCount entries', () => {
+  it('refineCount: 0 disables refinement — result.refineCount is 0 and ranked has exactly coarseCount + 1 entries (the pole, then the sweep)', () => {
     const { frustum, bvh, region } = midWallRegion(4, 2.5, 9, 32, 12);
     const result = suggestInsertionAxis(frustum.mesh, bvh, region, { coarseCount: 8, refineCount: 0 });
     expect(result.refineCount).toBe(0);
-    expect(result.ranked.length).toBe(8);
+    expect(result.ranked.length).toBe(8 + 1);
   });
 
-  it('a custom coarseCount/refineCount is honored, and total progress checkpoints equal coarseCount + refineCount', () => {
+  it('a custom coarseCount/refineCount is honored, and total progress checkpoints equal coarseCount + 1 (the pole) + refineCount', () => {
     const { frustum, bvh, region } = midWallRegion(4, 2.5, 9, 32, 12);
     const onProgress = vi.fn();
     const coarseCount = 6;
@@ -75,11 +75,11 @@ describe('suggestInsertionAxis — option handling & errors', () => {
     const result = suggestInsertionAxis(frustum.mesh, bvh, region, { coarseCount, refineCount, onProgress });
     expect(result.coarseCount).toBe(coarseCount);
     expect(result.refineCount).toBe(refineCount);
-    expect(result.ranked.length).toBe(coarseCount + refineCount);
+    expect(result.ranked.length).toBe(coarseCount + 1 + refineCount);
     expect(onProgress).toHaveBeenCalled();
     const lastCall = onProgress.mock.calls[onProgress.mock.calls.length - 1]!;
-    expect(lastCall[0]).toBe(coarseCount + refineCount); // final checkpoint reports "done" == total
-    expect(lastCall[1]).toBe(coarseCount + refineCount);
+    expect(lastCall[0]).toBe(coarseCount + 1 + refineCount); // final checkpoint reports "done" == total
+    expect(lastCall[1]).toBe(coarseCount + 1 + refineCount);
   });
 
   it('ranked is sorted ascending by scoreMm3, and best is always ranked[0]', () => {

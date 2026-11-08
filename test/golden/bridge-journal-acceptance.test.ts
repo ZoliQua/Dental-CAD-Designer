@@ -55,7 +55,7 @@ const µm = (mm: number): string => `${(mm * 1000).toFixed(3)} µm`;
 // change (bump + changelog), never a silent regen (the WASM union is
 // manifoldVersion-guarded, the crown/cavity-acceptance precedent).
 // ---------------------------------------------------------------------------
-const EXPECTED_KERNEL_VERSION = '0.37.0';
+const EXPECTED_KERNEL_VERSION = '0.38.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 function installedManifoldVersion(): string {
   const pkg = JSON.parse(
@@ -144,7 +144,12 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // kernelVersion, every geometry stage pin above BYTE-IDENTICAL (verified: the whole
   // golden suite passes at 0.36.0 with the new code). Old hash: f52eb9456cfefc77645f9fd779f566c6639236b4f07531740e009f7ba8b45184. See
   // docs/CHANGELOG-kernel.md's [0.37.0] entry.
-  'bridge-fullContour-qc': '4b4121614d05b44d81d0714cf511151af6f40f18e299fe3dbcc52041b856652e',
+  // Advanced 0.37.0 → 0.38.0 (Phase 11 Task 2): MECHANICAL, metadata-only — no suggested
+  // axis winner changed; hashQcReport tracks the embedded kernelVersion, every
+  // geometry stage pin above BYTE-IDENTICAL (verified: the whole golden suite passes at
+  // 0.37.0 with the new code, except the kernel-ops suggestAxis rankedCount). Old hash:
+  // 4b4121614d05b44d81d0714cf511151af6f40f18e299fe3dbcc52041b856652e. See docs/CHANGELOG-kernel.md's [0.38.0] entry.
+  'bridge-fullContour-qc': '0f913aad91a334116188068f11c85a7fd931b7c1fbd805eeea10ea6c8645d726',
   // --- framework chain (bridge.framework outputs the cut-back unit hashes) ---
   'bridge-framework-abutmentSurfaces':
     '1e1565f6e650bf24b7c54ca7456abfd9e535ffd11b41561278f3c392cf9bfda2|781ac6db8a515739137d04dc7a05418f8a7e78978e0d413de29f9dd8b619f36f',
@@ -203,7 +208,12 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // kernelVersion, every geometry stage pin above BYTE-IDENTICAL (verified: the whole
   // golden suite passes at 0.36.0 with the new code). Old hash: 640b133b8776c27f26be25754fa51e94fe0ea3a21c857617f0831dcdbe3776e5. See
   // docs/CHANGELOG-kernel.md's [0.37.0] entry.
-  'bridge-framework-qc': 'e0be79c63afd5a53b2c5d811329c9bffe0168bd6aae115a9fc79e98a7b230f5a',
+  // Advanced 0.37.0 → 0.38.0 (Phase 11 Task 2): MECHANICAL, metadata-only — no suggested
+  // axis winner changed; hashQcReport tracks the embedded kernelVersion, every
+  // geometry stage pin above BYTE-IDENTICAL (verified: the whole golden suite passes at
+  // 0.37.0 with the new code, except the kernel-ops suggestAxis rankedCount). Old hash:
+  // e0be79c63afd5a53b2c5d811329c9bffe0168bd6aae115a9fc79e98a7b230f5a. See docs/CHANGELOG-kernel.md's [0.38.0] entry.
+  'bridge-framework-qc': '36f58f754f50933da421ca1b42f728389ca29d4e2bdf87d2e9d8959b54fe6008',
 };
 
 const FULL_GATE_ORDER = [

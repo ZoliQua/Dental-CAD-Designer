@@ -20,9 +20,10 @@ import { skipOnboardingTour } from './support';
 // The crown is on premolar 15 (the golden's library lane, the Task 4
 // decision: the round die is a premolar-shaped preparation).
 //
-// The walkthrough: import → crown → margin → axis (the real axis tool) →
-// **Prepare die** (certified, journaled) → intaglio → capture both
-// neighbours from the scan (one canvas pick each) → the fitted LIBRARY
+// The walkthrough: import → crown → margin → axis (the real axis tool, its
+// suggestion confirmed as is) → **Prepare die** (certified, journaled) →
+// intaglio → capture both neighbours from the scan (one canvas pick each) →
+// the fitted LIBRARY
 // template (the default, `crown-cervical-fit` journaled) → morph → shell → QC
 // with all eight gates passing and NO acknowledgement → save → export → the
 // server re-validates the exact bytes and re-extracts the die from the saved
@@ -180,14 +181,15 @@ test.describe.serial('Phase 10 — a crown on an open scan: every gate passes, t
     await expect(page.getByTestId('axis-abutment-table')).toBeVisible({ timeout: 120_000 });
     await expect(page.getByTestId('axis-error')).toHaveCount(0);
     // The die is a height field over the XY-plane, so every direction near +Z
-    // has zero undercut, and the suggestion's tie-break lands about 12° off
-    // the die's own axis (docs/demos/phase-10.md, open item). The clinician
-    // sets the path of insertion along the die with the elevation slider.
-    await page.getByTestId('axis-elevation-slider').fill('90');
+    // has zero undercut. Since kernel 0.38.0 (ADR-024 Decision 2) the tie
+    // resolves toward the ROI's own normal, which is the die's axis: the
+    // suggestion is confirmed as is, with no slider correction (Phase 11
+    // acceptance 2; it used to land ~12° off).
     await page.getByTestId('axis-confirm-button').click();
     await expect(page.getByTestId('axis-confirmed-indicator')).toBeVisible({ timeout: 10_000 });
     const axis = (await hook<Vec3 | null>(page, 'getRestorationAxis', restorationId))!;
-    expect(axis[2]).toBeGreaterThan(1 - 1e-12);
+    console.log(`[phase10] suggested axis ${JSON.stringify(axis)}`);
+    expect(axis[2]).toBeGreaterThan(Math.cos((0.5 * Math.PI) / 180));
   });
 
   test('Prepare die: the open scan is closed synthetically, certified and journaled; the intaglio is built on the die', async () => {

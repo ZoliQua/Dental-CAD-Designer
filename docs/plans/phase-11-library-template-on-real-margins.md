@@ -140,6 +140,23 @@ moves it.
 - `e2e/phase10.spec.ts`: the elevation-slider correction goes, and the test
   asserts the suggested axis within 0.5° of +Z (phase acceptance 2).
 
+**Landed (2026-11-08, kernel 0.38.0).** As planned, with one finding:
+
+- **The refine cap stays centred on the Fibonacci sweep's winner, not the
+  overall winner.** The golden proof caught the alarm the plan names. With
+  the cap on the overall winner, a pole that won the coarse stage pulled the
+  cap away from a better basin: on real `arch-case-01` tooth 11 the winner
+  went from 0.734 to 1.660 mm³. Now the candidates are the old set plus the
+  pole, so the winner never scores worse. `test/golden/axis-tie-break.test.ts`
+  recomputes the old search on the real scan and asserts this. A kernel test
+  asserts the same for poles tilted 0–40° on a frustum.
+- **What moved.** The open-arch die is +Z exactly, where it was 11.7° off.
+  The frustum and bridge fixtures now give their axis at score 0, where they
+  were 9.6° off with 28.8 mm³ left. Real tooth 11 is unchanged. Only the
+  kernel-ops `suggestAxis` hash moved, by `rankedCount` 32 → 33, and the
+  `*-qc` / traceability pins moved by their version string.
+- The coarse progress has one more step (the pole).
+
 ## Task 3 — The placeholder incisor's proportions *(library asset 1.3.0)*
 
 - **Record the current versions first.** Before any generator change, add

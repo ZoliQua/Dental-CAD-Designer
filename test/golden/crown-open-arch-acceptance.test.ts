@@ -91,7 +91,7 @@ const LIBRARY_TOOTH = 15 as FdiTooth;
 /** The intaglio pitch (a journaled parameter): coarser than the clinical
  * 20 µm to keep the golden in minutes — the bridge-case golden's pitch. */
 const PITCH_MM = 0.06;
-const EXPECTED_KERNEL_VERSION = '0.37.0';
+const EXPECTED_KERNEL_VERSION = '0.38.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 const PRINT = process.env['PRINT_CROWN_OPEN_ARCH_PINS'] === '1';
 const RUN_REAL = process.env['RUN_CROWN_REAL_DIE'] === '1';

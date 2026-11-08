@@ -1,5 +1,5 @@
 {
-  "kernelVersion": "0.35.0",
+  "kernelVersion": "0.38.0",
   "manifoldVersion": "3.5.1",
   "notes": [
     "Runtime budget: every param here is chosen to keep this suite fast (target: whole suite well under the ~2 min CI budget) — see scripts/kernel-ops-lib.ts's module doc for each choice.",
@@ -16,7 +16,8 @@
     "suggestAxis (Phase 3 Task 9, KERNEL_VERSION 0.6.0): NEW pinned entry — arch-case-01 upperjaw, ROI extracted (radiusMm=2) from tooth 11's COMMITTED hand-traced reference margin anchors (Task 7 — a fixed, already-golden-pinned seed, no ambient-point survey needed), default suggestInsertionAxis params, a <2s runtime self-check (this task's interactivity target — measured and asserted at generation time, not just reported). Every other op entry is UNCHANGED by this bump.",
     "blockoutPreview (Phase 3 Task 10, KERNEL_VERSION 0.7.0): NEW pinned entry — SAME real fixture/ROI as suggestAxis (arch-case-01 upperjaw, tooth 11 reference margin, radiusMm=2), direction = the WORST-ranked candidate suggestAxis itself evaluated (a real, reproducible, non-fabricated direction guaranteed to carry genuine undercut on this real fixture, since the BEST candidate is by construction near the zero-undercut optimum and would pin a near-empty golden), thresholdMm = DEFAULT_UNDERCUT_BLOCKOUT_THRESHOLD_MM (clinical-profiles, 0). A non-empty-selection self-check guards against a silently-degenerate regeneration. Every other op entry is UNCHANGED by this bump.",
     "constructShell (Phase 4 Task 7, KERNEL_VERSION 0.13.0): NEW pinned entry — inline synthetic cone-frustum die -> buildInnerSurface (pitchMm=0.1, coarse) + occlusally-capped open-cervical anatomy dome (0.7mm radial offset), joined at the margin-band seam into a watertight shell through the manifold-3d wrapper (cleanupMesh). This entry EXERCISES THE WASM BOUNDARY for the shell op, so the manifoldVersion guard protects it exactly like union/subtract/intersect. A watertight + single-component self-check guards against pinning a broken shell. Every other op entry is UNCHANGED by this bump (verified byte-identical via the regeneration diff).",
-    "assembleBridge (Phase 6 Task 6, KERNEL_VERSION 0.26.0): NEW pinned entry — inline synthetic three overlapping boxes (two unit boxes + one bridging connector box) fold-unioned into ONE watertight single-component solid through the manifold-3d wrapper (union). This entry EXERCISES THE WASM BOUNDARY for the whole-bridge assembly, so the manifoldVersion guard protects it exactly like union/subtract/intersect and constructShell. A watertight + single-component self-check guards against pinning a broken fuse. Every other op entry is UNCHANGED by this bump (verified byte-identical via the regeneration diff)."
+    "assembleBridge (Phase 6 Task 6, KERNEL_VERSION 0.26.0): NEW pinned entry — inline synthetic three overlapping boxes (two unit boxes + one bridging connector box) fold-unioned into ONE watertight single-component solid through the manifold-3d wrapper (union). This entry EXERCISES THE WASM BOUNDARY for the whole-bridge assembly, so the manifoldVersion guard protects it exactly like union/subtract/intersect and constructShell. A watertight + single-component self-check guards against pinning a broken fuse. Every other op entry is UNCHANGED by this bump (verified byte-identical via the regeneration diff).",
+    "suggestAxis (Phase 11 Task 2, KERNEL_VERSION 0.38.0): hash CHANGED by rankedCount only (32 → 33: the pole is now candidate 0 — ADR-024 Decision 2); best (direction, scoreMm3 0.7336 mm³, stats), poleUsed, coarseCount and refineCount are bit-identical (test/golden/axis-tie-break.test.ts asserts the winner never scores worse than the pre-0.38.0 search). Every other op entry is UNCHANGED by this bump."
   ],
   "ops": [
     {
@@ -324,7 +325,7 @@
         "roiRadiusMm": 2,
         "referenceMarginTooth": 11
       },
-      "hash": "6ca6b85e8c78f0b43906d4e685cd8fad30abf113882bd0e5d9cef774659f642c",
+      "hash": "71121bd8bb8e56ab7e48d99c9e2e0d3048b40e30506f83c4dbf323ed1af51398",
       "meta": {
         "regionTriangleCount": 13739,
         "bestDirection": [

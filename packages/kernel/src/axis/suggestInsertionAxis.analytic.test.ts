@@ -33,12 +33,14 @@ import { describe, expect, it } from 'vitest';
 import { buildBvh } from '../bvh/index.ts';
 import { buildHalfedge } from '../halfedge/index.ts';
 import { snapToSurface } from '../geodesic/surfacePoint.ts';
-import { undercutScan } from '../undercut/undercutScan.ts';
+import { undercutScan, undercutScanBatchIndices } from '../undercut/undercutScan.ts';
+import { regionTriangleAreasMm2 } from './roi.ts';
+import { fibonacciCapDirections, fibonacciHemisphereDirections } from './hemisphere.ts';
 import { cappedCylinderMesh } from '../curvature/curvature.test-fixtures.ts';
 import { icosphereMesh } from '../halfedge/halfedge.test-fixtures.ts';
 import { coneFrustumMesh, concatMeshes } from './axis.test-fixtures.ts';
-import { extractMarginRegion, unionRegions } from './roi.ts';
-import { fibonacciHemisphereDirections } from './hemisphere.ts';
+import { openArchPrepCase } from '../die/die.test-fixtures.ts';
+import { AXIS_DEFAULT_ROI_RADIUS_MM, extractMarginRegion, unionRegions } from './roi.ts';
 import {
   suggestInsertionAxis,
   suggestInsertionAxisForRegions,
@@ -208,6 +210,11 @@ describe('suggestInsertionAxis — cone frustum (prep-die-like construction axis
     // bound intentionally does NOT require the default interactive budget to
     // reach it (that would defeat the <2s interactivity target it's tuned
     // for — see `AXIS_SEARCH_PRESETS`'s own doc).
+    //
+    // Phase 11 (ADR-024 Decision 2): the pole itself is now candidate 0, and
+    // this symmetric ROI's pole is the construction axis — MEASURED score 0
+    // at 0.000°. The bound is kept as it was (the plan: non-tie tolerances
+    // unchanged); it still guards a region whose pole is not optimal.
     const DEFAULT_BUDGET_FRUSTUM_RESIDUAL_BOUND_MM3 = 28.821 * 1.5;
     expect(result.best.scoreMm3).toBeLessThan(DEFAULT_BUDGET_FRUSTUM_RESIDUAL_BOUND_MM3);
   });
@@ -290,7 +297,7 @@ describe('suggestInsertionAxis — cone frustum (prep-die-like construction axis
 });
 
 describe('suggestInsertionAxis — sphere patch (no undercut anywhere -> deterministic tie-break)', () => {
-  it('every candidate ties at score 0, and the winner is deterministically the pole-nearest coarse candidate', () => {
+  it('every candidate near the pole ties at score 0, and the winner is the pole itself', () => {
     const radius = 20;
     const mesh = icosphereMesh(radius, 3);
     const bvh = buildBvh(mesh);
@@ -326,12 +333,94 @@ describe('suggestInsertionAxis — sphere patch (no undercut anywhere -> determi
     expect(result.best.scoreMm3).toBe(0);
     expect(result.best.undercutTriangleCount).toBe(0);
 
-    // The documented tie-break: best === ranked[0] === the FIRST-GENERATED
-    // (coarse index 0, pole-nearest) candidate — independently recomputed
-    // here via the same hemisphere function this module calls internally.
-    const expectedFirst = fibonacciHemisphereDirections(AXIS_COARSE_SAMPLE_COUNT, result.poleUsed)[0]!;
+    // The documented tie-break (ADR-024 Decision 2): the pole is candidate
+    // 0, and a tie resolves toward the pole — so the winner is the pole
+    // itself, bit-exactly (before Phase 11 it was the pole-NEAREST
+    // Fibonacci sample, ~12° away on a 32-sample sweep).
     expect(result.best).toBe(result.ranked[0]);
-    expect(result.best.direction).toEqual(expectedFirst);
+    expect(result.best.direction).toEqual(result.poleUsed);
+  });
+});
+
+describe('suggestInsertionAxis — a height-field die (every near-axis direction ties at zero undercut)', () => {
+  it('Phase 11 (ADR-024 Decision 2): the open-arch prep die\'s margin region suggests the die\'s axis within 0.5°, at score 0', () => {
+    // The open-arch prep case is a height field over its margin plane, so
+    // every direction near +Z scores zero undercut. The old tie-break kept
+    // the first Fibonacci sample (~12° off the pole); the clinician had to
+    // correct it with the elevation slider (Phase 10 open item 3).
+    const arch = openArchPrepCase();
+    const bvh = buildBvh(arch.scan);
+    const hm = buildHalfedge(arch.scan);
+    const seeds = arch.marginLoop.filter((_, i) => i % 8 === 0).map((p) => snapToSurface(arch.scan, bvh, p));
+    const region = extractMarginRegion(arch.scan, hm, seeds, AXIS_DEFAULT_ROI_RADIUS_MM);
+    expect(region.triangleIndices.length).toBeGreaterThan(0);
+    const result = suggestInsertionAxis(arch.scan, bvh, region);
+    const errorDeg = (angleBetweenRad(result.best.direction, arch.insertionAxis) * 180) / Math.PI;
+    console.log(`[axis] open-arch height-field die: ${errorDeg.toFixed(6)}° off +Z, score ${result.best.scoreMm3}`);
+    expect(result.best.scoreMm3).toBe(0);
+    expect(errorDeg).toBeLessThan(0.5);
+    expect(result.best.direction).toEqual(result.poleUsed);
+    expect(result.best).toBe(result.ranked[0]);
+  });
+
+  it('ranked orders ties toward the pole: among equal scores, a larger dot with the pole comes first', () => {
+    const arch = openArchPrepCase();
+    const bvh = buildBvh(arch.scan);
+    const hm = buildHalfedge(arch.scan);
+    const seeds = arch.marginLoop.filter((_, i) => i % 8 === 0).map((p) => snapToSurface(arch.scan, bvh, p));
+    const region = extractMarginRegion(arch.scan, hm, seeds, AXIS_DEFAULT_ROI_RADIUS_MM);
+    const { ranked, poleUsed } = suggestInsertionAxis(arch.scan, bvh, region);
+    const dot = (d: Vec3): number => d[0] * poleUsed[0] + d[1] * poleUsed[1] + d[2] * poleUsed[2];
+    for (let i = 1; i < ranked.length; i++) {
+      const a = ranked[i - 1]!, b = ranked[i]!;
+      expect(a.scoreMm3).toBeLessThanOrEqual(b.scoreMm3);
+      if (a.scoreMm3 === b.scoreMm3) expect(dot(a.direction)).toBeGreaterThanOrEqual(dot(b.direction));
+    }
+  });
+});
+
+/** The pre-Phase-11 search, recomputed independently: the Fibonacci sweep
+ * (no pole candidate), first strict improvement, the refine cap around that
+ * winner — returns the winning score. */
+function preTieBreakBestScore(
+  mesh: Parameters<typeof suggestInsertionAxis>[0],
+  bvh: Parameters<typeof suggestInsertionAxis>[1],
+  region: Parameters<typeof suggestInsertionAxis>[2],
+  pole: Vec3,
+): number {
+  const areas = regionTriangleAreasMm2(mesh, region);
+  const score = (dirs: Vec3[]): Array<{ d: Vec3; s: number }> =>
+    undercutScanBatchIndices(mesh, bvh, dirs, region.triangleIndices).map((r, k) => {
+      let s = 0;
+      for (let i = 0; i < areas.length; i++) if (r.undercut[i] === 1) s += areas[i]! * r.depthMm[i]!;
+      return { d: dirs[k]!, s };
+    });
+  let best = { d: pole, s: Infinity };
+  for (const c of score(fibonacciHemisphereDirections(AXIS_COARSE_SAMPLE_COUNT, pole))) if (c.s < best.s) best = c;
+  const cap = defaultRefineCapAngleRad(AXIS_COARSE_SAMPLE_COUNT);
+  for (const c of score(fibonacciCapDirections(AXIS_REFINE_SAMPLE_COUNT, best.d, cap))) if (c.s < best.s) best = c;
+  return best.s;
+}
+
+describe('suggestInsertionAxis — the pole candidate never makes the suggestion worse (ADR-024 Decision 2)', () => {
+  it('for poles tilted 0–40° off a frustum\'s axis, the winner scores ≤ the pre-Phase-11 search\'s winner', () => {
+    const frustum = coneFrustumMesh(4, 2.5, 9, 64, 12);
+    const bvh = buildBvh(frustum.mesh);
+    const hm = buildHalfedge(frustum.mesh);
+    const seeds = [];
+    for (let i = 0; i < 32; i++) {
+      const theta = (2 * Math.PI * i) / 32;
+      seeds.push(snapToSurface(frustum.mesh, bvh, [3.5 * Math.cos(theta), 3.5 * Math.sin(theta), 3]));
+    }
+    const region = extractMarginRegion(frustum.mesh, hm, seeds, 2.0);
+    for (let k = 0; k <= 8; k++) {
+      const tilt = (k * 5 * Math.PI) / 180;
+      for (const az of [0, 2.3]) {
+        const pole: Vec3 = [Math.sin(tilt) * Math.cos(az), Math.sin(tilt) * Math.sin(az), Math.cos(tilt)];
+        const result = suggestInsertionAxis(frustum.mesh, bvh, region, { pole });
+        expect(result.best.scoreMm3, `tilt ${k * 5}°, az ${az}`).toBeLessThanOrEqual(preTieBreakBestScore(frustum.mesh, bvh, region, pole));
+      }
+    }
   });
 });
 
@@ -405,6 +494,9 @@ describe('suggestInsertionAxisForRegions — bridge two-abutment fixture', () =>
     // rationale as the single-frustum default-budget test above. The TRUE
     // optimum is separately proven reachable by this describe block's own
     // high-budget variant test below.
+    // Phase 11 (ADR-024 Decision 2): the pole is now a candidate, and the
+    // union ROI's pole is the shared axis — MEASURED 0 for both abutments.
+    // The bound is kept as it was.
     const DEFAULT_BUDGET_BRIDGE_PER_ABUTMENT_RESIDUAL_BOUND_MM3 = 25.757 * 1.5;
     for (const region of perRegion) {
       expect(region.scoreMm3).toBeLessThan(DEFAULT_BUDGET_BRIDGE_PER_ABUTMENT_RESIDUAL_BOUND_MM3);

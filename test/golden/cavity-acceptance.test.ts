@@ -58,7 +58,7 @@ const µm = (mm: number): string => `${(mm * 1000).toFixed(3)} µm`;
 // golden change (bump + changelog), never a silent regen (the WASM boolean is
 // manifoldVersion-guarded, the crown-acceptance precedent).
 // ---------------------------------------------------------------------------
-const EXPECTED_KERNEL_VERSION = '0.37.0';
+const EXPECTED_KERNEL_VERSION = '0.38.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 function installedManifoldVersion(): string {
   const pkg = JSON.parse(readFileSync(join(repoRoot, 'node_modules', 'manifold-3d', 'package.json'), 'utf8')) as { version: string };
@@ -152,7 +152,12 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // kernelVersion, every geometry stage pin above BYTE-IDENTICAL (verified: the whole
   // golden suite passes at 0.36.0 with the new code). Old hash: 503c245d84970f490359ea253a181816f10d759d9a0c86555a1d6bdf9dfc88f3. See
   // docs/CHANGELOG-kernel.md's [0.37.0] entry.
-  'cavity-inlay-qc': '02f589b0caebe435f1978ecaf3aaf236caef50467a6bb12fd67042b91258e256',
+  // Advanced 0.37.0 → 0.38.0 (Phase 11 Task 2): MECHANICAL, metadata-only — no suggested
+  // axis winner changed; hashQcReport tracks the embedded kernelVersion, every
+  // geometry stage pin above BYTE-IDENTICAL (verified: the whole golden suite passes at
+  // 0.37.0 with the new code, except the kernel-ops suggestAxis rankedCount). Old hash:
+  // 02f589b0caebe435f1978ecaf3aaf236caef50467a6bb12fd67042b91258e256. See docs/CHANGELOG-kernel.md's [0.38.0] entry.
+  'cavity-inlay-qc': '9c4a5585dd391bd456bb04df17c96cf37aff374e45de953c4c755305784ba5ff',
   // --- onlay chain (incl. cuspCoverage.select) ---
   // NOTE: the cuspCoverage pin is BIT-IDENTICAL to the kernel op's committed
   // extended-outline golden (cuspCoverage.test.ts's sha at 0.21.0) — a strong
@@ -221,7 +226,12 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // kernelVersion, every geometry stage pin above BYTE-IDENTICAL (verified: the whole
   // golden suite passes at 0.36.0 with the new code). Old hash: df1fa38f0216f69dd7117708c79cc98f883586af5b52712330a43ff645f356e1. See
   // docs/CHANGELOG-kernel.md's [0.37.0] entry.
-  'cavity-onlay-qc': '93ac9afbb8c02585e5f1a835162288500a02f9df1f62696e6529403065f858b7',
+  // Advanced 0.37.0 → 0.38.0 (Phase 11 Task 2): MECHANICAL, metadata-only — no suggested
+  // axis winner changed; hashQcReport tracks the embedded kernelVersion, every
+  // geometry stage pin above BYTE-IDENTICAL (verified: the whole golden suite passes at
+  // 0.37.0 with the new code, except the kernel-ops suggestAxis rankedCount). Old hash:
+  // 93ac9afbb8c02585e5f1a835162288500a02f9df1f62696e6529403065f858b7. See docs/CHANGELOG-kernel.md's [0.38.0] entry.
+  'cavity-onlay-qc': '77768c6aa584eb448831374fee4c1ed5b596a215001232e73e77a9bb149da4b5',
 };
 
 const INLAY_GATE_ORDER = ['watertight', 'manifold', 'selfIntersection', 'minWallThickness', 'marginFit', 'seamDihedral', 'seating', 'contact'];
