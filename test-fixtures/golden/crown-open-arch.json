@@ -14,5 +14,12 @@
     "anatomyPlacement": "d54b466965f642e07ceb5f05abef21b0b2e31efd320abfccfcc2d2079b73c5e1",
     "morphState": "3a736d6d7b3a0a95dbdbeacd96fad918723ba2610e479c0ddd364034d1e81f82",
     "finalMesh": "9e95624a465c98811e98d678908cce9d6db1ee398ec51aa61296387f745f5a49"
+  },
+  "incisorStages": {
+    "prepDie": "a7b38bd925bb8cdaffdf35d51a541e84f113d14c8aa4a8e738292021fc75dec6",
+    "innerSurface": "41bf7f817cd388f1896b10b4f3558cc32d6bbfa7bc33114b0274fdf3cf6fc046",
+    "anatomyPlacement": "f230ac815c6b61dd4ccd199310b4ec701076c7f15d77b5360c97a80ca1870fdd",
+    "morphState": "b2ef755e63897984db9f3cdc53ef639f46633820672c60560f3fde4cc1165758",
+    "finalMesh": "daffeb8b46aa86bae62716ee5e6d31ba8b7b46909c6665c8f850402f29b92723"
   }
 }

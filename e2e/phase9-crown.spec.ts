@@ -195,18 +195,23 @@ test.describe.serial('Phase 9 — a crown on the real arch-case-01 with captured
   });
 
   test('the later stages run on the real scan, and QC reports the unprepared tooth honestly: wall and seating fail, nothing is stood in (Phase 10)', async () => {
-    // The anatomy: the library default is tried, and the cervical fit
-    // refuses this margin. Offset 0.65 mm outward along its local normals, the
-    // dense hand-traced incisor margin (a point every ~36 µm, concave
-    // interproximally) folds back on itself (docs/demos/phase-10.md, open
-    // item). The built-in template is placed instead, with the reason shown.
+    // The anatomy: the library default is tried. Since kernel 0.37.0 the
+    // cervical fit takes this dense, interproximally concave margin (the exact
+    // emergence outline no longer folds), and measures 135 µm against the
+    // 50 µm bound: the outline carries the margin's interproximal scallop,
+    // which the template ring's chords cannot follow in 3-D
+    // (test/golden/crown-open-arch-acceptance.test.ts's real lane measures
+    // 178 µm: the same axis, but its neighbours are captured at snapped
+    // points rather than canvas clicks, so the template is placed slightly
+    // differently). The built-in template is placed instead, with the reason
+    // shown.
     await page.getByTestId('crown-anatomy-autoplace').click();
     await expect(page.getByTestId('crown-anatomy-readout')).toBeVisible({ timeout: 300_000 });
     await expect(page.getByTestId('crown-error')).toHaveCount(0);
     await expect(page.getByTestId('crown-anatomy-source')).toHaveAttribute('data-origin', 'builtin');
     const anatomyOp = await hook<{ params: Record<string, unknown> }>(page, 'getLatestOperation', 'crown-anatomy');
     expect(anatomyOp.params['neighbourProvenance']).toBe('case');
-    expect(anatomyOp.params['anatomySource']).toMatchObject({ origin: 'builtin', reason: 'fitRefused' });
+    expect(anatomyOp.params['anatomySource']).toMatchObject({ origin: 'builtin', reason: 'fitOverBound', detail: 'residual 135 µm > bound 50 µm' });
 
     await page.getByTestId('crown-morph-run').click();
     await expect(page.getByTestId('crown-morph-readout')).toBeVisible({ timeout: 300_000 });

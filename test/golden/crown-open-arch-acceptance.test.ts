@@ -43,10 +43,14 @@
 //      bit-identically (pinned in test-fixtures/golden/crown-open-arch.json,
 //      version-guarded; both lanes).
 //
-// Plus an env-gated real lane (RUN_CROWN_REAL_DIE=1): real arch-case-01 tooth
+// Plus env-gated real lanes (RUN_CROWN_REAL_DIE=1): real arch-case-01 tooth
 // 11 through die extraction and the intaglio, recording the certificate and
-// the intaglio's margin fit. The tooth is unprepared, so only these two
-// stages are asserted.
+// the intaglio's margin fit (the tooth is unprepared, so only these two
+// stages are asserted); and, through the engine, the library incisor's
+// cervical fit on the real margin (Phase 11 Task 4).
+//
+// Phase 11 Task 4 adds a third pinned lane: the fitted library INCISOR 11
+// (asset 1.3.0) on the same open-arch case, with its measured verdict.
 //
 // It lives in test/ because it needs the client engine and the kernel's test
 // fixtures together (the bridge-case-acceptance precedent).
@@ -62,6 +66,7 @@ import {
   analyzeMesh,
   buildBvh,
   buildHalfedge,
+  closestPoint,
   assertPrepDieCoversInnerSurface,
   extractMarginRegion,
   findBoundaryLoops,
@@ -103,6 +108,8 @@ interface Pin {
   stages: Record<string, string>;
   /** The fitted library lane (Task 5). */
   libraryStages: Record<string, string>;
+  /** The fitted library incisor 11 lane (Phase 11 Task 4). */
+  incisorStages: Record<string, string>;
 }
 const PIN_PATH = join(repoRoot, 'test-fixtures', 'golden', 'crown-open-arch.json');
 const PIN = PRINT ? null : (JSON.parse(readFileSync(PIN_PATH, 'utf8')) as Pin);
@@ -171,20 +178,31 @@ const libraryFetch = (async (url: string) => {
   return new Response('', { status: 404 });
 }) as typeof fetch;
 
-/** A fresh case: the open scan + a crown on `tooth` with its margin and axis. */
-async function setupCase(tooth: FdiTooth = TOOTH): Promise<{ restorationId: string; scanMeshId: string }> {
+interface CaseInput {
+  readonly mesh: IndexedMesh;
+  readonly margin: Vec3[];
+  readonly axis: Vec3;
+  readonly name: string;
+}
+
+/** A fresh case: the open scan (or `input`'s) + a crown on `tooth` with its
+ * margin and axis. */
+async function setupCase(
+  tooth: FdiTooth = TOOTH,
+  input: CaseInput = { mesh: scan, margin: marginLoop, axis: arch.insertionAxis, name: 'open-arch-prep-11.stl' },
+): Promise<{ restorationId: string; scanMeshId: string }> {
   caseStore.resetForTests();
   crownDesignEngine.resetForTests();
   __resetToothLibraryCacheForTests();
   crownDesignEngine.__setPoolForTests(pool as unknown as RunnablePool);
   useServerStatusStore.getState().setStatus('online');
-  const { contentHash } = await pool.run('hashMesh', { positions: scan.positions.slice(), indices: scan.indices.slice() });
+  const { contentHash } = await pool.run('hashMesh', { positions: input.mesh.positions.slice(), indices: input.mesh.indices.slice() });
   caseStore.registerImportedMesh({
     contentHash,
-    name: 'open-arch-prep-11.stl',
+    name: input.name,
     format: 'stl',
-    positions: scan.positions,
-    indices: scan.indices,
+    positions: input.mesh.positions,
+    indices: input.mesh.indices,
     stats: STATS,
     report: { weldEpsilonMm: 1e-6, steps: [] },
     operations: [],
@@ -194,8 +212,8 @@ async function setupCase(tooth: FdiTooth = TOOTH): Promise<{ restorationId: stri
   caseStore.updateRestoration(
     {
       ...restoration,
-      marginLines: { [tooth]: { anchors: [], closed: true, resampledPoints: marginLoop } },
-      insertionAxis: arch.insertionAxis,
+      marginLines: { [tooth]: { anchors: [], closed: true, resampledPoints: input.margin } },
+      insertionAxis: input.axis,
     },
     {
       id: 'op-margin-axis',
@@ -394,6 +412,96 @@ describe('Phase 10 Task 5 — the crown on an open scan, fitted library template
   }, 1_800_000);
 });
 
+describe('Phase 11 Task 4 — the crown on an open scan, fitted library INCISOR 11 (asset 1.3.0)', () => {
+  // The measured verdict (2026-11-08). The 1.3.0 incisor is placed and
+  // fitted (residual 5.3 µm), and seven gates pass on case geometry: no
+  // self-intersection, the margin and seating clean, both contacts
+  // reached. The minimum wall fails (343 µm axial, 416 µm occlusal against
+  // 500 µm): this die is ROUND — a premolar-shaped preparation, Ø 3.8 mm at
+  // its top — and an incisor's lingual fossa and thin incisal third lie
+  // inside that radius plus the wall. A real incisor preparation is
+  // reduced lingually and incisally; that fixture is a tracked pending. No
+  // gate is weakened (Phase 11 acceptance 3: the honest verdict).
+  it('seven gates pass on case geometry, the minimum wall fails on this round die; the library incisor is fitted; the hashes are pinned', async () => {
+    const { report, stages } = await designCrown('library', 11 as FdiTooth);
+    const fitOp = opOf('crown-cervical-fit');
+    console.log(
+      `[crown-open-arch incisor] fit residual ${((fitOp.params['errorBoundMm'] as number) * 1000).toFixed(1)} µm\n${table(report)}`,
+    );
+    expect(report.gates.map((g) => g.gate)).toEqual(GATES);
+    for (const g of report.gates) {
+      expect(g.inputProvenance, g.gate).toBeUndefined();
+      if (g.gate === 'minWallThickness') continue;
+      expect(g.passed, `${g.gate}: ${g.message}`).toBe(true);
+    }
+    const wall = report.gates.find((g) => g.gate === 'minWallThickness')!;
+    expect(wall.passed, wall.message).toBe(false);
+    expect(wall.value!).toBeGreaterThan(0.1);
+    expect(wall.value!).toBeLessThan(wall.threshold!);
+
+    const anatomy = opOf('crown-anatomy');
+    expect(anatomy.params['anatomySource']).toMatchObject({ origin: 'library', fdi: 11, version: '1.3.0' });
+    expect(anatomy.inputHashes).toContain(STARTER_TOOTH_ASSETS.get(11 as FdiTooth)!.metadata.meshChecksum);
+    expect(fitOp.params['errorBoundMm'] as number).toBeLessThanOrEqual(fitOp.params['maxResidualMm'] as number);
+    expect(opOf('crown-morph').params['fixedCervicalRingVertexCount']).toBe(fitOp.params['ringVertexCount']);
+
+    if (PIN) expect(stages).toEqual(PIN.incisorStages);
+    else console.log(`[crown-open-arch][incisor-pins] ${JSON.stringify(stages)}`);
+  }, 1_800_000);
+});
+
+// The engine on the real scan, as e2e phase9-crown drives it: die, intaglio,
+// both neighbours captured on the scan, then the default anatomy — the
+// library incisor fitted to the real margin (Phase 11 acceptance 1).
+//
+// The measured verdict (2026-11-08): the fit now TAKES this margin (it used
+// to refuse it as not star-shaped), and refuses it over the bound — residual
+// 178 µm > 50 µm, so the built-in template is placed with that reason. Why:
+// horizontally a 72-segment ring would follow the outline within ~43 µm,
+// but the outline carries the incisor margin's interproximal scallop
+// (1.37 mm of height around it) and, in the filled concavities, the
+// nearest-point height steps (up to 163 µm between neighbouring samples);
+// the ring's straight chords cannot follow that in 3-D (~115 µm even at
+// uniform azimuths; the template's elliptical ring is less uniform). The
+// residual depends on where the template is placed: e2e phase9-crown, with
+// the same axis but its neighbours captured by canvas clicks, measures
+// 135 µm. The bound is not weakened. A smoother outline height or a denser
+// template ring is a later change.
+describe.skipIf(!RUN_REAL)('Phase 11 Task 4 — REAL arch-case-01 tooth 11: the fitted library incisor [RUN_CROWN_REAL_DIE=1]', () => {
+  it('the cervical fit takes the real margin and refuses it over the bound (measured 178 µm), never as not star-shaped', async () => {
+    const upper = loadUpperjawMesh();
+    const bvh = buildBvh(upper);
+    const readRef = (fdi: number): Reference =>
+      JSON.parse(readFileSync(join(repoRoot, 'test-fixtures', 'margins', 'arch-case-01', `${fdi}.reference.json`), 'utf8')) as Reference;
+    const ref = readRef(11);
+    const loop: Vec3[] = ref.resampledPoints.map((q) => [q[0], q[1], q[2]]);
+    const seeds = ref.anchors.map((a) => ({ triangleIndex: a.triangleIndex, barycentric: a.barycentric as Vec3 }));
+    const axis = suggestInsertionAxis(upper, bvh, extractMarginRegion(upper, buildHalfedge(upper), seeds, AXIS_DEFAULT_ROI_RADIUS_MM)).best.direction;
+    const ids = await setupCase(TOOTH, { mesh: upper, margin: loop, axis, name: 'arch-case-01-upperjaw.stl' });
+    crownDesignEngine.__setToothLibraryFetchForTests(libraryFetch);
+    crownDesignEngine.start(ids.restorationId);
+    await crownDesignEngine.runPrepDie();
+    await crownDesignEngine.runInnerSurface({ pitchMm: PITCH_MM });
+    // The pick points: each neighbour's reference-trace centroid, lifted
+    // 3 mm along the axis and snapped to the scan (e2e phase9-crown's).
+    for (const [side, fdi] of [['mesial', 21], ['distal', 12]] as const) {
+      const pts = readRef(fdi).resampledPoints;
+      const c = pts.reduce<Vec3>((acc, p) => [acc[0] + p[0] / pts.length, acc[1] + p[1] / pts.length, acc[2] + p[2] / pts.length], [0, 0, 0]);
+      await crownDesignEngine.captureNeighbour(side, closestPoint(upper, bvh, [c[0] + axis[0] * 3, c[1] + axis[1] * 3, c[2] + axis[2] * 3]).point);
+    }
+    await crownDesignEngine.placeAnatomyAuto();
+    const source = opOf('crown-anatomy').params['anatomySource'] as { origin: string; reason?: string; detail?: string };
+    const fitOp = caseStore.getDocument().history.filter((o) => o.name === 'crown-cervical-fit').pop();
+    console.log(
+      `[CROWN-REAL #11 library] source ${JSON.stringify(source)}` +
+        (fitOp
+          ? ` fit residual ${((fitOp.params['errorBoundMm'] as number) * 1000).toFixed(1)} µm, ring moved ≤ ${(fitOp.params['maxRingDisplacementMm'] as number).toFixed(3)} mm, emergence ${String(fitOp.params['emergenceOffsetMm'])} mm`
+          : ''),
+    );
+    expect(source).toMatchObject({ origin: 'builtin', reason: 'fitOverBound', detail: 'residual 178 µm > bound 50 µm' });
+  }, 1_800_000);
+});
+
 interface Reference {
   resampledPoints: readonly [number, number, number][];
   anchors: readonly { triangleIndex: number; barycentric: readonly [number, number, number] }[];
@@ -459,3 +567,4 @@ describe.skipIf(!RUN_REAL)('Phase 10 Task 3 — REAL arch-case-01 tooth 11: die 
     expect(fit.passed, fit.message).toBe(true);
   }, 1_800_000);
 });
+

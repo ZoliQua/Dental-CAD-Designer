@@ -244,6 +244,33 @@ these notes:
   the measured figure and stop there. Refining the template ring is a new
   asset change, and it is not in this phase.
 
+**Landed (2026-11-08, no kernel or asset change).** Measured verdicts:
+
+- **Open-arch incisor 11 lane** (`incisorStages`, pinned). The 1.3.0 incisor
+  is placed and fitted with a residual of 5.3 µm. Seven gates pass on case
+  geometry: no self-intersection, margin and seating clean, both contacts
+  reached. **minWallThickness fails** (343 µm axial, 416 µm occlusal, against
+  500 µm). The die is round: a premolar-shaped preparation, Ø 3.8 mm at its
+  top. The incisor's lingual fossa and thin incisal third lie inside that
+  radius plus the wall. A real incisor preparation is reduced lingually and
+  incisally, and that fixture is a tracked pending. Acceptance 3 is met as an
+  honest, asserted verdict, with no gate weakened.
+- **Real tooth 11** (engine lane under `RUN_CROWN_REAL_DIE=1`, and e2e
+  `phase9-crown`). The fit now takes the margin, which it used to refuse as
+  not star-shaped, and refuses it over the bound: `fitOverBound`, 178 µm in
+  the golden and 135 µm in the e2e. The axis is the same in both, but the
+  e2e captures the neighbours by canvas clicks, so the template is placed
+  differently. **The cause is mostly vertical, not the ring's
+  tessellation.**
+  - Horizontally, a 72-segment ring would follow the outline within ~43 µm.
+  - In 3-D it cannot get under ~115 µm. The outline carries the incisor
+    margin's interproximal scallop (1.37 mm of height around it), and in the
+    filled concavities the nearest-point height steps by up to 163 µm
+    between neighbouring samples.
+  - Acceptance 1 is met in its "otherwise" branch. A smoother outline
+    height (or a denser template ring) is the next change, and it is not in
+    this phase.
+
 ## Task 5 — CI hygiene
 
 - `.github/workflows/ci.yml`:
