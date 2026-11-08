@@ -92,6 +92,23 @@ moves it.
   their version-only `*-qc` / traceability pins. Any other move is an alarm.
   Re-pin, with "Advanced 0.36.0 → 0.37.0" comments.
 
+**Landed (2026-11-08, kernel 0.37.0).** As planned, with these notes:
+
+- `emergenceRadius(q, heights, dir, d)` works on the margin already in its
+  frame (2-D points and their heights) rather than on `(q, c, dir, d)`. It is
+  exported from the module for the kernel's tests, not from the package.
+- The real-margin regression runs on the committed trace with zirconia's
+  `d` = 0.651 mm and the axis the real lane derives at 0.36.0
+  (`[-0.2211, -0.6140, -0.7577]`). The old pointwise offset folds there, and
+  the new outline is star-shaped with every point `d` from the projection
+  (1e-12).
+- **Golden proof.** At 0.36.0 with the new code only the open-arch library
+  lane moved (`anatomyPlacement`, `morphState`, `finalMesh`). Every gate
+  still passes: the fit residual is 8.0 µm, the wall 643 µm, the seating
+  interference 6·10⁻²⁰ mm³. `cervical-fit-acceptance` pins no hashes and
+  passed unchanged. At 0.37.0 only the five `*-qc` pins and the server
+  traceability golden moved, by their version string.
+
 ## Task 2 — The axis suggestion's tie-break *(kernel 0.38.0)*
 
 - `packages/kernel/src/axis/suggestInsertionAxis.ts`:

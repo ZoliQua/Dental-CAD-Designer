@@ -59,6 +59,57 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.37.0] — Phase 11 Task 1: the fold-free emergence outline
+
+**A deliberate numeric change in one op, `fitCervicalRing` /
+`emergenceLoop` (ADR-024 Decision 1). Verified by running the whole golden
+suite and the server project at `0.36.0` with the new code: the only pins
+that move are the open-arch library lane's (`crown-open-arch.json`
+`libraryStages`) — the fitted template and everything downstream of it —
+plus the version-only `*-qc` / traceability pins. Every other geometry and
+journal-replay pin is BYTE-IDENTICAL.**
+
+- **The emergence outline is the exact outer boundary of the margin's
+  projection dilated by the emergence offset `d`.**
+  - ADR-023's loop moved each margin point by `d` along the normal of its
+    central difference: the pointwise offset of a curve. It folds wherever
+    the projection is concave tighter than `d`, or where point-to-point noise
+    swings the normal. On real `arch-case-01` tooth 11 (513 points, 36 µm
+    apart) 50 of 450 azimuth steps reversed, and the fit refused the margin
+    as `margin-not-star-shaped`, so the library template was never used on
+    real data.
+  - The dilation of a star-shaped region is star-shaped (the proof is in
+    ADR-024), so the outline has one point per azimuth at
+    `R(θ) = sup { t : dist(t·e(θ), P) ≤ d }`. `R(θ)` is computed in closed
+    form: the largest exit of the ray from the segments' capsules (end-disk
+    quadratics, offset lines clipped to the segment's slab). No sampling, no
+    tolerance; `@errorBound` floating-point rounding only, asserted at
+    1e-12 mm against `dist(·, P) = d`.
+  - The height of an outline point is its nearest margin point's (linear
+    along the generating segment). On a convex margin this is each point's
+    own height, as before.
+  - `emergenceLoop` samples `R(θ)` at every margin point's azimuth. The fit's
+    ring targets are `R(θ)` exactly at each ring vertex's azimuth, instead of
+    a ray–polyline hit on the sampled loop.
+  - The refusal `margin-not-star-shaped` now concerns only the margin
+    itself. A non-star-shaped outline would be a kernel bug and throws a
+    plain `Error`.
+- **What moved, numerically.** At a margin vertex's azimuth on a convex
+  polygon nothing changes (`r + d`). Between vertices the old target lay on
+  the chord between two offset vertices; the new one lies on the offset edge
+  or the vertex arc. On the Phase 10 192-gon the difference is at most
+  `d(1 − cos(π/192))` ≈ 0.09 µm (zirconia, `d` = 0.651 mm). That moves the
+  fitted ring's last bits, hence the library lane's hashes.
+- **Tests.** Analytic: the regular 192-gon at 1000 azimuths against the
+  closed form, the rounded square, a notched "plus" on which the old offset
+  folds (the outline fills the notch at the offset edges' corner), a tilted
+  notched margin (heights), a near-radial segment, the ±π seam. Property
+  (fast-check): random star-shaped polygons (16–600 points, 40 % radius
+  jitter) wind once, monotonically, with every point `d` from the
+  projection; equivariance; repeated points ignored. The real-margin
+  regression: tooth 11's committed reference trace, on which the old offset
+  folds, gives a star-shaped, exact outline.
+
 ## [0.36.0] — Phase 10 Task 5: the morph holds a fitted cervical ring
 
 **A new optional input; no existing output changed. Every geometry stage pin

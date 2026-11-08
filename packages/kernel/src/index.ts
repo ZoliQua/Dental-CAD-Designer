@@ -407,8 +407,17 @@
  * whose output position is copied bit for bit. Absent or empty, the plan is
  * exactly the previous one: geometry + journal-replay pins byte-identical;
  * the acceptance QC pins advance mechanically. See docs/CHANGELOG-kernel.md's
- * `[0.36.0]` entry. */
-export const KERNEL_VERSION = '0.36.0';
+ * `[0.36.0]` entry.
+ *
+ * 0.37.0 (Phase 11 Task 1, ADR-024 Decision 1): the cervical fit's
+ * emergence outline is the EXACT outer boundary of the margin's projection
+ * dilated by the emergence offset (closed-form capsule exits), instead of
+ * ADR-023's pointwise normal offset, which folded on dense or concave real
+ * margins. The fit's ring targets are the outline at each ring vertex's
+ * azimuth. Only the fitted library lane moves (≤ d(1 − cos(π/192)) ≈ 0.09 µm
+ * on the 192-gon); every other geometry + journal-replay pin byte-identical.
+ * See docs/CHANGELOG-kernel.md's `[0.37.0]` entry. */
+export const KERNEL_VERSION = '0.37.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export { detSin, detCos, detAtan, detAtan2, detAsin, detAcos, detExp, detPow } from './math/detMath.ts';

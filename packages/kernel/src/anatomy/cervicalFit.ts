@@ -7,25 +7,45 @@
 // It runs after placement and before the contact morph, as its own journaled
 // op (placement and morph are unchanged).
 //
-// ## The emergence loop
+// ## The emergence outline (ADR-024 Decision 1, Phase 11 Task 1)
 //
-// The confirmed margin pushed OUTWARD, normal to the insertion axis, by
-// `emergenceOffsetMm` (the caller passes the intaglio's marginal gap plus the
-// material's minimum wall thickness, both from the profile — no clinical
-// value is defaulted here). Each margin point keeps its own height along the
-// axis, so a non-planar margin gives a non-planar emergence loop. Point i
-// moves along the outward normal of the margin's projection (the
-// perpendicular of the central difference p[i+1] − p[i−1]), so on a regular
-// polygon it moves exactly radially.
+// Let P be the region the confirmed margin bounds, projected onto the plane
+// normal to the insertion axis (origin at the margin centroid). The
+// emergence outline is the boundary of P dilated by `emergenceOffsetMm` = d
+// (the caller passes the intaglio's gap plus the material's minimum wall,
+// both from the profile — no clinical value is defaulted here): the points
+// exactly d from P, normal to the axis.
+//
+//  - It never folds. The fit requires P star-shaped around the centroid (the
+//    margin's azimuths strictly monotone, one turn), and then so is P ⊕ D(d):
+//    the outline has exactly one point per azimuth, at the radius
+//    R(θ) = sup { t : dist(t·e(θ), P) ≤ d }. (ADR-023's pointwise offset —
+//    each point moved along its own normal — folded on concavities tighter
+//    than d and on point-to-point noise: on a real margin it reversed.)
+//  - It is exact, in closed form. Along a ray, the points within d of one
+//    margin segment form an interval (the ray inside the segment's capsule),
+//    so R(θ) is the largest capsule exit over the segments: the larger root
+//    of a quadratic for each end disk, and a linear solve for each offset
+//    line, clipped to the segment's slab.
+//  - Height: each outline point takes the height along the axis of its
+//    NEAREST margin point (on the segment that generated it, the 3-D height
+//    linear along that segment). On a convex margin that is "each point at
+//    its own height"; inside a filled concavity the nearest point can jump
+//    between the notch's two sides, so the height steps there — the RBF
+//    blend absorbs it, and the wall and self-intersection gates measure the
+//    result.
+//
+// `emergenceLoop` returns R(θ) at every (deduplicated) margin point's
+// azimuth — star-shaped by construction. The fit's ring targets are R(θ)
+// evaluated exactly at each ring vertex's azimuth.
 //
 // ## The fit
 //
 // Each ring vertex is paired, BY AZIMUTH around the axis through the margin
-// centroid, with the point where the ray at its azimuth crosses the
-// emergence loop (heights linear along the loop). Both the ring and the loop
-// must be star-shaped around the centroid (their azimuths strictly monotone,
-// one turn) — otherwise the pairing is ambiguous and the fit refuses
-// (`CervicalFitError`). A deterministic RBF (rbf/rbf.ts: φ(r) = r with its
+// centroid, with the emergence outline's point at that azimuth. The ring and
+// the margin must be star-shaped around the centroid (their azimuths
+// strictly monotone, one turn) — otherwise the pairing is ambiguous and the
+// fit refuses (`CervicalFitError`); the outline then is by construction. A deterministic RBF (rbf/rbf.ts: φ(r) = r with its
 // affine term, direct solve) interpolates the ring displacements with ZERO
 // displacement at the anchors: every template vertex in the band
 // [B, B + `anchorBandMm`] above the BLEND HEIGHT B (the highest of the ring
@@ -35,13 +55,17 @@
 // A fold the fit may cause in a thin or oddly-shaped template is NOT hidden:
 // the shell's self-intersection and minimum-wall gates measure it.
 //
-// @errorBound The fitted ring versus the emergence loop: the larger of the
-// greatest distance from a fitted ring vertex to the loop polyline and from
-// a loop point to the fitted ring polyline (`errorBoundMm`). The vertex
-// targets lie ON the loop (the RBF interpolates its controls to solver
-// precision), so the bound is dominated by the chord between ring vertices —
-// the ring's tessellation, which is the template's own resolution. Reported
-// with the fit; the gates that read the crown measure the result anyway.
+// @errorBound The emergence outline itself: floating-point rounding only
+// (closed form; asserted at 1e-12 mm against dist(·, P) = d). The fitted ring
+// versus the emergence loop: the larger of the greatest distance from a
+// fitted ring vertex to the loop polyline and from a loop point to the
+// fitted ring polyline (`errorBoundMm`). The vertex targets lie ON the exact
+// outline (the RBF interpolates its controls to solver precision), so the
+// bound is dominated by the chord between ring vertices — the ring's
+// tessellation, which is the template's own resolution — plus how far the
+// outline bulges past the loop's chords between margin points (on the
+// Phase 10 192-gon, d(1 − cos(π/192)) ≈ 0.09 µm). Reported with the fit; the
+// gates that read the crown measure the result anyway.
 import type { Vec3 } from '../bvh/geometry.ts';
 import type { IndexedMesh } from '../mesh/types.ts';
 import { distanceToClosedPolyline } from '../offset/innerSurfaceOffset.ts';
@@ -234,14 +258,91 @@ function cleanMargin(marginLoop: readonly Vec3[]): Vec3[] {
   return marginLoop.length > 0 ? dedupLoop(marginLoop, MARGIN_DEDUP_EPSILON_MM) : [];
 }
 
+/** The largest t ≥ 0 at which the ray t·(ex, ey) is still within `d` of the
+ * segment a–b — the exit from the segment's capsule (−∞ if the ray misses
+ * it). The capsule is the union of the two end disks and the rectangle
+ * between the offset lines, so its exit is the largest of theirs. */
+function capsuleExit(ax: number, ay: number, bx: number, by: number, ex: number, ey: number, d: number): number {
+  let best = -Infinity;
+  const dd = d * d;
+  // End disks: |t·e − p|² ≤ d², the larger root.
+  for (const [px, py] of [[ax, ay], [bx, by]] as const) {
+    const pe = px * ex + py * ey;
+    const disc = pe * pe - (px * px + py * py - dd);
+    if (disc >= 0) best = Math.max(best, pe + Math.sqrt(disc));
+  }
+  // The rectangle: 0 ≤ s·(x − a) ≤ L and |n·(x − a)| ≤ d along x = t·e.
+  const sx = bx - ax, sy = by - ay;
+  const len = Math.hypot(sx, sy);
+  if (!(len > 0)) return best;
+  const ux = sx / len, uy = sy / len;
+  let lo = -Infinity, hi = Infinity;
+  // Each constraint: low ≤ t·k − c ≤ high.
+  const clip = (k: number, c: number, low: number, high: number): void => {
+    if (k === 0) {
+      if (-c < low || -c > high) hi = -Infinity;
+      return;
+    }
+    const t0 = (low + c) / k, t1 = (high + c) / k;
+    lo = Math.max(lo, Math.min(t0, t1));
+    hi = Math.min(hi, Math.max(t0, t1));
+  };
+  clip(ux * ex + uy * ey, ux * ax + uy * ay, 0, len);
+  clip(uy * ex - ux * ey, uy * ax - ux * ay, -d, d);
+  if (lo <= hi) best = Math.max(best, hi);
+  return best;
+}
+
 /**
- * The emergence loop: `marginLoop` pushed outward, normal to `insertionAxis`,
- * by `offsetMm`, each point at its own height — see the module doc.
+ * The emergence outline's radius at the azimuth of the unit 2-D direction
+ * `dir`, and its height — ADR-024 Decision 1 (see the module doc). `q` is the
+ * margin projected into the frame (origin at its centroid, star-shaped
+ * around it), `heights` the margin points' heights along the axis. Exported
+ * for the kernel's own tests; not part of the package API.
  *
- * @throws {CervicalFitError} 'degenerate-margin' (fewer than 3 points or a
- * zero tangent) or 'margin-not-star-shaped'.
+ * @errorBound floating-point rounding only (closed form).
  */
-export function emergenceLoop(marginLoopIn: readonly Vec3[], insertionAxis: Vec3, offsetMm: number): Vec3[] {
+export function emergenceRadius(
+  q: ReadonlyArray<readonly [number, number]>,
+  heights: readonly number[],
+  dir: readonly [number, number],
+  d: number,
+): { radius: number; height: number } {
+  const n = q.length;
+  const [ex, ey] = dir;
+  let radius = -Infinity;
+  let generator = -1;
+  for (let i = 0; i < n; i++) {
+    const a = q[i]!, b = q[(i + 1) % n]!;
+    const t = capsuleExit(a[0], a[1], b[0], b[1], ex, ey, d);
+    if (t > radius) {
+      radius = t;
+      generator = i;
+    }
+  }
+  // The origin lies inside a star-shaped P, so every ray leaves some capsule
+  // beyond it; anything else is a caller bug, not a clinical refusal.
+  if (generator < 0 || !(radius > 0) || !Number.isFinite(radius)) {
+    throw new Error(`cervicalFit: no emergence radius at direction (${ex}, ${ey}) — the margin frame is invalid`);
+  }
+  // The nearest margin point: on the generating segment.
+  const a = q[generator]!, b = q[(generator + 1) % n]!;
+  const sx = b[0] - a[0], sy = b[1] - a[1];
+  const ll = sx * sx + sy * sy;
+  const s = ll > 0 ? Math.min(1, Math.max(0, ((radius * ex - a[0]) * sx + (radius * ey - a[1]) * sy) / ll)) : 0;
+  const ha = heights[generator]!, hb = heights[(generator + 1) % n]!;
+  return { radius, height: ha + s * (hb - ha) };
+}
+
+/** The margin in its frame, validated star-shaped: the shared front of
+ * `emergenceLoop` and `fitCervicalRing`. */
+interface MarginFrame {
+  readonly f: Frame;
+  readonly q: Array<[number, number]>;
+  readonly heights: number[];
+}
+
+function marginFrame(marginLoopIn: readonly Vec3[], insertionAxis: Vec3, offsetMm: number): MarginFrame {
   if (!(offsetMm > 0) || !Number.isFinite(offsetMm)) {
     throw new RangeError(`cervicalFit: emergence offset must be a positive finite mm value (got ${offsetMm})`);
   }
@@ -252,51 +353,39 @@ export function emergenceLoop(marginLoopIn: readonly Vec3[], insertionAxis: Vec3
   const { u, v } = planeBasis(axis);
   const f: Frame = { c: centroidOf(marginLoop), axis, u, v };
   const q = marginLoop.map((p) => project(f, p));
-  const orientation = windingOrientation(q);
-  if (orientation === 0) {
+  if (windingOrientation(q) === 0) {
     throw new CervicalFitError('margin-not-star-shaped', 'the margin does not wind once, monotonically, around its centroid');
   }
-  const out: Vec3[] = [];
-  for (let i = 0; i < n; i++) {
-    const a = q[(i - 1 + n) % n]!, b = q[(i + 1) % n]!;
-    const tx = b[0] - a[0], ty = b[1] - a[1];
-    const len = Math.hypot(tx, ty);
-    if (!(len > 0)) throw new CervicalFitError('degenerate-margin', `zero tangent at margin point ${i}`);
-    // Outward normal of a counter-clockwise loop is (ty, −tx).
-    const nx = (orientation * ty) / len, ny = (-orientation * tx) / len;
-    const p = marginLoop[i]!;
-    out.push([
-      p[0] + offsetMm * (nx * u[0] + ny * v[0]),
-      p[1] + offsetMm * (nx * u[1] + ny * v[1]),
-      p[2] + offsetMm * (nx * u[2] + ny * v[2]),
-    ]);
-  }
-  return out;
+  return { f, q, heights: marginLoop.map((p) => heightOf(f, p[0], p[1], p[2])) };
 }
 
-/** The point where the ray from the frame origin through 2-D `dir` crosses
- * the star-shaped loop (`q` its projection, `loop` its 3-D points). */
-function rayHit(q: ReadonlyArray<readonly [number, number]>, loop: readonly Vec3[], dir: readonly [number, number]): Vec3 {
-  const n = q.length;
-  let best: Vec3 | null = null;
-  let bestT = Infinity;
-  for (let i = 0; i < n; i++) {
-    const a = q[i]!, b = q[(i + 1) % n]!;
-    const ex = b[0] - a[0], ey = b[1] - a[1];
-    const den = dir[0] * ey - dir[1] * ex;
-    if (den === 0) continue;
-    const s = (a[0] * dir[1] - a[1] * dir[0]) / den;
-    const t = (a[0] * ey - a[1] * ex) / den;
-    if (s < 0 || s > 1 || !(t > 0)) continue;
-    // Star-shaped: one crossing; ties at a shared vertex give the same point.
-    if (t < bestT) {
-      bestT = t;
-      const pa = loop[i]!, pb = loop[(i + 1) % n]!;
-      best = [pa[0] + s * (pb[0] - pa[0]), pa[1] + s * (pb[1] - pa[1]), pa[2] + s * (pb[2] - pa[2])];
-    }
-  }
-  if (!best) throw new CervicalFitError('margin-not-star-shaped', 'a ring azimuth misses the emergence loop');
-  return best;
+/** The outline point at the azimuth of the 2-D frame point (x, y) ≠ 0. */
+function outlinePoint(m: MarginFrame, x: number, y: number, d: number): Vec3 {
+  const len = Math.hypot(x, y);
+  const ex = x / len, ey = y / len;
+  const { radius, height } = emergenceRadius(m.q, m.heights, [ex, ey], d);
+  const { c, axis, u, v } = m.f;
+  const px = radius * ex, py = radius * ey;
+  return [
+    c[0] + (px * u[0] + py * v[0]) + height * axis[0],
+    c[1] + (px * u[1] + py * v[1]) + height * axis[1],
+    c[2] + (px * u[2] + py * v[2]) + height * axis[2],
+  ];
+}
+
+/**
+ * The emergence loop: the exact emergence outline (the margin's projection
+ * dilated by `offsetMm`, normal to `insertionAxis`) sampled at every
+ * deduplicated margin point's azimuth — see the module doc.
+ *
+ * @throws {CervicalFitError} 'degenerate-margin' (fewer than 3 points) or
+ * 'margin-not-star-shaped' (the MARGIN; its outline is star-shaped by
+ * construction).
+ * @errorBound floating-point rounding only (closed form).
+ */
+export function emergenceLoop(marginLoopIn: readonly Vec3[], insertionAxis: Vec3, offsetMm: number): Vec3[] {
+  const m = marginFrame(marginLoopIn, insertionAxis, offsetMm);
+  return m.q.map(([x, y]) => outlinePoint(m, x, y, offsetMm));
 }
 
 /**
@@ -314,16 +403,15 @@ export function fitCervicalRing(input: CervicalFitInput, options: CervicalFitOpt
     throw new RangeError('cervicalFit: cervicalBlendMm and anchorBandMm must be > 0 and maxAnchors ≥ 4');
   }
   const { mesh, cervicalRing } = input;
-  const loop = emergenceLoop(input.marginLoop, input.insertionAxis, input.emergenceOffsetMm);
+  const m = marginFrame(input.marginLoop, input.insertionAxis, input.emergenceOffsetMm);
+  const loop = m.q.map(([x, y]) => outlinePoint(m, x, y, input.emergenceOffsetMm));
   const ringProblem = closedEdgeLoopProblem(mesh, cervicalRing);
   if (ringProblem !== null) throw new CervicalFitError('ring-not-edge-loop', ringProblem);
 
-  const axis = unitAxis(input.insertionAxis);
-  const { u, v } = planeBasis(axis);
-  const f: Frame = { c: centroidOf(cleanMargin(input.marginLoop)), axis, u, v };
-  const loop2d = loop.map((p) => project(f, p));
-  if (windingOrientation(loop2d) === 0) {
-    throw new CervicalFitError('margin-not-star-shaped', 'the emergence loop does not wind once around the margin centroid');
+  const f = m.f;
+  // Star-shaped by construction (ADR-024): a violation is a kernel bug.
+  if (windingOrientation(loop.map((p) => project(f, p))) === 0) {
+    throw new Error('cervicalFit: internal — the emergence outline does not wind once around the margin centroid');
   }
   const pos = mesh.positions;
   const ringPoints: Vec3[] = cervicalRing.map((r) => [pos[r * 3]!, pos[r * 3 + 1]!, pos[r * 3 + 2]!]);
@@ -332,8 +420,8 @@ export function fitCervicalRing(input: CervicalFitInput, options: CervicalFitOpt
     throw new CervicalFitError('ring-not-star-shaped', 'the placed cervical ring does not wind once around the margin centroid');
   }
 
-  // Pair by azimuth.
-  const ringTargets: Vec3[] = ring2d.map((d) => rayHit(loop2d, loop, d));
+  // Pair by azimuth: the exact outline at each ring vertex's azimuth.
+  const ringTargets: Vec3[] = ring2d.map(([x, y]) => outlinePoint(m, x, y, input.emergenceOffsetMm));
   let topHeight = -Infinity;
   for (let i = 0; i < ringPoints.length; i++) {
     const p = ringPoints[i]!, t = ringTargets[i]!;
