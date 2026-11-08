@@ -329,6 +329,17 @@ these notes:
   Update the PLAN.md and README status. Close the Phase 10 open items that
   this phase resolved.
 
+**Landed (2026-11-08).** The full chain passes:
+- `npm test`: 373 files, 3938 tests;
+- e2e: 70 passed, 1 env-gated skip;
+- the real golden lanes;
+- lint, typecheck and build.
+
+The incisor lane did not pass every gate, so phase4 and phase7 stay on 15,
+with the measured reason in their comments. Evidence and open items are in
+docs/demos/phase-11.md. ADR-024 is Accepted, with Decision 2's refine-cap
+amendment. The CI run and its timing are pending the push.
+
 ## Review focus
 
 The inputs no task's tests may exercise, most likely to bite first:

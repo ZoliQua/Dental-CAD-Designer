@@ -79,24 +79,29 @@ carry intermediate collar rings, as a real scan's dense surface does.
 
 ## Open items & tracked pendings
 
-1. **The cervical fit refuses a dense real margin.** The emergence loop
+1. **The cervical fit refuses a dense real margin.** *Closed by Phase 11
+   (kernel 0.37.0): the outline is fold-free and the fit takes the margin; it
+   now refuses over the 50 µm bound, measured — see
+   [phase-11.md](phase-11.md).* The emergence loop
    offsets each margin point 0.65 mm outward along its local normal. On
    `arch-case-01` tooth 11 (a point every ~36 µm, concave interproximally)
    the offset loop folds back: 50 of 450 azimuth steps reverse. The refusal
    is correct and disclosed, and the built-in template is placed instead. A
    fold-free offset (a clipped or Minkowski offset of the projected margin)
    would let the library template fit real margins.
-2. **The placeholder library incisor's proportions.** It is ~3 mm
+2. **The placeholder library incisor's proportions.** *Closed by Phase 11
+   (asset 1.3.0).* It is ~3 mm
    bucco-lingually against a textbook 7 mm. On a round die it
    self-intersects, so the acceptance uses a premolar site.
-3. **The axis suggestion's tie-break.** On a height-field die every
+3. **The axis suggestion's tie-break.** *Closed by Phase 11 (kernel
+   0.38.0).* On a height-field die every
    direction near the die's axis has zero undercut. The suggestion then lands
    ~12° off the axis, and the clinician has to set it with the elevation
    slider (as `e2e/phase10.spec.ts` does). A tie-break toward the margin
    plane's normal would find it.
 4. **A real prepared-tooth scan** to certify the crown end to end on patient
    data (the real cases are unprepared).
-5. **CI runs the golden suite twice** (inside `npm test`, then in its own
+5. *Closed by Phase 11 (Task 5).* **CI runs the golden suite twice** (inside `npm test`, then in its own
    step). This costs time, not correctness.
 6. Carried over from Phase 9: a real bridge scan, a real inlay / onlay scan
    and the cusp watershed, tooth segmentation, the bridge abutment morph,

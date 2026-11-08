@@ -84,10 +84,11 @@ const CORNER_REFINEMENT_MM = 0.05;
 const SEED_HEIGHT_ABOVE_MARGIN_MM = 1.0;
 
 /** A premolar (Phase 10 Task 5): the fitted library template is the crown
- * default, and this round shoulder die is a premolar-shaped preparation —
- * the placeholder library incisor cannot cover it (it self-intersects, the
- * Phase 10 Task 4 finding), so a crown on 11 here would test the template's
- * proportions, not the workflow. */
+ * default, and this round shoulder die is a premolar-shaped preparation.
+ * Phase 11 measured the 1.3.0 incisor (textbook proportions) on it: the
+ * cervix fits, but the crown still self-intersects and has no wall over the
+ * Ø 5 mm dome (test/golden/cervical-fit-acceptance.test.ts), so a crown on
+ * 11 here would test the die's shape, not the workflow. */
 const CROWN_TOOTH = '15';
 
 type Vec2 = readonly [number, number];

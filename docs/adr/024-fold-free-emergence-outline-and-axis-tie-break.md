@@ -1,6 +1,8 @@
 # ADR-024 — A fold-free emergence outline; the axis suggestion's tie-break; incisor proportions
 
-**Status:** Proposed (2026-11-01; Phase 11 implements it, see the Phase 11 plan)
+**Status:** Accepted (2026-11-08; implemented by Phase 11 — see
+docs/demos/phase-11.md for the measured outcomes, and Decision 2's refine-cap
+amendment below)
 **Date:** 2026-11
 **Relates:** ADR-023 (the prepared die and the cervical fit, which this
 refines), ADR-022 (provenance), ADR-007 (morph–shell coupling).
@@ -103,6 +105,11 @@ at distance exactly `d` from `P`.
   `options.pole` keeps working as before.
 - The axis pins move only where scores tie, which is the case these changes
   target. A kernel bump with a changelog entry.
+- **Amendment (Phase 11 Task 2).** The refine cap stays centred on the
+  Fibonacci sweep's winner, not on the overall winner. Centred on a winning
+  pole, it searched a worse basin on real `arch-case-01` tooth 11 (0.734 →
+  1.660 mm³). With the cap on the sweep's winner, the candidates are the
+  previous set plus the pole, so the winner never scores worse.
 
 ### 3. The placeholder incisor gets textbook cervical proportions (library asset 1.3.0)
 
