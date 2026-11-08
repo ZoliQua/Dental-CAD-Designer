@@ -7,7 +7,7 @@ import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import type { CaseDocument } from '@dqcad/shared-types';
 import { KERNEL_VERSION } from '@dqcad/kernel';
-import { loadToothAssetMetadata, STARTER_TOOTH_ASSETS } from '@dqcad/tooth-library';
+import { loadToothAssetFromBytes, loadToothAssetMetadata, STARTER_TOOTH_ASSETS, STARTER_TOOTH_ASSETS_BY_VERSION } from '@dqcad/tooth-library';
 import { buildApp } from './app.js';
 import { createEmptyCaseDocument } from './case-document.js';
 
@@ -701,11 +701,11 @@ describe('server app', () => {
   });
 
   describe('GET /api/tooth-library[/:fdi] (Phase 4 Task 2)', () => {
-    it('lists the seeded starter assets — 20 FDIs, each at 1.2.0 and the still-served 1.1.0 (Phase 10 Task 4)', async () => {
+    it('lists the seeded starter assets — 20 FDIs, each at 1.3.0 and the still-served 1.1.0 and 1.2.0 (Phase 11 Task 3)', async () => {
       const response = await app.inject({ method: 'GET', url: '/api/tooth-library' });
       expect(response.statusCode).toBe(200);
       const list = response.json() as Array<{ fdi: number; version: string; toothType: string }>;
-      expect(list).toHaveLength(40);
+      expect(list).toHaveLength(60);
       expect([...new Set(list.map((a) => a.fdi))].sort((a, b) => a - b)).toEqual([
         11, 12, 14, 15, 16, 17, 21, 22, 24, 25, 26, 27, 34, 35, 36, 37, 44, 45, 46, 47,
       ]);
@@ -713,15 +713,28 @@ describe('server app', () => {
       expect(list.find((a) => a.fdi === 11)?.toothType).toBe('incisor');
       expect(list.find((a) => a.fdi === 45)?.toothType).toBe('premolar');
       for (const fdi of new Set(list.map((a) => a.fdi))) {
-        expect(list.filter((a) => a.fdi === fdi).map((a) => a.version)).toEqual(['1.1.0', '1.2.0']);
+        expect(list.filter((a) => a.fdi === fdi).map((a) => a.version)).toEqual(['1.1.0', '1.2.0', '1.3.0']);
       }
     });
 
-    it('GET /api/tooth-library/:fdi serves the latest (1.2.0) with its cervical ring (Phase 10 Task 4)', async () => {
+    it('a case referencing the 1.2.0 incisor 11 still verifies: its own mesh bytes are served by checksum, and never swapped for 1.3.0 (Phase 11 Task 3)', async () => {
+      const old = STARTER_TOOTH_ASSETS_BY_VERSION.get('1.2.0')!.get(11)!;
+      // The incisor mesh changed in 1.3.0: the saved reference names the old bytes.
+      expect(old.metadata.meshChecksum).not.toBe(STARTER_TOOTH_ASSETS.get(11)!.metadata.meshChecksum);
+      const mesh = await app.inject({ method: 'GET', url: `/api/meshes/${old.metadata.meshChecksum}` });
+      expect(mesh.statusCode).toBe(200);
+      const bytes = new Uint8Array(mesh.rawPayload);
+      expect(createHash('sha256').update(bytes).digest('hex')).toBe(old.metadata.meshChecksum);
+      const asset = loadToothAssetFromBytes(old.metadata, bytes);
+      expect(asset.metadata.version).toBe('1.2.0');
+      expect(asset.metadata.metadataChecksum).toBe(old.metadata.metadataChecksum);
+    });
+
+    it('GET /api/tooth-library/:fdi serves the latest (1.3.0) with its cervical ring (Phase 11 Task 3)', async () => {
       const response = await app.inject({ method: 'GET', url: '/api/tooth-library/11' });
       expect(response.statusCode).toBe(200);
       const metadata = response.json() as { version: string; cervicalRing?: number[] };
-      expect(metadata.version).toBe('1.2.0');
+      expect(metadata.version).toBe('1.3.0');
       expect(metadata.cervicalRing).toEqual(STARTER_TOOTH_ASSETS.get(11)!.metadata.cervicalRing);
       // Not stripped by serialization: the served metadata still verifies.
       expect(() => loadToothAssetMetadata(metadata)).not.toThrow();

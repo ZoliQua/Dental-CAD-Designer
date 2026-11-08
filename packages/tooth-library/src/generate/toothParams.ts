@@ -37,9 +37,13 @@ export interface IncisorTypeParams {
 
 const DEG = Math.PI / 180;
 
-/** Maxillary central incisor (FDI 11/21) — the larger of the two incisor
- * shapes this task generates. */
-export const CENTRAL_INCISOR_PARAMS: IncisorTypeParams = {
+/** Maxillary central incisor (FDI 11/21), asset versions 1.0.0–1.2.0 —
+ * FROZEN: these numbers build the incisor meshes that saved cases
+ * referencing those versions verify against (Phase 11 Task 3). Never edit;
+ * a shape change is a new table and a new asset version. Its cervical
+ * section is 6.2 × 1.9 mm — far too flat bucco-lingually (ADR-024 Decision
+ * 3), which is why 1.3.0 replaced it. */
+export const CENTRAL_INCISOR_PARAMS_V1: IncisorTypeParams = {
   crownHeightMm: 10.5,
   rxCervicalMm: 3.1,
   rxIncisalMm: 3.2,
@@ -61,9 +65,9 @@ export const CENTRAL_INCISOR_PARAMS: IncisorTypeParams = {
   marginalRidgeOffsetRad: 65 * DEG,
 };
 
-/** Maxillary lateral incisor (FDI 12/22) — smaller than the central, same
- * general shape family (see this module's header doc). */
-export const LATERAL_INCISOR_PARAMS: IncisorTypeParams = {
+/** Maxillary lateral incisor (FDI 12/22), asset versions 1.0.0–1.2.0 —
+ * FROZEN, as {@link CENTRAL_INCISOR_PARAMS_V1}. */
+export const LATERAL_INCISOR_PARAMS_V1: IncisorTypeParams = {
   crownHeightMm: 9.0,
   rxCervicalMm: 2.3,
   rxIncisalMm: 2.4,
@@ -85,14 +89,78 @@ export const LATERAL_INCISOR_PARAMS: IncisorTypeParams = {
   marginalRidgeOffsetRad: 65 * DEG,
 };
 
-/** FDI 12/11/21/22 -> which incisor shape family it uses (central vs
- * lateral) — the ONLY per-FDI difference (guardrail: "share the incisor
- * generator, differ by FDI-specific size params"). */
-export const INCISOR_FDI_PARAMS: Readonly<Record<number, IncisorTypeParams>> = {
+/** Maxillary central incisor (FDI 11/21), asset version 1.3.0 on (ADR-024
+ * Decision 3): placeholder textbook averages — cervical section 7.0 ×
+ * 6.0 mm (MD × BL), 8.5 mm mesio-distally at the contact level, an incisal
+ * edge about 1.2 mm thick. The cervical figures are 2·rx and ry_buccal +
+ * ry_lingual at v = 0 plus the bumps' small tails there (contact bulge
+ * ×e^−6.9, cingulum ×e^−3.1); assets.test.ts measures the built ring. */
+export const CENTRAL_INCISOR_PARAMS: IncisorTypeParams = {
+  crownHeightMm: 10.5,
+  rxCervicalMm: 3.5,
+  rxIncisalMm: 3.8,
+  rxContactBulgeMm: 0.635,
+  vContact: 0.42,
+  sigmaContactV: 0.16,
+  ryBuccalCervicalMm: 3.1,
+  ryBuccalIncisalMm: 0.65,
+  ryBuccalContactBulgeMm: 0.6,
+  ryLingualCervicalMm: 2.88,
+  ryLingualIncisalMm: 0.55,
+  cingulumBulgeMm: 0.5,
+  vCingulum: 0.14,
+  sigmaCingulumV: 0.08,
+  fossaDepthMm: 0.35,
+  vFossa: 0.55,
+  sigmaFossaV: 0.2,
+  lingualAngularHalfWidthRad: 85 * DEG,
+  marginalRidgeOffsetRad: 65 * DEG,
+};
+
+/** Maxillary lateral incisor (FDI 12/22), asset version 1.3.0 on (ADR-024
+ * Decision 3): cervical section 5.0 × 5.0 mm, 6.5 mm mesio-distally at the
+ * contact level, an incisal edge about 1.2 mm thick. */
+export const LATERAL_INCISOR_PARAMS: IncisorTypeParams = {
+  crownHeightMm: 9.0,
+  rxCervicalMm: 2.5,
+  rxIncisalMm: 2.8,
+  rxContactBulgeMm: 0.644,
+  vContact: 0.4,
+  sigmaContactV: 0.16,
+  ryBuccalCervicalMm: 2.6,
+  ryBuccalIncisalMm: 0.65,
+  ryBuccalContactBulgeMm: 0.5,
+  ryLingualCervicalMm: 2.38,
+  ryLingualIncisalMm: 0.55,
+  cingulumBulgeMm: 0.45,
+  vCingulum: 0.14,
+  sigmaCingulumV: 0.08,
+  fossaDepthMm: 0.3,
+  vFossa: 0.55,
+  sigmaFossaV: 0.2,
+  lingualAngularHalfWidthRad: 85 * DEG,
+  marginalRidgeOffsetRad: 65 * DEG,
+};
+
+/** An FDI -> incisor shape table (central vs lateral) — the ONLY per-FDI
+ * difference (guardrail: "share the incisor generator, differ by
+ * FDI-specific size params"). */
+export type IncisorFdiParams = Readonly<Record<number, IncisorTypeParams>>;
+
+/** The current incisor tables (asset version 1.3.0 on). */
+export const INCISOR_FDI_PARAMS: IncisorFdiParams = {
   11: CENTRAL_INCISOR_PARAMS,
   21: CENTRAL_INCISOR_PARAMS,
   12: LATERAL_INCISOR_PARAMS,
   22: LATERAL_INCISOR_PARAMS,
+};
+
+/** The FROZEN incisor tables of asset versions 1.0.0–1.2.0. */
+export const INCISOR_FDI_PARAMS_V1: IncisorFdiParams = {
+  11: CENTRAL_INCISOR_PARAMS_V1,
+  21: CENTRAL_INCISOR_PARAMS_V1,
+  12: LATERAL_INCISOR_PARAMS_V1,
+  22: LATERAL_INCISOR_PARAMS_V1,
 };
 
 export interface MolarParams {

@@ -9,7 +9,7 @@ import { mkdtemp, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { computeToothAssetMetadataChecksum, STARTER_TOOTH_ASSETS } from '@dqcad/tooth-library';
+import { computeToothAssetMetadataChecksum, STARTER_TOOTH_ASSETS_BY_VERSION } from '@dqcad/tooth-library';
 import {
   compareSemver,
   listToothLibraryAssets,
@@ -47,13 +47,13 @@ describe('compareSemver', () => {
 });
 
 describe('seeding over a pre-Phase-9-Task-4 data directory', () => {
-  it('a stored 1.0.0 asset without assetKind still loads; 1.1.0 is still seeded and 1.2.0 supersedes both', async () => {
+  it('a stored 1.0.0 asset without assetKind still loads; 1.1.0 and 1.2.0 are still seeded and 1.3.0 supersedes them', async () => {
     const root = await mkdtemp(join(tmpdir(), 'tooth-lib-'));
     const metadataDir = join(root, 'meta');
     const meshDir = join(root, 'mesh');
     await mkdir(metadataDir, { recursive: true });
     // The 1.0.0 shape: no assetKind, its own checksum.
-    const legacyFields: Record<string, unknown> = { ...STARTER_TOOTH_ASSETS.get(11)!.metadata, version: '1.0.0' };
+    const legacyFields: Record<string, unknown> = { ...STARTER_TOOTH_ASSETS_BY_VERSION.get('1.2.0')!.get(11)!.metadata, version: '1.0.0' };
     delete legacyFields['assetKind'];
     delete legacyFields['cervicalRing'];
     delete legacyFields['metadataChecksum'];
@@ -62,9 +62,9 @@ describe('seeding over a pre-Phase-9-Task-4 data directory', () => {
 
     await seedStarterToothLibrary(metadataDir, meshDir);
     const versions = (await listToothLibraryAssets(metadataDir)).filter((a) => a.fdi === 11).map((a) => a.version);
-    expect(versions).toEqual(['1.0.0', '1.1.0', '1.2.0']);
+    expect(versions).toEqual(['1.0.0', '1.1.0', '1.2.0', '1.3.0']);
     const latest = await readLatestToothLibraryMetadata(metadataDir, 11);
-    expect(latest?.version).toBe('1.2.0');
+    expect(latest?.version).toBe('1.3.0');
     expect(latest?.cervicalRing).toBeDefined();
     expect(latest?.assetKind).toBe('generator');
   });

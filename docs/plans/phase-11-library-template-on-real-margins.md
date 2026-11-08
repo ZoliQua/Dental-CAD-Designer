@@ -198,6 +198,29 @@ moves it.
   Every pin that names an incisor asset version moves; the premolar lanes
   must not.
 
+**Landed (2026-11-08, asset 1.3.0, no kernel change).** As planned, with
+these notes:
+
+- The new tables measure as designed on the built ring: central 7.0 × 6.0 mm
+  at the cervix and 8.5 mm at contact; lateral 5.0 × 5.0 and 6.5 mm; the
+  incisal edge 1.0–1.5 mm thick.
+- `generateIncisorAsset(fdi, table)` takes the FDI table
+  (`IncisorFdiParams`). 1.2.0 rebuilds the incisors from
+  `INCISOR_FDI_PARAMS_V1` and re-versions the unchanged posterior assets.
+  1.1.0 is 1.2.0 without `cervicalRing`. Both reproduce every recorded
+  metadata and mesh checksum. `PREVIOUS_STARTER_*` gave way to
+  `SERVED_STARTER_VERSIONS` / `STARTER_TOOTH_ASSETS_BY_VERSION`, and the
+  server seeds every version with its own mesh bytes.
+- **The incisor lane's measured verdict on the Phase 4 shoulder die.** The
+  cervix fits (residual 6.8 µm). Watertight, manifold, marginFit and seating
+  pass. selfIntersection and minWallThickness fail: the round die is Ø 5 mm
+  at its top, 7.5 mm above the margin, and an incisor tapers to a ~1.2 mm
+  incisal edge, so it cannot cover the dome. That is the die's shape, not
+  the cervix. The golden asserts this verdict, and no gate is weakened. The
+  incisor site needs an incisor-shaped preparation (Task 4).
+- No golden pin moved. The premolar library lanes use the same mesh, and
+  only the journaled `anatomySource.version` reads 1.3.0.
+
 ## Task 4 — The library template on the real scan and on the incisor site
 
 - **Golden open-arch** (`crown-open-arch-acceptance.test.ts`): a third

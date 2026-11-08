@@ -47,7 +47,13 @@ import type { FdiTooth } from '@dqcad/shared-types';
 import { generateIncisorAsset, incisorMorphTargets, INCISOR_FDI_CODES } from './generate/incisor.ts';
 import { generateMolarAsset, molarMorphTargets, MOLAR_FDI_CODES } from './generate/molar.ts';
 import { generatePremolarAsset, premolarMorphTargets, PREMOLAR_FDI_CODES } from './generate/premolar.ts';
-import { INCISOR_FDI_PARAMS, MOLAR_FDI_PARAMS, PREMOLAR_FDI_PARAMS } from './generate/toothParams.ts';
+import {
+  INCISOR_FDI_PARAMS,
+  INCISOR_FDI_PARAMS_V1,
+  MOLAR_FDI_PARAMS,
+  PREMOLAR_FDI_PARAMS,
+  type IncisorFdiParams,
+} from './generate/toothParams.ts';
 import {
   PLACEHOLDER_PROVENANCE_PREFIX,
   computeMeshChecksum,
@@ -68,12 +74,16 @@ import {
 // (a metadata change — the 1.0.0 meshes are byte-identical), and the set
 // grows by every premolar and the first + second molars of every quadrant.
 // 1.2.0 (Phase 10 Task 4, ADR-023 Decision 2): every asset declares its
-// `cervicalRing` (a metadata change — the meshes are byte-identical). The
-// 1.1.0 metadata is still built (`PREVIOUS_STARTER_TOOTH_METADATA`) and seeded
-// by the server, so a saved case that references 1.1.0 keeps verifying.
-export const STARTER_ASSET_VERSION = '1.2.0';
-/** The version before {@link STARTER_ASSET_VERSION}, still served. */
-export const PREVIOUS_STARTER_ASSET_VERSION = '1.1.0';
+// `cervicalRing` (a metadata change — the meshes are byte-identical).
+// 1.3.0 (Phase 11 Task 3, ADR-024 Decision 3): the incisors get textbook
+// cervical proportions (new meshes); the premolar and molar meshes are
+// byte-identical. Every earlier version is still built and seeded
+// (`STARTER_TOOTH_ASSETS_BY_VERSION`) — the 1.1.0/1.2.0 incisors from the
+// FROZEN `INCISOR_FDI_PARAMS_V1` — so a saved case keeps verifying.
+export const STARTER_ASSET_VERSION = '1.3.0';
+/** Every starter version still served, oldest first; the last is
+ * {@link STARTER_ASSET_VERSION}. */
+export const SERVED_STARTER_VERSIONS = ['1.1.0', '1.2.0', '1.3.0'] as const;
 
 function provenanceFor(kind: ToothType): string {
   return (
@@ -127,7 +137,11 @@ function canonicalRing(
   });
 }
 
-function buildStarterAsset(generated: GeneratedAsset, morphTargetsFor: (positions: Float64Array) => MorphTarget[]): StarterToothAsset {
+function buildStarterAsset(
+  generated: GeneratedAsset,
+  morphTargetsFor: (positions: Float64Array) => MorphTarget[],
+  version: string = STARTER_ASSET_VERSION,
+): StarterToothAsset {
   const meshBytes = writeStlBinary(indexedToSoup(generated.mesh));
 
   // Canonicalize: re-parse the EXACT bytes just written and re-weld, so
@@ -153,7 +167,7 @@ function buildStarterAsset(generated: GeneratedAsset, morphTargetsFor: (position
 
   const withoutChecksum = {
     fdi: generated.fdi,
-    version: STARTER_ASSET_VERSION,
+    version,
     toothType: generated.toothType,
     provenance: provenanceFor(generated.toothType),
     assetKind: 'generator' as const,
@@ -175,10 +189,10 @@ function buildStarterAsset(generated: GeneratedAsset, morphTargetsFor: (position
   return { metadata, meshBytes, mesh: canonicalMesh };
 }
 
-function buildIncisorStarterAsset(fdi: FdiTooth): StarterToothAsset {
-  const generated = generateIncisorAsset(fdi);
-  const crownHeightMm = INCISOR_FDI_PARAMS[fdi]!.crownHeightMm;
-  return buildStarterAsset(generated, (positions) => incisorMorphTargets(positions, crownHeightMm));
+function buildIncisorStarterAsset(fdi: FdiTooth, table: IncisorFdiParams = INCISOR_FDI_PARAMS, version?: string): StarterToothAsset {
+  const generated = generateIncisorAsset(fdi, table);
+  const crownHeightMm = table[fdi]!.crownHeightMm;
+  return buildStarterAsset(generated, (positions) => incisorMorphTargets(positions, crownHeightMm), version);
 }
 
 function buildPremolarStarterAsset(fdi: FdiTooth): StarterToothAsset {
@@ -207,19 +221,39 @@ export const STARTER_TOOTH_ASSETS: ReadonlyMap<FdiTooth, StarterToothAsset> = ne
  * rather than re-deriving the list. */
 export const STARTER_FDI_CODES: readonly FdiTooth[] = [...STARTER_TOOTH_ASSETS.keys()];
 
-/** The 1.1.0 metadata of every starter asset: the 1.2.0 metadata without
- * `cervicalRing`, at version 1.1.0, re-checksummed. The meshes are the same
- * bytes, so this reproduces the 1.1.0 release exactly (assets.test.ts pins
- * every recorded 1.1.0 checksum). The server seeds it next to 1.2.0. */
-export const PREVIOUS_STARTER_TOOTH_METADATA: ReadonlyMap<FdiTooth, ToothAssetMetadata> = new Map(
-  [...STARTER_TOOTH_ASSETS].map(([fdi, starter]) => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { metadataChecksum: _checksum, cervicalRing: _ring, ...rest } = starter.metadata;
-    const withoutChecksum = { ...rest, version: PREVIOUS_STARTER_ASSET_VERSION };
-    const metadata = loadToothAssetMetadata(
-      { ...withoutChecksum, metadataChecksum: computeToothAssetMetadataChecksum(withoutChecksum) },
-      starter.mesh.positions.length / 3,
-    );
-    return [fdi, metadata] as const;
-  }),
+/** `starter`'s metadata at another `version` — same mesh, re-checksummed;
+ * `dropCervicalRing` gives the pre-1.2.0 shape. */
+function atVersion(starter: StarterToothAsset, version: string, dropCervicalRing = false): StarterToothAsset {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { metadataChecksum: _checksum, cervicalRing, ...rest } = starter.metadata;
+  const withoutChecksum = { ...rest, ...(dropCervicalRing || cervicalRing === undefined ? {} : { cervicalRing }), version };
+  const metadata = loadToothAssetMetadata(
+    { ...withoutChecksum, metadataChecksum: computeToothAssetMetadataChecksum(withoutChecksum) },
+    starter.mesh.positions.length / 3,
+  );
+  return { ...starter, metadata };
+}
+
+/** 1.2.0: the 1.0.0–1.2.0 incisor meshes (the frozen `_V1` tables) and the
+ * unchanged posterior meshes, each with its cervical ring. */
+const STARTER_TOOTH_ASSETS_1_2_0: ReadonlyMap<FdiTooth, StarterToothAsset> = new Map(
+  [...STARTER_TOOTH_ASSETS].map(([fdi, starter]) => [
+    fdi,
+    INCISOR_FDI_CODES.includes(fdi) ? buildIncisorStarterAsset(fdi, INCISOR_FDI_PARAMS_V1, '1.2.0') : atVersion(starter, '1.2.0'),
+  ] as const),
 );
+
+/** 1.1.0: the 1.2.0 assets without `cervicalRing` (the meshes are the same
+ * bytes), re-checksummed — reproduces the 1.1.0 release exactly. */
+const STARTER_TOOTH_ASSETS_1_1_0: ReadonlyMap<FdiTooth, StarterToothAsset> = new Map(
+  [...STARTER_TOOTH_ASSETS_1_2_0].map(([fdi, starter]) => [fdi, atVersion(starter, '1.1.0', true)] as const),
+);
+
+/** Every served version's starter set ({@link SERVED_STARTER_VERSIONS}),
+ * each in {@link STARTER_FDI_CODES} order; assets.test.ts pins every
+ * recorded 1.1.0 and 1.2.0 checksum. The server seeds them all. */
+export const STARTER_TOOTH_ASSETS_BY_VERSION: ReadonlyMap<string, ReadonlyMap<FdiTooth, StarterToothAsset>> = new Map([
+  ['1.1.0', STARTER_TOOTH_ASSETS_1_1_0],
+  ['1.2.0', STARTER_TOOTH_ASSETS_1_2_0],
+  [STARTER_ASSET_VERSION, STARTER_TOOTH_ASSETS],
+]);

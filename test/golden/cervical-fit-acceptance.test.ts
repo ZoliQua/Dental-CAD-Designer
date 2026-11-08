@@ -6,7 +6,7 @@
 // template fails structural QC there: placement fits the template's widest
 // section to the proximal gap, so its narrower cervix lands inside the margin.
 //
-// Here the library PREMOLAR 15 (asset 1.2.0, with its cervical ring) is
+// Here the library PREMOLAR 15 (asset 1.3.0, with its cervical ring) is
 // placed, FITTED (kernel `fitCervicalRing`: the ring onto the emergence loop,
 // `cervicalEmergenceOffsetMm` outside the margin), morphed against two
 // proximal neighbours and an antagonist, and shelled with the trim ALONG the
@@ -19,8 +19,11 @@
 // Why a premolar (a decision of 2026-10-28): the placeholder INCISOR is
 // about 3 mm bucco-lingually (the textbook central is about 7 mm), so on this
 // round, tall die it self-intersects and has no wall whatever the cervix does
-// — not a cervical problem. The round die is a premolar/molar-shaped prep;
-// the incisor's proportions are a tracked open item (docs/plans/phase-10).
+// — not a cervical problem. The round die is a premolar/molar-shaped prep.
+//
+// Phase 11 Task 3 adds the 1.3.0 incisor (textbook cervical proportions) as
+// a second lane with its measured verdict: the cervix fits, but the
+// incisor's thin incisal third still cannot cover this round dome.
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
@@ -93,8 +96,14 @@ function table(report: QcReport): string {
   return report.gates.map((g) => `  ${g.passed ? '✓' : '✗'} ${g.gate.padEnd(22)} ${g.message.slice(0, 160)}`).join('\n');
 }
 
-async function crown(fit: boolean): Promise<{ report: QcReport; fitResidualMm: number | null }> {
-  const starter = loadToothAssetInProcess(TOOTH);
+/** The proximal neighbours' FDI codes for `tooth`: mesial at −X, distal at +X. */
+function neighbourFdis(tooth: FdiTooth): [FdiTooth, FdiTooth] {
+  return tooth === (11 as FdiTooth) ? [21 as FdiTooth, 12 as FdiTooth] : [14 as FdiTooth, 16 as FdiTooth];
+}
+
+async function crown(fit: boolean, tooth: FdiTooth = TOOTH): Promise<{ report: QcReport; fitResidualMm: number | null; version: string }> {
+  const starter = loadToothAssetInProcess(tooth);
+  const [mesialFdi, distalFdi] = neighbourFdis(tooth);
   const asset: PipelineToothAsset = {
     contentHash: starter.metadata.meshChecksum,
     mesh: starter.mesh,
@@ -116,15 +125,15 @@ async function crown(fit: boolean): Promise<{ report: QcReport; fitResidualMm: n
     materialProfile: PROFILE,
     insertionAxis: AXIS,
     targetMesh: { contentHash: hashMesh(die), mesh: die },
-    marginLoops: { [TOOTH]: { closed: true, resampledPoints: margin } },
+    marginLoops: { [tooth]: { closed: true, resampledPoints: margin } },
     neighbors: {
-      [14 as FdiTooth]: { contentHash: hashMesh(mesial), mesh: mesial },
-      [16 as FdiTooth]: { contentHash: hashMesh(distal), mesh: distal },
+      [mesialFdi]: { contentHash: hashMesh(mesial), mesh: mesial },
+      [distalFdi]: { contentHash: hashMesh(distal), mesh: distal },
     },
     antagonist: { contentHash: hashMesh(antagonist), mesh: antagonist },
     stages: {},
   };
-  const placed = runAnatomyPlacementStage(ctx, TOOTH, { asset, hashMesh });
+  const placed = runAnatomyPlacementStage(ctx, tooth, { asset, hashMesh });
   let anatomy = placed.mesh!;
   let fitResidualMm: number | null = null;
   if (fit) {
@@ -142,7 +151,7 @@ async function crown(fit: boolean): Promise<{ report: QcReport; fitResidualMm: n
         `${fitted.anchorCount} anchors, ${fitted.movedVertexCount} vertices moved, residual ${(fitted.errorBoundMm * 1000).toFixed(1)} µm`,
     );
   }
-  const morph = runMorphingStage({ ...ctx, stages: { anatomyPlacement: hashMesh(anatomy) } }, TOOTH, {
+  const morph = runMorphingStage({ ...ctx, stages: { anatomyPlacement: hashMesh(anatomy) } }, tooth, {
     placedMesh: { contentHash: hashMesh(anatomy), mesh: anatomy },
     hashMesh,
   });
@@ -178,7 +187,7 @@ async function crown(fit: boolean): Promise<{ report: QcReport; fitResidualMm: n
     profileVersion: PROFILE.version,
     journalHash: hashMesh(shell.mesh),
   });
-  return { report, fitResidualMm };
+  return { report, fitResidualMm, version: starter.metadata.version };
 }
 
 const STRUCTURAL = ['minWallThickness', 'seating', 'selfIntersection'];
@@ -196,5 +205,30 @@ describe('Phase 10 Task 4 — the fitted library premolar on the Phase 4 shoulde
     const unfitted = await crown(false);
     console.log(`[cervical-fit] UNFITTED (plane trim)\n${table(unfitted.report)}`);
     expect(STRUCTURAL.some((name) => unfitted.report.gates.find((x) => x.gate === name)!.passed === false)).toBe(true);
+  }, 900_000);
+});
+
+describe('Phase 11 Task 3 — the fitted library INCISOR 11 (asset 1.3.0) on the Phase 4 shoulder die', () => {
+  // The measured verdict (2026-11-08). The 1.3.0 incisor's cervix (7.0 ×
+  // 6.0 mm) fits the margin: residual 6.8 µm, and the margin-side gates
+  // pass. The die is a round premolar/molar preparation, Ø 5 mm at its top
+  // 7.5 mm above the margin, and an incisor tapers to a ~1.2 mm incisal
+  // edge: the crown cannot cover that dome, so it self-intersects and has
+  // no wall there. That is the die's shape, not the cervix — the
+  // structural gates are asserted to FAIL here, so a change that makes them
+  // pass must revisit this verdict. No gate is weakened. The incisor site is
+  // measured on an incisor-shaped preparation in Task 4.
+  it('fits the margin and passes the margin-side gates; the structural gates fail on this premolar-shaped die (measured verdict)', async () => {
+    const fitted = await crown(true, 11 as FdiTooth);
+    console.log(`[cervical-fit incisor] FITTED ${fitted.version}, residual ${((fitted.fitResidualMm ?? NaN) * 1000).toFixed(1)} µm\n${table(fitted.report)}`);
+    expect(fitted.version).toBe('1.3.0');
+    expect(fitted.fitResidualMm!).toBeLessThan(0.05);
+    for (const name of ['watertight', 'manifold', 'marginFit', 'seating']) {
+      const g = fitted.report.gates.find((x) => x.gate === name)!;
+      expect(g.passed, `${name}: ${g.message}`).toBe(true);
+    }
+    for (const name of ['selfIntersection', 'minWallThickness']) {
+      expect(fitted.report.gates.find((x) => x.gate === name)!.passed, name).toBe(false);
+    }
   }, 900_000);
 });

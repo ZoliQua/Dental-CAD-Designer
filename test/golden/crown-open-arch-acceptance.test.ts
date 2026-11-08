@@ -378,7 +378,7 @@ describe('Phase 10 Task 5 — the crown on an open scan, fitted library template
 
     // 2. The template: the verified library premolar, fitted within the bound.
     const anatomy = opOf('crown-anatomy');
-    expect(anatomy.params['anatomySource']).toMatchObject({ origin: 'library', fdi: 15, version: '1.2.0' });
+    expect(anatomy.params['anatomySource']).toMatchObject({ origin: 'library', fdi: 15, version: '1.3.0' });
     expect(anatomy.inputHashes).toContain(STARTER_TOOTH_ASSETS.get(LIBRARY_TOOTH)!.metadata.meshChecksum);
     expect(fitOp.inputHashes).toEqual([anatomy.outputHashes[0]]);
     expect(fitOp.outputHashes).toEqual([stages['anatomyPlacement']]);

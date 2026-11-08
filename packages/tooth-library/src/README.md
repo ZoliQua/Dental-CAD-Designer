@@ -171,7 +171,13 @@ content-addressed" contract).
 
 ## Adding a tooth beyond this task's starter set
 
-The starter set (version `1.2.0`, which adds `cervicalRing`; the meshes are byte-identical to `1.1.0`, and the server still seeds the `1.1.0` metadata next to it) ships 20 FDI codes: the upper incisors
+The starter set (version `1.3.0`, whose incisors have textbook cervical
+proportions; the premolar and molar meshes are byte-identical to `1.2.0`,
+which added `cervicalRing`) ships 20 FDI codes. Every earlier version is
+still built and seeded (`STARTER_TOOTH_ASSETS_BY_VERSION`: `1.1.0`, `1.2.0`,
+`1.3.0`), the `1.1.0`/`1.2.0` incisors from the frozen
+`INCISOR_FDI_PARAMS_V1`, so a saved case keeps verifying. The set covers the
+upper incisors
 `12/11/21/22`, every premolar (`14/15/24/25/34/35/44/45`) and the first +
 second molars of every quadrant (`16/17/26/27/36/37/46/47`) — see `generate/README.md`'s YAGNI note for how to add the
 remaining 27 by either (a) adding a size-parameter entry to an EXISTING

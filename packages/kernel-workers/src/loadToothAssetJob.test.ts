@@ -4,7 +4,7 @@
 // FETCHED asset (metadata JSON + mesh bytes) exactly like the package loader,
 // and refuses a tampered one loudly.
 import { afterEach, describe, expect, it } from 'vitest';
-import { PREVIOUS_STARTER_TOOTH_METADATA, STARTER_TOOTH_ASSETS, loadToothAssetFromBytes } from '@dqcad/tooth-library';
+import { STARTER_TOOTH_ASSETS, STARTER_TOOTH_ASSETS_BY_VERSION, loadToothAssetFromBytes } from '@dqcad/tooth-library';
 import { WorkerPool } from './pool.js';
 
 const pools: WorkerPool[] = [];
@@ -52,8 +52,9 @@ describe('loadToothAsset job', () => {
 
   it('returns a null cervical ring for an asset version without one (1.1.0)', async () => {
     const pool = createPool();
-    const metadataJson = JSON.parse(JSON.stringify(PREVIOUS_STARTER_TOOTH_METADATA.get(14))) as unknown;
-    const result = await pool.run('loadToothAsset', { metadataJson, meshBytes: STARTER_TOOTH_ASSETS.get(14)!.meshBytes.slice() });
+    const old = STARTER_TOOTH_ASSETS_BY_VERSION.get('1.1.0')!.get(14)!;
+    const metadataJson = JSON.parse(JSON.stringify(old.metadata)) as unknown;
+    const result = await pool.run('loadToothAsset', { metadataJson, meshBytes: old.meshBytes.slice() });
     expect(result.metadata.version).toBe('1.1.0');
     expect(result.cervicalRing).toBeNull();
   });

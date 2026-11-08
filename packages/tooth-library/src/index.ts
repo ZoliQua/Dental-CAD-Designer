@@ -47,8 +47,8 @@ export {
   STARTER_ASSET_VERSION,
   STARTER_FDI_CODES,
   STARTER_TOOTH_ASSETS,
-  PREVIOUS_STARTER_ASSET_VERSION,
-  PREVIOUS_STARTER_TOOTH_METADATA,
+  SERVED_STARTER_VERSIONS,
+  STARTER_TOOTH_ASSETS_BY_VERSION,
 } from './assets.ts';
 
 export type { ToothAsset } from './loader.ts';
@@ -65,10 +65,14 @@ export type { MolarAsset } from './generate/molar.ts';
 export { MOLAR_FDI_CODES, generateMolarAsset, molarMorphTargets } from './generate/molar.ts';
 export {
   CENTRAL_INCISOR_PARAMS,
+  CENTRAL_INCISOR_PARAMS_V1,
   FIRST_MOLAR_PARAMS,
   INCISOR_FDI_PARAMS,
+  INCISOR_FDI_PARAMS_V1,
   LATERAL_INCISOR_PARAMS,
+  LATERAL_INCISOR_PARAMS_V1,
   MOLAR_FDI_PARAMS,
+  type IncisorFdiParams,
   type IncisorTypeParams,
   type MolarParams,
 } from './generate/toothParams.ts';

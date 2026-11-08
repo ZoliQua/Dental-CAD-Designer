@@ -25,8 +25,7 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import {
   loadToothAssetMetadata,
-  PREVIOUS_STARTER_TOOTH_METADATA,
-  STARTER_TOOTH_ASSETS,
+  STARTER_TOOTH_ASSETS_BY_VERSION,
   type ToothAssetMetadata,
 } from '@dqcad/tooth-library';
 import { storeMeshBytes } from './mesh-storage.js';
@@ -98,19 +97,18 @@ export async function seedToothLibraryAsset(
   await rename(tmpPath, filePath);
 }
 
-/** Seeds every `@dqcad/tooth-library` starter asset — the current version
- * and the previous one still served (Phase 10 Task 4: 1.2.0 next to 1.1.0,
- * same mesh bytes, so a saved case referencing 1.1.0 keeps verifying) —
- * called once at
- * server startup (`app.ts`'s `buildApp`). Deterministic and idempotent, so
- * calling it on every process start (including in tests, with a fresh temp
- * dir each time) is cheap and safe — no separate "has this already run"
- * flag needed. */
+/** Seeds every `@dqcad/tooth-library` starter asset of every served version
+ * (Phase 11 Task 3: 1.1.0, 1.2.0 and 1.3.0 — each version with its own mesh
+ * bytes, so a saved case referencing any of them keeps verifying; a 1.0.0
+ * file already on disk is left alone) — called once at server startup
+ * (`app.ts`'s `buildApp`). Deterministic and idempotent, so calling it on
+ * every process start (including in tests, with a fresh temp dir each time)
+ * is cheap and safe — no separate "has this already run" flag needed. */
 export async function seedStarterToothLibrary(metadataDataDir: string, meshDataDir: string): Promise<void> {
-  for (const [fdi, starter] of STARTER_TOOTH_ASSETS) {
-    const previous = PREVIOUS_STARTER_TOOTH_METADATA.get(fdi);
-    if (previous) await seedToothLibraryAsset(metadataDataDir, meshDataDir, previous, starter.meshBytes);
-    await seedToothLibraryAsset(metadataDataDir, meshDataDir, starter.metadata, starter.meshBytes);
+  for (const set of STARTER_TOOTH_ASSETS_BY_VERSION.values()) {
+    for (const starter of set.values()) {
+      await seedToothLibraryAsset(metadataDataDir, meshDataDir, starter.metadata, starter.meshBytes);
+    }
   }
 }
 

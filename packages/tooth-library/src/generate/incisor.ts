@@ -36,7 +36,7 @@ import {
   toIndexedMesh,
   vertexAt,
 } from '../geometry/ringMesh.ts';
-import { INCISOR_FDI_PARAMS, type IncisorTypeParams } from './toothParams.ts';
+import { INCISOR_FDI_PARAMS, type IncisorFdiParams, type IncisorTypeParams } from './toothParams.ts';
 import { detCos, detSin } from '@dqcad/kernel';
 
 /** Ring tessellation density — divisible by 4 and 8 so every cardinal
@@ -141,13 +141,15 @@ export function incisorMorphTargets(positions: Float64Array, crownHeightMm: numb
 
 /**
  * Generates a watertight, deterministic incisor crown for `fdi` (must be
- * one of 12/11/21/22 — `INCISOR_FDI_PARAMS`'s domain). Pure function: same
- * `fdi` always produces byte-identical `mesh.positions`/`mesh.indices` and
- * identical landmark/frame/morph-target values (no `Math.random`, no
- * clock/env dependence — see CLAUDE.md invariant 2).
+ * one of 12/11/21/22 — the table's domain) from `table` (default: the
+ * current `INCISOR_FDI_PARAMS`; `INCISOR_FDI_PARAMS_V1` rebuilds the
+ * 1.0.0–1.2.0 meshes). Pure function: same inputs always produce
+ * byte-identical `mesh.positions`/`mesh.indices` and identical
+ * landmark/frame/morph-target values (no `Math.random`, no clock/env
+ * dependence — see CLAUDE.md invariant 2).
  */
-export function generateIncisorAsset(fdi: FdiTooth): IncisorAsset {
-  const params = INCISOR_FDI_PARAMS[fdi];
+export function generateIncisorAsset(fdi: FdiTooth, table: IncisorFdiParams = INCISOR_FDI_PARAMS): IncisorAsset {
+  const params = table[fdi];
   if (!params) {
     throw new RangeError(`generateIncisorAsset: fdi ${fdi} is not a supported incisor (12/11/21/22)`);
   }
