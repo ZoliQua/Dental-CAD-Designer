@@ -130,8 +130,12 @@ journal-replay pin is BYTE-IDENTICAL.**
     tolerance; `@errorBound` floating-point rounding only, asserted at
     1e-12 mm against `dist(·, P) = d`.
   - The height of an outline point is its nearest margin point's (linear
-    along the generating segment). On a convex margin this is each point's
-    own height, as before.
+    along the generating segment). This is not the margin point at the same
+    azimuth unless the margin is locally circular around the centroid, so
+    on a non-circular, non-planar margin the heights move too (measured: up
+    to 65 µm on a 7 × 5 mm ellipse with a ±0.5 mm scallop). In a filled
+    concavity the height is discontinuous by design; exactly on the
+    bisector, rounding (deterministically) picks the side.
   - `emergenceLoop` samples `R(θ)` at every margin point's azimuth. The fit's
     ring targets are `R(θ)` exactly at each ring vertex's azimuth, instead of
     a ray–polyline hit on the sampled loop.
@@ -142,7 +146,8 @@ journal-replay pin is BYTE-IDENTICAL.**
   polygon nothing changes (`r + d`). Between vertices the old target lay on
   the chord between two offset vertices; the new one lies on the offset edge
   or the vertex arc. On the Phase 10 192-gon the difference is at most
-  `d(1 − cos(π/192))` ≈ 0.09 µm (zirconia, `d` = 0.651 mm). That moves the
+  `d(1 − cos(π/192))` ≈ 0.09 µm (zirconia, `d` = 0.651 mm) horizontally,
+  and the heights are unchanged by symmetry. That moves the
   fitted ring's last bits, hence the library lane's hashes.
 - **Tests.** Analytic: the regular 192-gon at 1000 azimuths against the
   closed form, the rounded square, a notched "plus" on which the old offset

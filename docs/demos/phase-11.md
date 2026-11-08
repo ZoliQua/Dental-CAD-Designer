@@ -36,7 +36,7 @@ No gate or bound was weakened. The causes are measured and stated below.
 | 1 | The fit takes a real margin: on real tooth 11 the fit no longer refuses; it fits within 50 µm, or refuses `fitOverBound` with the measured residual; the outline is star-shaped and exact | **Met (the `fitOverBound` branch)** | Kernel test: tooth 11's committed trace. The old pointwise offset folds on it, and the new outline is star-shaped with every point exactly `d` from the projection (1e-12 mm). Golden real lane (`RUN_CROWN_REAL_DIE=1`, through the engine): `fitOverBound`, 178 µm. e2e `phase9-crown`: `fitOverBound`, 135 µm (same axis; canvas-click captures place the template slightly differently). The unprepared tooth's QC still fails exactly the wall and seating gates |
 | 2 | The axis needs no correction: on the open-arch case, within 0.5° through the real axis tool | **Met** | `e2e/phase10.spec.ts` confirms the suggestion as is: `[-2.3e-18, -3.4e-18, 1]`, i.e. +Z to rounding. Kernel test: the open-arch height-field die, 0.000°, score 0 |
 | 3 | The incisor site: a crown on 11 with the fitted library incisor passes every gate on the open-arch case, or the measured verdict is documented | **Met (documented verdict)** | `crown-open-arch-acceptance` `incisorStages` (pinned): fit residual 5.3 µm. Seven gates pass on case geometry, including self-intersection, seating and both contacts. **minWallThickness fails**, at 343 µm axial and 416 µm occlusal against 500 µm |
-| 4 | Saved cases keep verifying: 1.1.0, 1.2.0 and 1.3.0 are served, and a case referencing each replays | **Met** | `STARTER_TOOTH_ASSETS_BY_VERSION` reproduces every recorded 1.1.0 and 1.2.0 metadata and mesh checksum. The server seeds all three versions. A server test serves the 1.2.0 incisor 11 by its own checksum and never the 1.3.0 bytes |
+| 4 | Saved cases keep verifying: 1.1.0, 1.2.0 and 1.3.0 are served, and a case referencing each replays | **Partly met** | `STARTER_TOOTH_ASSETS_BY_VERSION` reproduces every recorded 1.1.0 and 1.2.0 metadata and mesh checksum (byte-identical to the previous build's stored JSON, so existing data directories seed cleanly). The server seeds all three versions. A server test serves the 1.2.0 incisor 11's mesh by its own checksum and verifies it, never the 1.3.0 bytes. **Not exercised:** a full case replay at 1.1.0 / 1.2.0. The client fetches only the latest metadata per FDI, and there is no by-version metadata route (open item 7) |
 | 5 | Golden stability: pins move only under kernel 0.37.0, kernel 0.38.0 and asset 1.3.0, each proven | **Met** | 0.37.0: at 0.36.0 with the new code, only the open-arch library lane moved. 0.38.0: at 0.37.0 with the new code, only the kernel-ops `suggestAxis` hash moved, by `rankedCount` 32 → 33, with its winner bit-identical. Asset 1.3.0: no pin moved. At each bump the five `*-qc` pins and the server traceability golden moved by their version string only |
 
 ## Found during the phase
@@ -117,7 +117,13 @@ The CI run is pending the push.
 4. **The `phase3` drag flake**: read the trace of its next occurrence.
 5. **CI timing**: record the job time before and after the golden suite
    runs once, on the first CI run after the push.
-6. Carried over from Phase 9: a real bridge scan, a real inlay / onlay scan
+6. **Height discontinuity of the outline** in filled concavities is by
+   design (ADR-024); it is the main lever for open item 1.
+7. **A case replay at an old asset version.** The stored assets verify, but
+   the client fetches only the latest metadata per FDI, and there is no
+   by-version route. A by-version route is needed before a saved case can
+   re-place its template at the version it recorded.
+8. Carried over from Phase 9: a real bridge scan, a real inlay / onlay scan
    and the cusp watershed, tooth segmentation, the bridge abutment morph,
    the wide window band and the capture overlay, and open antagonist scans.
 

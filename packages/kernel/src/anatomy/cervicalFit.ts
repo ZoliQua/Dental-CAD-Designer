@@ -29,11 +29,16 @@
 //    line, clipped to the segment's slab.
 //  - Height: each outline point takes the height along the axis of its
 //    NEAREST margin point (on the segment that generated it, the 3-D height
-//    linear along that segment). On a convex margin that is "each point at
-//    its own height"; inside a filled concavity the nearest point can jump
-//    between the notch's two sides, so the height steps there — the RBF
-//    blend absorbs it, and the wall and self-intersection gates measure the
-//    result.
+//    linear along that segment). That is NOT the margin point at the same
+//    azimuth unless the margin is locally circular around the centroid: on
+//    a non-circular, non-planar margin the heights differ from ADR-023's
+//    "each point at its own height" (measured: up to 65 µm on a 7 × 5 mm
+//    ellipse with a ±0.5 mm scallop). Inside a filled concavity the nearest
+//    point jumps between the notch's two sides — the height is
+//    DISCONTINUOUS there by design, and which side wins exactly on the
+//    bisector is decided by rounding (deterministic: +, ×, /, sqrt only).
+//    The RBF blend absorbs the step; the wall and self-intersection gates
+//    measure the result, and the fit's residual reports it.
 //
 // `emergenceLoop` returns R(θ) at every (deduplicated) margin point's
 // azimuth — star-shaped by construction. The fit's ring targets are R(θ)

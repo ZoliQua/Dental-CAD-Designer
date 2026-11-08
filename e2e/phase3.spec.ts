@@ -386,17 +386,20 @@ test.describe.serial('Phase 3 acceptance flow', () => {
       }),
     });
 
-    await page.mouse.move(fromPage.x, fromPage.y);
-    await page.mouse.down();
-    await page.mouse.move(targetPage.x, targetPage.y, { steps: 8 });
-    await page.mouse.up();
+    try {
+      await page.mouse.move(fromPage.x, fromPage.y);
+      await page.mouse.down();
+      await page.mouse.move(targetPage.x, targetPage.y, { steps: 8 });
+      await page.mouse.up();
 
     // A committed edit flips `humanEdited` true, which hides the "accept
     // proposal unedited" button (ui/MarginPanel.tsx) — an observable,
     // deterministic proof the drag->endAnchorDrag->commit pipeline ran for
     // real, without reaching into engine internals for this assertion.
-    await expect(page.getByTestId('margin-accept-button')).toHaveCount(0, { timeout: 15_000 });
-    if (cdp) await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+      await expect(page.getByTestId('margin-accept-button')).toHaveCount(0, { timeout: 15_000 });
+    } finally {
+      if (cdp) await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+    }
 
     // A real geometric move happened too (not just a no-op commit): at
     // least one anchor's ambient position shifted by a non-trivial amount.

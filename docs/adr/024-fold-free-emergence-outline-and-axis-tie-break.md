@@ -70,11 +70,18 @@ at distance exactly `d` from `P`.
   mm on the analytic cases).
 - **Height.** Each outline point takes the height along the axis of its
   *nearest* margin point (the closest point on the generating segment, with
-  its 3-D height interpolated linearly along that segment). On a convex
-  margin this is ADR-023's "each point at its own height". Inside a filled
-  concavity the nearest point can jump between the notch's two sides. The
-  height then steps, and the RBF blend absorbs it. The wall and
-  self-intersection gates measure the result, as before.
+  its 3-D height interpolated linearly along that segment). This equals
+  ADR-023's "each point at its own height" only where the margin is
+  locally circular around the centroid; on a non-circular, non-planar
+  margin the heights differ (measured: up to 65 µm on a 7 × 5 mm ellipse
+  with a ±0.5 mm scallop). Inside a filled concavity the nearest point jumps
+  between the notch's two sides: **the height is discontinuous there by
+  design**, and exactly on the bisector rounding (deterministically) picks
+  the side. The RBF blend absorbs the step, and the wall and
+  self-intersection gates measure the result. Phase 11 measured the
+  consequence: these steps and the margin's interproximal scallop dominate
+  the fit's residual on real `arch-case-01` tooth 11 (open item 1 of
+  docs/demos/phase-11.md).
 - **Sampling.** The emergence loop returned for the bound and the journal is
   `R(θ)` evaluated at every margin point's azimuth (after `dedupLoop`). It
   is star-shaped by construction, with monotone azimuths. Ring targets are

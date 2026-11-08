@@ -189,7 +189,9 @@ test.describe.serial('Phase 10 — a crown on an open scan: every gate passes, t
     await expect(page.getByTestId('axis-confirmed-indicator')).toBeVisible({ timeout: 10_000 });
     const axis = (await hook<Vec3 | null>(page, 'getRestorationAxis', restorationId))!;
     console.log(`[phase10] suggested axis ${JSON.stringify(axis)}`);
-    expect(axis[2]).toBeGreaterThan(Math.cos((0.5 * Math.PI) / 180));
+    // Acceptance 2 asks for 0.5°; the measured suggestion is +Z to rounding
+    // (the ROI normal of the symmetric die), which this tighter bound pins.
+    expect(axis[2]).toBeGreaterThan(1 - 1e-12);
   });
 
   test('Prepare die: the open scan is closed synthetically, certified and journaled; the intaglio is built on the die', async () => {

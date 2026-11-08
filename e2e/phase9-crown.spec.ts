@@ -211,7 +211,12 @@ test.describe.serial('Phase 9 — a crown on the real arch-case-01 with captured
     await expect(page.getByTestId('crown-anatomy-source')).toHaveAttribute('data-origin', 'builtin');
     const anatomyOp = await hook<{ params: Record<string, unknown> }>(page, 'getLatestOperation', 'crown-anatomy');
     expect(anatomyOp.params['neighbourProvenance']).toBe('case');
-    expect(anatomyOp.params['anatomySource']).toMatchObject({ origin: 'builtin', reason: 'fitOverBound', detail: 'residual 135 µm > bound 50 µm' });
+    // The figure depends on the canvas-pick placement (measured 135 µm), so
+    // the test pins the verdict and a band, not the exact µm.
+    expect(anatomyOp.params['anatomySource']).toMatchObject({ origin: 'builtin', reason: 'fitOverBound' });
+    const residualUm = Number(/^residual (\d+) µm > bound 50 µm$/.exec(String((anatomyOp.params['anatomySource'] as { detail?: string }).detail))?.[1]);
+    expect(residualUm).toBeGreaterThan(50);
+    expect(residualUm).toBeLessThan(300);
 
     await page.getByTestId('crown-morph-run').click();
     await expect(page.getByTestId('crown-morph-readout')).toBeVisible({ timeout: 300_000 });

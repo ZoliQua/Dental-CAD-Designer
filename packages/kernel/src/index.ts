@@ -414,7 +414,8 @@
  * dilated by the emergence offset (closed-form capsule exits), instead of
  * ADR-023's pointwise normal offset, which folded on dense or concave real
  * margins. The fit's ring targets are the outline at each ring vertex's
- * azimuth. Only the fitted library lane moves (≤ d(1 − cos(π/192)) ≈ 0.09 µm
+ * azimuth; heights are the nearest margin point's. Only the fitted library
+ * lane moves (≤ d(1 − cos(π/192)) ≈ 0.09 µm horizontally
  * on the 192-gon); every other geometry + journal-replay pin byte-identical.
  * See docs/CHANGELOG-kernel.md's `[0.37.0]` entry.
  *
