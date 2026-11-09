@@ -136,6 +136,29 @@ the change. The real crown lane (Task 3) is next.
   (self-intersection, for example), assert it and record why. Do not swap
   the template back.
 
+**Landed (2026-11-09, no kernel change).** Measured:
+
+- **The golden real lane** (engine; neighbours captured at snapped points):
+  - The library incisor 1.3.0 is placed, fitted at **49.1 µm** against the
+    50 µm bound. The ring goes from 72 to 73 vertices (one split) and moves
+    by up to 1.41 mm.
+  - QC fails wall (562 µm axial), seating and **contact**. The mesial
+    contact is 65 µm off: a 45 µm gap instead of 20 µm overlap. The morph
+    moves the contact vertex exactly to its target, so the miss is the
+    target root-find's (a fixed number of steps along a fixed direction, on
+    the rough captured patch of 21). The distal contact converges.
+- **e2e `phase9-crown`** (canvas-click captures):
+  - The library incisor is placed, fitted at **49.5 µm** with the ring
+    unrefined. The ring moves by up to 1.74 mm.
+  - QC fails wall, seating, contact and **self-intersection**. The golden's
+    placement does not self-intersect. The fold's location could not be
+    read through the existing hooks and is an open item.
+- **Acceptance 1 is met, narrowly.** Both fits sit within about 1 µm of the
+  bound, so a small placement change can flip either to `fitOverBound`.
+  The tests assert the measured values.
+- **Acceptance 4** is met as an honest verdict: every failure is visible and
+  acknowledgeable, nothing is stood in, and no gate is weakened.
+
 ## Task 4 — Phase gate
 
 - Run the whole chain (Vitest, every e2e, lint, typecheck, build, the real

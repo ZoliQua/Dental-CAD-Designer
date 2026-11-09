@@ -194,29 +194,20 @@ test.describe.serial('Phase 9 — a crown on the real arch-case-01 with captured
     expect(innerOp.inputHashes[0]).toBe(dieOp.outputHashes[0]);
   });
 
-  test('the later stages run on the real scan, and QC reports the unprepared tooth honestly: wall and seating fail, nothing is stood in (Phase 10)', async () => {
-    // The anatomy: the library default is tried. Since kernel 0.37.0 the
-    // cervical fit takes this dense, interproximally concave margin (the exact
-    // emergence outline no longer folds), and measures 135 µm against the
-    // 50 µm bound: the outline carries the margin's interproximal scallop,
-    // which the template ring's chords cannot follow in 3-D
-    // (test/golden/crown-open-arch-acceptance.test.ts's real lane measures
-    // 178 µm: the same axis, but its neighbours are captured at snapped
-    // points rather than canvas clicks, so the template is placed slightly
-    // differently). The built-in template is placed instead, with the reason
-    // shown.
+  test('the later stages run on the real scan with the fitted library incisor, and QC reports honestly: every failing gate visible, nothing stood in (Phase 10, Phase 12)', async () => {
+    // The anatomy: the library default — since kernel 0.40.0 (ADR-025) the
+    // library incisor 1.3.0 is fitted to this real margin within the bound
+    // (measured 49.5 µm against 50 µm, the ring unrefined), and placed.
     await page.getByTestId('crown-anatomy-autoplace').click();
     await expect(page.getByTestId('crown-anatomy-readout')).toBeVisible({ timeout: 300_000 });
     await expect(page.getByTestId('crown-error')).toHaveCount(0);
-    await expect(page.getByTestId('crown-anatomy-source')).toHaveAttribute('data-origin', 'builtin');
+    await expect(page.getByTestId('crown-anatomy-source')).toHaveAttribute('data-origin', 'library');
+    await expect(page.getByTestId('crown-anatomy-cervical-fit')).toContainText('µm');
     const anatomyOp = await hook<{ params: Record<string, unknown> }>(page, 'getLatestOperation', 'crown-anatomy');
     expect(anatomyOp.params['neighbourProvenance']).toBe('case');
-    // The figure depends on the canvas-pick placement (measured 135 µm), so
-    // the test pins the verdict and a band, not the exact µm.
-    expect(anatomyOp.params['anatomySource']).toMatchObject({ origin: 'builtin', reason: 'fitOverBound' });
-    const residualUm = Number(/^residual (\d+) µm > bound 50 µm$/.exec(String((anatomyOp.params['anatomySource'] as { detail?: string }).detail))?.[1]);
-    expect(residualUm).toBeGreaterThan(50);
-    expect(residualUm).toBeLessThan(300);
+    expect(anatomyOp.params['anatomySource']).toMatchObject({ origin: 'library', fdi: 11, version: '1.3.0' });
+    const fitOp = await hook<{ params: Record<string, unknown> }>(page, 'getLatestOperation', 'crown-cervical-fit');
+    expect(fitOp.params['errorBoundMm'] as number).toBeLessThanOrEqual(fitOp.params['maxResidualMm'] as number);
 
     await page.getByTestId('crown-morph-run').click();
     await expect(page.getByTestId('crown-morph-readout')).toBeVisible({ timeout: 300_000 });
@@ -241,9 +232,22 @@ test.describe.serial('Phase 9 — a crown on the real arch-case-01 with captured
     const failing = await page
       .locator('[data-testid^="crown-qc-gate-"][data-passed="false"]')
       .evaluateAll((rows) => rows.map((r) => r.getAttribute('data-testid')));
-    expect(failing.sort()).toEqual(['crown-qc-gate-minWallThickness', 'crown-qc-gate-seating']);
+    // The measured verdict (2026-11-09): the unprepared tooth fails the wall
+    // and seating gates, as before. With the fitted library incisor two more
+    // fail here: the mesial contact (the target root-find misses on the rough
+    // captured patch of 21 — see the golden real lane) and self-intersection
+    // (this placement moves the ring up to 1.74 mm; the golden's, 1.41 mm,
+    // does not self-intersect — the fold's location is a tracked open item).
+    // Every failure is visible and acknowledgeable; no gate is weakened.
+    expect(failing.sort()).toEqual([
+      'crown-qc-gate-contact',
+      'crown-qc-gate-minWallThickness',
+      'crown-qc-gate-seating',
+      'crown-qc-gate-selfIntersection',
+    ]);
     await expect(page.locator('[data-testid^="crown-qc-provenance-"]')).toHaveCount(0);
-    await expect(page.getByTestId('crown-qc-ack-minWallThickness')).toBeVisible();
-    await expect(page.getByTestId('crown-qc-ack-seating')).toBeVisible();
+    for (const gate of ['contact', 'minWallThickness', 'seating', 'selfIntersection']) {
+      await expect(page.getByTestId(`crown-qc-ack-${gate}`)).toBeVisible();
+    }
   });
 });

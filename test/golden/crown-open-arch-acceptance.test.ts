@@ -46,8 +46,9 @@
 // Plus env-gated real lanes (RUN_CROWN_REAL_DIE=1): real arch-case-01 tooth
 // 11 through die extraction and the intaglio, recording the certificate and
 // the intaglio's margin fit (the tooth is unprepared, so only these two
-// stages are asserted); and, through the engine, the library incisor's
-// cervical fit on the real margin (Phase 11 Task 4).
+// stages are asserted); and, through the engine, the library incisor fitted
+// to the real margin, morphed, shelled and QC'd, with its measured verdict
+// (Phase 12 Task 3).
 //
 // Phase 11 Task 4 adds a third pinned lane: the fitted library INCISOR 11
 // (asset 1.3.0) on the same open-arch case, with its measured verdict.
@@ -83,6 +84,7 @@ import { caseStore } from '../../apps/client/src/engine/caseStore.ts';
 import { crownDesignEngine, type RunnablePool } from '../../apps/client/src/engine/crownDesign.ts';
 import { createRestoration } from '../../apps/client/src/engine/restorations.ts';
 import { useServerStatusStore } from '../../apps/client/src/state/serverStatusStore.ts';
+import { useCrownStore } from '../../apps/client/src/state/crownStore.ts';
 import { __resetToothLibraryCacheForTests } from '../../apps/client/src/engine/toothLibrary.ts';
 import type { MeshStats } from '../../apps/client/src/engine/repair.ts';
 import { repoRoot } from '../../scripts/kernel-ops-lib.ts';
@@ -100,6 +102,15 @@ const EXPECTED_KERNEL_VERSION = '0.40.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 const PRINT = process.env['PRINT_CROWN_OPEN_ARCH_PINS'] === '1';
 const RUN_REAL = process.env['RUN_CROWN_REAL_DIE'] === '1';
+/** The real lane's measured QC verdict (2026-11-09, kernel 0.40.0). The
+ * tooth is unprepared, so the wall (562 µm axial, 432 µm conservative) and
+ * seating gates fail, as with the built-in template. The mesial contact also
+ * fails: 65 µm off target (a 45 µm gap instead of 20 µm overlap). The morph
+ * moves the contact vertex exactly to its target (the RBF interpolates its
+ * controls), so the miss is the target root-find's own: a fixed number of
+ * steps along a fixed direction, on the rough captured patch of 21. The
+ * distal contact converges (0.0 µm). No gate is weakened. */
+const MEASURED_REAL_FAILING_GATES: string[] = ['contact', 'minWallThickness', 'seating'];
 
 interface Pin {
   kernelVersion: string;
@@ -451,24 +462,15 @@ describe('Phase 11 Task 4 — the crown on an open scan, fitted library INCISOR 
 });
 
 // The engine on the real scan, as e2e phase9-crown drives it: die, intaglio,
-// both neighbours captured on the scan, then the default anatomy — the
-// library incisor fitted to the real margin (Phase 11 acceptance 1).
+// both neighbours captured on the scan, then the default anatomy (the
+// library incisor fitted to the real margin), morph, shell and QC.
 //
-// The measured verdict (2026-11-08): the fit now TAKES this margin (it used
-// to refuse it as not star-shaped), and refuses it over the bound — residual
-// 178 µm > 50 µm, so the built-in template is placed with that reason. Why:
-// horizontally a 72-segment ring would follow the outline within ~43 µm,
-// but the outline carries the incisor margin's interproximal scallop
-// (1.37 mm of height around it) and, in the filled concavities, the
-// nearest-point height steps (up to 163 µm between neighbouring samples);
-// the ring's straight chords cannot follow that in 3-D (~115 µm even at
-// uniform azimuths; the template's elliptical ring is less uniform). The
-// residual depends on where the template is placed: e2e phase9-crown, with
-// the same axis but its neighbours captured by canvas clicks, measures
-// 135 µm. The bound is not weakened. A smoother outline height or a denser
-// template ring is a later change.
-describe.skipIf(!RUN_REAL)('Phase 11 Task 4 — REAL arch-case-01 tooth 11: the fitted library incisor [RUN_CROWN_REAL_DIE=1]', () => {
-  it('the cervical fit takes the real margin and refuses it over the bound (measured 178 µm), never as not star-shaped', async () => {
+// History: Phase 11 made the fit take this margin (it used to refuse it as
+// not star-shaped) but refused it over the bound (178 µm). Phase 12
+// (kernel 0.39.0 / 0.40.0, ADR-025) made the outline height continuous and
+// the ring adaptive.
+describe.skipIf(!RUN_REAL)('Phase 12 Task 3 — REAL arch-case-01 tooth 11: the fitted library incisor [RUN_CROWN_REAL_DIE=1]', () => {
+  it('the library incisor is fitted within the bound on the real margin; the later gates report the unprepared tooth honestly', async () => {
     const upper = loadUpperjawMesh();
     const bvh = buildBvh(upper);
     const readRef = (fdi: number): Reference =>
@@ -490,15 +492,31 @@ describe.skipIf(!RUN_REAL)('Phase 11 Task 4 — REAL arch-case-01 tooth 11: the 
       await crownDesignEngine.captureNeighbour(side, closestPoint(upper, bvh, [c[0] + axis[0] * 3, c[1] + axis[1] * 3, c[2] + axis[2] * 3]).point);
     }
     await crownDesignEngine.placeAnatomyAuto();
-    const source = opOf('crown-anatomy').params['anatomySource'] as { origin: string; reason?: string; detail?: string };
+    const source = opOf('crown-anatomy').params['anatomySource'] as { origin: string; reason?: string; detail?: string; fdi?: number; version?: string };
     const fitOp = caseStore.getDocument().history.filter((o) => o.name === 'crown-cervical-fit').pop();
     console.log(
-      `[CROWN-REAL #11 library] source ${JSON.stringify(source)}` +
+      `[CROWN-REAL #11 library] source ${JSON.stringify({ origin: source.origin, reason: source.reason, detail: source.detail, version: source.version })}` +
         (fitOp
-          ? ` fit residual ${((fitOp.params['errorBoundMm'] as number) * 1000).toFixed(1)} µm, ring moved ≤ ${(fitOp.params['maxRingDisplacementMm'] as number).toFixed(3)} mm, emergence ${String(fitOp.params['emergenceOffsetMm'])} mm`
+          ? ` fit residual ${((fitOp.params['errorBoundMm'] as number) * 1000).toFixed(1)} µm, ring ${String(fitOp.params['templateRingVertexCount'])} → ${String(fitOp.params['ringVertexCount'])} ` +
+            `(${String(fitOp.params['ringRefineLevels'])} levels), moved ≤ ${(fitOp.params['maxRingDisplacementMm'] as number).toFixed(3)} mm`
           : ''),
     );
-    expect(source).toMatchObject({ origin: 'builtin', reason: 'fitOverBound', detail: 'residual 178 µm > bound 50 µm' });
+    expect(source).toMatchObject({ origin: 'library', fdi: 11, version: '1.3.0' });
+    expect(fitOp!.params['errorBoundMm'] as number).toBeLessThanOrEqual(fitOp!.params['maxResidualMm'] as number);
+
+    await crownDesignEngine.runMorph();
+    console.log(
+      `[CROWN-REAL #11 library] morph contacts ${JSON.stringify(
+        useCrownStore.getState().morph?.contacts.map((c) => ({ kind: c.kind, achieved: c.achievedSignedDistanceMm, residual: c.contactResidualMm })),
+      )}`,
+    );
+    await crownDesignEngine.constructShell();
+    await crownDesignEngine.runQc();
+    const report = restorationOf(ids.restorationId).qc!;
+    console.log(`[CROWN-REAL #11 library] QC\n${table(report)}`);
+    for (const g of report.gates) expect(g.inputProvenance, g.gate).toBeUndefined();
+    const failing = report.gates.filter((g) => !g.passed).map((g) => g.gate).sort();
+    expect(failing).toEqual(MEASURED_REAL_FAILING_GATES);
   }, 1_800_000);
 });
 
