@@ -55,6 +55,8 @@ class FakePool {
   /** The cervical fit's residual, or a refusal reason. */
   fitErrorBoundMm = 0.011;
   fitRefusal: string | null = null;
+  /** The ring the fit returns (refined when longer than the asset's). */
+  fitRing: number[] = [0, 1, 2];
   private hashCounter = 0;
   failShell = false;
   failResolveMorph = false;
@@ -95,7 +97,10 @@ class FakePool {
           ringToLoopMm: this.fitErrorBoundMm,
           loopToRingMm: this.fitErrorBoundMm / 2,
           maxRingDisplacementMm: 0.8,
-          ringVertexCount: 3,
+          ringVertexCount: this.fitRing.length,
+          cervicalRing: [...this.fitRing],
+          ringRefineLevels: this.fitRing.length > 3 ? 1 : 0,
+          maxRingRefineLevels: 3,
           anchorCount: 64,
           movedVertexCount: 120,
           emergenceOffsetMm: 0.651,
@@ -706,6 +711,8 @@ describe('crownDesign controller — anatomy from the tooth library (Phase 9 Tas
     expect(fit.cervicalRing).toEqual([0, 1, 2]);
     const rp = currentRestoration().params;
     expect(fit).toMatchObject({ marginalGapMm: rp.marginalGapMm, cementGapMm: rp.cementGapMm, minWallThicknessMm: rp.minWallThicknessMm });
+    // ADR-025: the fit gets the profile's bound, so it can refine the ring.
+    expect(lastCall<{ maxResidualMm?: number }>('fitCervicalRing').maxResidualMm).toBe(0.05);
     const place = lastOp('crown-anatomy');
     const fitOp = lastOp('crown-cervical-fit');
     expect(caseStore.getDocument().history.indexOf(fitOp)).toBeGreaterThan(caseStore.getDocument().history.indexOf(place));
@@ -716,6 +723,25 @@ describe('crownDesign controller — anatomy from the tooth library (Phase 9 Tas
     expect(place.params.anatomySource).toMatchObject({ origin: 'library', fdi: 11, version: '1.1.0' });
     expect(place.inputHashes).toContain('c'.repeat(64));
     expect(useCrownStore.getState().anatomy?.cervicalFit).toMatchObject({ errorBoundMm: 0.011, maxResidualMm: 0.05 });
+  });
+
+  it('a refined ring (ADR-025): the morph holds and the shell trims along the FITTED ring, not the asset\'s; the fit op journals the refinement', async () => {
+    fake.fitRing = [0, 3, 1, 2];
+    crownDesignEngine.__setToothLibraryFetchForTests(libraryFetch);
+    crownDesignEngine.start(restorationId);
+    await toAnatomy();
+    expect(lastOp('crown-cervical-fit').params).toMatchObject({
+      ringVertexCount: 4,
+      templateRingVertexCount: 3,
+      ringRefineLevels: 1,
+      maxRingRefineLevels: 3,
+    });
+    expect(useCrownStore.getState().anatomy?.cervicalFit).toMatchObject({ ringVertexCount: 4, ringVertexCountAdded: 1 });
+    await crownDesignEngine.runMorph();
+    expect(lastCall<{ fixedVertexIndices?: number[] }>('morphAnatomy').fixedVertexIndices).toEqual([0, 3, 1, 2]);
+    expect(lastOp('crown-morph').params).toMatchObject({ fixedCervicalRingVertexCount: 4 });
+    await crownDesignEngine.constructShell();
+    expect(lastCall<{ outerCervicalRing?: number[] }>('constructShell').outerCervicalRing).toEqual([0, 3, 1, 2]);
   });
 
   it('the shell trims along the fitted ring, and QC measures the outer surface the shell used', async () => {

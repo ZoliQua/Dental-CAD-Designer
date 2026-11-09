@@ -109,6 +109,19 @@ the parameter clamped, so a ray through a vertex is deterministic.
   fits met the bound unrefined. The version-only pins move. Any other move
   is an alarm.
 
+**Landed (2026-11-09, kernel 0.40.0).** As planned. At 0.39.0 with the new
+code **no golden pin moved**. At 0.40.0 only the five `*-qc` pins and the
+server traceability golden moved, by their version string.
+
+Measured:
+- The 10-lobe ±0.7 mm scallop goes from 62.1 µm with 72 ring vertices to
+  44.9 µm with 88 (one level).
+- Tooth 11's trace with a 72-vertex template goes from 75.5 µm to 42.6 µm
+  with 77 (five splits).
+
+The engine test was checked against the old ring hand-off: it fails without
+the change. The real crown lane (Task 3) is next.
+
 ## Task 3 — The real tooth, measured
 
 - **Golden real lane** (`RUN_CROWN_REAL_DIE=1`): the expected source becomes

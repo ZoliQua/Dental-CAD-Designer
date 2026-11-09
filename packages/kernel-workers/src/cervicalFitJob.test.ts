@@ -76,6 +76,40 @@ describe('fitCervicalRing job', () => {
     expect(result.cervicalBlendMm).toBe(direct.cervicalBlendMm);
   });
 
+  it('with the profile bound, refines the ring (ADR-025) and returns the refined ring — byte-identical to the direct kernel call', async () => {
+    const pool = createPool();
+    const c = premolarCase();
+    // A 10-lobe ±0.7 mm scallop on the circular margin: the 72-vertex
+    // premolar ring cannot follow it within 50 µm unrefined.
+    const scalloped: Vec3[] = c.margin.map((p, i) => [p[0], p[1], p[2] + 0.7 * detCos((2 * Math.PI * 10 * i) / c.margin.length)]);
+    const result = await pool.run('fitCervicalRing', {
+      positions: c.positions.slice(),
+      indices: c.indices.slice(),
+      cervicalRing: c.ring,
+      marginLoop: new Float64Array(scalloped.flat()),
+      insertionAxis: [0, 0, 1],
+      ...GAPS,
+      maxResidualMm: 0.05,
+    });
+    const direct = fitCervicalRing({
+      mesh: { positions: c.positions, indices: c.indices },
+      cervicalRing: c.ring,
+      marginLoop: scalloped,
+      insertionAxis: [0, 0, 1],
+      emergenceOffsetMm: cervicalEmergenceOffsetMm(GAPS),
+      maxResidualMm: 0.05,
+    });
+    if (!result.ok) throw new Error(`expected a fit, got ${result.reason}`);
+    expect(direct.ringRefineLevels).toBeGreaterThan(0);
+    expect(result.cervicalRing).toEqual(direct.cervicalRing);
+    expect(result.cervicalRing.length).toBeGreaterThan(c.ring.length);
+    expect(result.ringVertexCount).toBe(result.cervicalRing.length);
+    expect(result.ringRefineLevels).toBe(direct.ringRefineLevels);
+    expect(result.maxRingRefineLevels).toBe(3);
+    expect(Array.from(result.indices)).toEqual(Array.from(direct.mesh.indices));
+    expect(result.errorBoundMm).toBe(direct.errorBoundMm);
+  });
+
   it('returns the kernel refusal reason instead of throwing (a ring that is not an edge loop)', async () => {
     const pool = createPool();
     const c = premolarCase();

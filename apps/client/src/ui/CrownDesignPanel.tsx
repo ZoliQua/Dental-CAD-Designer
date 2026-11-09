@@ -404,6 +404,8 @@ function AnatomyStage({ busy }: { busy: boolean }) {
                 bound: Math.round(anatomy.cervicalFit.maxResidualMm * 1000),
                 offset: Math.round(anatomy.cervicalFit.emergenceOffsetMm * 1000),
                 moved: Math.round(anatomy.cervicalFit.maxRingDisplacementMm * 1000),
+                ring: anatomy.cervicalFit.ringVertexCount,
+                added: anatomy.cervicalFit.ringVertexCountAdded,
               })}
             </p>
           )}

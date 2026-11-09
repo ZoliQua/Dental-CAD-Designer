@@ -88,6 +88,9 @@ export const DEFAULT_CERVICAL_BLEND_MM = 2.0;
 export const DEFAULT_CERVICAL_ANCHOR_BAND_MM = 1.0;
 /** Cap on anchors (deterministic stride subsample) — bounds the dense solve. */
 export const DEFAULT_CERVICAL_MAX_ANCHORS = 256;
+/** Ring refinement rounds (ADR-025 Decision 2) — an ALGORITHM default: at
+ * most 2³ = 8× the template's ring. */
+export const DEFAULT_MAX_RING_REFINE_LEVELS = 3;
 
 /** A design margin (mm) on top of the emergence offset's sum, so the
  * designed wall lies strictly above the minimum-wall gate's conservative
@@ -157,12 +160,20 @@ export interface CervicalFitInput {
   /** Marginal gap + the material's minimum wall thickness (mm), from the
    * profile. */
   readonly emergenceOffsetMm: number;
+  /** The fit's residual bound (mm), from the profile
+   * (`CERVICAL_FIT_MAX_RESIDUAL_MM`; never defaulted here). When given, the
+   * fit refines the cervical ring where its chords cannot follow the
+   * outline within it (ADR-025 Decision 2); absent, the ring is used as is. */
+  readonly maxResidualMm?: number;
 }
 
 export interface CervicalFitOptions {
   readonly cervicalBlendMm?: number;
   readonly anchorBandMm?: number;
   readonly maxAnchors?: number;
+  /** Cap on ring refinement rounds (each can double an edge) — default
+   * {@link DEFAULT_MAX_RING_REFINE_LEVELS}; journaled with the fit. */
+  readonly maxRingRefineLevels?: number;
 }
 
 export interface CervicalFitResult {
@@ -177,7 +188,14 @@ export interface CervicalFitResult {
   readonly loopToRingMm: number;
   /** Largest ring vertex displacement (mm) — how far the template was off. */
   readonly maxRingDisplacementMm: number;
+  /** The ring vertex count after refinement (= `cervicalRing.length`). */
   readonly ringVertexCount: number;
+  /** The (refined) cervical ring: its vertex indices in the output mesh, in
+   * ring order — the morph's fixed vertices and the shell's trim ring. The
+   * template's own ring when nothing was refined. */
+  readonly cervicalRing: number[];
+  /** Refinement rounds that split at least one edge (0: the ring as is). */
+  readonly ringRefineLevels: number;
   readonly anchorCount: number;
   readonly movedVertexCount: number;
   /** The margin centroid the azimuths and heights are measured from. */
@@ -420,6 +438,105 @@ export function emergenceLoop(marginLoopIn: readonly Vec3[], insertionAxis: Vec3
   return m.q.map(([x, y]) => outlinePoint(m, x, y, offsetMm));
 }
 
+function vertexOf(mesh: IndexedMesh, v: number): Vec3 {
+  return [mesh.positions[v * 3]!, mesh.positions[v * 3 + 1]!, mesh.positions[v * 3 + 2]!];
+}
+
+/** The outline point at the azimuth of 2-D frame point (x, y), in FRAME
+ * coordinates (u, v, height). */
+function outlineFrame(m: MarginFrame, x: number, y: number, d: number): Vec3 {
+  const len = Math.hypot(x, y);
+  const ex = x / len, ey = y / len;
+  const { radius, height } = emergenceRadius(m.q, m.heights, [ex, ey], d);
+  return [radius * ex, radius * ey, height];
+}
+
+function segmentDistance3(p: Vec3, a: Vec3, b: Vec3): number {
+  const ex = b[0] - a[0], ey = b[1] - a[1], ez = b[2] - a[2];
+  const ll = ex * ex + ey * ey + ez * ez;
+  const s = ll > 0 ? Math.min(1, Math.max(0, ((p[0] - a[0]) * ex + (p[1] - a[1]) * ey + (p[2] - a[2]) * ez) / ll)) : 0;
+  return Math.hypot(p[0] - a[0] - s * ex, p[1] - a[1] - s * ey, p[2] - a[2] - s * ez);
+}
+
+/** Per ring edge (vertex k → k+1): whether the chord between its two
+ * outline targets lies farther than `bound` from the outline over the
+ * edge's azimuth span — measured at the emergence-loop points inside the
+ * span (a wedge test by cross products: no azimuth seam) and at the
+ * outline point at the template edge midpoint's azimuth (which alone
+ * decides an edge whose span holds no loop sample). Frame coordinates. */
+function ringEdgesOverBound(
+  m: MarginFrame,
+  mesh: IndexedMesh,
+  ring: readonly number[],
+  loopFrame: readonly Vec3[],
+  d: number,
+  bound: number,
+): boolean[] {
+  const n = ring.length;
+  const ring2d = ring.map((r) => project(m.f, vertexOf(mesh, r)));
+  const orientation = windingOrientation(ring2d);
+  const targets = ring2d.map(([x, y]) => outlineFrame(m, x, y, d));
+  const out: boolean[] = [];
+  for (let k = 0; k < n; k++) {
+    const a = ring2d[k]!, b = ring2d[(k + 1) % n]!;
+    const ta = targets[k]!, tb = targets[(k + 1) % n]!;
+    const pa = vertexOf(mesh, ring[k]!), pb = vertexOf(mesh, ring[(k + 1) % n]!);
+    const [mx, my] = project(m.f, [(pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2, (pa[2] + pb[2]) / 2]);
+    let deviation = segmentDistance3(outlineFrame(m, mx, my, d), ta, tb);
+    for (const p of loopFrame) {
+      if (orientation * (a[0] * p[1] - a[1] * p[0]) < 0 || orientation * (p[0] * b[1] - p[1] * b[0]) < 0) continue;
+      deviation = Math.max(deviation, segmentDistance3(p, ta, tb));
+    }
+    out.push(deviation > bound);
+  }
+  return out;
+}
+
+/**
+ * Splits the ring edges flagged in `split` (edge k: ring vertex k → k+1) at
+ * the TEMPLATE edge's midpoint, splitting each of the edge's two triangles
+ * in two (winding kept). Every existing vertex keeps its position bit for
+ * bit and each new vertex lies on its edge, so the template's shape is
+ * unchanged (ADR-025 Decision 2). New vertices are appended in ring order;
+ * the returned ring holds each one between its edge's ends. Exported for
+ * the kernel's own tests; not part of the package API.
+ */
+export function splitRingEdges(
+  mesh: IndexedMesh,
+  ring: readonly number[],
+  split: readonly boolean[],
+): { mesh: IndexedMesh; ring: number[] } {
+  const positions = Array.from(mesh.positions);
+  const indices = Array.from(mesh.indices);
+  const outRing: number[] = [];
+  const n = ring.length;
+  for (let k = 0; k < n; k++) {
+    const a = ring[k]!, b = ring[(k + 1) % n]!;
+    outRing.push(a);
+    if (!split[k]) continue;
+    const v = positions.length / 3;
+    for (let c = 0; c < 3; c++) positions.push((positions[a * 3 + c]! + positions[b * 3 + c]!) / 2);
+    let found = 0;
+    const triangleCount = indices.length / 3;
+    for (let t = 0; t < triangleCount; t++) {
+      for (let e = 0; e < 3; e++) {
+        const x = indices[t * 3 + e]!, y = indices[t * 3 + ((e + 1) % 3)]!;
+        if (!((x === a && y === b) || (x === b && y === a))) continue;
+        const c = indices[t * 3 + ((e + 2) % 3)]!;
+        indices[t * 3] = x;
+        indices[t * 3 + 1] = v;
+        indices[t * 3 + 2] = c;
+        indices.push(v, y, c);
+        found++;
+        break;
+      }
+    }
+    if (found !== 2) throw new Error(`cervicalFit: internal — ring edge ${a}–${b} borders ${found} triangle(s), not 2`);
+    outRing.push(v);
+  }
+  return { mesh: { positions: Float64Array.from(positions), indices: Uint32Array.from(indices) }, ring: outRing };
+}
+
 /**
  * Fits the placed template's cervical ring to the emergence loop — see the
  * module doc. Pure and deterministic.
@@ -434,10 +551,16 @@ export function fitCervicalRing(input: CervicalFitInput, options: CervicalFitOpt
   if (!(blendMm > 0) || !(bandMm > 0) || !(maxAnchors >= 4)) {
     throw new RangeError('cervicalFit: cervicalBlendMm and anchorBandMm must be > 0 and maxAnchors ≥ 4');
   }
-  const { mesh, cervicalRing } = input;
+  const maxLevels = input.maxResidualMm === undefined ? 0 : (options.maxRingRefineLevels ?? DEFAULT_MAX_RING_REFINE_LEVELS);
+  if (input.maxResidualMm !== undefined && !(input.maxResidualMm > 0 && Number.isFinite(input.maxResidualMm))) {
+    throw new RangeError(`cervicalFit: maxResidualMm must be a positive finite mm value (got ${input.maxResidualMm})`);
+  }
+  if (!(Number.isInteger(maxLevels) && maxLevels >= 0)) {
+    throw new RangeError(`cervicalFit: maxRingRefineLevels must be a non-negative integer (got ${maxLevels})`);
+  }
   const m = marginFrame(input.marginLoop, input.insertionAxis, input.emergenceOffsetMm);
   const loop = m.q.map(([x, y]) => outlinePoint(m, x, y, input.emergenceOffsetMm));
-  const ringProblem = closedEdgeLoopProblem(mesh, cervicalRing);
+  const ringProblem = closedEdgeLoopProblem(input.mesh, input.cervicalRing);
   if (ringProblem !== null) throw new CervicalFitError('ring-not-edge-loop', ringProblem);
 
   const f = m.f;
@@ -445,12 +568,31 @@ export function fitCervicalRing(input: CervicalFitInput, options: CervicalFitOpt
   if (windingOrientation(loop.map((p) => project(f, p))) === 0) {
     throw new Error('cervicalFit: internal — the emergence outline does not wind once around the margin centroid');
   }
-  const pos = mesh.positions;
-  const ringPoints: Vec3[] = cervicalRing.map((r) => [pos[r * 3]!, pos[r * 3 + 1]!, pos[r * 3 + 2]!]);
-  const ring2d = ringPoints.map((p) => project(f, p));
-  if (windingOrientation(ring2d) === 0) {
+  if (windingOrientation(input.cervicalRing.map((r) => project(f, vertexOf(input.mesh, r)))) === 0) {
     throw new CervicalFitError('ring-not-star-shaped', 'the placed cervical ring does not wind once around the margin centroid');
   }
+
+  // ADR-025 Decision 2: split the ring edges whose chords cannot follow the
+  // outline within the bound (the template's shape is unchanged by a split).
+  let mesh = input.mesh;
+  let cervicalRing: number[] = [...input.cervicalRing];
+  let ringRefineLevels = 0;
+  if (input.maxResidualMm !== undefined) {
+    const bound = input.maxResidualMm;
+    const loopFrame = loop.map((p): Vec3 => {
+      const [x, y] = project(f, p);
+      return [x, y, heightOf(f, p[0], p[1], p[2])];
+    });
+    for (let level = 0; level < maxLevels; level++) {
+      const split = ringEdgesOverBound(m, mesh, cervicalRing, loopFrame, input.emergenceOffsetMm, bound);
+      if (!split.some(Boolean)) break;
+      ({ mesh, ring: cervicalRing } = splitRingEdges(mesh, cervicalRing, split));
+      ringRefineLevels++;
+    }
+  }
+  const pos = mesh.positions;
+  const ringPoints: Vec3[] = cervicalRing.map((r) => vertexOf(mesh, r));
+  const ring2d = ringPoints.map((p) => project(f, p));
 
   // Pair by azimuth: the exact outline at each ring vertex's azimuth.
   const ringTargets: Vec3[] = ring2d.map(([x, y]) => outlinePoint(m, x, y, input.emergenceOffsetMm));
@@ -515,6 +657,8 @@ export function fitCervicalRing(input: CervicalFitInput, options: CervicalFitOpt
     loopToRingMm,
     maxRingDisplacementMm,
     ringVertexCount: cervicalRing.length,
+    cervicalRing,
+    ringRefineLevels,
     anchorCount: anchors.length,
     movedVertexCount,
     marginCentroid: f.c,

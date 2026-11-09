@@ -433,8 +433,17 @@
  * instead of the nearest margin point's (ADR-024), which stepped in filled
  * concavities. The horizontal outline is unchanged. On a planar margin both
  * rules give the same bits: every golden geometry + journal-replay pin is
- * byte-identical. See docs/CHANGELOG-kernel.md's `[0.39.0]` entry. */
-export const KERNEL_VERSION = '0.39.0';
+ * byte-identical. See docs/CHANGELOG-kernel.md's `[0.39.0]` entry.
+ *
+ * 0.40.0 (Phase 12 Task 2, ADR-025 Decision 2): `fitCervicalRing` takes the
+ * caller's `maxResidualMm` and, when given, splits the template's cervical
+ * ring edges whose chords cannot follow the outline within it (at the
+ * template edge midpoint — the shape before the fit unchanged), up to
+ * `maxRingRefineLevels` (default 3); it returns the refined ring. A fit that
+ * met the bound unrefined is byte-identical: every golden geometry +
+ * journal-replay pin byte-identical. See docs/CHANGELOG-kernel.md's
+ * `[0.40.0]` entry. */
+export const KERNEL_VERSION = '0.40.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export { detSin, detCos, detAtan, detAtan2, detAsin, detAcos, detExp, detPow } from './math/detMath.ts';
@@ -807,6 +816,7 @@ export {
   DEFAULT_CERVICAL_BLEND_MM,
   DEFAULT_CERVICAL_ANCHOR_BAND_MM,
   DEFAULT_CERVICAL_MAX_ANCHORS,
+  DEFAULT_MAX_RING_REFINE_LEVELS,
   type CervicalFitErrorReason,
   type CervicalFitInput,
   type CervicalFitOptions,

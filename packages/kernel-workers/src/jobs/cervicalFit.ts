@@ -10,7 +10,14 @@
 //
 // `.ts` extension: reachable from the Node worker entry's import closure — see
 // CLAUDE.md's "Import extension convention".
-import { CervicalFitError, cervicalEmergenceOffsetMm, fitCervicalRing, type CervicalFitErrorReason, type Vec3 } from '@dqcad/kernel';
+import {
+  CervicalFitError,
+  cervicalEmergenceOffsetMm,
+  DEFAULT_MAX_RING_REFINE_LEVELS,
+  fitCervicalRing,
+  type CervicalFitErrorReason,
+  type Vec3,
+} from '@dqcad/kernel';
 import { JobCancelledError, type JobContext } from './context.ts';
 
 export interface FitCervicalRingPayload {
@@ -26,6 +33,10 @@ export interface FitCervicalRingPayload {
   marginalGapMm: number;
   cementGapMm: number;
   minWallThicknessMm: number;
+  /** The fit's residual bound (mm, the profile's
+   * `CERVICAL_FIT_MAX_RESIDUAL_MM`): when given, the ring is refined where
+   * its chords cannot follow the outline within it (ADR-025 Decision 2). */
+  maxResidualMm?: number;
 }
 
 export type FitCervicalRingResult =
@@ -40,6 +51,11 @@ export type FitCervicalRingResult =
       loopToRingMm: number;
       maxRingDisplacementMm: number;
       ringVertexCount: number;
+      /** The (refined) cervical ring in the output mesh — the morph's fixed
+       * vertices and the shell's trim ring. */
+      cervicalRing: number[];
+      ringRefineLevels: number;
+      maxRingRefineLevels: number;
       anchorCount: number;
       movedVertexCount: number;
       emergenceOffsetMm: number;
@@ -76,6 +92,7 @@ export const fitCervicalRingJob = async (
       marginLoop,
       insertionAxis: payload.insertionAxis,
       emergenceOffsetMm,
+      ...(payload.maxResidualMm !== undefined ? { maxResidualMm: payload.maxResidualMm } : {}),
     });
     ctx.progress(1);
     return {
@@ -87,6 +104,9 @@ export const fitCervicalRingJob = async (
       loopToRingMm: fit.loopToRingMm,
       maxRingDisplacementMm: fit.maxRingDisplacementMm,
       ringVertexCount: fit.ringVertexCount,
+      cervicalRing: fit.cervicalRing,
+      ringRefineLevels: fit.ringRefineLevels,
+      maxRingRefineLevels: payload.maxResidualMm !== undefined ? DEFAULT_MAX_RING_REFINE_LEVELS : 0,
       anchorCount: fit.anchorCount,
       movedVertexCount: fit.movedVertexCount,
       emergenceOffsetMm: fit.emergenceOffsetMm,

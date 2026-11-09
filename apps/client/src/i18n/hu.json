@@ -504,7 +504,7 @@
     "anatomyReadout": "Méret MD {{md}} · BL {{bl}} · OG {{og}}",
     "anatomyProximalGap": "Approximális rés felhasználva",
     "anatomyAntagonist": "Antagonista felhasználva",
-    "anatomyCervicalFit": "Cervikális illesztés: reziduum {{residual}} µm (korlát {{bound}} µm) · emergencia {{offset}} µm-rel a margón kívül · a gyűrű legfeljebb {{moved}} µm-t mozdult",
+    "anatomyCervicalFit": "Cervikális illesztés: reziduum {{residual}} µm (korlát {{bound}} µm) · emergencia {{offset}} µm-rel a margón kívül · a gyűrű legfeljebb {{moved}} µm-t mozdult · gyűrű {{ring}} csúcs ({{added}} hozzáadva a margó követéséhez)",
     "morphTitle": "4 · Morfing (kontaktok)",
     "morphRun": "Morfing futtatása",
     "morphStrengthMesial": "Meziális kontakt",

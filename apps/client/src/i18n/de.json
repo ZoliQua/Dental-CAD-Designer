@@ -504,7 +504,7 @@
     "anatomyReadout": "Skalierung MD {{md}} · BL {{bl}} · OG {{og}}",
     "anatomyProximalGap": "Approximalspalt genutzt",
     "anatomyAntagonist": "Antagonist genutzt",
-    "anatomyCervicalFit": "Zervikale Anpassung: Residuum {{residual}} µm (Grenze {{bound}} µm) · Emergenz {{offset}} µm außerhalb des Randes · Ring um bis zu {{moved}} µm verschoben",
+    "anatomyCervicalFit": "Zervikale Anpassung: Residuum {{residual}} µm (Grenze {{bound}} µm) · Emergenz {{offset}} µm außerhalb des Randes · Ring um bis zu {{moved}} µm verschoben · Ring {{ring}} Punkte ({{added}} ergänzt, um dem Rand zu folgen)",
     "morphTitle": "4 · Morphing (Kontakte)",
     "morphRun": "Morphing ausführen",
     "morphStrengthMesial": "Mesialer Kontakt",

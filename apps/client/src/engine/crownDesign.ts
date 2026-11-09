@@ -1193,6 +1193,7 @@ class CrownDesignEngine {
           marginalGapMm: session.params.marginalGapMm,
           cementGapMm: session.params.cementGapMm,
           minWallThicknessMm: session.params.minWallThicknessMm,
+          maxResidualMm: CERVICAL_FIT_MAX_RESIDUAL_MM,
         });
         if (!fitted.ok) {
           return await this.placeAnatomy(
@@ -1251,6 +1252,8 @@ class CrownDesignEngine {
           maxResidualMm: CERVICAL_FIT_MAX_RESIDUAL_MM,
           emergenceOffsetMm: fit.emergenceOffsetMm,
           maxRingDisplacementMm: fit.maxRingDisplacementMm,
+          ringVertexCount: fit.ringVertexCount,
+          ringVertexCountAdded: fit.ringVertexCount - input.cervicalRing.length,
         };
         this.commitStage(
           'anatomy',
@@ -1264,6 +1267,9 @@ class CrownDesignEngine {
             loopToRingMm: fit.loopToRingMm,
             maxRingDisplacementMm: fit.maxRingDisplacementMm,
             ringVertexCount: fit.ringVertexCount,
+            templateRingVertexCount: input.cervicalRing.length,
+            ringRefineLevels: fit.ringRefineLevels,
+            maxRingRefineLevels: fit.maxRingRefineLevels,
             anchorCount: fit.anchorCount,
             movedVertexCount: fit.movedVertexCount,
             emergenceOffsetMm: fit.emergenceOffsetMm,
@@ -1277,7 +1283,8 @@ class CrownDesignEngine {
         );
       }
       // Set after the commits (their invalidation clears the previous fit).
-      session.cervicalRing = cervicalFit !== null ? (input.cervicalRing ?? null) : null;
+      // The FITTED ring (refined where needed — ADR-025), not the asset's.
+      session.cervicalRing = fit !== null && cervicalFit !== null ? fit.cervicalRing : null;
       session.cervicalFit = cervicalFit;
       this.publish({
         busyStage: null,

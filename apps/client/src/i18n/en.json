@@ -504,7 +504,7 @@
     "anatomyReadout": "Scale MD {{md}} · BL {{bl}} · OG {{og}}",
     "anatomyProximalGap": "Proximal gap used",
     "anatomyAntagonist": "Antagonist used",
-    "anatomyCervicalFit": "Cervical fit: residual {{residual}} µm (bound {{bound}} µm) · emergence {{offset}} µm outside the margin · ring moved up to {{moved}} µm",
+    "anatomyCervicalFit": "Cervical fit: residual {{residual}} µm (bound {{bound}} µm) · emergence {{offset}} µm outside the margin · ring moved up to {{moved}} µm · ring {{ring}} vertices ({{added}} added to follow the margin)",
     "morphTitle": "4 · Morphing (contacts)",
     "morphRun": "Run morph",
     "morphStrengthMesial": "Mesial contact",

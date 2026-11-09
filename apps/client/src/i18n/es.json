@@ -504,7 +504,7 @@
     "anatomyReadout": "Escala MD {{md}} · BL {{bl}} · OG {{og}}",
     "anatomyProximalGap": "Espacio proximal usado",
     "anatomyAntagonist": "Antagonista usado",
-    "anatomyCervicalFit": "Ajuste cervical: residuo {{residual}} µm (límite {{bound}} µm) · emergencia {{offset}} µm fuera del margen · anillo desplazado hasta {{moved}} µm",
+    "anatomyCervicalFit": "Ajuste cervical: residuo {{residual}} µm (límite {{bound}} µm) · emergencia {{offset}} µm fuera del margen · anillo desplazado hasta {{moved}} µm · anillo de {{ring}} vértices ({{added}} añadidos para seguir el margen)",
     "morphTitle": "4 · Morphing (contactos)",
     "morphRun": "Ejecutar morphing",
     "morphStrengthMesial": "Contacto mesial",

@@ -108,6 +108,10 @@ export interface CervicalFitSummary {
   emergenceOffsetMm: number;
   /** How far the template's ring was moved (mm). */
   maxRingDisplacementMm: number;
+  /** The fitted ring's vertex count, and how many the fit added by
+   * splitting the template's ring edges (ADR-025). */
+  ringVertexCount: number;
+  ringVertexCountAdded: number;
 }
 
 /** Mirrors engine/toothLibrary.ts's `AnatomySource` (state may not import

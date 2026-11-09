@@ -59,6 +59,54 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.40.0] — Phase 12 Task 2: the adaptive cervical ring
+
+**A new optional input. A fit that already met the bound is unchanged.
+Every golden geometry and journal-replay pin is BYTE-IDENTICAL to
+`[0.39.0]`: the open-arch library and incisor lanes and the Phase 4 shoulder
+lanes fit within 50 µm unrefined. This was verified by running the whole
+golden suite and the server project at `0.39.0` with the new code: no pin
+moved. The acceptance `*-qc` pins and the server traceability golden
+advance only because the QcReport embeds `kernelVersion`.**
+
+- **`fitCervicalRing` refines the template's cervical ring where needed**
+  (ADR-025 Decision 2).
+  - New input `maxResidualMm`: the profile's `CERVICAL_FIT_MAX_RESIDUAL_MM`,
+    passed by the caller and never defaulted in the kernel. Absent, the ring
+    is used as is, exactly as before.
+  - New option `maxRingRefineLevels`, default 3.
+  - Before the RBF, each ring edge is checked: its chord between the two
+    outline targets, against the outline over the edge's azimuth span. The
+    span is measured at the emergence-loop points inside it (a
+    cross-product wedge test, with no azimuth seam) and at the outline point
+    at the template edge midpoint's azimuth. An edge over the bound is split
+    at the template edge's midpoint, and both of its triangles are split.
+  - Every existing vertex keeps its position bit for bit, and each new one
+    lies on its edge, so the template's shape before the fit is unchanged.
+  - The result gains `cervicalRing` (the refined ring in the output mesh)
+    and `ringRefineLevels`.
+  - The residual's definition is unchanged. Its loop→ring part is at most
+    the splitting criterion by construction.
+- **Measured.**
+  - A 10-lobe ±0.7 mm scallop: 62.1 µm with 72 ring vertices → 44.9 µm with
+    88 (one level).
+  - Real `arch-case-01` tooth 11's trace with a 72-vertex template along the
+    real axis: 75.5 µm → 42.6 µm with 77 (one level, five splits).
+- **Callers.**
+  - The worker job passes the bound and returns the refined ring.
+  - The crown engine uses the FITTED ring for the morph's fixed vertices,
+    the shell's trim and the export.
+  - It journals `templateRingVertexCount`, `ringVertexCount`,
+    `ringRefineLevels` and `maxRingRefineLevels`.
+  - The panel shows the ring size and how many vertices were added
+    (EN/HU/DE/ES).
+- **Tests.** Shape preservation (bit-identical old vertices, exact
+  midpoints, watertight, `assertValidTopology`). A smooth margin refines
+  nothing (byte-identical to no bound). The scallop meets the bound only
+  refined. The level cap 0 keeps the refusal. Determinism. A coarse margin,
+  where the midpoint sample decides. The real trace. A worker job
+  round-trip. The engine passes the refined ring downstream.
+
 ## [0.39.0] — Phase 12 Task 1: the continuous emergence-outline height
 
 **The cervical fit's outline height changes on non-planar margins. Every

@@ -42,7 +42,11 @@ import {
   emergenceLoop,
   emergenceRadius,
   fitCervicalRing,
+  splitRingEdges,
 } from './cervicalFit.ts';
+import { analyzeMesh } from '../intake/analyze.ts';
+import { buildHalfedge } from '../halfedge/index.ts';
+import { assertValidTopology } from '../halfedge/validate.ts';
 
 const SEGMENTS = 72;
 
@@ -716,5 +720,129 @@ describe('fitCervicalRing — refusals', () => {
 
   it('refuses a non-positive emergence offset', () => {
     expect(() => fitCervicalRing({ mesh, cervicalRing: ring, marginLoop: margin, insertionAxis: [0, 0, 1], emergenceOffsetMm: 0 })).toThrow(RangeError);
+  });
+});
+
+describe('fitCervicalRing — the adaptive cervical ring (ADR-025 Decision 2)', () => {
+  const BOUND_MM = 0.05;
+  /** A circle of radius 3 at z = 0.3 + 0.7·cos(10θ): a 10-lobe ±0.7 mm
+   * scallop. A 72-vertex ring's 5° chords sag up to A·k²·Δθ²/8 ≈ 0.13 mm
+   * below it vertically — ~63 µm off it in 3-D, over the 50 µm bound. */
+  const scalloped: Vec3[] = Array.from({ length: 360 }, (_, i) => {
+    const th = (2 * Math.PI * i) / 360;
+    return [3 * Math.cos(th), 3 * Math.sin(th), 0.3 + 0.7 * Math.cos(10 * th)];
+  });
+  const template = loftTemplate((_z, th) => [2.6 * Math.cos(th), 2.6 * Math.sin(th)], 10);
+  const fitOf = (marginLoop: Vec3[], extra: { maxResidualMm?: number }, options: { maxRingRefineLevels?: number } = {}) =>
+    fitCervicalRing({ mesh: template.mesh, cervicalRing: template.ring, marginLoop, insertionAxis: [0, 0, 1], emergenceOffsetMm: OFFSET_MM, ...extra }, options);
+
+  it('splitting ring edges keeps the template\'s shape bit for bit: every old vertex unchanged, each new one the exact edge midpoint; watertight, valid topology', () => {
+    const ring = template.ring;
+    const split = splitRingEdges(template.mesh, ring, ring.map(() => true));
+    expect(split.ring).toHaveLength(ring.length * 2);
+    const old = template.mesh.positions;
+    for (let i = 0; i < old.length; i++) expect(split.mesh.positions[i]).toBe(old[i]);
+    for (let k = 0; k < ring.length; k++) {
+      const a = ring[k]!, b = ring[(k + 1) % ring.length]!, v = split.ring[2 * k + 1]!;
+      expect(split.ring[2 * k]).toBe(a);
+      for (let c = 0; c < 3; c++) expect(split.mesh.positions[v * 3 + c]).toBe((old[a * 3 + c]! + old[b * 3 + c]!) / 2);
+    }
+    const stats = analyzeMesh(split.mesh);
+    expect(stats.watertight).toBe(true);
+    expect(stats.componentCount).toBe(1);
+    expect(stats.signedVolumeMm3!).toBeCloseTo(analyzeMesh(template.mesh).signedVolumeMm3!, 9);
+    assertValidTopology(buildHalfedge(split.mesh));
+  });
+
+  it('a smooth circular margin refines nothing: byte-identical to the fit without a bound', () => {
+    const margin = circle(3, 192);
+    const plain = fitOf(margin, {});
+    const bounded = fitOf(margin, { maxResidualMm: BOUND_MM });
+    expect(bounded.ringRefineLevels).toBe(0);
+    expect(bounded.cervicalRing).toEqual(template.ring);
+    expect(Buffer.from(bounded.mesh.positions.buffer).equals(Buffer.from(plain.mesh.positions.buffer))).toBe(true);
+    expect(bounded.mesh.indices).toEqual(plain.mesh.indices);
+    expect(bounded.errorBoundMm).toBe(plain.errorBoundMm);
+  });
+
+  it('a scalloped margin: unrefined the residual exceeds the bound; refined it meets it, the mesh stays closed and valid', () => {
+    const plain = fitOf(scalloped, {});
+    expect(plain.errorBoundMm).toBeGreaterThan(BOUND_MM);
+    const refined = fitOf(scalloped, { maxResidualMm: BOUND_MM });
+    console.log(
+      `[cervical-fit adaptive] scallop: ${(plain.errorBoundMm * 1000).toFixed(1)} µm at ${plain.ringVertexCount} ring vertices → ` +
+        `${(refined.errorBoundMm * 1000).toFixed(1)} µm at ${refined.ringVertexCount} (${refined.ringRefineLevels} levels)`,
+    );
+    expect(refined.ringRefineLevels).toBeGreaterThan(0);
+    expect(refined.ringVertexCount).toBe(refined.cervicalRing.length);
+    expect(refined.ringVertexCount).toBeGreaterThan(template.ring.length);
+    expect(refined.errorBoundMm).toBeLessThanOrEqual(BOUND_MM);
+    expect(analyzeMesh(refined.mesh).watertight).toBe(true);
+    assertValidTopology(buildHalfedge(refined.mesh));
+    // The refined ring is a closed edge loop of the output mesh, every old
+    // ring vertex in order.
+    const oldAt = refined.cervicalRing.filter((v) => template.ring.includes(v));
+    expect(oldAt).toEqual(template.ring);
+  });
+
+  it('maxRingRefineLevels 0: no refinement — the residual stays over the bound (the caller refuses it)', () => {
+    const capped = fitOf(scalloped, { maxResidualMm: BOUND_MM }, { maxRingRefineLevels: 0 });
+    expect(capped.ringRefineLevels).toBe(0);
+    expect(capped.cervicalRing).toEqual(template.ring);
+    expect(capped.errorBoundMm).toBeGreaterThan(BOUND_MM);
+  });
+
+  it('is deterministic (byte-identical)', () => {
+    const a = fitOf(scalloped, { maxResidualMm: BOUND_MM });
+    const b = fitOf(scalloped, { maxResidualMm: BOUND_MM });
+    expect(Buffer.from(a.mesh.positions.buffer).equals(Buffer.from(b.mesh.positions.buffer))).toBe(true);
+    expect(a.mesh.indices).toEqual(b.mesh.indices);
+    expect(a.cervicalRing).toEqual(b.cervicalRing);
+  });
+
+  it('a coarse margin (fewer loop samples than ring edges): the midpoint sample alone decides', () => {
+    // 20 margin points, 72 ring edges: most edges contain no loop sample;
+    // the samples alternate ±0.7 mm, so the outline zig-zags between them.
+    const coarse: Vec3[] = Array.from({ length: 20 }, (_, i) => {
+      const th = (2 * Math.PI * i) / 20;
+      return [3 * Math.cos(th), 3 * Math.sin(th), 0.3 + 0.7 * Math.cos(10 * th)];
+    });
+    const refined = fitOf(coarse, { maxResidualMm: BOUND_MM });
+    expect(refined.errorBoundMm).toBeLessThanOrEqual(BOUND_MM);
+    assertValidTopology(buildHalfedge(refined.mesh));
+  });
+
+  it('the REAL margin (tooth 11\'s trace, a 72-vertex template along the real axis): refined, it meets 50 µm', () => {
+    const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url));
+    const reference = JSON.parse(
+      readFileSync(join(repoRoot, 'test-fixtures', 'margins', 'arch-case-01', '11.reference.json'), 'utf8'),
+    ) as { resampledPoints: number[][] };
+    const margin: Vec3[] = reference.resampledPoints.map((p) => [p[0]!, p[1]!, p[2]!]);
+    // The template in the margin's frame: an elliptical 7 × 6 mm loft along
+    // the axis, its ring 1.5 mm below the margin centroid.
+    const a = REAL_11_AXIS;
+    const al = Math.hypot(a[0], a[1], a[2]);
+    const ax: Vec3 = [a[0] / al, a[1] / al, a[2] / al];
+    let u: Vec3 = [0, ax[2], -ax[1]];
+    const ul = Math.hypot(u[0], u[1], u[2]);
+    u = [u[0] / ul, u[1] / ul, u[2] / ul];
+    const v: Vec3 = [ax[1] * u[2] - ax[2] * u[1], ax[2] * u[0] - ax[0] * u[2], ax[0] * u[1] - ax[1] * u[0]];
+    const c = meanOf(margin);
+    const local = loftTemplate((_z, th) => [3.5 * Math.cos(th), 3.0 * Math.sin(th)], 10);
+    const positions = new Float64Array(local.mesh.positions.length);
+    for (let i = 0; i < positions.length / 3; i++) {
+      const x = local.mesh.positions[i * 3]!, y = local.mesh.positions[i * 3 + 1]!, z = local.mesh.positions[i * 3 + 2]! - 1.5;
+      for (let k = 0; k < 3; k++) positions[i * 3 + k] = c[k]! + x * u[k]! + y * v[k]! + z * ax[k]!;
+    }
+    const input = { mesh: { positions, indices: local.mesh.indices }, cervicalRing: local.ring, marginLoop: margin, insertionAxis: REAL_11_AXIS, emergenceOffsetMm: 0.651 };
+    const plain = fitCervicalRing(input);
+    const refined = fitCervicalRing({ ...input, maxResidualMm: BOUND_MM });
+    console.log(
+      `[cervical-fit adaptive] real tooth 11: ${(plain.errorBoundMm * 1000).toFixed(1)} µm at ${plain.ringVertexCount} → ` +
+        `${(refined.errorBoundMm * 1000).toFixed(1)} µm at ${refined.ringVertexCount} ring vertices (${refined.ringRefineLevels} levels)`,
+    );
+    expect(plain.errorBoundMm).toBeGreaterThan(BOUND_MM);
+    expect(refined.errorBoundMm).toBeLessThanOrEqual(BOUND_MM);
+    assertValidTopology(buildHalfedge(refined.mesh));
   });
 });

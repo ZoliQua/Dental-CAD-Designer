@@ -50,6 +50,7 @@ export {
   DEFAULT_CERVICAL_BLEND_MM,
   DEFAULT_CERVICAL_ANCHOR_BAND_MM,
   DEFAULT_CERVICAL_MAX_ANCHORS,
+  DEFAULT_MAX_RING_REFINE_LEVELS,
   type CervicalFitErrorReason,
   type CervicalFitInput,
   type CervicalFitOptions,
