@@ -268,6 +268,15 @@ The core pipeline. Order of stages is fixed; each stage's output is journaled.
 
 **Acceptance:** on real `arch-case-01` tooth 11 the cervical fit no longer refuses the margin (fitted within 50 µm, or refused `fitOverBound` with the measured residual); the open-arch axis is suggested within 0.5° with no correction; a crown on 11 with the fitted library incisor passes every gate on the open-arch case, or its measured verdict is documented; cases referencing 1.1.0 / 1.2.0 keep verifying; pins move only under the three named changes. Detailed plan: [`docs/plans/phase-11-library-template-on-real-margins.md`](docs/plans/phase-11-library-template-on-real-margins.md).
 
+### Phase 12 — The library template fitted on a real margin (post-MVP, [ADR-025](docs/adr/025-continuous-outline-height-and-adaptive-cervical-ring.md))
+
+- A continuous emergence-outline height: the margin's height at the same azimuth, so the outline has no steps in filled concavities
+- The cervical fit refines the template's cervical ring adaptively, splitting edges whose chords cannot follow the outline within the bound, with the template's shape unchanged before the fit
+
+**Status:** planned (2026-11-09).
+
+**Acceptance:** on real `arch-case-01` tooth 11 the fitted library incisor is placed within 50 µm (or the measured verdict is documented); the outline height is continuous and equals each margin point's own height at its azimuth; fits that already met the bound are byte-identical; the real crown's later gates report honestly; pins move only under kernel 0.39.0 and 0.40.0. Detailed plan: [`docs/plans/phase-12-continuous-outline-and-adaptive-ring.md`](docs/plans/phase-12-continuous-outline-and-adaptive-ring.md).
+
 ---
 
 ## 5. Repository Layout
