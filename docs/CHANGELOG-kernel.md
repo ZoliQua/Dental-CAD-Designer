@@ -59,6 +59,46 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.39.0] — Phase 12 Task 1: the continuous emergence-outline height
+
+**The cervical fit's outline height changes on non-planar margins. Every
+golden geometry and journal-replay pin is BYTE-IDENTICAL to `[0.38.0]`,
+because every golden margin is planar and both rules then give the same
+bits. This was verified by running the whole golden suite and the server
+project at `0.38.0` with the new code: no pin moved. The acceptance `*-qc`
+pins and the server traceability golden advance only because the QcReport
+embeds `kernelVersion`.**
+
+- **The height is the margin's height at the same azimuth** (ADR-025
+  Decision 1).
+  - The outline point at azimuth θ takes the height where the ray at θ
+    crosses the margin's projection, linear along the crossed segment.
+  - The margin is star-shaped around the centroid, so this is a continuous
+    function of θ. At each margin point's own azimuth it is that point's
+    height: ADR-023's rule, now exact for every margin.
+  - A ray through a vertex takes the segment it misses least, with the
+    parameter clamped, so both neighbours give the vertex's height.
+  - The horizontal outline (`R(θ)`) is unchanged.
+- **Why.** ADR-024's nearest-point height stepped inside filled
+  concavities, and exactly on a notch's bisector rounding picked the side.
+  - On the tilted "plus" fixture the step was 78 µm.
+  - On real `arch-case-01` tooth 11 the loop height stepped by up to
+    163 µm between neighbouring samples. With the radial height the largest
+    step is 98 µm, the hand-traced margin's own steepness.
+  - The nearest-point height was also off each point's own height on any
+    non-circular, non-planar margin: up to 65 µm on a scalloped ellipse.
+  - Probe on tooth 11 with a 72-vertex ring at uniform azimuths: residual
+    117 → 73 µm. ADR-025 Decision 2 (the adaptive ring, 0.40.0) closes the
+    rest.
+- **Tests.**
+  - The tilted notched margin: each loop point at its own height, 720
+    azimuths against an independent crossing, and continuity on the
+    bisector.
+  - A scalloped ellipse: own heights to 1e-12.
+  - Property: the height stays within the margin's height range and is
+    continuous at a 1e-9 rad step.
+  - The tilted-circle fit's ring follows the crossing height.
+
 ## [0.38.0] — Phase 11 Task 2: the axis suggestion's tie-break
 
 **One op's output changes, and only in a count. Verified by running the

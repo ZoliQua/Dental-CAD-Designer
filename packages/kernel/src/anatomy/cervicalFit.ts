@@ -27,18 +27,15 @@
 //    so R(θ) is the largest capsule exit over the segments: the larger root
 //    of a quadratic for each end disk, and a linear solve for each offset
 //    line, clipped to the segment's slab.
-//  - Height: each outline point takes the height along the axis of its
-//    NEAREST margin point (on the segment that generated it, the 3-D height
-//    linear along that segment). That is NOT the margin point at the same
-//    azimuth unless the margin is locally circular around the centroid: on
-//    a non-circular, non-planar margin the heights differ from ADR-023's
-//    "each point at its own height" (measured: up to 65 µm on a 7 × 5 mm
-//    ellipse with a ±0.5 mm scallop). Inside a filled concavity the nearest
-//    point jumps between the notch's two sides — the height is
-//    DISCONTINUOUS there by design, and which side wins exactly on the
-//    bisector is decided by rounding (deterministic: +, ×, /, sqrt only).
-//    The RBF blend absorbs the step; the wall and self-intersection gates
-//    measure the result, and the fit's residual reports it.
+//  - Height (ADR-025 Decision 1): the outline point at azimuth θ takes the
+//    margin's height where the ray at θ crosses the margin's projection
+//    (linear along the crossed segment). The margin is star-shaped, so the
+//    height is a CONTINUOUS function of θ, and at a margin point's own
+//    azimuth it is exactly that point's height — ADR-023's "each point at
+//    its own height", for every margin. (ADR-024 took the NEAREST margin
+//    point's height, which steps inside a filled concavity — up to 163 µm on
+//    real arch-case-01 tooth 11 — and is off a point's own height on any
+//    non-circular, non-planar margin.)
 //
 // `emergenceLoop` returns R(θ) at every (deduplicated) margin point's
 // azimuth — star-shaped by construction. The fit's ring targets are R(θ)
@@ -330,13 +327,43 @@ export function emergenceRadius(
   if (generator < 0 || !(radius > 0) || !Number.isFinite(radius)) {
     throw new Error(`cervicalFit: no emergence radius at direction (${ex}, ${ey}) — the margin frame is invalid`);
   }
-  // The nearest margin point: on the generating segment.
-  const a = q[generator]!, b = q[(generator + 1) % n]!;
-  const sx = b[0] - a[0], sy = b[1] - a[1];
-  const ll = sx * sx + sy * sy;
-  const s = ll > 0 ? Math.min(1, Math.max(0, ((radius * ex - a[0]) * sx + (radius * ey - a[1]) * sy) / ll)) : 0;
-  const ha = heights[generator]!, hb = heights[(generator + 1) % n]!;
-  return { radius, height: ha + s * (hb - ha) };
+  return { radius, height: marginHeightAt(q, heights, dir) };
+}
+
+/** The margin's height where the ray from the frame origin along the unit
+ * `dir` crosses the margin's projection `q` (ADR-025 Decision 1): linear
+ * along the crossed segment. `q` is star-shaped around the origin, so the
+ * crossing is unique and the height continuous in azimuth; at a margin
+ * point's own azimuth it is that point's height. A ray through a vertex
+ * may land a rounding-hair outside both adjacent segments' parameter
+ * ranges: the segment it misses least is taken (first on a tie), with its
+ * parameter clamped to [0, 1] — both give the vertex's height. */
+function marginHeightAt(q: ReadonlyArray<readonly [number, number]>, heights: readonly number[], dir: readonly [number, number]): number {
+  const n = q.length;
+  const [ex, ey] = dir;
+  let bestMiss = Infinity;
+  let height = NaN;
+  for (let i = 0; i < n; i++) {
+    const a = q[i]!, b = q[(i + 1) % n]!;
+    const sx = b[0] - a[0], sy = b[1] - a[1];
+    const den = ex * sy - ey * sx;
+    if (den === 0) continue;
+    const s = (a[0] * ey - a[1] * ex) / den;
+    const t = (a[0] * sy - a[1] * sx) / den;
+    if (!(t > 0)) continue;
+    const miss = s < 0 ? -s : s > 1 ? s - 1 : 0;
+    if (miss < bestMiss) {
+      bestMiss = miss;
+      const sc = Math.min(1, Math.max(0, s));
+      const ha = heights[i]!, hb = heights[(i + 1) % n]!;
+      height = ha + sc * (hb - ha);
+      if (miss === 0) break;
+    }
+  }
+  if (!Number.isFinite(height)) {
+    throw new Error(`cervicalFit: the ray (${ex}, ${ey}) does not cross the margin — the margin frame is invalid`);
+  }
+  return height;
 }
 
 /** The margin in its frame, validated star-shaped: the shared front of

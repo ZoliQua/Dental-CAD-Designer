@@ -425,8 +425,16 @@
  * same way. The refine cap stays on the Fibonacci sweep's winner, so the
  * winner never scores worse. Only the kernel-ops `suggestAxis` pin moves (by
  * `rankedCount`, 32 → 33); every other pin byte-identical. See
- * docs/CHANGELOG-kernel.md's `[0.38.0]` entry. */
-export const KERNEL_VERSION = '0.38.0';
+ * docs/CHANGELOG-kernel.md's `[0.38.0]` entry.
+ *
+ * 0.39.0 (Phase 12 Task 1, ADR-025 Decision 1): the emergence outline's
+ * height is the margin's height where the ray at its azimuth crosses the
+ * margin (continuous; each margin point's own height at its azimuth),
+ * instead of the nearest margin point's (ADR-024), which stepped in filled
+ * concavities. The horizontal outline is unchanged. On a planar margin both
+ * rules give the same bits: every golden geometry + journal-replay pin is
+ * byte-identical. See docs/CHANGELOG-kernel.md's `[0.39.0]` entry. */
+export const KERNEL_VERSION = '0.39.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export { detSin, detCos, detAtan, detAtan2, detAsin, detAcos, detExp, detPow } from './math/detMath.ts';

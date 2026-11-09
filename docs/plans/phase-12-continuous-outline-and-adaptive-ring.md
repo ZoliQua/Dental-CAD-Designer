@@ -59,6 +59,12 @@ byte-change is an alarm, never a regeneration.
   kernel tests move by design, and the version-only `*-qc` pins move. Any
   other move is an alarm.
 
+**Landed (2026-11-09, kernel 0.39.0).** As planned. At 0.38.0 with the new
+code, **no golden pin moved**: every golden margin is planar. At 0.39.0
+only the five `*-qc` pins and the server traceability golden moved, by their
+version string. The crossing picks the segment the ray misses least, with
+the parameter clamped, so a ray through a vertex is deterministic.
+
 ## Task 2 — The adaptive cervical ring *(kernel 0.40.0)*
 
 - `fitCervicalRing`:

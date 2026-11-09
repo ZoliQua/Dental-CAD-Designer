@@ -196,6 +196,31 @@ function to3d(points: ReadonlyArray<readonly [number, number]>): Vec3[] {
   return points.map((p) => [p[0], p[1], 0]);
 }
 
+/** Where the ray from (cx, cy) through (x, y) crosses the closed XY polygon
+ * `margin` (independent of the kernel): the crossing's z, linear along the
+ * crossed segment (ADR-025's outline height). */
+function marginZAtAzimuth(margin: readonly Vec3[], x: number, y: number, cx = 0, cy = 0): number {
+  const ex = x - cx, ey = y - cy;
+  let best = Infinity, z = NaN;
+  for (let i = 0; i < margin.length; i++) {
+    const a = margin[i]!, b = margin[(i + 1) % margin.length]!;
+    const ax = a[0] - cx, ay = a[1] - cy, sx = b[0] - a[0], sy = b[1] - a[1];
+    const den = ex * sy - ey * sx;
+    if (Math.abs(den) < 1e-300) continue;
+    const s = (ax * ey - ay * ex) / den;
+    const t = (ax * sy - ay * sx) / den;
+    if (t <= 0) continue;
+    // The segment the ray passes closest to its parameter range.
+    const miss = s < 0 ? -s : s > 1 ? s - 1 : 0;
+    if (miss < best) {
+      best = miss;
+      const sc = Math.min(1, Math.max(0, s));
+      z = a[2] + sc * (b[2] - a[2]);
+    }
+  }
+  return z;
+}
+
 describe('cervicalEmergenceOffsetMm', () => {
   it('is the larger gap + the minimum wall + the wall gate\'s sampling margin + the design margin', () => {
     expect(cervicalEmergenceOffsetMm({ marginalGapMm: 0.02, cementGapMm: 0.05, minWallThicknessMm: 0.5 })).toBeCloseTo(
@@ -322,27 +347,65 @@ describe('emergenceRadius / emergenceLoop — the exact outline of the dilated p
     expect(Math.abs(emergenceRadius(plus, zeros(plus.length), [s, s], OFFSET_MM).radius - Math.SQRT2 * (1 + OFFSET_MM))).toBeLessThan(1e-12);
   });
 
-  it('a tilted notched margin: the height is the nearest margin point\'s, on the margin\'s plane', () => {
+  it('a tilted notched margin: the height is the margin\'s at the same azimuth (ADR-025), continuous across the notch', () => {
     const tilt = 0.15;
     const margin: Vec3[] = plus.map(([x, y]) => [x, y, 0.3 + tilt * y]);
     const loop = emergenceLoop(margin, [0, 0, 1], OFFSET_MM);
     expectExactOutline(margin, loop, [0, 0, 1], OFFSET_MM);
-    for (const p of loop) {
-      // The nearest point of the planar margin lies on z = 0.3 + tilt·y.
-      let best = Infinity;
-      let z = NaN;
-      for (let i = 0; i < margin.length; i++) {
-        const a = margin[i]!, b = margin[(i + 1) % margin.length]!;
-        const ex = b[0] - a[0], ey = b[1] - a[1];
-        const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * ex + (p[1] - a[1]) * ey) / (ex * ex + ey * ey)));
-        const dist = Math.hypot(p[0] - a[0] - t * ex, p[1] - a[1] - t * ey);
-        if (dist < best - 1e-12) {
-          best = dist;
-          z = 0.3 + tilt * (a[1] + t * ey);
-        }
-      }
-      expect(p[2]).toBeCloseTo(z, 9);
+    // At each margin point's own azimuth: exactly that point's height.
+    loop.forEach((p, i) => expect(Math.abs(p[2] - margin[i]![2])).toBeLessThan(1e-12));
+    // Between them: the margin's height where the ray crosses it.
+    const heights = margin.map((p) => p[2]);
+    for (let k = 0; k < 720; k++) {
+      const th = (2 * Math.PI * (k + 0.29)) / 720;
+      const got = emergenceRadius(plus, heights, [Math.cos(th), Math.sin(th)], OFFSET_MM).height;
+      expect(Math.abs(got - marginZAtAzimuth(margin, Math.cos(th), Math.sin(th)))).toBeLessThan(1e-12);
     }
+    // Continuity on the notch bisector (a 78 µm step under ADR-024's
+    // nearest-point height, decided by rounding).
+    const a = Math.PI / 4;
+    const lo = emergenceRadius(plus, heights, [Math.cos(a - 1e-15), Math.sin(a - 1e-15)], OFFSET_MM).height;
+    const hi = emergenceRadius(plus, heights, [Math.cos(a + 1e-15), Math.sin(a + 1e-15)], OFFSET_MM).height;
+    expect(Math.abs(hi - lo)).toBeLessThan(1e-12);
+  });
+
+  it('a scalloped ellipse: every loop point takes its own margin point\'s height (ADR-025)', () => {
+    // A convex 7 × 5 mm ellipse with a ±0.5 mm 4-lobe scallop: under
+    // ADR-024 the heights were up to 65 µm off their own points.
+    const margin: Vec3[] = Array.from({ length: 300 }, (_, i) => {
+      const th = (2 * Math.PI * i) / 300;
+      return [3.5 * Math.cos(th), 2.5 * Math.sin(th), 0.5 * Math.cos(4 * th)];
+    });
+    const loop = emergenceLoop(margin, [0, 0, 1], 0.651);
+    expectExactOutline(margin, loop, [0, 0, 1], 0.651);
+    loop.forEach((p, i) => expect(Math.abs(p[2] - margin[i]![2])).toBeLessThan(1e-12));
+  });
+
+  it('property: the outline height lies within the crossed margin segment\'s heights, and is continuous in azimuth', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 16, max: 300 }),
+        fc.array(fc.tuple(fc.double({ min: -1, max: 1, noNaN: true }), fc.double({ min: -1, max: 1, noNaN: true }), fc.double({ min: -1, max: 1, noNaN: true })), { minLength: 300, maxLength: 300 }),
+        fc.double({ min: 0, max: 2 * Math.PI, noNaN: true }),
+        (n, jitter, th) => {
+          const q: Array<[number, number]> = [];
+          const h: number[] = [];
+          for (let i = 0; i < n; i++) {
+            const [aj, rj, hj] = jitter[i]!;
+            const a = (2 * Math.PI * (i + 0.45 * aj)) / n;
+            const r = 3 * (1 + 0.3 * rj);
+            q.push([r * Math.cos(a), r * Math.sin(a)]);
+            h.push(hj);
+          }
+          const at = (t: number): number => emergenceRadius(q, h, [Math.cos(t), Math.sin(t)], OFFSET_MM).height;
+          const z = at(th);
+          expect(z).toBeGreaterThanOrEqual(Math.min(...h) - 1e-12);
+          expect(z).toBeLessThanOrEqual(Math.max(...h) + 1e-12);
+          expect(Math.abs(at(th + 1e-9) - z)).toBeLessThanOrEqual(1e-6);
+        },
+      ),
+      { numRuns: 60, seed: 41 },
+    );
   });
 
   it('a near-radial segment stays exact and finite', () => {
@@ -516,7 +579,6 @@ describe('fitCervicalRing — analytic', () => {
     const margin = circle(3, 192, (_x, y) => 0.4 + y * tilt);
     const fit = fitCervicalRing({ mesh, cervicalRing: ring, marginLoop: margin, insertionAxis: [0, 0, 1], emergenceOffsetMm: OFFSET_MM });
     const target = emergenceLoop(margin, [0, 0, 1], OFFSET_MM);
-    const margin2d = to2d(margin);
     for (const v of ring) {
       const before = vertex(mesh, v);
       const after = vertex(fit.mesh, v);
@@ -525,22 +587,10 @@ describe('fitCervicalRing — analytic', () => {
       const radius = regularPolygonOutlineRadius(3, 192, OFFSET_MM, phi < 0 ? phi + 2 * Math.PI : phi);
       const len = Math.hypot(before[0], before[1]);
       expect(Math.hypot(after[0] - (radius * before[0]) / len, after[1] - (radius * before[1]) / len)).toBeLessThan(1e-9);
-      // Vertically: the height of its NEAREST margin point (ADR-024), which
-      // lies on the tilted plane — the fitted ring reads the plane there.
-      let nearY = 0;
-      let nearDist = Infinity;
-      for (let i = 0; i < margin2d.length; i++) {
-        const a = margin2d[i]!, b = margin2d[(i + 1) % margin2d.length]!;
-        const ex = b[0] - a[0], ey = b[1] - a[1];
-        const s = Math.max(0, Math.min(1, ((after[0] - a[0]) * ex + (after[1] - a[1]) * ey) / (ex * ex + ey * ey)));
-        const dist = Math.hypot(after[0] - a[0] - s * ex, after[1] - a[1] - s * ey);
-        if (dist < nearDist) {
-          nearDist = dist;
-          nearY = a[1] + s * ey;
-        }
-      }
-      expect(nearDist).toBeCloseTo(OFFSET_MM, 12);
-      expect(after[2]).toBeCloseTo(0.4 + nearY * tilt, 9);
+      // Vertically: the margin's height where the ray at the vertex's
+      // azimuth crosses it (ADR-025) — the fitted ring reads the tilted
+      // plane there.
+      expect(after[2]).toBeCloseTo(marginZAtAzimuth(margin, before[0], before[1]), 9);
     }
     // Horizontally the emergence loop is the offset distance from the margin.
     for (let i = 0; i < target.length; i++) {
