@@ -1,6 +1,7 @@
 # ADR-025 — A continuous emergence-outline height; an adaptively refined cervical ring
 
-**Status:** Proposed (2026-11-09; Phase 12 implements it, see the Phase 12 plan)
+**Status:** Accepted (2026-11-11; implemented by Phase 12 — measured
+outcomes in docs/demos/phase-12.md)
 **Date:** 2026-11
 **Relates:** ADR-024 (the exact emergence outline, which this refines),
 ADR-023 (the cervical fit), ADR-007 (morph–shell coupling).

@@ -104,7 +104,9 @@ The CI run is pending the push.
 
 ## Open items & tracked pendings
 
-1. **The fitted template on a real incisor margin.** The fit's residual is
+1. *Closed by Phase 12 (kernel 0.39.0 / 0.40.0): the fitted library incisor
+   is placed within the bound on real tooth 11 — see
+   [phase-12.md](phase-12.md).* **The fitted template on a real incisor margin.** The fit's residual is
    dominated by the outline's height profile: the interproximal scallop and
    the nearest-point steps in filled concavities. A smoother outline height
    along the azimuth, or a denser template ring, is the next change. The
@@ -114,10 +116,13 @@ The CI run is pending the push.
    The round dies are premolar preparations.
 3. **A real prepared-tooth scan** (carried over from Phase 10). The real
    cases are unprepared.
-4. **The `phase3` drag flake**: read the trace of its next occurrence.
-5. **CI timing**: record the job time before and after the golden suite
-   runs once, on the first CI run after the push.
-6. **Height discontinuity of the outline** in filled concavities is by
+4. *Closed by Phase 12: root-caused from the trace (a 30 s test budget on
+   software WebGL).* **The `phase3` drag flake**: read the trace of its next
+   occurrence.
+5. *Closed by Phase 12: unit 14:01 → 7:30 / 5:38, job 41:22 → 35:04 / 25:00
+   (phase-12.md).* **CI timing**: record the job time before and after the
+   golden suite runs once, on the first CI run after the push.
+6. *Closed by Phase 12 (kernel 0.39.0).* **Height discontinuity of the outline** in filled concavities is by
    design (ADR-024); it is the main lever for open item 1.
 7. **A case replay at an old asset version.** The stored assets verify, but
    the client fetches only the latest metadata per FDI, and there is no

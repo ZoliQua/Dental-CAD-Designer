@@ -166,6 +166,17 @@ the change. The real crown lane (Task 3) is next.
 - Write `docs/demos/phase-12.md`. Update the PLAN.md and README status.
   Close the Phase 11 open items this phase resolves.
 
+**Landed (2026-11-11).** The full local chain is green:
+- `npm test`: 373 files, 3949 tests;
+- e2e: 70 passed, 1 env-gated skip;
+- the real golden lanes;
+- lint, typecheck and build.
+
+CI run 42938869591 is green on both attempts. The `phase3` flake and a
+ridge-crest property-test flake were root-caused and fixed along the way.
+The intermittent Vitest worker death on the ubuntu-26.04 runner now has
+memory diagnostics. ADR-025 is Accepted.
+
 ## Review focus
 
 1. **A ring edge whose azimuth span contains no loop sample** (a coarse
