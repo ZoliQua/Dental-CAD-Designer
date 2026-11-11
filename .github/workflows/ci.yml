@@ -120,7 +120,21 @@ jobs:
         # golden suite here too, so CI ran it twice. Vitest 3.2's project
         # negation (`--project '!golden'`) keeps every other project,
         # including the browser-mode client-dom one.
-        run: npx vitest run --project '!golden'
+        # The runner's memory is sampled every 10 s while the suite runs
+        # (vmstat, in the background); the "Runner diagnostics" step prints it
+        # with the kernel's OOM-killer lines if the step fails — a Vitest
+        # worker that dies without a JavaScript error (ERR_IPC_CHANNEL_CLOSED)
+        # otherwise leaves no trace in the log.
+        run: |
+          (vmstat -t 10 > "$RUNNER_TEMP/vmstat.log" 2>&1 &)
+          npx vitest run --project '!golden'
+
+      - name: Runner diagnostics (on failure)
+        if: failure()
+        run: |
+          echo "== memory"; free -m || true
+          echo "== kernel OOM / kill messages"; sudo dmesg -T 2>/dev/null | grep -iE 'oom|killed process|out of memory' | tail -40 || true
+          echo "== vmstat during the unit tests (last 60 samples)"; tail -60 "$RUNNER_TEMP/vmstat.log" 2>/dev/null || true
 
       - name: Fuzz suite (packages/io parsers)
         # Separate vitest project/config (vitest.fuzz.config.ts), excluded
