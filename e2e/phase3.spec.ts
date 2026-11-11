@@ -309,6 +309,14 @@ test.describe.serial('Phase 3 acceptance flow', () => {
   });
 
   test('margin: dragging one anchor registers a real edit', async () => {
+    // The drag is ~22 real input events on a WebGL canvas showing the full
+    // arch scan. On a CI runner without a GPU (software WebGL) each event
+    // waits ~1–1.4 s for its frame — measured in the trace of CI run
+    // 42550791378 (ubuntu-26.04): ten wheel steps took 13 s, the 8-step
+    // move 6.7 s, and the default 30 s test timeout expired during mouse-up.
+    // That was the "flake" (Phase 11 Task 5); locally the test takes ~16 s.
+    // The budget is the measured cost with headroom, not a hidden retry.
+    test.setTimeout(120_000);
     const anchors = await getMarginAnchorPositions(page);
     expect(anchors).not.toBeNull();
     expect(anchors!.length).toBeGreaterThan(3);
@@ -367,12 +375,9 @@ test.describe.serial('Phase 3 acceptance flow', () => {
     const fromPage = { x: box.x + fromCanvas.x, y: box.y + fromCanvas.y };
     const targetPage = { x: box.x + targetCanvas.x, y: box.y + targetCanvas.y };
 
-    // The drag's inputs, attached to every run (Phase 11 Task 5): a CI flake
-    // once left this drag without any effect (no anchor moved), and its trace
-    // had expired before it could be read. The camera is settled when the
-    // anchor is projected (measured: identical before and 2 frames / 1 s
-    // after the wheel, also under a 4× CPU throttle), so that is ruled out;
-    // the next failure carries what it needs.
+    // The drag's inputs, attached to every run (Phase 11 Task 5): if the
+    // drag ever misses, the failure carries the camera and the pixels. (The
+    // camera is settled when the anchor is projected — measured.)
     await test.info().attach('drag-inputs.json', {
       contentType: 'application/json',
       body: JSON.stringify({
