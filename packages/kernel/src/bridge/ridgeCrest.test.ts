@@ -241,12 +241,30 @@ describe('fitRidgeCrestCylinder — properties', () => {
           );
           expect(Math.abs(fit.crest.radiusMm - 3)).toBeLessThanOrEqual(a + 1e-9);
           expect(angle(fit.crest.mesialDistalDir, MD)).toBeLessThan(0.05);
-          // The measured residual stays on the order of the noise (a least-squares
-          // circle may shift its centre slightly, so 2a is not a strict bound).
-          expect(fit.radialResidualMaxMm).toBeLessThanOrEqual(3 * a + 1e-9);
+          // The measured residual is bounded by the noise plus how far the fitted
+          // cylinder is from the true one, at each vertex (triangle inequality):
+          // |d(p, L') − R'| ≤ |d(p, L) − R| + |d(p, L) − d(p, L')| + |R − R'|,
+          // with |d(p, L) − R| ≤ a by construction. (The previous heuristic
+          // bound 3a was exceeded by 2.5e-16 on a random input in CI — a
+          // least-squares fit does not bound the max residual by a multiple of
+          // the noise.) Taken over every mesh vertex, a superset of the window.
+          const lineDistance = (q: Vec3, at: Vec3, dir: Vec3): number => {
+            const w: Vec3 = [q[0] - at[0], q[1] - at[1], q[2] - at[2]];
+            const t = w[0] * dir[0] + w[1] * dir[1] + w[2] * dir[2];
+            return Math.hypot(w[0] - t * dir[0], w[1] - t * dir[1], w[2] - t * dir[2]);
+          };
+          const mdLen = Math.hypot(MD[0], MD[1], MD[2]);
+          const trueDir: Vec3 = [MD[0] / mdLen, MD[1] / mdLen, MD[2] / mdLen];
+          let axisGap = 0;
+          for (let v = 0; v < mesh.positions.length / 3; v++) {
+            const q: Vec3 = [mesh.positions[v * 3]!, mesh.positions[v * 3 + 1]!, mesh.positions[v * 3 + 2]!];
+            axisGap = Math.max(axisGap, Math.abs(lineDistance(q, ORIGIN, trueDir) - lineDistance(q, fit.crest.axisPointMm, fit.crest.mesialDistalDir)));
+          }
+          expect(fit.radialResidualMaxMm).toBeLessThanOrEqual(a + axisGap + Math.abs(fit.crest.radiusMm - 3) + 1e-9);
         },
       ),
-      { numRuns: 30 },
+      // The CI counterexample to the old 3a bound (run 42937646679), kept.
+      { numRuns: 30, examples: [[1862905808, 0.04986480143520057]] },
     );
   });
 
