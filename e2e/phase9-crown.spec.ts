@@ -208,6 +208,10 @@ test.describe.serial('Phase 9 — a crown on the real arch-case-01 with captured
     expect(anatomyOp.params['anatomySource']).toMatchObject({ origin: 'library', fdi: 11, version: '1.3.0' });
     const fitOp = await hook<{ params: Record<string, unknown> }>(page, 'getLatestOperation', 'crown-cervical-fit');
     expect(fitOp.params['errorBoundMm'] as number).toBeLessThanOrEqual(fitOp.params['maxResidualMm'] as number);
+    // ADR-026 Decision 3: split to half the bound, the fit has headroom.
+    console.log(`[phase9-crown] fit ${((fitOp.params['errorBoundMm'] as number) * 1000).toFixed(1)} µm, ring ${String(fitOp.params['templateRingVertexCount'])} → ${String(fitOp.params['ringVertexCount'])}`);
+    expect(fitOp.params['ringSplitToleranceMm']).toBe(0.025);
+    expect(fitOp.params['errorBoundMm'] as number).toBeLessThanOrEqual(0.025);
 
     await page.getByTestId('crown-morph-run').click();
     await expect(page.getByTestId('crown-morph-readout')).toBeVisible({ timeout: 300_000 });

@@ -37,6 +37,10 @@ export interface FitCervicalRingPayload {
    * `CERVICAL_FIT_MAX_RESIDUAL_MM`): when given, the ring is refined where
    * its chords cannot follow the outline within it (ADR-025 Decision 2). */
   maxResidualMm?: number;
+  /** The ring split tolerance (mm, the profile's
+   * `CERVICAL_RING_SPLIT_TOLERANCE_MM`; ADR-026 Decision 3). Requires
+   * `maxResidualMm`. */
+  ringSplitToleranceMm?: number;
 }
 
 export type FitCervicalRingResult =
@@ -56,6 +60,8 @@ export type FitCervicalRingResult =
       cervicalRing: number[];
       ringRefineLevels: number;
       maxRingRefineLevels: number;
+      /** The chord deviation the ring was split to (mm); `null` unbounded. */
+      ringSplitToleranceMm: number | null;
       anchorCount: number;
       movedVertexCount: number;
       emergenceOffsetMm: number;
@@ -93,6 +99,7 @@ export const fitCervicalRingJob = async (
       insertionAxis: payload.insertionAxis,
       emergenceOffsetMm,
       ...(payload.maxResidualMm !== undefined ? { maxResidualMm: payload.maxResidualMm } : {}),
+      ...(payload.ringSplitToleranceMm !== undefined ? { ringSplitToleranceMm: payload.ringSplitToleranceMm } : {}),
     });
     ctx.progress(1);
     return {
@@ -107,6 +114,7 @@ export const fitCervicalRingJob = async (
       cervicalRing: fit.cervicalRing,
       ringRefineLevels: fit.ringRefineLevels,
       maxRingRefineLevels: payload.maxResidualMm !== undefined ? DEFAULT_MAX_RING_REFINE_LEVELS : 0,
+      ringSplitToleranceMm: fit.ringSplitToleranceMm,
       anchorCount: fit.anchorCount,
       movedVertexCount: fit.movedVertexCount,
       emergenceOffsetMm: fit.emergenceOffsetMm,

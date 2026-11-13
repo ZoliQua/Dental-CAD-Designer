@@ -844,5 +844,70 @@ describe('fitCervicalRing — the adaptive cervical ring (ADR-025 Decision 2)', 
     expect(plain.errorBoundMm).toBeGreaterThan(BOUND_MM);
     expect(refined.errorBoundMm).toBeLessThanOrEqual(BOUND_MM);
     assertValidTopology(buildHalfedge(refined.mesh));
+    // ADR-026 Decision 3: split to half the bound, the real fit has headroom.
+    const half = fitCervicalRing({ ...input, maxResidualMm: BOUND_MM, ringSplitToleranceMm: BOUND_MM / 2 });
+    console.log(
+      `[cervical-fit split tolerance] real tooth 11: ${(half.errorBoundMm * 1000).toFixed(1)} µm at ${half.ringVertexCount} ring vertices (${half.ringRefineLevels} levels)`,
+    );
+    expect(half.errorBoundMm).toBeLessThanOrEqual(BOUND_MM / 2);
+    expect(half.ringVertexCount).toBeGreaterThan(refined.ringVertexCount);
+    assertValidTopology(buildHalfedge(half.mesh));
+  });
+});
+
+describe('fitCervicalRing — the ring split tolerance (ADR-026 Decision 3)', () => {
+  const BOUND_MM = 0.05;
+  const HALF_MM = 0.025;
+  const scalloped: Vec3[] = Array.from({ length: 360 }, (_, i) => {
+    const th = (2 * Math.PI * i) / 360;
+    return [3 * Math.cos(th), 3 * Math.sin(th), 0.3 + 0.7 * Math.cos(10 * th)];
+  });
+  const template = loftTemplate((_z, th) => [2.6 * Math.cos(th), 2.6 * Math.sin(th)], 10);
+  const fitOf = (extra: { maxResidualMm?: number; ringSplitToleranceMm?: number }) =>
+    fitCervicalRing({ mesh: template.mesh, cervicalRing: template.ring, marginLoop: scalloped, insertionAxis: [0, 0, 1], emergenceOffsetMm: OFFSET_MM, ...extra });
+  const same = (a: ReturnType<typeof fitOf>, b: ReturnType<typeof fitOf>): void => {
+    expect(Buffer.from(a.mesh.positions.buffer).equals(Buffer.from(b.mesh.positions.buffer))).toBe(true);
+    expect(a.mesh.indices).toEqual(b.mesh.indices);
+    expect(a.cervicalRing).toEqual(b.cervicalRing);
+    expect(a.errorBoundMm).toBe(b.errorBoundMm);
+  };
+
+  it('a tolerance equal to the bound is byte-identical to ADR-025 (no tolerance)', () => {
+    same(fitOf({ maxResidualMm: BOUND_MM, ringSplitToleranceMm: BOUND_MM }), fitOf({ maxResidualMm: BOUND_MM }));
+  });
+
+  it('echoes the tolerance it split to (the bound when absent; null without a bound)', () => {
+    expect(fitOf({ maxResidualMm: BOUND_MM, ringSplitToleranceMm: HALF_MM }).ringSplitToleranceMm).toBe(HALF_MM);
+    expect(fitOf({ maxResidualMm: BOUND_MM }).ringSplitToleranceMm).toBe(BOUND_MM);
+    expect(fitOf({}).ringSplitToleranceMm).toBeNull();
+  });
+
+  it('half the bound: the scalloped fit has headroom (residual ≤ 25 µm), closed and valid', () => {
+    const at = fitOf({ maxResidualMm: BOUND_MM });
+    const half = fitOf({ maxResidualMm: BOUND_MM, ringSplitToleranceMm: HALF_MM });
+    console.log(
+      `[cervical-fit split tolerance] scallop: ${(at.errorBoundMm * 1000).toFixed(1)} µm at ${at.ringVertexCount} → ` +
+        `${(half.errorBoundMm * 1000).toFixed(1)} µm at ${half.ringVertexCount} ring vertices (${half.ringRefineLevels} levels)`,
+    );
+    expect(half.errorBoundMm).toBeLessThanOrEqual(HALF_MM);
+    expect(half.ringVertexCount).toBeGreaterThan(at.ringVertexCount);
+    expect(analyzeMesh(half.mesh).watertight).toBe(true);
+    assertValidTopology(buildHalfedge(half.mesh));
+  });
+
+  it('the residual does not grow as the tolerance falls (a fixed grid)', () => {
+    let previous = Infinity;
+    for (const tol of [0.05, 0.04, 0.03, 0.025, 0.02, 0.015]) {
+      const r = fitOf({ maxResidualMm: BOUND_MM, ringSplitToleranceMm: tol }).errorBoundMm;
+      expect(r).toBeLessThanOrEqual(previous);
+      previous = r;
+    }
+  });
+
+  it('rejects a tolerance without a bound, or outside (0, bound]', () => {
+    expect(() => fitOf({ ringSplitToleranceMm: HALF_MM })).toThrow(RangeError);
+    for (const bad of [0, -0.01, BOUND_MM * 1.0001, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => fitOf({ maxResidualMm: BOUND_MM, ringSplitToleranceMm: bad })).toThrow(RangeError);
+    }
   });
 });

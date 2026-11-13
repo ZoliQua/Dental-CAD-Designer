@@ -44,7 +44,7 @@ import {
   type JobResultMap,
   type RunJobOptions,
 } from '@dqcad/kernel-workers';
-import { CERVICAL_FIT_MAX_RESIDUAL_MM, DEFAULT_OFFSET_VOXEL_PITCH_MM } from '@dqcad/clinical-profiles';
+import { CERVICAL_FIT_MAX_RESIDUAL_MM, CERVICAL_RING_SPLIT_TOLERANCE_MM, DEFAULT_OFFSET_VOXEL_PITCH_MM } from '@dqcad/clinical-profiles';
 import {
   ANTAGONIST_CONFIRM_OP,
   CROWN_DIE_EXTRACT_OP,
@@ -1208,6 +1208,7 @@ class CrownDesignEngine {
           cementGapMm: session.params.cementGapMm,
           minWallThicknessMm: session.params.minWallThicknessMm,
           maxResidualMm: CERVICAL_FIT_MAX_RESIDUAL_MM,
+          ringSplitToleranceMm: CERVICAL_RING_SPLIT_TOLERANCE_MM,
         });
         if (!fitted.ok) {
           return await this.placeAnatomy(
@@ -1284,6 +1285,7 @@ class CrownDesignEngine {
             templateRingVertexCount: input.cervicalRing.length,
             ringRefineLevels: fit.ringRefineLevels,
             maxRingRefineLevels: fit.maxRingRefineLevels,
+            ringSplitToleranceMm: fit.ringSplitToleranceMm,
             anchorCount: fit.anchorCount,
             movedVertexCount: fit.movedVertexCount,
             emergenceOffsetMm: fit.emergenceOffsetMm,

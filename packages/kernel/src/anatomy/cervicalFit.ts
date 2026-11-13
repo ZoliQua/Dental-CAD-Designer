@@ -165,6 +165,12 @@ export interface CervicalFitInput {
    * fit refines the cervical ring where its chords cannot follow the
    * outline within it (ADR-025 Decision 2); absent, the ring is used as is. */
   readonly maxResidualMm?: number;
+  /** The chord deviation (mm) a ring edge is split above (ADR-026 Decision 3):
+   * the profile's `CERVICAL_RING_SPLIT_TOLERANCE_MM`, never defaulted here.
+   * Requires `maxResidualMm`; in `(0, maxResidualMm]`. Absent ⇒ the bound
+   * itself (ADR-025). It leaves headroom under the bound; the bound and its
+   * refusal are unchanged. */
+  readonly ringSplitToleranceMm?: number;
 }
 
 export interface CervicalFitOptions {
@@ -196,6 +202,9 @@ export interface CervicalFitResult {
   readonly cervicalRing: number[];
   /** Refinement rounds that split at least one edge (0: the ring as is). */
   readonly ringRefineLevels: number;
+  /** The chord deviation the ring was split to (mm): `ringSplitToleranceMm`,
+   * else `maxResidualMm`; `null` without a bound (no refinement). */
+  readonly ringSplitToleranceMm: number | null;
   readonly anchorCount: number;
   readonly movedVertexCount: number;
   /** The margin centroid the azimuths and heights are measured from. */
@@ -555,6 +564,17 @@ export function fitCervicalRing(input: CervicalFitInput, options: CervicalFitOpt
   if (input.maxResidualMm !== undefined && !(input.maxResidualMm > 0 && Number.isFinite(input.maxResidualMm))) {
     throw new RangeError(`cervicalFit: maxResidualMm must be a positive finite mm value (got ${input.maxResidualMm})`);
   }
+  const splitTolerance = input.ringSplitToleranceMm ?? input.maxResidualMm ?? null;
+  if (input.ringSplitToleranceMm !== undefined) {
+    if (input.maxResidualMm === undefined) {
+      throw new RangeError('cervicalFit: ringSplitToleranceMm requires maxResidualMm (the split tolerance lies under the bound)');
+    }
+    if (!(input.ringSplitToleranceMm > 0 && input.ringSplitToleranceMm <= input.maxResidualMm)) {
+      throw new RangeError(
+        `cervicalFit: ringSplitToleranceMm must lie in (0, maxResidualMm = ${input.maxResidualMm}] mm (got ${input.ringSplitToleranceMm})`,
+      );
+    }
+  }
   if (!(Number.isInteger(maxLevels) && maxLevels >= 0)) {
     throw new RangeError(`cervicalFit: maxRingRefineLevels must be a non-negative integer (got ${maxLevels})`);
   }
@@ -577,8 +597,8 @@ export function fitCervicalRing(input: CervicalFitInput, options: CervicalFitOpt
   let mesh = input.mesh;
   let cervicalRing: number[] = [...input.cervicalRing];
   let ringRefineLevels = 0;
-  if (input.maxResidualMm !== undefined) {
-    const bound = input.maxResidualMm;
+  if (splitTolerance !== null) {
+    const bound = splitTolerance;
     const loopFrame = loop.map((p): Vec3 => {
       const [x, y] = project(f, p);
       return [x, y, heightOf(f, p[0], p[1], p[2])];
@@ -659,6 +679,7 @@ export function fitCervicalRing(input: CervicalFitInput, options: CervicalFitOpt
     ringVertexCount: cervicalRing.length,
     cervicalRing,
     ringRefineLevels,
+    ringSplitToleranceMm: splitTolerance,
     anchorCount: anchors.length,
     movedVertexCount,
     marginCentroid: f.c,

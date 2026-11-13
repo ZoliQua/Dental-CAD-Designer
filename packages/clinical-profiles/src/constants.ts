@@ -79,3 +79,15 @@ export const DEFAULT_UNDERCUT_BLOCKOUT_THRESHOLD_MM = STANDARD_ZIRCONIA_PROFILE.
  * only chooses the template.
  */
 export const CERVICAL_FIT_MAX_RESIDUAL_MM = 0.05;
+
+/**
+ * The chord deviation above which the cervical fit splits a template ring
+ * edge (ADR-026 Decision 3) — 0.025 mm (25 µm), half of
+ * `CERVICAL_FIT_MAX_RESIDUAL_MM`. Splitting only to the bound itself
+ * (ADR-025) stops as soon as the bound is met: the real tooth 11 fit landed
+ * 1 µm under it, so a hair's difference in placement refused it. Half the
+ * bound leaves headroom as large as the bound's own margin (measured on the
+ * real trace: 42.6 → 24.8 µm). It is an algorithm tolerance under the bound;
+ * the bound and the `fitOverBound` refusal are unchanged.
+ */
+export const CERVICAL_RING_SPLIT_TOLERANCE_MM = 0.025;

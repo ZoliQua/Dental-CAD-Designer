@@ -59,6 +59,35 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.42.0] — Phase 13 Task 2: the ring split tolerance
+
+**A new optional input. A call without it is byte-identical. Every golden
+geometry and journal-replay pin is BYTE-IDENTICAL to `[0.41.0]`: the
+open-arch library lanes fit well under 25 µm unrefined. This was verified by
+running the whole golden suite and the server project at `0.41.0` with the
+new code: no pin moved. The acceptance `*-qc` pins and the server
+traceability golden advance only because the QcReport embeds
+`kernelVersion`.**
+
+- **`fitCervicalRing` splits the ring to a tolerance below the bound**
+  (ADR-026 Decision 3).
+  - New input `ringSplitToleranceMm`: the profile's new
+    `CERVICAL_RING_SPLIT_TOLERANCE_MM` (25 µm, half the bound). It requires
+    `maxResidualMm` and must lie in `(0, maxResidualMm]`. Absent, the bound
+    itself is used, as in ADR-025.
+  - The result echoes `ringSplitToleranceMm` (`null` without a bound). The
+    engine journals it with the fit.
+  - The bound and its `fitOverBound` refusal are unchanged.
+- **Measured.**
+  - The scallop: 44.9 µm at 88 ring vertices → 20.4 µm at 112.
+  - The real trace with a 72-vertex template: 42.6 µm → 24.8 µm at 84.
+  - Real tooth 11, golden real lane: 49.1 µm → 23.8 µm (72 → 91).
+  - Real tooth 11, e2e: 49.5 µm → 24.9 µm (72 → 85).
+- **A measured consequence, fixed in `[0.43.0]`.** In the golden real lane
+  the denser ring made the shell's margin seam fold through the intaglio (20
+  self-intersecting face pairs, 150–200 µm from the margin). The seam's
+  zipper paired the rims by index, not by azimuth.
+
 ## [0.41.0] — Phase 13 Task 1: verified contact targets on real neighbour surface
 
 **A deliberate numerical change to the morph's contact targets. The P4

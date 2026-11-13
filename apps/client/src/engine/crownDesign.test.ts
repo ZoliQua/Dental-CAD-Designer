@@ -103,6 +103,7 @@ class FakePool {
           cervicalRing: [...this.fitRing],
           ringRefineLevels: this.fitRing.length > 3 ? 1 : 0,
           maxRingRefineLevels: 3,
+          ringSplitToleranceMm: 0.025,
           anchorCount: 64,
           movedVertexCount: 120,
           emergenceOffsetMm: 0.651,
@@ -765,6 +766,12 @@ describe('crownDesign controller — anatomy from the tooth library (Phase 9 Tas
       templateRingVertexCount: 3,
       ringRefineLevels: 1,
       maxRingRefineLevels: 3,
+      ringSplitToleranceMm: 0.025,
+    });
+    // ADR-026 Decision 3: the fit is asked to split to the profile's tolerance.
+    expect(lastCall<{ maxResidualMm?: number; ringSplitToleranceMm?: number }>('fitCervicalRing')).toMatchObject({
+      maxResidualMm: 0.05,
+      ringSplitToleranceMm: 0.025,
     });
     expect(useCrownStore.getState().anatomy?.cervicalFit).toMatchObject({ ringVertexCount: 4, ringVertexCountAdded: 1 });
     await crownDesignEngine.runMorph();
