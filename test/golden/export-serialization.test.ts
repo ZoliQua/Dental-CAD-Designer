@@ -71,7 +71,7 @@ const bytesOf = (a: Float64Array | Uint32Array): Buffer =>
 // is a DELIBERATE golden change (bump + changelog + regenerate), never a
 // silent regen — same mechanics as crown-acceptance.test.ts.
 // ---------------------------------------------------------------------------
-const EXPECTED_KERNEL_VERSION = '0.42.0';
+const EXPECTED_KERNEL_VERSION = '0.43.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 
 function installedManifoldVersion(): string {
@@ -89,7 +89,10 @@ const STL_BYTE_PINS = {
   // Changed 0.40.0 → 0.41.0 (Phase 13 Task 1, ADR-026): DELIBERATE — the P4 crown's contacts
   // now reach their verified targets (worst residual 6.584 → 0.000 µm), so its geometry moved.
   // Old: f96ee10be2949a75bc97efde70a0a1775605abf5c139cfae70ac4881ed7f1ef9. See docs/CHANGELOG-kernel.md's [0.41.0] entry.
-  crown: '8786858117e562bdd629ed963af9cd50478892e5436b186eb5f4b39fe695b559',
+  // Changed 0.42.0 → 0.43.0 (Phase 13 Task 3): DELIBERATE — the P4 crown's margin seam pairs
+  // the rims by azimuth (was by normalized index), so its shell moved. Old: 8786858117e562bdd629ed963af9cd50478892e5436b186eb5f4b39fe695b559. See
+  // docs/CHANGELOG-kernel.md's [0.43.0] entry.
+  crown: '35a41651fc9b91043f5b203ed24ba16c3214b2a0baae320771f3d33d0787c8f7',
   inlay: 'f905e727595dff610c0bcb7360eb5b62308be3f44f47702d4510f0aef1d72094',
   bridge: '390e52af1df3a30e803cd2855d88b224845e493f7d5762ff501eb95d90068df2',
 } as const;
@@ -97,7 +100,10 @@ const PLY_BYTE_PINS = {
   // Changed 0.40.0 → 0.41.0 (Phase 13 Task 1, ADR-026): DELIBERATE — the P4 crown's contacts
   // now reach their verified targets (worst residual 6.584 → 0.000 µm), so its geometry moved.
   // Old: 63d7d2b9c62ec28d31af60764d26e2ae6c3989062c80d691ee6f3df6cc314f3b. See docs/CHANGELOG-kernel.md's [0.41.0] entry.
-  crown: '7e77cbab60dcdecdae17912e971cfa3d5047ecc1fe4a86da3402dbba19fd70c7',
+  // Changed 0.42.0 → 0.43.0 (Phase 13 Task 3): DELIBERATE — the P4 crown's margin seam pairs
+  // the rims by azimuth (was by normalized index), so its shell moved. Old: 7e77cbab60dcdecdae17912e971cfa3d5047ecc1fe4a86da3402dbba19fd70c7. See
+  // docs/CHANGELOG-kernel.md's [0.43.0] entry.
+  crown: '1e1c8a02890dc48032f4112663d6db5e8da508996ba05a1f863dadebd8d1d942',
   inlay: '0d35d9f2bc16e2b6768c094c3612c43fa98f3d056e8c800cb590a3912ee24c53',
   bridge: 'ac302820c46591a29576644688c5cbf91311f24a120bd88faa725af02420904f',
 } as const;

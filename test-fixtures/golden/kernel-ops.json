@@ -1,5 +1,5 @@
 {
-  "kernelVersion": "0.38.0",
+  "kernelVersion": "0.43.0",
   "manifoldVersion": "3.5.1",
   "notes": [
     "Runtime budget: every param here is chosen to keep this suite fast (target: whole suite well under the ~2 min CI budget) — see scripts/kernel-ops-lib.ts's module doc for each choice.",
@@ -369,12 +369,12 @@
           1
         ]
       },
-      "hash": "9c15ee55481401bb2f5ab00a1012bb00eab017053998247d2b17929361674173",
+      "hash": "dfb718603c4fb2c34423438fc6dceb23ec8c8a8d8c8de98a891dca509effbb74",
       "meta": {
         "triangleCount": 3550,
         "watertight": true,
         "seamTriangleCount": 336,
-        "volumeMm3": 14.88900220727863
+        "volumeMm3": 14.889002207278626
       }
     },
     {

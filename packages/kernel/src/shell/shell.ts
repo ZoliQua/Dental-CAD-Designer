@@ -499,13 +499,22 @@ function trimClosedOuterToMargin(
  * Builds the margin-band seam: a ruled annulus stitching the outer rim
  * (indices into `outer`) to the inner rim (indices into `inner`), returning
  * the COMBINED (outer verts, then inner verts) mesh with the outer + inner
- * triangles + the seam triangles. Both rims encircle the insertion axis; the
- * zipper advances whichever ring is behind in normalized arc-position (i/M vs
- * j/N) — strictly monotone, deterministic. Rings are first oriented CCW
- * around the axis and aligned at their nearest-azimuth start so the pairing
- * never crosses.
+ * triangles + the seam triangles. Both rims encircle the insertion axis.
+ * Rings are first oriented CCW around the axis and aligned at their
+ * nearest-azimuth start.
+ *
+ * The zipper advances whichever ring is behind in AZIMUTH (Phase 13 Task 3):
+ * a merge of the two rims' unwrapped azimuths, so each seam triangle spans at
+ * most the larger of the two rings' azimuth gaps — the same azimuth pairing
+ * the cervical fit places its ring by (ADR-024/025). Before Phase 13 it
+ * advanced by normalized INDEX (i/M vs j/N), correct only for rims sampled
+ * uniformly in one parameter: a cervical ring refined where the margin
+ * scallops skewed the seam by up to a quarter turn, and it folded through
+ * the intaglio (real tooth 11). A rim that is not star-shaped around the
+ * centre (its azimuth not strictly increasing) falls back, for both rims, to
+ * normalized projected ARC LENGTH. Strictly monotone, deterministic.
  */
-function stitchMarginBand(
+export function stitchMarginBand(
   outer: IndexedMesh,
   outerRim: number[],
   inner: IndexedMesh,
@@ -579,6 +588,47 @@ function stitchMarginBand(
   const N = innerOrder.length;
   const innerVi = (idx: number): number => outerV + innerOrder[idx % N]!;
 
+  // Each rim's progress parameter at its vertices 0..len (len = the closing
+  // repeat of vertex 0): unwrapped azimuth from the outer start, or — if
+  // either rim is not star-shaped around the centre — normalized arc length.
+  const TWO_PI = 2 * Math.PI;
+  const azimuthProgress = (order: number[], get: (i: number) => Vec3): number[] | null => {
+    const t: number[] = [];
+    let first = az(get(order[0]!)) - a0;
+    while (first <= -Math.PI) first += TWO_PI;
+    while (first > Math.PI) first -= TWO_PI;
+    t.push(first);
+    let prevAz = az(get(order[0]!));
+    for (let k = 1; k < order.length; k++) {
+      const a = az(get(order[k]!));
+      let step = a - prevAz;
+      while (step < 0) step += TWO_PI;
+      while (step >= TWO_PI) step -= TWO_PI;
+      if (!(step > 0 && step < Math.PI)) return null;
+      t.push(t[k - 1]! + step);
+      prevAz = a;
+    }
+    const closing = t[0]! + TWO_PI;
+    if (!(closing > t[t.length - 1]!)) return null;
+    t.push(closing);
+    return t;
+  };
+  const arcProgress = (order: number[], get: (i: number) => Vec3): number[] => {
+    const t: number[] = [0];
+    for (let k = 1; k <= order.length; k++) {
+      const [x0, y0] = projUV(get(order[k - 1]!));
+      const [x1, y1] = projUV(get(order[k % order.length]!));
+      t.push(t[k - 1]! + Math.hypot(x1 - x0, y1 - y0));
+    }
+    const total = t[order.length]!;
+    return t.map((x) => x / total);
+  };
+  const outerAz = azimuthProgress(outerOrder, op);
+  const innerAz = azimuthProgress(innerOrder, ip);
+  const byAzimuth = outerAz !== null && innerAz !== null;
+  const tOuter = byAzimuth ? outerAz : arcProgress(outerOrder, op);
+  const tInner = byAzimuth ? innerAz : arcProgress(innerOrder, ip);
+
   // Combined triangles: outer + inner (re-indexed) + seam.
   const seamTris: number[] = [];
   let i = 0;
@@ -586,7 +636,7 @@ function stitchMarginBand(
   while (i < M || j < N) {
     const oCur = outerOrder[i % M]!;
     const iCur = innerVi(j);
-    const advanceO = j >= N || (i < M && (i + 1) / M <= (j + 1) / N);
+    const advanceO = j >= N || (i < M && tOuter[i + 1]! <= tInner[j + 1]!);
     if (advanceO) {
       const oNext = outerOrder[(i + 1) % M]!;
       seamTris.push(oCur, iCur, oNext);

@@ -98,23 +98,23 @@ const LIBRARY_TOOTH = 15 as FdiTooth;
 /** The intaglio pitch (a journaled parameter): coarser than the clinical
  * 20 µm to keep the golden in minutes — the bridge-case golden's pitch. */
 const PITCH_MM = 0.06;
-const EXPECTED_KERNEL_VERSION = '0.42.0';
+const EXPECTED_KERNEL_VERSION = '0.43.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 const PRINT = process.env['PRINT_CROWN_OPEN_ARCH_PINS'] === '1';
 const RUN_REAL = process.env['RUN_CROWN_REAL_DIE'] === '1';
-/** The real lane's measured QC verdict (2026-11-13, kernel 0.42.0). The
- * tooth is unprepared, so the wall (564 µm axial, 434 µm conservative) and
- * seating gates fail, as with the built-in template. The mesial contact also
- * fails, for its real reason (ADR-026): the crown's nearest approach to 21
- * lies on the capture's cervical cut, so the verified target (s = −20 µm
- * exactly) is provided only by the capture's synthetic closure wall. Under
- * kernel ≤ 0.40.0 the fixed-direction root-find grazed that corner and
- * drifted to a +45 µm gap unflagged (65 µm "off target"). The distal contact
- * converges (0.0 µm). Self-intersection fails too: with the ring split to
- * 25 µm (ADR-026 Decision 3; fit 23.8 µm, ring 72 → 91) the shell's margin
- * seam folds through the intaglio — 20 face pairs, 150–200 µm from the margin
- * (Phase 13 Task 3 locates and fixes it). No gate is weakened. */
-const MEASURED_REAL_FAILING_GATES: string[] = ['contact', 'minWallThickness', 'seating', 'selfIntersection'];
+/** The real lane's measured QC verdict (2026-11-13, kernel 0.43.0). The
+ * tooth is unprepared, so the wall and seating gates fail, as with the
+ * built-in template. The mesial contact also fails, for its real reason
+ * (ADR-026): the crown's nearest approach to 21 lies on the capture's
+ * cervical cut, so the verified target (s = −20 µm exactly) is provided only
+ * by the capture's synthetic closure wall. Under kernel ≤ 0.40.0 the fixed-
+ * direction root-find grazed that corner and drifted to a +45 µm gap
+ * unflagged (65 µm "off target"). The distal contact converges (0.0 µm).
+ * Self-intersection passes: under 0.42.0 the ring split to 25 µm (fit
+ * 23.8 µm, ring 72 → 91) made the shell's margin seam — then paired by index —
+ * fold through the intaglio (20 face pairs, 150–200 µm from the margin); the
+ * azimuth-paired seam (0.43.0, Phase 13 Task 3) does not. No gate is weakened. */
+const MEASURED_REAL_FAILING_GATES: string[] = ['contact', 'minWallThickness', 'seating'];
 
 interface Pin {
   kernelVersion: string;

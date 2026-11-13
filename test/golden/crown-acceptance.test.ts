@@ -105,7 +105,7 @@ const µm = (mm: number): string => `${(mm * 1000).toFixed(3)} µm`;
 // proof this qc diff is the version string alone, not numerical drift (the same
 // mechanical churn documented at 0.16.0-0.19.0). See docs/CHANGELOG-kernel.md's
 // [0.20.0] entry.
-const EXPECTED_KERNEL_VERSION = '0.42.0';
+const EXPECTED_KERNEL_VERSION = '0.43.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 function installedManifoldVersion(): string {
   const pkg = JSON.parse(readFileSync(join(repoRoot, 'node_modules', 'manifold-3d', 'package.json'), 'utf8')) as {
@@ -146,13 +146,21 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // was 6.584 µm (unflagged) and is now 0.000 µm, so the morphed outer and every stage downstream
   // of it moved. Verified at 0.40.0 with the new code: only this chain (and the P4 export pins)
   // moved. Old hash: c472c6ea74c84b741fd47d925241c2c8d21d3caff8fb640d4877e724e49e5764. See docs/CHANGELOG-kernel.md's [0.41.0] entry.
-  'crown-standin-shell': '6f4a75e1c4fa05c4119b5408f2f81aa58c4f6af8223b5571cb08d828c279607c',
+  // Changed 0.42.0 → 0.43.0 (Phase 13 Task 3): DELIBERATE — the shell's margin seam pairs the
+  // outer and inner rims by AZIMUTH (was by normalized index), so the seam triangles moved; every
+  // stage before the shell is BYTE-IDENTICAL (verified at 0.42.0 with the new code). Old hash:
+  // 6f4a75e1c4fa05c4119b5408f2f81aa58c4f6af8223b5571cb08d828c279607c. See docs/CHANGELOG-kernel.md's [0.43.0] entry.
+  'crown-standin-shell': '736318c188c059ff6b9f9f59e5bb67d278923dea7407aad0acd9a0c883e61b54',
   // Changed 0.40.0 → 0.41.0 (Phase 13 Task 1, ADR-026): DELIBERATE, numerical — the morph's
   // contact targets are now verified on the −t level set; the standin's worst contact residual
   // was 6.584 µm (unflagged) and is now 0.000 µm, so the morphed outer and every stage downstream
   // of it moved. Verified at 0.40.0 with the new code: only this chain (and the P4 export pins)
   // moved. Old hash: f48f898de08bb7d1e4bc6a89758ec4d83339bd50040bd7f92010d1e98647d833. See docs/CHANGELOG-kernel.md's [0.41.0] entry.
-  'crown-standin-freeform': 'ab9ac5bf0f6bdfc9088c560d2f07712e1c942d175ab23b46ffba258879638d19',
+  // Changed 0.42.0 → 0.43.0 (Phase 13 Task 3): DELIBERATE — the shell's margin seam pairs the
+  // outer and inner rims by AZIMUTH (was by normalized index), so the seam triangles moved; every
+  // stage before the shell is BYTE-IDENTICAL (verified at 0.42.0 with the new code). Old hash:
+  // ab9ac5bf0f6bdfc9088c560d2f07712e1c942d175ab23b46ffba258879638d19. See docs/CHANGELOG-kernel.md's [0.43.0] entry.
+  'crown-standin-freeform': 'e7b408ffce9380c4fab3917855bf2be11b89fbc9572fffa7751018a87af9960a',
   // Changed at 0.20.0: version-string-only (QcReport embeds kernelVersion —
   // see the EXPECTED_KERNEL_VERSION comment above; geometry pins unchanged).
   //
@@ -258,7 +266,10 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // stage pin above BYTE-IDENTICAL (verified: the whole golden suite passes at 0.41.0 with the
   // new code); hashQcReport tracks the embedded kernelVersion. Old hash:
   // 1c7bb668ce74fbffdb10b2dfcf1a0b24d6744fec073775a3fe84ff7e85de8c8b. See docs/CHANGELOG-kernel.md's [0.42.0] entry.
-  'crown-standin-qc': '76d233f382f1b127abc47b2db8a88cce386a91ee45fe071ed35eba6ce35526e9',
+  // Advanced 0.42.0 → 0.43.0 (Phase 13 Task 3): DELIBERATE — the standin crown's shell moved
+  // (azimuth-paired margin seam), and hashQcReport embeds the gate values and kernelVersion.
+  // Old hash: 76d233f382f1b127abc47b2db8a88cce386a91ee45fe071ed35eba6ce35526e9. See docs/CHANGELOG-kernel.md's [0.43.0] entry.
+  'crown-standin-qc': '212f98980433b91e688d45e866ac3ba06f512a7732dd0837289c7bb31dfd9fe6',
 };
 
 const GATE_ORDER = ['watertight', 'manifold', 'selfIntersection', 'minWallThickness', 'marginFit', 'seating', 'connectorCrossSection', 'contact'];

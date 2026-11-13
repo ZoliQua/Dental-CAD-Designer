@@ -59,6 +59,55 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.43.0] — Phase 13 Task 3: the margin seam pairs the rims by azimuth
+
+**A deliberate geometry fix in the shell's margin seam. Every crown shell
+and the real bridge's assembled mesh move. Every stage before the shell is
+BYTE-IDENTICAL: prep die, intaglio, placement, fit and morph. Verified at
+`0.42.0` with the new code. Moved pins:
+- `kernel-ops.json` `constructShell` (its volume changed by 4e-15 mm³);
+- the P4 standin crown's shell, freeform and qc;
+- the P4 crown STL/PLY export;
+- the open-arch library premolar and incisor `finalMesh` (the built-in-template
+  lane did not move);
+- the real bridge's three `finalMesh` pins;
+- the server traceability golden.
+
+The cavity and synthetic-bridge `*-qc` pins advance by their version string
+only.**
+
+- **The defect.** `stitchMarginBand` zips the outer rim, which is the
+  trimmed anatomy's cervical ring, to the inner rim, which is the intaglio's
+  margin rim. It advanced whichever rim was behind in normalized INDEX (i/M
+  vs j/N).
+  - This pairs correctly only when both rims are sampled uniformly in the
+    same parameter.
+  - A cervical ring refined where the margin scallops (ADR-025/026) is not
+    sampled that way, and neither is a fitted ring whose vertices sit at
+    their own azimuths. The seam's triangles then skew by up to a quarter
+    turn.
+- **Measured on real tooth 11.**
+  - Under `0.42.0` (ring split to 25 µm, 72 → 91 vertices) the golden real
+    lane had 20 self-intersecting face pairs.
+  - Classified geometrically, every pair was an intaglio triangle (0 µm from
+    the intaglio, 0.3–0.7 mm from the margin) crossing a seam triangle
+    (145–195 µm off the intaglio, 470–550 µm off the outer surface,
+    150–200 µm from the margin).
+  - The result was non-monotone in the ring size: none at 73 vertices, 20
+    pairs at 91, none at 102.
+  - The e2e placement's self-intersection, open since Phase 12, was the same
+    defect.
+- **The fix.** The zipper merges the two rims' unwrapped azimuths, measured
+  around the inner rim's vertex centroid, the same pairing the cervical fit
+  uses.
+  - Each seam triangle now spans at most the larger of the two rims' azimuth
+    gaps. This is proven by a fast-check property over random star-shaped
+    rims, and by a quarter-refined ring that the index pairing skewed.
+  - A rim that is not star-shaped (azimuth not strictly increasing) falls
+    back to normalized projected arc length for both rims.
+- **Result.** Real tooth 11 has no self-intersection in either the golden
+  real lane or the e2e. Every golden lane's QC verdict is unchanged.
+
 ## [0.42.0] — Phase 13 Task 2: the ring split tolerance
 
 **A new optional input. A call without it is byte-identical. Every golden

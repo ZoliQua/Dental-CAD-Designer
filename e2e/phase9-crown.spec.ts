@@ -249,21 +249,20 @@ test.describe.serial('Phase 9 — a crown on the real arch-case-01 with captured
     const failing = await page
       .locator('[data-testid^="crown-qc-gate-"][data-passed="false"]')
       .evaluateAll((rows) => rows.map((r) => r.getAttribute('data-testid')));
-    // The measured verdict (2026-11-13, kernel 0.41.0): the unprepared tooth
+    // The measured verdict (2026-11-13, kernel 0.43.0): the unprepared tooth
     // fails the wall and seating gates, as before. With the fitted library
-    // incisor two more fail here: the contact gate (the distal contact is
-    // flagged unreached — ADR-026; above) and self-intersection
-    // (this placement moves the ring up to 1.74 mm; the golden's, 1.41 mm,
-    // does not self-intersect — the fold's location is a tracked open item).
+    // incisor the contact gate fails too (the distal contact is flagged
+    // unreached — ADR-026; above). Self-intersection passes: under ≤ 0.42.0
+    // the shell's margin seam, paired by index, folded through the intaglio
+    // in this placement; the azimuth-paired seam (Phase 13 Task 3) does not.
     // Every failure is visible and acknowledgeable; no gate is weakened.
     expect(failing.sort()).toEqual([
       'crown-qc-gate-contact',
       'crown-qc-gate-minWallThickness',
       'crown-qc-gate-seating',
-      'crown-qc-gate-selfIntersection',
     ]);
     await expect(page.locator('[data-testid^="crown-qc-provenance-"]')).toHaveCount(0);
-    for (const gate of ['contact', 'minWallThickness', 'seating', 'selfIntersection']) {
+    for (const gate of ['contact', 'minWallThickness', 'seating']) {
       await expect(page.getByTestId(`crown-qc-ack-${gate}`)).toBeVisible();
     }
   });

@@ -138,3 +138,21 @@ self-intersection.
   every moved pin is named in the changelog.
 - `QcGateResult` is unchanged. The new failure is reported in the contact
   gate's message.
+
+## Found during implementation (Phase 13 Task 3)
+
+The 25 µm split tolerance exposed a shell defect that Context 3 measured
+but had not located. The shell's margin seam paired its two rims by
+normalized index, not by azimuth. Every self-intersecting pair was an
+intaglio triangle crossing a seam triangle. Kernel 0.43.0 pairs the rims by
+azimuth, around the inner rim's centroid, the same pairing the fit uses. The
+golden and the e2e on real tooth 11 then have no self-intersection. See the
+changelog's `[0.43.0]` entry.
+
+The plan's gate-message attribution by triangle range (outer, inner, seam)
+was not built. The shell passes through manifold-3d's cleanup, which
+reorders the triangles and quantizes positions to Float32, so ranges do not
+survive into the gated mesh. The locus was attributed by distances instead:
+from each pair's triangles to the intaglio, the outer surface and the
+margin. That method is recorded in the changelog.
+
