@@ -514,6 +514,7 @@
     "morphContactHeatmapToggle": "Show contact heatmap",
     "morphReadout": "Max residual {{residual}} µm · margin seal {{seal}} µm",
     "morphUpdating": "updating…",
+    "morphContactOnSynthetic": "Contact on the capture's synthetic closure, not on the neighbour: {{contacts}} — re-capture the neighbour",
     "shellTitle": "5 · Shell construction",
     "shellConstruct": "Construct shell",
     "shellAutoThicken": "Auto-thicken thin walls",

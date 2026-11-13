@@ -151,6 +151,9 @@ interface ContactResidualInput {
   contactResidualMm: number;
   regionResidualMm: number;
   clampBound: boolean;
+  /** ADR-026 Decision 2: the target is reached only against a capture's
+   * synthetic closure. Set only when true (old journals read as before). */
+  targetOnSyntheticSurface?: true;
   /** ADR-022 — where the contacted geometry came from; a non-`case` contact
    * fails the contact gate closed. */
   provenance?: GeometryProvenance;
@@ -238,6 +241,11 @@ export interface AnatomyPlacementInput {
   /** The captured antagonist's window-border band (mm), when it is a
    * capture from the opposite arch. */
   antagonistWindowBandMm?: number;
+  /** ADR-026 Decision 2: per captured contact surface, how many of its
+   * leading triangles are the scan (`capturedTriangleCount`); the rest is the
+   * capture's synthetic closure. Absent for a stand-in or a whole scan (all
+   * real). Derived from the journaled captures, so not journaled again. */
+  realTriangleCounts?: { mesial?: number; distal?: number; antagonist?: number };
   /** Content hashes of the case-derived regions consumed (journal proof). */
   inputRegionHashes?: readonly string[];
   /** Manual gizmo override (position/scale/landmark) — present on a manual
@@ -1117,6 +1125,11 @@ class CrownDesignEngine {
       : antCapture
         ? { positions: antCapture.positions, indices: antCapture.indices }
         : undefined;
+    const realTriangleCounts = {
+      ...(session.captures.mesial ? { mesial: session.captures.mesial.capturedTriangleCount } : {}),
+      ...(session.captures.distal ? { distal: session.captures.distal.capturedTriangleCount } : {}),
+      ...(antCapture ? { antagonist: antCapture.capturedTriangleCount } : {}),
+    };
     const inputRegionHashes = [session.captures.mesial, session.captures.distal, antCapture]
       .filter((c): c is CapturedNeighbour => c !== undefined)
       .map((c) => c.contentHash);
@@ -1130,6 +1143,7 @@ class CrownDesignEngine {
       neighbourSides: { mesial: mesialInfo, distal: distalInfo },
       antagonist,
       ...(antCapture ? { antagonistWindowBandMm: antCapture.windowBoundaryBandMm } : {}),
+      realTriangleCounts,
       inputRegionHashes,
       manualOverride,
     };
@@ -1317,14 +1331,23 @@ class CrownDesignEngine {
     positions: Float64Array;
     indices: Uint32Array;
     targetPenetrationMm: number;
+    realTriangleCount?: number;
   }> {
-    const contacts: Array<{ kind: MorphContactKind; positions: Float64Array; indices: Uint32Array; targetPenetrationMm: number }> = [];
+    const contacts: Array<{
+      kind: MorphContactKind;
+      positions: Float64Array;
+      indices: Uint32Array;
+      targetPenetrationMm: number;
+      realTriangleCount?: number;
+    }> = [];
+    const real = input.realTriangleCounts ?? {};
     if (input.mesialNeighbor) {
       contacts.push({
         kind: 'proximalMesial',
         positions: input.mesialNeighbor.positions,
         indices: input.mesialNeighbor.indices,
         targetPenetrationMm: session.params.proximalContactPenetrationMm,
+        ...(real.mesial !== undefined ? { realTriangleCount: real.mesial } : {}),
       });
     }
     if (input.distalNeighbor) {
@@ -1333,6 +1356,7 @@ class CrownDesignEngine {
         positions: input.distalNeighbor.positions,
         indices: input.distalNeighbor.indices,
         targetPenetrationMm: session.params.proximalContactPenetrationMm,
+        ...(real.distal !== undefined ? { realTriangleCount: real.distal } : {}),
       });
     }
     if (input.antagonist) {
@@ -1341,6 +1365,7 @@ class CrownDesignEngine {
         positions: input.antagonist.positions,
         indices: input.antagonist.indices,
         targetPenetrationMm: session.params.occlusalContactMm,
+        ...(real.antagonist !== undefined ? { realTriangleCount: real.antagonist } : {}),
       });
     }
     return contacts;
@@ -1417,6 +1442,7 @@ class CrownDesignEngine {
         contactResidualMm: c.contactResidualMm,
         regionResidualMm: c.regionResidualMm,
         clampBound: c.clampBound,
+        ...(c.targetOnSyntheticSurface ? { targetOnSyntheticSurface: true as const } : {}),
         // ADR-022: the antagonist is the case's own scan (or its confirmed
         // opposite-arch capture); each proximal side carries its own
         // provenance (captured ⇒ case, else the placeholder box).
@@ -1446,6 +1472,10 @@ class CrownDesignEngine {
           maxContactResidualMm: result.maxContactResidualMm,
           marginSealMaxDeviationMm: result.marginSealMaxDeviationMm,
           clampedContacts: result.clampedContacts,
+          // ADR-026 Decision 2 — journaled only when non-empty (byte-identical otherwise).
+          ...(result.contacts.some((c) => c.targetOnSyntheticSurface)
+            ? { syntheticSurfaceContacts: result.contacts.filter((c) => c.targetOnSyntheticSurface).map((c) => c.kind) }
+            : {}),
           ...(session.cervicalRing !== null ? { fixedCervicalRingVertexCount: session.cervicalRing.length } : {}),
         },
         session.placed ? [session.placed.contentHash] : [],
@@ -1466,6 +1496,7 @@ class CrownDesignEngine {
           achievedSignedDistanceMm: c.achievedSignedDistanceMm,
           contactResidualMm: c.contactResidualMm,
           clampBound: c.clampBound,
+          targetOnSyntheticSurface: c.targetOnSyntheticSurface,
         })),
         clampedContacts: result.clampedContacts.map((k) => k as MorphContactKind),
       },

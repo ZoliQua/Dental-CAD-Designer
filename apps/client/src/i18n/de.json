@@ -514,6 +514,7 @@
     "morphContactHeatmapToggle": "Kontakt-Heatmap anzeigen",
     "morphReadout": "Max. Abweichung {{residual}} µm · Randabdichtung {{seal}} µm",
     "morphUpdating": "aktualisiert…",
+    "morphContactOnSynthetic": "Kontakt an der synthetischen Abschlussfläche der Erfassung, nicht am Nachbarn: {{contacts}} — Nachbarn neu erfassen",
     "shellTitle": "5 · Schalenkonstruktion",
     "shellConstruct": "Schale konstruieren",
     "shellAutoThicken": "Dünne Wände automatisch verstärken",

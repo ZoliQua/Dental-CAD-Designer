@@ -443,7 +443,7 @@
  * met the bound unrefined is byte-identical: every golden geometry +
  * journal-replay pin byte-identical. See docs/CHANGELOG-kernel.md's
  * `[0.40.0]` entry. */
-export const KERNEL_VERSION = '0.40.0';
+export const KERNEL_VERSION = '0.41.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export { detSin, detCos, detAtan, detAtan2, detAsin, detAcos, detExp, detPow } from './math/detMath.ts';

@@ -38,6 +38,22 @@ describe('contactGate', () => {
     expect(r.message).toMatch(/proximalDistal/);
   });
 
+  it('FAILS CLOSED on a contact whose target only synthetic neighbour surface provides (ADR-026 Decision 2)', () => {
+    // On target to the micrometre, but against a capture's synthetic closure:
+    // a contact with the window's cut, not with the neighbour.
+    const onClosure: ContactResidualInput = { ...onTarget('proximalMesial'), targetOnSyntheticSurface: true };
+    const r = contactGate({ contacts: [onClosure, onTarget('proximalDistal'), onTarget('antagonist')], contactClampWarning: false });
+    expect(r.passed).toBe(false);
+    expect(r.message).toMatch(/SYNTHETIC SURFACE: contact\(s\) \[proximalMesial\]/);
+    expect(r.message).toMatch(/closure/);
+  });
+
+  it('an absent or false synthetic flag is byte-identical (old journals read as before)', () => {
+    const a = contactGate({ contacts: ALL_ON_TARGET, contactClampWarning: false });
+    const b = contactGate({ contacts: ALL_ON_TARGET.map((c) => ({ ...c, targetOnSyntheticSurface: false })), contactClampWarning: false });
+    expect(b).toEqual(a);
+  });
+
   it('FAIL-SAFE: no contacts supplied → unverifiable → fails', () => {
     const r = contactGate({ contacts: [], contactClampWarning: false });
     expect(r.passed).toBe(false);

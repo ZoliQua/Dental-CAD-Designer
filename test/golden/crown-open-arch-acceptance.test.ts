@@ -98,18 +98,19 @@ const LIBRARY_TOOTH = 15 as FdiTooth;
 /** The intaglio pitch (a journaled parameter): coarser than the clinical
  * 20 µm to keep the golden in minutes — the bridge-case golden's pitch. */
 const PITCH_MM = 0.06;
-const EXPECTED_KERNEL_VERSION = '0.40.0';
+const EXPECTED_KERNEL_VERSION = '0.41.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 const PRINT = process.env['PRINT_CROWN_OPEN_ARCH_PINS'] === '1';
 const RUN_REAL = process.env['RUN_CROWN_REAL_DIE'] === '1';
-/** The real lane's measured QC verdict (2026-11-09, kernel 0.40.0). The
+/** The real lane's measured QC verdict (2026-11-13, kernel 0.41.0). The
  * tooth is unprepared, so the wall (562 µm axial, 432 µm conservative) and
  * seating gates fail, as with the built-in template. The mesial contact also
- * fails: 65 µm off target (a 45 µm gap instead of 20 µm overlap). The morph
- * moves the contact vertex exactly to its target (the RBF interpolates its
- * controls), so the miss is the target root-find's own: a fixed number of
- * steps along a fixed direction, on the rough captured patch of 21. The
- * distal contact converges (0.0 µm). No gate is weakened. */
+ * fails, for its real reason (ADR-026): the crown's nearest approach to 21
+ * lies on the capture's cervical cut, so the verified target (s = −20 µm
+ * exactly) is provided only by the capture's synthetic closure wall. Under
+ * kernel ≤ 0.40.0 the fixed-direction root-find grazed that corner and
+ * drifted to a +45 µm gap unflagged (65 µm "off target"). The distal contact
+ * converges (0.0 µm). No gate is weakened. */
 const MEASURED_REAL_FAILING_GATES: string[] = ['contact', 'minWallThickness', 'seating'];
 
 interface Pin {
@@ -517,6 +518,9 @@ describe.skipIf(!RUN_REAL)('Phase 12 Task 3 — REAL arch-case-01 tooth 11: the 
     for (const g of report.gates) expect(g.inputProvenance, g.gate).toBeUndefined();
     const failing = report.gates.filter((g) => !g.passed).map((g) => g.gate).sort();
     expect(failing).toEqual(MEASURED_REAL_FAILING_GATES);
+    // ADR-026 Decision 2: the mesial contact fails as on synthetic surface,
+    // not as a silent drift.
+    expect(report.gates.find((g) => g.gate === 'contact')!.message).toMatch(/SYNTHETIC SURFACE: contact\(s\) \[proximalMesial\]/);
   }, 1_800_000);
 });
 

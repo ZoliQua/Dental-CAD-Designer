@@ -211,6 +211,19 @@ test.describe.serial('Phase 9 — a crown on the real arch-case-01 with captured
 
     await page.getByTestId('crown-morph-run').click();
     await expect(page.getByTestId('crown-morph-readout')).toBeVisible({ timeout: 300_000 });
+    // ADR-026: every contact target is verified or flagged. Measured in this
+    // placement (2026-11-13, kernel 0.41.0): the mesial contact reaches its
+    // target on 21's real captured surface; the distal one has no verified
+    // target and is flagged unreached (clamped), never a silent miss.
+    const morph = await hook<{
+      contacts: { kind: string; contactResidualMm: number; clampBound: boolean; targetOnSyntheticSurface: boolean }[];
+      clampedContacts: string[];
+    }>(page, 'getCrownMorphSummary');
+    expect(morph.clampedContacts).toEqual(['proximalDistal']);
+    const mesial = morph.contacts.find((c) => c.kind === 'proximalMesial')!;
+    expect(mesial.contactResidualMm).toBeLessThan(1e-6);
+    expect(mesial.targetOnSyntheticSurface).toBe(false);
+    await expect(page.getByTestId('crown-morph-contact-synthetic')).toHaveCount(0);
     await expect(page.getByTestId('crown-error')).toHaveCount(0);
 
     await page.getByTestId('crown-shell-construct').click();
@@ -232,10 +245,10 @@ test.describe.serial('Phase 9 — a crown on the real arch-case-01 with captured
     const failing = await page
       .locator('[data-testid^="crown-qc-gate-"][data-passed="false"]')
       .evaluateAll((rows) => rows.map((r) => r.getAttribute('data-testid')));
-    // The measured verdict (2026-11-09): the unprepared tooth fails the wall
-    // and seating gates, as before. With the fitted library incisor two more
-    // fail here: the mesial contact (the target root-find misses on the rough
-    // captured patch of 21 — see the golden real lane) and self-intersection
+    // The measured verdict (2026-11-13, kernel 0.41.0): the unprepared tooth
+    // fails the wall and seating gates, as before. With the fitted library
+    // incisor two more fail here: the contact gate (the distal contact is
+    // flagged unreached — ADR-026; above) and self-intersection
     // (this placement moves the ring up to 1.74 mm; the golden's, 1.41 mm,
     // does not self-intersect — the fold's location is a tracked open item).
     // Every failure is visible and acknowledgeable; no gate is weakened.

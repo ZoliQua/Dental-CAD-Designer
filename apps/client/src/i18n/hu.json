@@ -514,6 +514,7 @@
     "morphContactHeatmapToggle": "Kontakt hőtérkép",
     "morphReadout": "Max eltérés {{residual}} µm · marginális zárás {{seal}} µm",
     "morphUpdating": "frissítés…",
+    "morphContactOnSynthetic": "A kontakt a befogás szintetikus lezárásán van, nem a szomszédon: {{contacts}} — fogja be újra a szomszédot",
     "shellTitle": "5 · Héj építése",
     "shellConstruct": "Héj építése",
     "shellAutoThicken": "Vékony falak automatikus vastagítása",

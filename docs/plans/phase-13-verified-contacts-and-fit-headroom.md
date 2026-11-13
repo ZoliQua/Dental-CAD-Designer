@@ -61,15 +61,14 @@ The same as Phase 12:
       Decision 1 and verifies again (the tolerance and the travel bound).
     - If that also fails, it returns the Newton target with
       `clampBound: true`.
-    - It returns `{ target, clampBound, targetTriangle }`, where
-      `targetTriangle` is the closest neighbour triangle of the accepted
-      target.
+    - It returns `{ target, clampBound, accepted }`.
   - `MorphContactInput.realTriangleCount?: number`:
     - Validated as an integer in `[1, triangleCount]`, otherwise a
       `RangeError`.
     - `ContactPlan` and `MorphContactResult` gain
       `targetOnSyntheticSurface: boolean`: true when the target was accepted
-      and `targetTriangle ≥ realTriangleCount`.
+      and its distance to the real triangles alone exceeds
+      `|s| + CONTACT_TARGET_TOLERANCE_MM` (ADR-026 Decision 2).
   - The module doc and `@errorBound` are updated. The bound is unchanged in
     definition, and a target can no longer miss without a flag.
 - **`packages/kernel-workers/src/jobs/morphAnatomy.ts`**: the payload carries

@@ -485,6 +485,16 @@ function MorphStage({ busy }: { busy: boolean }) {
               seal: um(morph.marginSealMaxDeviationMm),
             })}
           </p>
+          {morph.contacts.some((c) => c.targetOnSyntheticSurface) && (
+            <p className="crown-stage__warning" role="alert" data-testid="crown-morph-contact-synthetic">
+              {t('crown.morphContactOnSynthetic', {
+                contacts: morph.contacts
+                  .filter((c) => c.targetOnSyntheticSurface)
+                  .map((c) => t(CONTACT_LABEL_KEYS[c.kind]))
+                  .join(', '),
+              })}
+            </p>
+          )}
           <label className="crown-stage__checkbox">
             <input type="checkbox" checked={contactHeatmap} onChange={(e) => crownDesignEngine.setContactHeatmapVisible(e.target.checked)} data-testid="crown-morph-contact-toggle" />
             {t('crown.morphContactHeatmapToggle')}
@@ -494,6 +504,13 @@ function MorphStage({ busy }: { busy: boolean }) {
     </StageShell>
   );
 }
+
+/** The contact kinds' display labels (the strength sliders' labels). */
+const CONTACT_LABEL_KEYS = {
+  proximalMesial: 'crown.morphStrengthMesial',
+  proximalDistal: 'crown.morphStrengthDistal',
+  antagonist: 'crown.morphStrengthAntagonist',
+} as const;
 
 function StrengthSlider({ label, testid, value, onChange }: { label: string; testid: string; value: number; onChange: (v: number) => void }) {
   return (

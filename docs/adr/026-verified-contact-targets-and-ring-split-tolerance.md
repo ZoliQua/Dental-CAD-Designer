@@ -75,8 +75,10 @@ self-intersection.
 - Otherwise the root-find takes `CONTACT_PROJECTION_STEPS` (8) fixed
   closest-point projection steps, starting from the Newton target:
   `x ← x − (s(x) + t)·g(x)`. Here `g(x) = sign(s)·(x − cp(x))/|x − cp(x)|`
-  is the signed distance's gradient. When `x` lies exactly on the surface,
-  the closest face's outward normal is used. For a distance function this
+  is the signed distance's gradient. When `x` lies on the surface to
+  `CONTACT_GRADIENT_NOISE_MM` (1e-9 mm), the closest face's outward normal is
+  used instead, because below that distance `x − cp(x)` is rounding noise,
+  not a direction. For a distance function this
   step is exact within one closest-feature region, so the direction follows
   the surface around corners where a fixed line cannot.
 - The projected target is accepted only if it meets the same tolerance
@@ -93,8 +95,13 @@ self-intersection.
 - `MorphContactInput.realTriangleCount?`: the neighbour's first N triangles
   are real surface, and the rest are synthetic. Absent means all are real,
   as for a full antagonist scan or a placeholder.
-- An accepted target whose closest neighbour triangle has an index ≥ N is
-  reported as `targetOnSyntheticSurface: true` on the contact result.
+- An accepted target `T` is on real surface when its distance to the real
+  triangles alone is at most `|s(T)| + CONTACT_TARGET_TOLERANCE_MM`, that is,
+  when real surface provides the penetration. Otherwise it is reported as
+  `targetOnSyntheticSurface: true` on the contact result. If `T` is
+  equidistant from a real face and a synthetic face, it counts as real,
+  because it does penetrate the real face by `t`. So the test has no
+  tie-break.
 - The contact gate **fails closed** on it. The message says the contact
   falls on the capture's synthetic closure, so the capture window excludes
   the neighbour's surface there. A contact on synthetic geometry can never

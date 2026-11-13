@@ -1918,6 +1918,12 @@ body {
 
 .axis-panel__field-value,
 .crown-stage__field-value,
+.crown-stage__warning {
+  margin: 4px 0;
+  font-size: 12px;
+  color: var(--color-warning);
+}
+
 .crown-stage__readout,
 .cavity-stage__readout,
 .bridge-stage__readout,

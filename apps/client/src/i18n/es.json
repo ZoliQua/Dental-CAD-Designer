@@ -514,6 +514,7 @@
     "morphContactHeatmapToggle": "Mostrar mapa de contactos",
     "morphReadout": "Residual máx. {{residual}} µm · sellado de margen {{seal}} µm",
     "morphUpdating": "actualizando…",
+    "morphContactOnSynthetic": "Contacto en el cierre sintético de la captura, no en el vecino: {{contacts}} — vuelva a capturar el vecino",
     "shellTitle": "5 · Construcción de carcasa",
     "shellConstruct": "Construir carcasa",
     "shellAutoThicken": "Engrosar paredes finas automáticamente",

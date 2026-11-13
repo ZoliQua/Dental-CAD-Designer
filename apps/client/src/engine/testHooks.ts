@@ -56,6 +56,7 @@ import { marginEditor } from './marginEditor';
 import { getActiveSceneManager } from './viewerController';
 import { useAxisStore } from '../state/axisStore';
 import { useMarginStore } from '../state/marginStore';
+import { useCrownStore, type MorphSummary } from '../state/crownStore';
 
 export interface DqcadCameraState {
   position: readonly [number, number, number];
@@ -68,6 +69,9 @@ export interface DqcadCanvasPoint {
 }
 
 export interface DqcadTestHooks {
+  /** Read-only: the crown panel's morph summary (per-contact residuals and
+   * flags, ADR-026), or `null` before the morph ran. */
+  getCrownMorphSummary(): MorphSummary | null;
   /** The active viewport's camera position + `OrbitControls.target`
    * (render frame — see SceneManager.getCameraState's doc), or `null`
    * before the viewport has mounted. */
@@ -259,6 +263,9 @@ const hooks: DqcadTestHooks = {
     const restoration = caseStore.getDocument().restorations[0];
     const line = restoration ? Object.values(restoration.marginLines)[0] : undefined;
     return line?.resampledPoints ?? null;
+  },
+  getCrownMorphSummary() {
+    return useCrownStore.getState().morph;
   },
   getLatestOperation(name) {
     const history = caseStore.getDocument().history;

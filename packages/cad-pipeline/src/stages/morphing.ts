@@ -197,6 +197,8 @@ export function runMorphingStage(
         regionMinSignedDistanceMm: c.regionMinSignedDistanceMm,
         regionResidualMm: c.regionResidualMm,
         clampBound: c.clampBound,
+        // ADR-026 Decision 2 — journaled only when set (byte-identical otherwise).
+        ...(c.targetOnSyntheticSurface ? { targetOnSyntheticSurface: true } : {}),
       })),
       maxContactResidualMm: result.maxContactResidualMm,
       // The seal is proven by the field displacement AT the finish line + the

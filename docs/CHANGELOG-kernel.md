@@ -59,6 +59,48 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.41.0] — Phase 13 Task 1: verified contact targets on real neighbour surface
+
+**A deliberate numerical change to the morph's contact targets. The P4
+standin crown's morph and everything downstream of it move, and so do its
+export byte pins. Verified at `0.40.0` with the new code: across the whole
+golden suite and the server project, only the P4 standin crown chain moved
+(`crown-standin-morphing` and the P4 crown STL/PLY export pins), because its
+contacts now reach their targets. Every other geometry and journal-replay
+pin is BYTE-IDENTICAL. The acceptance `*-qc` pins and the server
+traceability golden advance because the QcReport embeds `kernelVersion` (and,
+for the standin, because its crown moved).**
+
+- **The contact-target root-find is verified** (ADR-026 Decision 1).
+  - The fixed-direction Newton steps (`newtonContactTarget`, unchanged) are
+    accepted only if `|s(T) + t| ≤ CONTACT_TARGET_TOLERANCE_MM` (1e-6 mm).
+  - Otherwise `CONTACT_PROJECTION_STEPS` (8) closest-point projection steps
+    move the target onto the `−t` level set. The step direction is the signed
+    distance's gradient, or the closest face's outward normal below
+    `CONTACT_GRADIENT_NOISE_MM` (1e-9 mm).
+  - Neither accepted (within the travel bound) ⇒ the contact is unreached
+    (`clampBound`), never an unflagged miss.
+- **A contact counts only on real neighbour surface** (Decision 2).
+  - New input `MorphContactInput.realTriangleCount`: a captured neighbour's
+    `capturedTriangleCount`.
+  - A target whose penetration only the capture's synthetic closure provides
+    is reported `targetOnSyntheticSurface`, and the contact gate fails
+    closed on it.
+- **Why the P4 standin moved.** Two old defects, both unflagged before:
+  - A contact vertex lying on the neighbour surface up to rounding: its
+    closest-point direction is 1e-15 mm of noise, Newton never moved, and
+    the contact stayed 20 µm off target. This was the coupling diagnostic's
+    mesial contact.
+  - A slowly converging fixed line: the standin's worst contact residual was
+    6.584 µm and is now 0.000 µm (`max-contact-residual`).
+- **Measured on real tooth 11.** The mesial contact's line grazed a corner of
+  the captured solid, 0.14 mm above its cervical cut, and drifted to
+  +45 µm unflagged. Its level-set target lies on the closure wall, so it is
+  now flagged as on synthetic surface (golden real lane). In the e2e
+  placement the mesial contact reaches its target on real surface, and the
+  distal contact has no verified target and is flagged unreached (120 µm).
+  The contact gate fails in both, for a stated reason.
+
 ## [0.40.0] — Phase 12 Task 2: the adaptive cervical ring
 
 **A new optional input. A fit that already met the bound is unchanged.

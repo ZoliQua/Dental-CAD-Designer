@@ -62,6 +62,8 @@ class FakePool {
   failResolveMorph = false;
   /** Also return a proximal contact from the morph (ADR-022 provenance tests). */
   withProximalContact = false;
+  /** The proximal contact's target lies on synthetic surface (ADR-026). */
+  proximalOnSynthetic = false;
   /** The extracted die's first coordinate (its hash is `region-<tag>`, so a
    * replay reproduces it unless the tag changes). */
   dieTag = 30;
@@ -180,9 +182,9 @@ class FakePool {
         return {
           ...tetra(4),
           contacts: [
-            { kind: 'antagonist', strength: antStrength, targetPenetrationMm: 0, achievedSignedDistanceMm: -0.01 * antStrength, contactResidualMm: 0.001, regionMinSignedDistanceMm: -0.02, regionMeanSignedDistanceMm: -0.01, regionRmsSignedDistanceMm: 0.01, facingVertexCount: 10, regionResidualMm: 0.001, clampBound: false },
+            { kind: 'antagonist', strength: antStrength, targetPenetrationMm: 0, achievedSignedDistanceMm: -0.01 * antStrength, contactResidualMm: 0.001, regionMinSignedDistanceMm: -0.02, regionMeanSignedDistanceMm: -0.01, regionRmsSignedDistanceMm: 0.01, facingVertexCount: 10, regionResidualMm: 0.001, clampBound: false, targetOnSyntheticSurface: false },
             ...(this.withProximalContact
-              ? [{ kind: 'proximalMesial', strength: 1, targetPenetrationMm: 0.02, achievedSignedDistanceMm: -0.02, contactResidualMm: 0.001, regionMinSignedDistanceMm: -0.02, regionMeanSignedDistanceMm: -0.01, regionRmsSignedDistanceMm: 0.01, facingVertexCount: 10, regionResidualMm: 0.001, clampBound: false }]
+              ? [{ kind: 'proximalMesial', strength: 1, targetPenetrationMm: 0.02, achievedSignedDistanceMm: -0.02, contactResidualMm: 0.001, regionMinSignedDistanceMm: -0.02, regionMeanSignedDistanceMm: -0.01, regionRmsSignedDistanceMm: 0.01, facingVertexCount: 10, regionResidualMm: 0.001, clampBound: false, targetOnSyntheticSurface: this.proximalOnSynthetic }]
               : []),
           ],
           maxContactResidualMm: 0.001,
@@ -612,6 +614,34 @@ describe('crownDesign controller — neighbour + antagonist capture (Phase 9 Tas
     expect(mesial.provenance).toBe('case');
     expect(mesial.neighbourWindowBandMm).toBe(0.25);
     expect(mesial.standInReason).toBeUndefined();
+  });
+
+  it('ADR-026: a captured side tells the morph how many of its triangles are the scan; a stand-in tells nothing', async () => {
+    addScan('upper-arch', 'upperJaw');
+    crownDesignEngine.start(restorationId);
+    await crownDesignEngine.captureNeighbour('mesial', [-3, 0, 1]);
+    await placeWithMorph();
+    const contacts = ([...fake.calls].reverse().find((c) => c.job === 'morphAnatomy')!.payload as { contacts: { kind: string; realTriangleCount?: number }[] }).contacts;
+    expect(contacts.find((c) => c.kind === 'proximalMesial')!.realTriangleCount).toBe(512);
+    expect(contacts.find((c) => c.kind === 'proximalDistal')!).not.toHaveProperty('realTriangleCount');
+    // Derived from the journaled capture: the anatomy op does not journal it again.
+    expect(JSON.stringify(lastOp('crown-anatomy')!.params)).not.toMatch(/realTriangleCount/);
+    // Not flagged: nothing extra is journaled, and nothing extra is exported.
+    expect(lastOp('crown-morph')!.params).not.toHaveProperty('syntheticSurfaceContacts');
+    const mesial = crownDesignEngine.exportQcContext(restorationId)!.contacts.find((c) => c.kind === 'proximalMesial')!;
+    expect(mesial).not.toHaveProperty('targetOnSyntheticSurface');
+  });
+
+  it('ADR-026: a contact on synthetic surface is journaled, shown, and sent to the server gate', async () => {
+    addScan('upper-arch', 'upperJaw');
+    crownDesignEngine.start(restorationId);
+    await crownDesignEngine.captureNeighbour('mesial', [-3, 0, 1]);
+    fake.proximalOnSynthetic = true;
+    await placeWithMorph();
+    expect(lastOp('crown-morph')!.params.syntheticSurfaceContacts).toEqual(['proximalMesial']);
+    expect(useCrownStore.getState().morph!.contacts.find((c) => c.kind === 'proximalMesial')!.targetOnSyntheticSurface).toBe(true);
+    const mesial = crownDesignEngine.exportQcContext(restorationId)!.contacts.find((c) => c.kind === 'proximalMesial')!;
+    expect(mesial.targetOnSyntheticSurface).toBe(true);
   });
 
   it('one side captured: the other stays a placeholder "not yet captured"', async () => {

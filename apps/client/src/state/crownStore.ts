@@ -148,6 +148,8 @@ export interface MorphContactReadout {
   achievedSignedDistanceMm: number;
   contactResidualMm: number;
   clampBound: boolean;
+  /** ADR-026 Decision 2: reached only against a capture's synthetic closure. */
+  targetOnSyntheticSurface: boolean;
 }
 
 export interface MorphSummary {

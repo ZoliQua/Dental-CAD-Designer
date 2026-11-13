@@ -55,7 +55,7 @@ const µm = (mm: number): string => `${(mm * 1000).toFixed(3)} µm`;
 // change (bump + changelog), never a silent regen (the WASM union is
 // manifoldVersion-guarded, the crown/cavity-acceptance precedent).
 // ---------------------------------------------------------------------------
-const EXPECTED_KERNEL_VERSION = '0.40.0';
+const EXPECTED_KERNEL_VERSION = '0.41.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 function installedManifoldVersion(): string {
   const pkg = JSON.parse(
@@ -157,7 +157,11 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // stage pin above BYTE-IDENTICAL (verified: the whole golden suite passes at 0.39.0
   // with the new code); hashQcReport tracks the embedded kernelVersion. Old hash:
   // b6612b1a1e7843f99bc7c44f9902b774b39f725aca0bf6ce11e85b1df8c3a4c8. See docs/CHANGELOG-kernel.md's [0.40.0] entry.
-  'bridge-fullContour-qc': '95084bc78324d70074575ab0a42be885cf0f301effd6220d5ecdfc2b36e9c421',
+  // Advanced 0.40.0 → 0.41.0 (Phase 13 Task 1): MECHANICAL, metadata-only — every geometry
+  // stage pin above BYTE-IDENTICAL (verified: the whole golden suite passes at 0.40.0 with the
+  // new code, except the P4 standin crown chain); hashQcReport tracks the embedded kernelVersion.
+  // Old hash: 95084bc78324d70074575ab0a42be885cf0f301effd6220d5ecdfc2b36e9c421. See docs/CHANGELOG-kernel.md's [0.41.0] entry.
+  'bridge-fullContour-qc': 'a7ffa10552ba48b6fdc04c334cf2a5318cc48836f323382596b6684e3112aff5',
   // --- framework chain (bridge.framework outputs the cut-back unit hashes) ---
   'bridge-framework-abutmentSurfaces':
     '1e1565f6e650bf24b7c54ca7456abfd9e535ffd11b41561278f3c392cf9bfda2|781ac6db8a515739137d04dc7a05418f8a7e78978e0d413de29f9dd8b619f36f',
@@ -229,7 +233,11 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // stage pin above BYTE-IDENTICAL (verified: the whole golden suite passes at 0.39.0
   // with the new code); hashQcReport tracks the embedded kernelVersion. Old hash:
   // 329d35a40f4cca5e392784e242188189181701f834db8b52c54c8eba5c116082. See docs/CHANGELOG-kernel.md's [0.40.0] entry.
-  'bridge-framework-qc': 'c1e1cb476c3b00010baeb70f9cf41d451c53eb5b0dd24d0f508dd05883f76e4c',
+  // Advanced 0.40.0 → 0.41.0 (Phase 13 Task 1): MECHANICAL, metadata-only — every geometry
+  // stage pin above BYTE-IDENTICAL (verified: the whole golden suite passes at 0.40.0 with the
+  // new code, except the P4 standin crown chain); hashQcReport tracks the embedded kernelVersion.
+  // Old hash: c1e1cb476c3b00010baeb70f9cf41d451c53eb5b0dd24d0f508dd05883f76e4c. See docs/CHANGELOG-kernel.md's [0.41.0] entry.
+  'bridge-framework-qc': '0451fe8a006f7c1d6a105824aadbdd0d6819c0c456725df529e76d0bb73e4ec8',
 };
 
 const FULL_GATE_ORDER = [

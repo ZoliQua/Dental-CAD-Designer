@@ -677,6 +677,9 @@ const contactResidualInputSchema = {
     contactResidualMm: { type: 'number' },
     regionResidualMm: { type: 'number' },
     clampBound: { type: 'boolean' },
+    // ADR-026 Decision 2: the target is reached only against a capture's
+    // synthetic closure — the gate fails closed (absent ⇒ false).
+    targetOnSyntheticSurface: { type: 'boolean' },
     // ADR-022: where the contacted geometry came from (absent ⇒ 'case'). The
     // gate fails closed on a non-case contact; the export route additionally
     // refuses a 'case' claim it cannot trace (export-route.ts).

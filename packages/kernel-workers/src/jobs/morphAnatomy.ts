@@ -52,6 +52,9 @@ export interface MorphAnatomyContactPayload {
   positions: Float64Array;
   indices: Uint32Array;
   targetPenetrationMm: number;
+  /** Kernel `MorphContactInput.realTriangleCount` (ADR-026 Decision 2): a
+   * captured neighbour's `capturedTriangleCount`. Absent ⇒ all real. */
+  realTriangleCount?: number;
 }
 
 export interface MorphAnatomyPayload {
@@ -93,6 +96,8 @@ export interface MorphContactResultPayload {
   /** True if this contact's root-find was CLAMPED (target unachieved) — a QC
    * warning, not a silent success. */
   clampBound: boolean;
+  /** Kernel `MorphContactResult.targetOnSyntheticSurface` (ADR-026). */
+  targetOnSyntheticSurface: boolean;
 }
 
 export interface ContactHeatmapPayload {
@@ -208,6 +213,7 @@ function solveAndPackage(
       facingVertexCount: c.facingVertexCount,
       regionResidualMm: c.regionResidualMm,
       clampBound: c.clampBound,
+      targetOnSyntheticSurface: c.targetOnSyntheticSurface,
     })),
     maxContactResidualMm: result.maxContactResidualMm,
     errorBoundMm: result.errorBoundMm,
@@ -244,6 +250,7 @@ export const morphAnatomyJob = async (payload: MorphAnatomyPayload, ctx: JobCont
     kind: c.kind,
     mesh: contactMeshes[i]!.mesh,
     targetPenetrationMm: c.targetPenetrationMm,
+    ...(c.realTriangleCount !== undefined ? { realTriangleCount: c.realTriangleCount } : {}),
   }));
 
   const plan = planAnatomyMorph({

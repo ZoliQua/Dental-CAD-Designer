@@ -59,8 +59,10 @@
 // construction — the signed distance's sign is EXACT on the required watertight
 // neighbour; see the pseudonormal-sign note on `signedDistanceToMesh`). Typical residual on the
 // synthetic analytic case is < 1 µm; on real curved/unsegmented neighbours it
-// is bounded by the fixed-iteration, CLAMPED root-find (a clamped, unachieved
-// contact is flagged in `clampedContacts`, never a silent success).
+// is bounded by the VERIFIED root-find (ADR-026): every accepted target is on
+// the −t level set to `CONTACT_TARGET_TOLERANCE_MM`; an unreached contact is
+// flagged in `clampedContacts`, and a target only synthetic neighbour surface
+// supports is flagged `targetOnSyntheticSurface` — never a silent success.
 //
 // Marginal seal: preservation is proven by TWO genuine (non-tautological)
 // measurements — the fitted field's displacement AT the confirmed margin
@@ -93,6 +95,13 @@ export interface MorphContactInput {
   /** Target signed penetration into `mesh`, mm (proximal: +proximalContact-
    * PenetrationMm; antagonist: occlusalContactMm). Positive = penetrate. */
   readonly targetPenetrationMm: number;
+  /** ADR-026 Decision 2: the first `realTriangleCount` triangles of `mesh`
+   * are real surface; the rest are synthetic (a captured neighbour's closure
+   * — `extractNeighbourRegion`'s `capturedTriangleCount`). A target whose
+   * penetration only synthetic surface provides is reported
+   * `targetOnSyntheticSurface`. Absent ⇒ every triangle is real. An integer
+   * in `[1, triangleCount]`. */
+  readonly realTriangleCount?: number;
 }
 
 export interface MorphOptions {
@@ -224,9 +233,12 @@ interface ContactPlan {
    * in `planAnatomyMorph`; requires `mesh` watertight). */
   readonly pseudonormals: Pseudonormals;
   readonly facingVertexIndices: Int32Array;
-  /** True if the root-find hit the `contactMaxExtraTravelMm` clamp (target not
-   * freely reachable) — surfaced as a QC warning. */
+  /** True if the contact target is UNREACHED — the verified root-find
+   * (ADR-026 Decision 1) accepted no target — surfaced as a QC warning. */
   readonly clampBound: boolean;
+  /** ADR-026 Decision 2: the accepted target's penetration is provided only
+   * by synthetic neighbour surface. */
+  readonly targetOnSyntheticSurface: boolean;
 }
 
 /** The geometry-dependent morph plan (from `planAnatomyMorph`) — reused across
@@ -284,11 +296,18 @@ export interface MorphContactResult {
    * anywhere in the facing region (≥ `contactResidualMm`, which is the single
    * contact vertex only). Feeds the conservative `errorBoundMm`. */
   readonly regionResidualMm: number;
-  /** True if the contact-target root-find was CLAMPED (`contactMaxExtraTravelMm`
-   * bound hit) — the desired penetration could NOT be freely reached, so this
-   * contact's fit is capped/unachieved. A downstream consumer / the UI must
-   * treat a clamped contact as a WARNING, not a silent success. */
+  /** True if the contact target is UNREACHED: neither the fixed-direction
+   * Newton target nor its level-set projection met the target penetration
+   * to `CONTACT_TARGET_TOLERANCE_MM` within the travel bound (ADR-026
+   * Decision 1). This contact's fit is unachieved. A downstream consumer /
+   * the UI must treat it as a WARNING, not a silent success. */
   readonly clampBound: boolean;
+  /** True if the target was reached, but only synthetic neighbour surface
+   * (a capture's closure, `MorphContactInput.realTriangleCount`) provides its
+   * penetration — the contact is against the capture window's cut, not the
+   * neighbour (ADR-026 Decision 2). The contact gate fails closed on it.
+   * False for a contact with strength 0. */
+  readonly targetOnSyntheticSurface: boolean;
 }
 
 export interface AnatomyMorphResult {
@@ -394,8 +413,26 @@ function signedDistanceToMesh(
 
 // --- contact-target root find (FIXED iterations — determinism) ---
 
+/** ADR-026 Decision 1: a contact target `T` is accepted only if
+ * `|s(T) + t| ≤` this (mm). A NUMERICAL tolerance of the root-find (1 nm,
+ * three orders below the 1 µm display resolution), not a clinical value. */
+export const CONTACT_TARGET_TOLERANCE_MM = 1e-6;
+
+/** ADR-026 Decision 1: the FIXED number of closest-point projection steps
+ * that finish a target the fixed-direction Newton steps did not converge.
+ * Not a tolerance loop — determinism. Numerical, not clinical. */
+export const CONTACT_PROJECTION_STEPS = 8;
+
+/** Below this distance (mm) from its closest point, a projection step's
+ * `x − cp(x)` is rounding noise (1e-15 mm on mm-scale coordinates), not a
+ * direction: the step uses the closest face's outward normal instead. A
+ * contact vertex lying on the neighbour surface hits this (ADR-026). 1 pm —
+ * far above the noise, far below any geometric feature. */
+export const CONTACT_GRADIENT_NOISE_MM = 1e-9;
+
 /**
- * Drive a target position `T` (starting at the contact vertex `center`) to the
+ * The fixed-direction Newton stage (Phase 4; unchanged by ADR-026): drive a
+ * target position `T` (starting at the contact vertex `center`) toward the
  * point where the other mesh's signed distance equals `−targetPenetration`,
  * with a FIXED number of steps along a FIXED approach direction.
  *
@@ -413,10 +450,11 @@ function signedDistanceToMesh(
  *    `contactMaxExtraTravelMm`) CAPS divergence on ill-formed neighbour patches
  *    so a bad contact surface yields a bounded residual, never a runaway.
  *
- * Not a tolerance loop — the count is fixed (`contactRefinementIterations`), so
- * the arithmetic is byte-reproducible.
+ * It does NOT verify its result: a line with no root (it grazes a convex
+ * corner of the neighbour) drifts within the clamp unflagged — the Phase 12
+ * defect `refineContactTarget` closes. Exported for its tests.
  */
-function refineContactTarget(
+export function newtonContactTarget(
   center: Vec3,
   mesh: IndexedMesh,
   bvh: Bvh,
@@ -425,7 +463,7 @@ function refineContactTarget(
   targetPen: number,
   iterations: number,
   maxExtraTravel: number,
-): { target: Vec3; clampBound: boolean } {
+): { target: Vec3; clampBound: boolean; initialSignedDistance: number } {
   const cp0 = closestPoint(mesh, bvh, center);
   let nx = cp0.point[0] - center[0];
   let ny = cp0.point[1] - center[1];
@@ -461,7 +499,77 @@ function refineContactTarget(
     }
   }
   const target: Vec3 = [center[0] + n0[0] * travel, center[1] + n0[1] * travel, center[2] + n0[2] * travel];
-  return { target, clampBound };
+  return { target, clampBound, initialSignedDistance: g0 };
+}
+
+/**
+ * The VERIFIED contact-target root-find (ADR-026 Decision 1).
+ *
+ *  1. The fixed-direction Newton stage (`newtonContactTarget`). Its target is
+ *     accepted if it is on the `−t` level set to `CONTACT_TARGET_TOLERANCE_MM`
+ *     (and not clamped) — then the result is bit-identical to Phase 4's.
+ *  2. Otherwise `CONTACT_PROJECTION_STEPS` closest-point projection steps from
+ *     the Newton target: `x ← x − (s(x) + t)·g(x)`, `g(x) = sign(s)·(x −
+ *     cp(x))/|x − cp(x)|` (the signed distance's gradient; the closest face's
+ *     outward normal when `x` is on the surface to `CONTACT_GRADIENT_NOISE_MM`,
+ *     where `x − cp(x)` is rounding noise). For a distance function the
+ *     step is exact within one closest-feature region, so it follows the
+ *     surface around a corner where a fixed line has no root.
+ *  3. The projected target is accepted under the same tolerance AND the travel
+ *     bound `|T − center| ≤ max(0, g₀) + t + maxExtraTravel`.
+ *  4. Neither accepted ⇒ UNREACHED: the Newton target with `clampBound: true`.
+ *
+ * `accepted === !clampBound`. Fixed step counts — byte-reproducible.
+ *
+ * @errorBound An accepted target is on the `−t` level set of the neighbour's
+ * signed distance to `CONTACT_TARGET_TOLERANCE_MM`; an unaccepted one is
+ * flagged, never reported as merely off target.
+ */
+export function refineContactTarget(
+  center: Vec3,
+  mesh: IndexedMesh,
+  bvh: Bvh,
+  pseudonormals: Pseudonormals,
+  kind: MorphContactKind,
+  targetPen: number,
+  iterations: number,
+  maxExtraTravel: number,
+): { target: Vec3; clampBound: boolean; accepted: boolean } {
+  const newton = newtonContactTarget(center, mesh, bvh, pseudonormals, kind, targetPen, iterations, maxExtraTravel);
+  if (!newton.clampBound) {
+    const s = signedDistanceToMesh(newton.target, mesh, bvh, pseudonormals, kind).signedDistance;
+    if (Math.abs(s + targetPen) <= CONTACT_TARGET_TOLERANCE_MM) {
+      return { target: newton.target, clampBound: false, accepted: true };
+    }
+  }
+  let x: Vec3 = newton.target;
+  for (let it = 0; it < CONTACT_PROJECTION_STEPS; it++) {
+    const scp = signedClosestPoint(mesh, bvh, pseudonormals, x);
+    const r = scp.signedDistance + targetPen;
+    let gx = x[0] - scp.point[0];
+    let gy = x[1] - scp.point[1];
+    let gz = x[2] - scp.point[2];
+    const gl = Math.hypot(gx, gy, gz);
+    if (gl > CONTACT_GRADIENT_NOISE_MM) {
+      const sg = scp.signedDistance < 0 ? -1 : 1;
+      gx = (sg * gx) / gl;
+      gy = (sg * gy) / gl;
+      gz = (sg * gz) / gl;
+    } else {
+      const o = signedDistanceToMesh(x, mesh, bvh, pseudonormals, kind).outwardNormal;
+      gx = o[0];
+      gy = o[1];
+      gz = o[2];
+    }
+    x = [x[0] - r * gx, x[1] - r * gy, x[2] - r * gz];
+  }
+  const sx = signedDistanceToMesh(x, mesh, bvh, pseudonormals, kind).signedDistance;
+  const travel = Math.hypot(x[0] - center[0], x[1] - center[1], x[2] - center[2]);
+  const travelBound = Math.max(0, newton.initialSignedDistance) + targetPen + maxExtraTravel;
+  if (Math.abs(sx + targetPen) <= CONTACT_TARGET_TOLERANCE_MM && travel <= travelBound) {
+    return { target: x, clampBound: false, accepted: true };
+  }
+  return { target: newton.target, clampBound: true, accepted: false };
 }
 
 function minDistanceToLoop(px: number, py: number, pz: number, loop: readonly Vec3[]): number {
@@ -522,6 +630,13 @@ export function planAnatomyMorph(input: AnatomyMorphInput): AnatomyMorphPlan {
   const contactVertexSet = new Set<number>();
   for (const contact of input.contacts) {
     if (contact.mesh.indices.length === 0) throw new MorphContactMeshError(contact.kind);
+    const triangleCount = contact.mesh.indices.length / 3;
+    const realCount = contact.realTriangleCount ?? triangleCount;
+    if (!Number.isInteger(realCount) || realCount < 1 || realCount > triangleCount) {
+      throw new RangeError(
+        `planAnatomyMorph: contact "${contact.kind}" realTriangleCount ${realCount} is outside [1, ${triangleCount}]`,
+      );
+    }
     const bvh = buildBvh(contact.mesh);
     // EXACT inside/outside sign source — rejects a non-watertight neighbour
     // (`NonWatertightMeshError`) rather than measuring against an ill-defined
@@ -542,7 +657,7 @@ export function planAnatomyMorph(input: AnatomyMorphInput): AnatomyMorphPlan {
       }
     }
     const center: Vec3 = [positions[bestIdx * 3]!, positions[bestIdx * 3 + 1]!, positions[bestIdx * 3 + 2]!];
-    const { target, clampBound } = refineContactTarget(
+    const { target, clampBound, accepted } = refineContactTarget(
       center,
       contact.mesh,
       bvh,
@@ -553,6 +668,17 @@ export function planAnatomyMorph(input: AnatomyMorphInput): AnatomyMorphPlan {
       options.contactMaxExtraTravelMm,
     );
     const fullDisplacement: Vec3 = [target[0] - center[0], target[1] - center[1], target[2] - center[2]];
+    // ADR-026 Decision 2: real surface must provide the accepted target's
+    // penetration — its distance to the real triangles alone is at most
+    // |s(T)| (+ the tolerance). Equidistant real and synthetic faces count as
+    // real (the target does penetrate the real face by t): no tie-break.
+    let targetOnSyntheticSurface = false;
+    if (accepted && realCount < triangleCount) {
+      const realMesh: IndexedMesh = { positions: contact.mesh.positions, indices: contact.mesh.indices.subarray(0, realCount * 3) };
+      const dReal = closestPoint(realMesh, buildBvh(realMesh), target).distance;
+      const sT = signedDistanceToMesh(target, contact.mesh, bvh, pseudonormals, contact.kind).signedDistance;
+      targetOnSyntheticSurface = dReal > Math.abs(sT) + CONTACT_TARGET_TOLERANCE_MM;
+    }
 
     // Facing region: tooth vertices within contactFacingRadiusMm of the center.
     const facing: number[] = [];
@@ -575,6 +701,7 @@ export function planAnatomyMorph(input: AnatomyMorphInput): AnatomyMorphPlan {
       pseudonormals,
       facingVertexIndices: Int32Array.from(facing),
       clampBound,
+      targetOnSyntheticSurface,
     });
   }
 
@@ -769,6 +896,7 @@ export function solveAnatomyMorph(plan: AnatomyMorphPlan, strengths?: MorphStren
       facingVertexCount: fCount,
       regionResidualMm: regionResidual,
       clampBound: c.clampBound && perContactStrength[ci]! > 0,
+      targetOnSyntheticSurface: c.targetOnSyntheticSurface && perContactStrength[ci]! > 0,
     });
   }
 

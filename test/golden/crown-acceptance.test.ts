@@ -105,7 +105,7 @@ const µm = (mm: number): string => `${(mm * 1000).toFixed(3)} µm`;
 // proof this qc diff is the version string alone, not numerical drift (the same
 // mechanical churn documented at 0.16.0-0.19.0). See docs/CHANGELOG-kernel.md's
 // [0.20.0] entry.
-const EXPECTED_KERNEL_VERSION = '0.40.0';
+const EXPECTED_KERNEL_VERSION = '0.41.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 function installedManifoldVersion(): string {
   const pkg = JSON.parse(readFileSync(join(repoRoot, 'node_modules', 'manifold-3d', 'package.json'), 'utf8')) as {
@@ -135,9 +135,24 @@ function installedManifoldVersion(): string {
 const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   'crown-standin-innerSurface': '5b6015d53c597672cd937f4bec23129336c910d679ecf122aa9f1290b86020f3',
   'crown-standin-anatomyPlacement': '86ce5e7328e5cd456ed9199f4fb4ea6258f9c33692529e5678346acecc1fe1c0',
-  'crown-standin-morphing': 'd17295e303d4fe1dbe4e07eab32e75f14a2f6254c6a64b875b0118efec913e0c',
-  'crown-standin-shell': 'c472c6ea74c84b741fd47d925241c2c8d21d3caff8fb640d4877e724e49e5764',
-  'crown-standin-freeform': 'f48f898de08bb7d1e4bc6a89758ec4d83339bd50040bd7f92010d1e98647d833',
+  // Changed 0.40.0 → 0.41.0 (Phase 13 Task 1, ADR-026): DELIBERATE, numerical — the morph's
+  // contact targets are now verified on the −t level set; the standin's worst contact residual
+  // was 6.584 µm (unflagged) and is now 0.000 µm, so the morphed outer and every stage downstream
+  // of it moved. Verified at 0.40.0 with the new code: only this chain (and the P4 export pins)
+  // moved. Old hash: d17295e303d4fe1dbe4e07eab32e75f14a2f6254c6a64b875b0118efec913e0c. See docs/CHANGELOG-kernel.md's [0.41.0] entry.
+  'crown-standin-morphing': 'd1e69bc6d3ae0c8dc82f55a93f879239869070024a649ebd1a2c8233658cdd5b',
+  // Changed 0.40.0 → 0.41.0 (Phase 13 Task 1, ADR-026): DELIBERATE, numerical — the morph's
+  // contact targets are now verified on the −t level set; the standin's worst contact residual
+  // was 6.584 µm (unflagged) and is now 0.000 µm, so the morphed outer and every stage downstream
+  // of it moved. Verified at 0.40.0 with the new code: only this chain (and the P4 export pins)
+  // moved. Old hash: c472c6ea74c84b741fd47d925241c2c8d21d3caff8fb640d4877e724e49e5764. See docs/CHANGELOG-kernel.md's [0.41.0] entry.
+  'crown-standin-shell': '6f4a75e1c4fa05c4119b5408f2f81aa58c4f6af8223b5571cb08d828c279607c',
+  // Changed 0.40.0 → 0.41.0 (Phase 13 Task 1, ADR-026): DELIBERATE, numerical — the morph's
+  // contact targets are now verified on the −t level set; the standin's worst contact residual
+  // was 6.584 µm (unflagged) and is now 0.000 µm, so the morphed outer and every stage downstream
+  // of it moved. Verified at 0.40.0 with the new code: only this chain (and the P4 export pins)
+  // moved. Old hash: f48f898de08bb7d1e4bc6a89758ec4d83339bd50040bd7f92010d1e98647d833. See docs/CHANGELOG-kernel.md's [0.41.0] entry.
+  'crown-standin-freeform': 'ab9ac5bf0f6bdfc9088c560d2f07712e1c942d175ab23b46ffba258879638d19',
   // Changed at 0.20.0: version-string-only (QcReport embeds kernelVersion —
   // see the EXPECTED_KERNEL_VERSION comment above; geometry pins unchanged).
   //
@@ -236,7 +251,10 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // stage pin above BYTE-IDENTICAL (verified: the whole golden suite passes at 0.39.0
   // with the new code); hashQcReport tracks the embedded kernelVersion. Old hash:
   // 66cb9fb735bb42fc89e53474c608db09739ebe6bd640efedb12763f4946266dd. See docs/CHANGELOG-kernel.md's [0.40.0] entry.
-  'crown-standin-qc': '78b6fe55387ab289a9bc9da3d01f61f986766e3efe683867eb30fc96caf60e2a',
+  // Advanced 0.40.0 → 0.41.0 (Phase 13 Task 1): DELIBERATE — the standin crown moved (its
+  // contacts now reach target: worst residual 6.584 → 0.000 µm), and hashQcReport embeds the
+  // gate values and kernelVersion. Old hash: 78b6fe55387ab289a9bc9da3d01f61f986766e3efe683867eb30fc96caf60e2a. See docs/CHANGELOG-kernel.md's [0.41.0] entry.
+  'crown-standin-qc': '1c7bb668ce74fbffdb10b2dfcf1a0b24d6744fec073775a3fe84ff7e85de8c8b',
 };
 
 const GATE_ORDER = ['watertight', 'manifold', 'selfIntersection', 'minWallThickness', 'marginFit', 'seating', 'connectorCrossSection', 'contact'];

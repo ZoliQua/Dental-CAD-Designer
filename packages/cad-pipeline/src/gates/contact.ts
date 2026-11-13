@@ -64,8 +64,14 @@ export interface ContactResidualInput {
   readonly contactResidualMm: number;
   /** Worst region over-penetration residual (mm). */
   readonly regionResidualMm: number;
-  /** True iff this contact's root-find hit the travel clamp (target unreached). */
+  /** True iff this contact's target was unreached (kernel morph: the
+   * verified root-find accepted no target, ADR-026 Decision 1). */
   readonly clampBound: boolean;
+  /** True iff the target was reached only against synthetic neighbour surface
+   * (a capture's closure, ADR-026 Decision 2) — the contact is with the
+   * capture window's cut, not with the neighbour. Fails the gate closed.
+   * Absent ⇒ false (journals before kernel 0.41.0). */
+  readonly targetOnSyntheticSurface?: boolean;
   /** Where the contacted geometry (neighbour / antagonist) came from (ADR-022).
    * Absent ⇒ `'case'`. Any non-`case` contact fails the gate closed. */
   readonly provenance?: GeometryProvenance;
@@ -149,6 +155,7 @@ export function contactGate(input: ContactGateInput): QcGateResult {
   let worst = 0;
   let worstKind = input.contacts[0]!.kind;
   const clamped: string[] = [];
+  const synthetic: string[] = [];
   for (const c of input.contacts) {
     // The conservative per-contact residual PLUS the heal remesh shift — the
     // true post-heal deviation bound the kernel doc requires the consumer to sum.
@@ -158,13 +165,20 @@ export function contactGate(input: ContactGateInput): QcGateResult {
       worstKind = c.kind;
     }
     if (c.clampBound) clamped.push(c.kind);
+    if (c.targetOnSyntheticSurface === true) synthetic.push(c.kind);
   }
 
   const withinTolerance = worst <= tolerance;
-  const passed = !input.contactClampWarning && clamped.length === 0 && withinTolerance;
+  const passed = !input.contactClampWarning && clamped.length === 0 && synthetic.length === 0 && withinTolerance;
 
   const um = (mm: number): string => `${(mm * 1000).toFixed(1)} µm`;
   const clampNote = clamped.length > 0 ? ` | CLAMP WARNING: contact(s) [${clamped.join(', ')}] did NOT reach target (unachieved)` : '';
+  // ADR-026 Decision 2 — present only when flagged (byte-identical otherwise).
+  const syntheticNote =
+    synthetic.length > 0
+      ? ` | SYNTHETIC SURFACE: contact(s) [${synthetic.join(', ')}] reach their target only against the capture's synthetic closure — ` +
+        'the capture window excludes the neighbour surface there (re-capture the neighbour)'
+      : '';
   // Disclose the summed heal bound ONLY when it is non-zero — so an un-healed
   // restoration's message is byte-identical to the pre-heal gate.
   const healNote = healBound > 0 ? ` (incl. +${um(healBound)} morph→shell heal shift)` : '';
@@ -179,7 +193,7 @@ export function contactGate(input: ContactGateInput): QcGateResult {
     (passed
       ? `contacts achieved — worst residual ${um(worst)} (${worstKind})${healNote} ≤ ${um(tolerance)} tolerance; no clamped contacts`
       : `contact residual ${um(worst)} (${worstKind})${healNote} ${withinTolerance ? 'within tolerance but' : `exceeds ${um(tolerance)} tolerance;`} ` +
-        `${clamped.length > 0 ? 'one or more contacts were not achieved' : 'contact off target'}${clampNote}`) + windowNote;
+        `${clamped.length > 0 || synthetic.length > 0 ? 'one or more contacts were not achieved' : 'contact off target'}${clampNote}${syntheticNote}`) + windowNote;
 
   const measured: QcGateResult = {
     gate: CONTACT_GATE_NAME,

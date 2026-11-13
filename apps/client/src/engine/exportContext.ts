@@ -38,6 +38,9 @@ export interface ExportContactJson {
   readonly contactResidualMm: number;
   readonly regionResidualMm: number;
   readonly clampBound: boolean;
+  /** ADR-026 Decision 2 — reached only against a capture's synthetic
+   * closure (present only when true). The server's gate fails closed on it. */
+  readonly targetOnSyntheticSurface?: boolean;
   /** ADR-022 — the contacted geometry's provenance (absent ⇒ `'case'`). The
    * server re-runs the gate with it and refuses an untraceable `case` claim. */
   readonly provenance?: GeometryProvenance;
