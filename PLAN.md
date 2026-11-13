@@ -277,6 +277,16 @@ The core pipeline. Order of stages is fixed; each stage's output is journaled.
 
 **Acceptance:** on real `arch-case-01` tooth 11 the fitted library incisor is placed within 50 µm (or the measured verdict is documented); the outline height is continuous and equals each margin point's own height at its azimuth; fits that already met the bound are byte-identical; the real crown's later gates report honestly; pins move only under kernel 0.39.0 and 0.40.0. Detailed plan: [`docs/plans/phase-12-continuous-outline-and-adaptive-ring.md`](docs/plans/phase-12-continuous-outline-and-adaptive-ring.md).
 
+### Phase 13 — Verified contacts and fit headroom on the real crown (post-MVP, [ADR-026](docs/adr/026-verified-contact-targets-and-ring-split-tolerance.md))
+
+- The morph's contact targets are verified on the target level set, or flagged; a contact provided only by a capture's synthetic closure fails the contact gate
+- The cervical fit splits its ring to half the bound, for headroom under the unchanged bound
+- The real crown's self-intersection, located and fixed
+
+**Status:** complete (2026-11-13). Task 1 (kernel 0.41.0): the contact root-find finishes by level-set projection and verifies its target to 1e-6 mm, so a miss is always flagged. A target only a capture's closure supports is flagged and fails the gate. On real tooth 11 the mesial contact's 65 µm unflagged drift becomes a stated failure, and the P4 standin's contacts reach target (6.6 µm → 0). Task 2 (kernel 0.42.0): the fit splits to 25 µm, so real tooth 11 fits at 23.8 µm (golden) and 24.9 µm (e2e) against 50 µm. Task 3 (kernel 0.43.0): the shell's margin seam paired its rims by index and folded through the intaglio when a rim was sampled non-uniformly. It now pairs them by azimuth, and real tooth 11 has no self-intersection in the golden or the e2e. QC on the unprepared tooth fails wall, seating and contact, each for a stated, asserted reason. Open items: [docs/demos/phase-13.md](docs/demos/phase-13.md).
+
+**Acceptance:** no contact misses silently; converged contacts are byte-identical (the exceptions measured and named); real tooth 11 fits with ≤ 25 µm; the self-intersection is located and resolved; the real crown's gates report honestly; pins move only under 0.41.0–0.43.0, each proven. Detailed plan: [`docs/plans/phase-13-verified-contacts-and-fit-headroom.md`](docs/plans/phase-13-verified-contacts-and-fit-headroom.md).
+
 ---
 
 ## 5. Repository Layout

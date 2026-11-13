@@ -182,6 +182,25 @@ The same as Phase 12:
   measured outcomes.
 - Push only when the user asks.
 
+**Landed (2026-11-13).**
+- **Task 1 (kernel 0.41.0).** The plan expected no pinned lane to move. The
+  measurement refuted that: the P4 standin's contacts had not converged
+  (6.584 µm unflagged), and a contact vertex lying on the neighbour surface
+  never moved. Both are named in the changelog.
+- **Task 2 (kernel 0.42.0).** As planned.
+- **Task 3 (kernel 0.43.0).** Outcome (a): a kernel defect, the seam's index
+  pairing, fixed by azimuth pairing.
+  - The gate-message part attribution was not built, because manifold-3d's
+    cleanup reorders and quantizes the shell (ADR-026, "Found during
+    implementation").
+  - The e2e test hook `getCrownMorphSummary` was added instead, to assert
+    the contact verdict.
+- The full local chain is green:
+  - `npm test`: 375 files, 3974 tests;
+  - e2e: 70 passed, 1 env-gated skip;
+  - the real golden lanes;
+  - lint, typecheck and build.
+
 ## Review focus
 
 1. **A neighbour whose captured surface is a thin sliver.** The level set at

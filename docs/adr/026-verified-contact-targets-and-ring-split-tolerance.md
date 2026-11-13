@@ -1,6 +1,7 @@
 # ADR-026 — Verified contact targets on real neighbour surface; a ring split tolerance below the fit bound
 
-**Status:** Proposed (2026-11-13)
+**Status:** Accepted (2026-11-13; implemented by Phase 13 — measured
+outcomes in docs/demos/phase-13.md)
 **Date:** 2026-11
 **Relates:** ADR-007 (morph–shell coupling), ADR-022 (case provenance; the
 captured neighbour), ADR-025 (the adaptive cervical ring, which Decision 3
