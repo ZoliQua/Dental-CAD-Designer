@@ -453,8 +453,14 @@
  * occlusal level, lifted to the intaglio floor (every intaglio point covered
  * by the occlusal minimum along the axis), and reports the lift. Without the
  * datum every path is unchanged. See docs/CHANGELOG-kernel.md's `[0.44.0]`
- * entry. */
-export const KERNEL_VERSION = '0.44.0';
+ * entry.
+ *
+ * 0.45.0 (Phase 14 Task 2, ADR-027 Decision 3): `MorphContactInput.heightBand`
+ * (opt-in): the contact vertex is the nearest one whose fractional height
+ * above the margin lies in the profile's proximal contact band; an empty band
+ * is `MorphEmptyContactBandError`. Without the band every path is unchanged.
+ * See docs/CHANGELOG-kernel.md's `[0.45.0]` entry. */
+export const KERNEL_VERSION = '0.45.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export { detSin, detCos, detAtan, detAtan2, detAsin, detAcos, detExp, detPow } from './math/detMath.ts';
@@ -816,6 +822,7 @@ export {
   morphAnatomy,
   DEFAULT_MORPH_OPTIONS,
   MorphContactMeshError,
+  MorphEmptyContactBandError,
   MorphNoAnchorsError,
   MorphDegenerateNeighborTriangleError,
   fitCervicalRing,
@@ -842,6 +849,7 @@ export {
   type OcclusoGingivalDatumReport,
   type MorphContactKind,
   type MorphContactInput,
+  type MorphContactHeightBand,
   type MorphOptions,
   type AnatomyMorphInput,
   type AnatomyMorphPlan,

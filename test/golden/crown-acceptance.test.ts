@@ -105,7 +105,7 @@ const µm = (mm: number): string => `${(mm * 1000).toFixed(3)} µm`;
 // proof this qc diff is the version string alone, not numerical drift (the same
 // mechanical churn documented at 0.16.0-0.19.0). See docs/CHANGELOG-kernel.md's
 // [0.20.0] entry.
-const EXPECTED_KERNEL_VERSION = '0.44.0';
+const EXPECTED_KERNEL_VERSION = '0.45.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 function installedManifoldVersion(): string {
   const pkg = JSON.parse(readFileSync(join(repoRoot, 'node_modules', 'manifold-3d', 'package.json'), 'utf8')) as {
@@ -272,7 +272,10 @@ const PINNED_STAGE_HASHES: Readonly<Record<string, string>> = {
   // Advanced 0.43.0 → 0.44.0 (Phase 14 Task 1): MECHANICAL, metadata-only — every geometry
   // stage is byte-identical (verified at 0.43.0 with the new code); the QC report embeds
   // kernelVersion. Old hash: 212f98980433b91e688d45e866ac3ba06f512a7732dd0837289c7bb31dfd9fe6. See docs/CHANGELOG-kernel.md's [0.44.0] entry.
-  'crown-standin-qc': 'b8b3fdcc3306fbc7be070c998a84e088a2cc246a6d747e9e974e319a90d963eb',
+  // Advanced 0.44.0 → 0.45.0 (Phase 14 Task 2): MECHANICAL, metadata-only — every geometry
+  // stage is byte-identical (verified at 0.44.0 with the new code); the QC report embeds
+  // kernelVersion. Old hash: b8b3fdcc3306fbc7be070c998a84e088a2cc246a6d747e9e974e319a90d963eb. See docs/CHANGELOG-kernel.md's [0.45.0] entry.
+  'crown-standin-qc': '581670fd040b383beb69aca9fa38a915efc7ae15f3eff66980f42d1eef984d78',
 };
 
 const GATE_ORDER = ['watertight', 'manifold', 'selfIntersection', 'minWallThickness', 'marginFit', 'seating', 'connectorCrossSection', 'contact'];

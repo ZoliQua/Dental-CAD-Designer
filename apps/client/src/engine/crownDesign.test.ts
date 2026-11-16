@@ -64,6 +64,8 @@ class FakePool {
   withProximalContact = false;
   /** The proximal contact's target lies on synthetic surface (ADR-026). */
   proximalOnSynthetic = false;
+  /** ADR-027: the placement reports a uniform height (no datum set it). */
+  placeUniform = false;
   /** The extracted die's first coordinate (its hash is `region-<tag>`, so a
    * replay reproduces it unless the tag changes). */
   dieTag = 30;
@@ -176,7 +178,7 @@ class FakePool {
           transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], ...tetra(3), originMm: [0, 0, 0], mesialDistal: [1, 0, 0], buccoLingual: [0, 1, 0], occlusoGingival: [0, 0, 1], scaleMesialDistal: 1.1, scaleBuccoLingual: 1.0, scaleOcclusoGingival: 0.9, nativeMesialDistalWidthMm: 2, nativeOcclusoGingivalHeightMm: 4, targetMesialDistalWidthMm: 2.2, targetOcclusoGingivalHeightMm: 3.6, usedProximalGap: true, antagonistUsed: !withDatum, occlusoGingivalReoriented: false,
           occlusoGingivalDatum: withDatum
             ? { source: 'neighbours', neighbourLevelMm: 3, floorHeightMm: 3.4, occlusalReductionShortfallMm: 0.4 }
-            : { source: 'antagonist', neighbourLevelMm: null, floorHeightMm: null, occlusalReductionShortfallMm: 0 },
+            : { source: this.placeUniform ? 'uniform' : 'antagonist', neighbourLevelMm: null, floorHeightMm: null, occlusalReductionShortfallMm: 0 },
         };
       }
       case 'morphAnatomy':
@@ -639,6 +641,31 @@ describe('crownDesign controller — neighbour + antagonist capture (Phase 9 Tas
     expect(lastOp('crown-morph')!.params).not.toHaveProperty('syntheticSurfaceContacts');
     const mesial = crownDesignEngine.exportQcContext(restorationId)!.contacts.find((c) => c.kind === 'proximalMesial')!;
     expect(mesial).not.toHaveProperty('targetOnSyntheticSurface');
+  });
+
+  it("ADR-027: each proximal contact carries the tooth's height band (anterior for 11); the band is journaled with the morph", async () => {
+    addScan('upper-arch', 'upperJaw');
+    crownDesignEngine.start(restorationId);
+    await crownDesignEngine.captureNeighbour('mesial', [-3, 0, 1]);
+    await placeWithMorph();
+    const contacts = ([...fake.calls].reverse().find((c) => c.job === 'morphAnatomy')!.payload as {
+      contacts: { kind: string; heightBand?: { axis: number[]; minFraction: number; maxFraction: number } }[];
+    }).contacts;
+    for (const kind of ['proximalMesial', 'proximalDistal']) {
+      expect(contacts.find((c) => c.kind === kind)!.heightBand).toEqual({ axis: [0, 0, 1], minFraction: 0.6, maxFraction: 0.95 });
+    }
+    expect(contacts.find((c) => c.kind === 'antagonist')?.heightBand).toBeUndefined();
+    expect(lastOp('crown-morph')!.params.contactHeightBand).toEqual([0.6, 0.95]);
+  });
+
+  it('ADR-027: with no datum setting the height (uniform), no band is passed or journaled — the nearest vertex, as before', async () => {
+    addScan('upper-arch', 'upperJaw');
+    crownDesignEngine.start(restorationId);
+    fake.placeUniform = true;
+    await placeWithMorph();
+    const contacts = ([...fake.calls].reverse().find((c) => c.job === 'morphAnatomy')!.payload as { contacts: object[] }).contacts;
+    for (const c of contacts) expect(c).not.toHaveProperty('heightBand');
+    expect(lastOp('crown-morph')!.params).not.toHaveProperty('contactHeightBand');
   });
 
   it('ADR-026: a contact on synthetic surface is journaled, shown, and sent to the server gate', async () => {

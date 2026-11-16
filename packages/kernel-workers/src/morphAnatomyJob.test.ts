@@ -96,6 +96,23 @@ describe('morphAnatomyJob', () => {
     expect(progress).toHaveBeenCalledWith(1);
   });
 
+  it('ADR-027: passes a contact height band through (a band above the nearest ring moves the contact; an empty band throws)', async () => {
+    const withBand = (planId: string, minFraction: number, maxFraction: number): MorphAnatomyPayload => {
+      const p = basePayload({ planId });
+      return {
+        ...p,
+        contacts: p.contacts.map((c) => (c.kind === 'proximalDistal' ? { ...c, heightBand: { axis: [0, 0, 1], minFraction, maxFraction } } : c)),
+      };
+    };
+    const without = await morphAnatomyJob(basePayload({ planId: 'no-band' }), NOOP_CTX);
+    // The distal face spans z ∈ [2.3, 4.7]: without a band the z = 2.5 ring
+    // (lowest index) is the contact; [0.8, 1] puts it at z ≥ 4.
+    const banded = await morphAnatomyJob(withBand('band', 0.8, 1), NOOP_CTX);
+    expect(Array.from(banded.positions)).not.toEqual(Array.from(without.positions));
+    expect(banded.contacts.find((c) => c.kind === 'proximalDistal')!.achievedSignedDistanceMm).toBeCloseTo(-0.02, 4);
+    await expect(morphAnatomyJob(withBand('empty', 0.91, 0.99), NOOP_CTX)).rejects.toMatchObject({ name: 'MorphEmptyContactBandError' });
+  });
+
   it('holds the fixed vertices exactly (Phase 10 Task 5: a fitted cervical ring)', async () => {
     const ring = Array.from({ length: 24 }, (_, s) => 2 * 24 + s);
     const placed = basePayload().placedPositions;

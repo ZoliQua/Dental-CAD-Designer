@@ -123,9 +123,13 @@ does not truncate them. That is a property of this capture, not a guarantee.
   - `PROXIMAL_CONTACT_BAND_POSTERIOR` = [0.45, 0.90] (the occlusal and
     middle thirds' junction).
   - Both are documented clinical placeholders in `clinical-profiles`.
-- The band rides on `MorphContactInput.heightBand?`: the margin origin, the
-  axis, the crown height and the fraction pair. Absent means today's global
-  nearest vertex, bit for bit.
+- The band rides on `MorphContactInput.heightBand?`: the axis and the
+  fraction pair. The kernel measures heights from the margin loop's vertex
+  centroid, as a fraction of the placed tooth's highest vertex. Absent means
+  today's global nearest vertex, bit for bit.
+- The engine passes the band only when a datum set the crown's height (an
+  antagonist, or the neighbours under Decision 1). A fraction of an
+  unanchored height locates nothing (see "Found during implementation").
 - An empty band (no vertex) is a `RangeError` before any root-find. It
   cannot happen on a placed crown, whose height runs from 0 to 1.
 - Whether the banded contact reaches real neighbour surface is measured on
@@ -145,3 +149,26 @@ does not truncate them. That is a property of this capture, not a guarantee.
 - The real tooth 11 is expected to report a shortfall of about the intaglio
   top minus the neighbour level, around 1.4 mm. That is the true clinical
   message for an unprepared tooth.
+
+## Found during implementation (Phase 14)
+
+- **The floor covers every intaglio point, not only the apex.** An apex-only
+  floor let the die pierce the premolar's central fossa and the incisor's
+  incisal third: 687 and 1159 self-intersecting face pairs. Decision 2
+  records the covering floor. On the synthetic open-arch die it lifts the
+  premolar 4.48 mm and the incisor 7.13 mm above the neighbours. That is
+  the true message for a flat 5.5 mm preparation under these anatomies.
+- **The band needs an anchored height.**
+  - In the e2e placement the neighbour datum falls back: a neighbour's
+    highest captured point lies within its capture ball's border band. The
+    crown then keeps the uniform height, about twice the neighbours'.
+  - There the band placed the mesial contact vertex several millimetres
+    from 21. The morph closed the gap with a bulge that self-intersected.
+  - So the engine applies the band only when the height is anchored, and
+    the e2e verdict stays Phase 13's.
+  - Limiting how far a contact may be morphed is a separate, open question.
+- **Real tooth 11 (golden).** The neighbour level is 4.54 mm. Covering the
+  unprepared tooth lifts the crown to 8.93 mm (11.68 mm before), a 4.40 mm
+  shortfall. Both contacts lie in the anterior band, on 21's and 12's real
+  surface, verified to 0.0 µm. The contact gate passes. Only the wall and
+  seating gates fail, because the tooth is unprepared.

@@ -91,3 +91,36 @@ export const CERVICAL_FIT_MAX_RESIDUAL_MM = 0.05;
  * the bound and the `fitOverBound` refusal are unchanged.
  */
 export const CERVICAL_RING_SPLIT_TOLERANCE_MM = 0.025;
+
+/**
+ * The proximal contact height band of an ANTERIOR tooth (incisors and
+ * canines, FDI x1–x3), as fractions of the crown's height above its margin
+ * (ADR-027 Decision 3): [0.60, 0.95]. Anterior proximal contacts lie in the
+ * incisal third, the distal ones of the laterals and canines at its junction
+ * with the middle third. The upper bound keeps the contact off the incisal
+ * edge itself. Documented clinical PLACEHOLDER (textbook anatomy), to be
+ * refined per tooth type.
+ */
+export const PROXIMAL_CONTACT_BAND_ANTERIOR: readonly [number, number] = [0.6, 0.95];
+
+/**
+ * The proximal contact height band of a POSTERIOR tooth (premolars and
+ * molars, FDI x4–x8), as fractions of the crown's height above its margin
+ * (ADR-027 Decision 3): [0.45, 0.90]. Posterior proximal contacts lie at
+ * the junction of the occlusal and middle thirds, lower on the molars'
+ * distal surfaces. The upper bound keeps the contact below the marginal
+ * ridge. Documented clinical PLACEHOLDER (textbook anatomy).
+ */
+export const PROXIMAL_CONTACT_BAND_POSTERIOR: readonly [number, number] = [0.45, 0.9];
+
+/** The proximal contact height band for an FDI tooth (11–48): anterior for
+ * x1–x3, posterior for x4–x8.
+ * @throws {RangeError} for a number that is not an FDI permanent tooth. */
+export function proximalContactBand(fdi: number): readonly [number, number] {
+  const quadrant = Math.floor(fdi / 10);
+  const position = fdi % 10;
+  if (!Number.isInteger(fdi) || quadrant < 1 || quadrant > 4 || position < 1 || position > 8) {
+    throw new RangeError(`proximalContactBand: ${fdi} is not an FDI permanent tooth (11–48)`);
+  }
+  return position <= 3 ? PROXIMAL_CONTACT_BAND_ANTERIOR : PROXIMAL_CONTACT_BAND_POSTERIOR;
+}

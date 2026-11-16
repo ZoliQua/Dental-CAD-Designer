@@ -37,6 +37,7 @@ import {
   closestPointBatch,
   type AnatomyMorphPlan,
   type IndexedMesh,
+  type MorphContactHeightBand,
   type MorphContactInput,
   type MorphContactKind,
   type MorphOptions,
@@ -55,6 +56,9 @@ export interface MorphAnatomyContactPayload {
   /** Kernel `MorphContactInput.realTriangleCount` (ADR-026 Decision 2): a
    * captured neighbour's `capturedTriangleCount`. Absent ⇒ all real. */
   realTriangleCount?: number;
+  /** Kernel `MorphContactInput.heightBand` (ADR-027 Decision 3): the
+   * profile's proximal contact band. Absent ⇒ every vertex is eligible. */
+  heightBand?: MorphContactHeightBand;
 }
 
 export interface MorphAnatomyPayload {
@@ -251,6 +255,7 @@ export const morphAnatomyJob = async (payload: MorphAnatomyPayload, ctx: JobCont
     mesh: contactMeshes[i]!.mesh,
     targetPenetrationMm: c.targetPenetrationMm,
     ...(c.realTriangleCount !== undefined ? { realTriangleCount: c.realTriangleCount } : {}),
+    ...(c.heightBand !== undefined ? { heightBand: c.heightBand } : {}),
   }));
 
   const plan = planAnatomyMorph({

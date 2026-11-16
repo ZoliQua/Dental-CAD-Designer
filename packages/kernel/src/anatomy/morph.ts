@@ -102,6 +102,33 @@ export interface MorphContactInput {
    * `targetOnSyntheticSurface`. Absent ⇒ every triangle is real. An integer
    * in `[1, triangleCount]`. */
   readonly realTriangleCount?: number;
+  /** ADR-027 Decision 3: the contact vertex is chosen only among vertices
+   * whose height above the margin centroid along `axis`, as a fraction of
+   * the placed tooth's highest vertex, lies in `[minFraction, maxFraction]`
+   * (the profile's proximal contact band). Absent ⇒ every vertex, as before. */
+  readonly heightBand?: MorphContactHeightBand;
+}
+
+/** A contact's height band (ADR-027 Decision 3). `axis` is normalised; the
+ * fractions satisfy `0 ≤ minFraction < maxFraction ≤ 1`. */
+export interface MorphContactHeightBand {
+  readonly axis: Vec3;
+  readonly minFraction: number;
+  readonly maxFraction: number;
+}
+
+/** No eligible vertex lies in a contact's height band (ADR-027 Decision 3).
+ * Fail-closed: a contact is never silently moved to the global nearest. */
+export class MorphEmptyContactBandError extends Error {
+  readonly kind: MorphContactKind;
+  constructor(kind: MorphContactKind, band: MorphContactHeightBand) {
+    super(
+      `anatomy/morph: contact "${kind}" has no movable tooth vertex in its height band ` +
+        `[${band.minFraction}, ${band.maxFraction}] of the crown's height — the placed tooth does not span the band`,
+    );
+    this.name = 'MorphEmptyContactBandError';
+    this.kind = kind;
+  }
 }
 
 export interface MorphOptions {
@@ -572,6 +599,55 @@ export function refineContactTarget(
   return { target: newton.target, clampBound: true, accepted: false };
 }
 
+/**
+ * ADR-027 Decision 3: 1 for each vertex whose height above the margin loop's
+ * vertex centroid along the normalised `axis`, divided by the tooth's
+ * highest such height, lies in `[minFraction, maxFraction]`; else 0.
+ * @throws {RangeError} for an invalid band (fractions outside [0, 1], not
+ * increasing, non-finite; a zero axis) or a tooth with no height above the
+ * margin.
+ */
+function heightBandFilter(
+  kind: MorphContactKind,
+  band: MorphContactHeightBand,
+  positions: Float64Array,
+  marginLoop: readonly Vec3[],
+): Uint8Array {
+  const { minFraction: lo, maxFraction: hi } = band;
+  if (!(Number.isFinite(lo) && Number.isFinite(hi) && lo >= 0 && hi <= 1 && lo < hi)) {
+    throw new RangeError(`planAnatomyMorph: contact "${kind}" height band [${lo}, ${hi}] must satisfy 0 ≤ min < max ≤ 1`);
+  }
+  const al = Math.hypot(band.axis[0], band.axis[1], band.axis[2]);
+  if (!(Number.isFinite(al) && al > 0)) throw new RangeError(`planAnatomyMorph: contact "${kind}" height band axis must be non-zero and finite`);
+  const a: Vec3 = [band.axis[0] / al, band.axis[1] / al, band.axis[2] / al];
+  let ox = 0;
+  let oy = 0;
+  let oz = 0;
+  for (const p of marginLoop) {
+    ox += p[0];
+    oy += p[1];
+    oz += p[2];
+  }
+  const n = marginLoop.length;
+  ox /= n;
+  oy /= n;
+  oz /= n;
+  const vCount = positions.length / 3;
+  const h = new Float64Array(vCount);
+  let top = -Infinity;
+  for (let v = 0; v < vCount; v++) {
+    h[v] = (positions[v * 3]! - ox) * a[0] + (positions[v * 3 + 1]! - oy) * a[1] + (positions[v * 3 + 2]! - oz) * a[2];
+    if (h[v]! > top) top = h[v]!;
+  }
+  if (!(top > 0)) throw new RangeError(`planAnatomyMorph: contact "${kind}" height band: the tooth has no height above its margin`);
+  const out = new Uint8Array(vCount);
+  for (let v = 0; v < vCount; v++) {
+    const f = h[v]! / top;
+    if (f >= lo && f <= hi) out[v] = 1;
+  }
+  return out;
+}
+
 function minDistanceToLoop(px: number, py: number, pz: number, loop: readonly Vec3[]): number {
   let best = Infinity;
   for (let i = 0; i < loop.length; i++) {
@@ -645,17 +721,21 @@ export function planAnatomyMorph(input: AnatomyMorphInput): AnatomyMorphPlan {
     const pseudonormals = computePseudonormals(contact.mesh);
     // Contact vertex = tooth vertex with the smallest distance to `mesh`
     // (lowest index wins on an exact tie — deterministic). A fixed vertex is
-    // never one: it cannot move.
+    // never one: it cannot move. With a height band (ADR-027 Decision 3)
+    // only vertices inside it are eligible.
+    const inBand = contact.heightBand !== undefined ? heightBandFilter(contact.kind, contact.heightBand, positions, input.marginLoop) : null;
     let bestIdx = -1;
     let bestDist = Infinity;
     for (let v = 0; v < vCount; v++) {
       if (fixedSet.has(v)) continue;
+      if (inBand !== null && inBand[v] !== 1) continue;
       const cp = closestPoint(contact.mesh, bvh, [positions[v * 3]!, positions[v * 3 + 1]!, positions[v * 3 + 2]!]);
       if (cp.distance < bestDist) {
         bestDist = cp.distance;
         bestIdx = v;
       }
     }
+    if (bestIdx < 0 && contact.heightBand !== undefined) throw new MorphEmptyContactBandError(contact.kind, contact.heightBand);
     const center: Vec3 = [positions[bestIdx * 3]!, positions[bestIdx * 3 + 1]!, positions[bestIdx * 3 + 2]!];
     const { target, clampBound, accepted } = refineContactTarget(
       center,

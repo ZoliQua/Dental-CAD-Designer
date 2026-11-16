@@ -59,6 +59,53 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.45.0] — Phase 14 Task 2: the proximal contact in its clinical height band
+
+**A deliberate, opt-in morph change (ADR-027 Decision 3). Pins moved: the
+four open-arch lanes' `morphState` and `finalMesh`. Their placement is
+unchanged, and so is every stage before the morph. Every lane without the
+band is BYTE-IDENTICAL in geometry, verified at `0.44.0` with the new code.
+The P4 standin crown, cavity inlay/onlay and synthetic-bridge `*-qc` pins,
+`kernel-ops.json` and the server traceability golden advance by their
+version string only.**
+
+- **The defect.** The morph's contact vertex was the tooth's globally
+  nearest vertex to the neighbour.
+  - On a neighbour widest at the gingiva, that is a cervical vertex. On
+    real tooth 11 it fell below 21's capture window, so the verified target
+    lay on the capture's synthetic closure (ADR-026, Phase 13).
+  - Clinically, a proximal contact lies in the incisal third (anterior
+    teeth) or at the occlusal/middle thirds' junction (posterior teeth),
+    never at the cervix.
+- **The rule.** `MorphContactInput.heightBand { axis, minFraction,
+  maxFraction }`:
+  - Only vertices whose height above the margin loop's vertex centroid,
+    as a fraction of the tooth's highest vertex, lies in the band are
+    eligible. The lowest index wins on an exact tie.
+  - An empty band throws `MorphEmptyContactBandError`, never a silent
+    global fallback.
+  - The bands are `clinical-profiles`' `PROXIMAL_CONTACT_BAND_ANTERIOR`
+    [0.60, 0.95] (FDI x1–x3) and `PROXIMAL_CONTACT_BAND_POSTERIOR`
+    [0.45, 0.90] (x4–x8), both documented clinical placeholders.
+- **When it applies.** The engine passes the band for proximal contacts only
+  when a datum set the crown's height (an antagonist, or the neighbours under
+  0.44.0), and journals it as `contactHeightBand`.
+  - Found during implementation: on the e2e placement the neighbour datum
+    falls back (a truncated peak), and the crown keeps the uniform height,
+    about twice the neighbours'.
+  - There the band put the mesial contact vertex several millimetres from
+    21. The morph closed the gap with a bulge that self-intersected. A
+    fraction of an unanchored height locates nothing, so the band is not
+    applied there, and the e2e verdict is Phase 13's.
+- **Measured (2026-11-16):**
+  - **Real tooth 11 (golden):** both contacts reach their targets on 21's
+    and 12's real captured surface (0.0 µm). The contact gate PASSES. Only
+    the unprepared tooth's wall and seating gates fail.
+  - **Consistent open-arch lane:** EVERY gate passes.
+  - **Open-arch premolar:** the occlusal wall is 489 µm (was 495 µm), with
+    contacts at a 30.9 µm worst residual, within tolerance.
+  - **Built-in and incisor lanes:** verdicts unchanged.
+
 ## [0.44.0] — Phase 14 Task 1: crown height from the neighbours' occlusal level
 
 **A deliberate, opt-in placement change (ADR-027 Decisions 1–2). The crown

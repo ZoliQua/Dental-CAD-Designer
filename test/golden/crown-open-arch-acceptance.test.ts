@@ -58,9 +58,10 @@
 // from the captured neighbours' occlusal level, lifted to cover the
 // intaglio. This fixture's die is taller than its neighbours, so every lane
 // reports the lift (asserted), and the premolar's occlusal wall now fails
-// by 5 µm. A fourth pinned lane, a consistent arch (a short preparation
-// between full-height neighbours), places the crown at the neighbours'
-// level with no lift.
+// by about 10 µm. A fourth pinned lane, a consistent arch (a short
+// preparation between full-height neighbours), places the crown at the
+// neighbours' level with no lift; with Task 2's contact height band every
+// gate passes there.
 //
 // It lives in test/ because it needs the client engine and the kernel's test
 // fixtures together (the bridge-case-acceptance precedent).
@@ -107,23 +108,21 @@ const LIBRARY_TOOTH = 15 as FdiTooth;
 /** The intaglio pitch (a journaled parameter): coarser than the clinical
  * 20 µm to keep the golden in minutes — the bridge-case golden's pitch. */
 const PITCH_MM = 0.06;
-const EXPECTED_KERNEL_VERSION = '0.44.0';
+const EXPECTED_KERNEL_VERSION = '0.45.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 const PRINT = process.env['PRINT_CROWN_OPEN_ARCH_PINS'] === '1';
 const RUN_REAL = process.env['RUN_CROWN_REAL_DIE'] === '1';
-/** The real lane's measured QC verdict (2026-11-13, kernel 0.43.0). The
+/** The real lane's measured QC verdict (2026-11-16, kernel 0.45.0). The
  * tooth is unprepared, so the wall and seating gates fail, as with the
- * built-in template. The mesial contact also fails, for its real reason
- * (ADR-026): the crown's nearest approach to 21 lies on the capture's
- * cervical cut, so the verified target (s = −20 µm exactly) is provided only
- * by the capture's synthetic closure wall. Under kernel ≤ 0.40.0 the fixed-
- * direction root-find grazed that corner and drifted to a +45 µm gap
- * unflagged (65 µm "off target"). The distal contact converges (0.0 µm).
- * Self-intersection passes: under 0.42.0 the ring split to 25 µm (fit
- * 23.8 µm, ring 72 → 91) made the shell's margin seam — then paired by index —
- * fold through the intaglio (20 face pairs, 150–200 µm from the margin); the
- * azimuth-paired seam (0.43.0, Phase 13 Task 3) does not. No gate is weakened. */
-const MEASURED_REAL_FAILING_GATES: string[] = ['contact', 'minWallThickness', 'seating'];
+ * built-in template. The contact gate PASSES: each proximal contact vertex
+ * lies in the anterior band [0.60, 0.95] of the crown's height (ADR-027
+ * Decision 3), and both targets are verified on 21's and 12's real captured
+ * surface (0.0 µm). Under 0.41.0–0.44.0 the mesial contact was the crown's
+ * globally nearest, cervical, vertex and failed on the capture's synthetic
+ * closure (ADR-026); under ≤ 0.40.0 it drifted 65 µm unflagged.
+ * Self-intersection passes (the azimuth-paired seam, 0.43.0). No gate is
+ * weakened. */
+const MEASURED_REAL_FAILING_GATES: string[] = ['minWallThickness', 'seating'];
 
 interface Pin {
   kernelVersion: string;
@@ -447,10 +446,12 @@ describe('Phase 10 Task 5 — the crown on an open scan, fitted library template
   // stands on the neighbours' level, lifted to cover the intaglio: this die
   // (5.5 mm, a flat dome Ø 3.8 mm) sits under the premolar's central fossa,
   // so the cusps rise 4.48 mm above the neighbours' level (the reported
-  // shortfall). Covering along the axis leaves a 495 µm normal wall on one
-  // occlusal slope, against 500 µm: the minimum wall fails by 5 µm. No gate
-  // is weakened. The all-gates lane is the consistent arch (Phase 14, below).
-  it('seven gates pass on case geometry; the crown covers the intaglio above the neighbours\' level, the shortfall reported; the occlusal wall fails by 5 µm', async () => {
+  // shortfall). Covering along the axis leaves a thin normal wall on one
+  // occlusal slope: 495 µm under 0.44.0, 489 µm under 0.45.0 (the contacts
+  // move into their band, ADR-027 Decision 3), against 500 µm. The minimum
+  // wall fails by about 10 µm. No gate is weakened. The all-gates lane is the
+  // consistent arch (Phase 14, below).
+  it('seven gates pass on case geometry; the crown covers the intaglio above the neighbours\' level, the shortfall reported; the occlusal wall fails by about 10 µm', async () => {
     const { report, stages } = await designCrown('library', LIBRARY_TOOTH);
     const fitOp = opOf('crown-cervical-fit');
     console.log(
@@ -467,7 +468,7 @@ describe('Phase 10 Task 5 — the crown on an open scan, fitted library template
     }
     const wall = report.gates.find((g) => g.gate === 'minWallThickness')!;
     expect(wall.passed, wall.message).toBe(false);
-    expect(wall.value!).toBeGreaterThan(0.49);
+    expect(wall.value!).toBeGreaterThan(0.48);
     expect(wall.value!).toBeLessThan(wall.threshold!);
     const d = heightDatum();
     expect(d.source).toBe('neighbours');
@@ -492,28 +493,29 @@ describe('Phase 10 Task 5 — the crown on an open scan, fitted library template
   }, 1_800_000);
 });
 
-describe('Phase 14 Task 1 — a consistent arch: the library premolar on the neighbours\' level (ADR-027)', () => {
+describe('Phase 14 — a consistent arch: the library premolar on the neighbours\' level, its contacts in their band (ADR-027)', () => {
   // The same open-arch case with a short preparation (die top 4.0 + 1.0 dome,
   // 3.5 mm above the margin) between full-height neighbours (9.0 mm above
   // the gingiva, 7.48 mm above the margin): the intaglio floor (6.33 mm)
   // lies below the neighbours' level, so the crown's top is AT the level and
-  // nothing is lifted. The measured verdict (2026-11-16, kernel 0.44.0):
-  // every gate but the contact passes. The contact fails on SYNTHETIC
-  // SURFACE for both sides: the dome-shaped neighbours are widest at the
-  // gingiva, below the capture's cervical cut, and the contact vertex is the
-  // crown's globally nearest one there (ADR-027 Decision 3 is Task 2).
-  it('the crown\'s top is at the neighbours\' level, no shortfall; every gate but the contact passes; the hashes are pinned', async () => {
+  // nothing is lifted (Task 1, kernel 0.44.0). Under 0.44.0 the contact gate
+  // failed on SYNTHETIC SURFACE for both sides: the dome-shaped neighbours
+  // are widest at the gingiva, below the capture's cervical cut, and the
+  // contact vertex was the crown's globally nearest one there. Under 0.45.0
+  // (Task 2) each proximal contact vertex lies in the posterior band
+  // [0.45, 0.90] of the crown's height, where the captured neighbour is real
+  // surface. The measured verdict (2026-11-16): EVERY gate passes.
+  it('the crown\'s top is at the neighbours\' level, no shortfall; every gate passes, the contacts on real neighbour surface; the hashes are pinned', async () => {
     const { report, stages } = await designCrown('library', LIBRARY_TOOTH, CONSISTENT);
     console.log(`[crown-open-arch consistent] \n${table(report)}`);
     expect(report.gates.map((g) => g.gate)).toEqual(GATES);
     for (const g of report.gates) {
       expect(g.inputProvenance, g.gate).toBeUndefined();
-      if (g.gate === 'contact') continue;
       expect(g.passed, `${g.gate}: ${g.message}`).toBe(true);
     }
-    const contact = report.gates.find((g) => g.gate === 'contact')!;
-    expect(contact.passed).toBe(false);
-    expect(contact.message).toMatch(/SYNTHETIC SURFACE: contact\(s\) \[proximalMesial, proximalDistal\]/);
+    expect(report.passed).toBe(true);
+    expect(report.gates.find((g) => g.gate === 'contact')!.message).not.toMatch(/SYNTHETIC SURFACE/);
+    expect(opOf('crown-morph').params['contactHeightBand']).toEqual([0.45, 0.9]);
     const d = heightDatum();
     expect(d.source).toBe('neighbours');
     expect(d.neighbourLevelMm!).toBeCloseTo(7.484941, 5);
@@ -640,9 +642,12 @@ describe.skipIf(!RUN_REAL)('Phase 12 Task 3 — REAL arch-case-01 tooth 11: the 
     for (const g of report.gates) expect(g.inputProvenance, g.gate).toBeUndefined();
     const failing = report.gates.filter((g) => !g.passed).map((g) => g.gate).sort();
     expect(failing).toEqual(MEASURED_REAL_FAILING_GATES);
-    // ADR-026 Decision 2: the mesial contact fails as on synthetic surface,
-    // not as a silent drift.
-    expect(report.gates.find((g) => g.gate === 'contact')!.message).toMatch(/SYNTHETIC SURFACE: contact\(s\) \[proximalMesial\]/);
+    // ADR-027 Decision 3: both contacts in the anterior band, on real
+    // neighbour surface, verified.
+    const contact = report.gates.find((g) => g.gate === 'contact')!;
+    expect(contact.passed, contact.message).toBe(true);
+    expect(contact.message).not.toMatch(/SYNTHETIC SURFACE/);
+    expect(opOf('crown-morph').params['contactHeightBand']).toEqual([0.6, 0.95]);
   }, 1_800_000);
 });
 

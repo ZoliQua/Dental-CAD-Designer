@@ -235,6 +235,11 @@ test.describe.serial('Phase 9 — a crown on the real arch-case-01 with captured
       clampedContacts: string[];
     }>(page, 'getCrownMorphSummary');
     expect(morph.clampedContacts).toEqual(['proximalDistal']);
+    // ADR-027 Decision 3: no datum set this crown's height (above), so the
+    // proximal contact height band does not apply: a fraction of an
+    // unanchored height locates nothing. Nothing is journaled for it.
+    const morphOp = await hook<{ params: Record<string, unknown> }>(page, 'getLatestOperation', 'crown-morph');
+    expect(morphOp.params).not.toHaveProperty('contactHeightBand');
     const mesial = morph.contacts.find((c) => c.kind === 'proximalMesial')!;
     expect(mesial.contactResidualMm).toBeLessThan(1e-6);
     expect(mesial.targetOnSyntheticSurface).toBe(false);

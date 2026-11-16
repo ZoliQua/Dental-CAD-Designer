@@ -44,7 +44,12 @@ import {
   type JobResultMap,
   type RunJobOptions,
 } from '@dqcad/kernel-workers';
-import { CERVICAL_FIT_MAX_RESIDUAL_MM, CERVICAL_RING_SPLIT_TOLERANCE_MM, DEFAULT_OFFSET_VOXEL_PITCH_MM } from '@dqcad/clinical-profiles';
+import {
+  CERVICAL_FIT_MAX_RESIDUAL_MM,
+  CERVICAL_RING_SPLIT_TOLERANCE_MM,
+  DEFAULT_OFFSET_VOXEL_PITCH_MM,
+  proximalContactBand,
+} from '@dqcad/clinical-profiles';
 import {
   ANTAGONIST_CONFIRM_OP,
   CROWN_DIE_EXTRACT_OP,
@@ -301,6 +306,11 @@ interface Session {
    * the built-in template. */
   cervicalRing: readonly number[] | null;
   cervicalFit: CervicalFitSummary | null;
+  /** ADR-027: which datum set the placed crown's height. The proximal
+   * contact height band applies only when one did (`antagonist` or
+   * `neighbours`): a fraction of a height no datum set locates nothing.
+   * `null` before a placement. */
+  heightDatumSource: 'antagonist' | 'neighbours' | 'uniform' | null;
   /** The outer surface the shell actually stitched (from the shell job). */
   shellOuterUsed: IndexedBuffers | null;
   /** Neighbour / antagonist regions captured from the case's scans this
@@ -471,6 +481,7 @@ class CrownDesignEngine {
       shellHealErrorBoundMm: null,
       cervicalRing: null,
       cervicalFit: null,
+      heightDatumSource: null,
       shellOuterUsed: null,
       captures: {},
     };
@@ -599,6 +610,7 @@ class CrownDesignEngine {
           session.placed = null;
           session.cervicalRing = null;
           session.cervicalFit = null;
+          session.heightDatumSource = null;
         }
         storePatch.anatomy = null;
       } else if (field === 'morphState') {
@@ -1312,6 +1324,7 @@ class CrownDesignEngine {
       // The FITTED ring (refined where needed — ADR-025), not the asset's.
       session.cervicalRing = fit !== null && cervicalFit !== null ? fit.cervicalRing : null;
       session.cervicalFit = cervicalFit;
+      session.heightDatumSource = result.occlusoGingivalDatum.source;
       this.publish({
         busyStage: null,
         progress: 1,
@@ -1395,6 +1408,7 @@ class CrownDesignEngine {
     indices: Uint32Array;
     targetPenetrationMm: number;
     realTriangleCount?: number;
+    heightBand?: { axis: Vec3; minFraction: number; maxFraction: number };
   }> {
     const contacts: Array<{
       kind: MorphContactKind;
@@ -1402,8 +1416,18 @@ class CrownDesignEngine {
       indices: Uint32Array;
       targetPenetrationMm: number;
       realTriangleCount?: number;
+      heightBand?: { axis: Vec3; minFraction: number; maxFraction: number };
     }> = [];
     const real = input.realTriangleCounts ?? {};
+    // ADR-027 Decision 3: a proximal contact lies in the profile's height
+    // band for this tooth (incisal third anteriorly, the occlusal/middle
+    // thirds' junction posteriorly), never at the crown's cervix.
+    // Only when a datum set the crown's height (a fraction of an
+    // unanchored height locates nothing); otherwise the nearest vertex, as
+    // before ADR-027.
+    const [minFraction, maxFraction] = proximalContactBand(session.tooth);
+    const band = session.heightDatumSource === 'antagonist' || session.heightDatumSource === 'neighbours';
+    const heightBand = band ? { heightBand: { axis: session.insertionAxis, minFraction, maxFraction } } : {};
     if (input.mesialNeighbor) {
       contacts.push({
         kind: 'proximalMesial',
@@ -1411,6 +1435,7 @@ class CrownDesignEngine {
         indices: input.mesialNeighbor.indices,
         targetPenetrationMm: session.params.proximalContactPenetrationMm,
         ...(real.mesial !== undefined ? { realTriangleCount: real.mesial } : {}),
+        ...heightBand,
       });
     }
     if (input.distalNeighbor) {
@@ -1420,6 +1445,7 @@ class CrownDesignEngine {
         indices: input.distalNeighbor.indices,
         targetPenetrationMm: session.params.proximalContactPenetrationMm,
         ...(real.distal !== undefined ? { realTriangleCount: real.distal } : {}),
+        ...heightBand,
       });
     }
     if (input.antagonist) {
@@ -1540,6 +1566,11 @@ class CrownDesignEngine {
             ? { syntheticSurfaceContacts: result.contacts.filter((c) => c.targetOnSyntheticSurface).map((c) => c.kind) }
             : {}),
           ...(session.cervicalRing !== null ? { fixedCervicalRingVertexCount: session.cervicalRing.length } : {}),
+          // ADR-027 Decision 3: the band the proximal contact vertices were chosen in.
+          ...(result.contacts.some((c) => c.kind !== 'antagonist') &&
+          (session.heightDatumSource === 'antagonist' || session.heightDatumSource === 'neighbours')
+            ? { contactHeightBand: [...proximalContactBand(session.tooth)] }
+            : {}),
         },
         session.placed ? [session.placed.contentHash] : [],
       );

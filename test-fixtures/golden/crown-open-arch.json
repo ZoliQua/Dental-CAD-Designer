@@ -1,32 +1,32 @@
 {
-  "kernelVersion": "0.44.0",
+  "kernelVersion": "0.45.0",
   "manifoldVersion": "3.5.1",
   "stages": {
     "prepDie": "a7b38bd925bb8cdaffdf35d51a541e84f113d14c8aa4a8e738292021fc75dec6",
     "innerSurface": "41bf7f817cd388f1896b10b4f3558cc32d6bbfa7bc33114b0274fdf3cf6fc046",
     "anatomyPlacement": "b93ce99ca4819315b040aa7eb0385d152239530b9b7bc97f032642ef18a2bd88",
-    "morphState": "679578955c7273cf7ad08593bc2cae3b19106d11c00e9fbe94bf0b3aff78dd4f",
-    "finalMesh": "fbf2de41edc9963472d6d758c982449c3c2aa49924682ccf7d510297eee5c2da"
+    "morphState": "2703d76da8ab9da4a601a3745c999999c47a52dc7120d0011e9ec8d286094f08",
+    "finalMesh": "1755fef151103045456adbf317cebac12d2f1df3710441c67c6878d2d298c010"
   },
   "libraryStages": {
     "prepDie": "a7b38bd925bb8cdaffdf35d51a541e84f113d14c8aa4a8e738292021fc75dec6",
     "innerSurface": "41bf7f817cd388f1896b10b4f3558cc32d6bbfa7bc33114b0274fdf3cf6fc046",
     "anatomyPlacement": "e4ab1f69c1c14f8137545e8336d876fc9504b77b4a63cb40c1dded3ac05eefe4",
-    "morphState": "e1a434be2a9e541e0c0efbac193e732807d9ddd665bd3703fd2af80bff4ec801",
-    "finalMesh": "b5ae3a1f822ea54ad1af4de6bf05b93de29c6fd23033401380fc2b6b5adcc262"
+    "morphState": "e70135a93d6b577ee04ed32bafb7170b6bf646d6251fc338528da7aa364ae3e3",
+    "finalMesh": "19245ce7ff419b7569274b13593ebb6d9ee2f2a3663ae0f041824c9efa69d2fe"
   },
   "incisorStages": {
     "prepDie": "a7b38bd925bb8cdaffdf35d51a541e84f113d14c8aa4a8e738292021fc75dec6",
     "innerSurface": "41bf7f817cd388f1896b10b4f3558cc32d6bbfa7bc33114b0274fdf3cf6fc046",
     "anatomyPlacement": "2fcae0d72c5e47c70ce1a8a6e88bf262d264d785b9d21f28fcbf87db56e13ae3",
-    "morphState": "1d948b9d9d4bda67a0ec5b4effd983539f5fdb92f7e9ad124e4aa748f6dcce3d",
-    "finalMesh": "01e954015e4d9cf9102e1fe47d0fd38ac42767af5cd29e5f9b31e23c94f50101"
+    "morphState": "38d377efaa14ea677a77b366bfd242e9748dd99001c24b0872a3c3a2d7e1e12c",
+    "finalMesh": "980393b9f63d64a5585ce6cfe5bb93a4b54330ca1b0c93b7e9c143772e998992"
   },
   "consistentStages": {
     "prepDie": "b6b890ccd34f3aefe13ff07c49a75fab48615dd0a968511fa8191161c4a59789",
     "innerSurface": "1f9ef0120a4f14e47c2f9f2b7d2657d83ec912aa312b1ecc221a4fe4f4b15f57",
     "anatomyPlacement": "884ebdf5f3c64d2b3345144f4b56a637d825e3b2cde0fb194de1e9e529cc7e7c",
-    "morphState": "bfd1f4ef61f94f430bb22b7aa3909086d682c7df41bca7147d8838dacd937b87",
-    "finalMesh": "045b2c993d2e200614e4957815baab78019a2821b0033fbeb6fd52752a91d929"
+    "morphState": "fc36333f0c934d022fb01d317d3470d355c6762e3ea56e3dbe41b1b66ebad4ef",
+    "finalMesh": "9598fb9c9d8a3710b47546d12df21fbb0823473d9bce8bb7cfd7138e6071d5d3"
   }
 }
