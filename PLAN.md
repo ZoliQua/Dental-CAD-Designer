@@ -287,6 +287,24 @@ The core pipeline. Order of stages is fixed; each stage's output is journaled.
 
 **Acceptance:** no contact misses silently; converged contacts are byte-identical (the exceptions measured and named); real tooth 11 fits with ≤ 25 µm; the self-intersection is located and resolved; the real crown's gates report honestly; pins move only under 0.41.0–0.43.0, each proven. Detailed plan: [`docs/plans/phase-13-verified-contacts-and-fit-headroom.md`](docs/plans/phase-13-verified-contacts-and-fit-headroom.md).
 
+### Phase 14 — Crown height from the neighbours; the contact in its clinical band (post-MVP, [ADR-027](docs/adr/027-crown-height-from-the-neighbours-occlusal-level.md))
+
+- With no antagonist, the crown's height comes from the captured neighbours' occlusal level, lifted to cover the intaglio; the lift is reported
+- The proximal contact vertex lies in the profile's height band (incisal third anteriorly, occlusal/middle thirds' junction posteriorly)
+
+**Status:** complete (2026-11-16).
+- **Task 1 (kernel 0.44.0).** Without an antagonist the placed crown had no height datum. On real tooth 11 it stood 11.68 mm above the margin, where the scan's own teeth stand 5.6 mm.
+  - The crown's top is now placed at the neighbours' level, interpolated at the site. It is lifted until every intaglio point lies under the occlusal minimum wall along the axis, and the lift is shown as insufficient occlusal reduction.
+  - A neighbour peak that the capture window may have cut falls back to the old scale, with the reason shown.
+  - A new consistent open-arch lane puts the crown exactly at the neighbours' level.
+- **Task 2 (kernel 0.45.0).** The proximal contact vertex is chosen in the tooth's height band, when a datum set the height.
+  - On real tooth 11 both contacts now reach 21's and 12's real surface, and the contact gate passes. Only the unprepared tooth's wall and seating gates fail.
+  - On the consistent lane every gate passes.
+
+Open items: [docs/demos/phase-14.md](docs/demos/phase-14.md).
+
+**Acceptance:** the crown stands in the arch (at the neighbours' level, or at the intaglio floor with the shortfall reported); a too-tall preparation is named; a truncated datum falls back with its reason; the proximal contact lies in its band; the real crown's gates report honestly; pins move only under 0.44.0 and 0.45.0, each proven. Detailed plan: [`docs/plans/phase-14-crown-height-from-the-neighbours.md`](docs/plans/phase-14-crown-height-from-the-neighbours.md).
+
 ---
 
 ## 5. Repository Layout

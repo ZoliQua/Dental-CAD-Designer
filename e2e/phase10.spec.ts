@@ -20,6 +20,13 @@ import { skipOnboardingTour } from './support';
 // The crown is on premolar 15 (the golden's library lane, the Task 4
 // decision: the round die is a premolar-shaped preparation).
 //
+// Since Phase 14 (ADR-027) the crown's height comes from the captured
+// neighbours. The default fixture's die is taller than its neighbours, so
+// its crown is lifted to cover the die and the occlusal wall fails by about
+// 10 µm (the golden asserts that). This walkthrough uses the golden's
+// CONSISTENT arch instead: a 3.5 mm preparation between 9.0 mm neighbours,
+// where the crown sits at the neighbours' level and every gate passes.
+//
 // The walkthrough: import → crown → margin → axis (the real axis tool, its
 // suggestion confirmed as is) → **Prepare die** (certified, journaled) →
 // intaglio → capture both neighbours from the scan (one canvas pick each) →
@@ -43,7 +50,7 @@ const CROWN_TOOTH = '15';
 const INNER_PITCH_UM = '60';
 const ANCHOR_STRIDE = 16;
 
-const arch = openArchPrepCase();
+const arch = openArchPrepCase({ topZMm: 4.0, neighbours: { centreMm: 8.4, radiusMm: 3.5, heightMm: 9.0 } });
 const neighbours = arch.params.neighbours!;
 
 function toTriangleSoup(mesh: IndexedMesh): RawTriangleSoup {

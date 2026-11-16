@@ -1,6 +1,7 @@
 # ADR-027 — Crown height from the neighbours' occlusal level when there is no antagonist
 
-**Status:** Proposed (2026-11-16)
+**Status:** Accepted (2026-11-16; implemented by Phase 14 — measured
+outcomes in docs/demos/phase-14.md)
 **Date:** 2026-11
 **Relates:** ADR-022 (case provenance; the captured neighbour), ADR-026
 (verified contacts; its open consequence, the contact location).

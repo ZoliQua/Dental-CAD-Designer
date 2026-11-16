@@ -163,6 +163,31 @@ The same as Phase 13:
   Accepted with its measured outcomes.
 - Push only when the user asks.
 
+**Landed (2026-11-16).**
+- **Task 1 (kernel 0.44.0).** The datum and the floor, as planned, with two
+  changes made on measurement:
+  - The floor covers every intaglio point along the axis, computed by
+    downward rays. The planned apex-only floor (the intaglio's top plus the
+    minimum) let the die pierce the library crowns.
+  - The kernel computes the floor from the intaglio and the profile's
+    occlusal minimum, so the datum carries those instead of
+    `floorHeightMm`.
+  - The engine adds the reason `antagonistNotOverSite`.
+  - The e2e reads the journaled datum through the existing
+    `getLatestOperation` hook, so no new hook was added.
+  - The consistent open-arch lane (3.5 mm prep, 9.0 mm neighbours) was
+    added. The existing fixture is kept and reports its lift.
+- **Task 2 (kernel 0.45.0).** The band, as planned. The kernel measures the
+  height itself, so the band carries only the axis and the fractions.
+  - The engine applies the band only when a datum set the crown's height.
+    The e2e placement showed why: there the datum falls back, and a band on
+    the uniform-height crown drove a bulging, self-intersecting morph
+    (ADR-027, "Found during implementation").
+- **Outcome.**
+  - Real tooth 11 (golden): the contact gate passes. Only the unprepared
+    tooth's wall and seating gates fail.
+  - Consistent lane: every gate passes.
+
 ## Review focus
 
 1. **A neighbour capture whose peak is a window cut** (a tall molar picked
