@@ -65,6 +65,17 @@
 //    no antagonist there is no opposing datum, so O-G is scaled by the SAME
 //    factor as M-D (uniform in-plane×height scale → the library tooth's
 //    natural proportions are preserved, never anisotropically distorted).
+//    **ADR-027 neighbour datum** (opt-in, `neighbourOcclusalDatum`): with no
+//    antagonist, the height comes from the two captured neighbours instead.
+//    Each side's peak is its highest REAL vertex along `og`. A peak within
+//    the window band of the capture ball may be a cut, which means
+//    fallback with reason `neighbourPeakTruncated`. Otherwise the level is
+//    the line through the two peaks evaluated at the site (`u = 0` along
+//    `md`, the parameter clamped to [0, 1]). The crown's top is placed at
+//    `max(level, floor)` (floor = the intaglio's top + the occlusal
+//    minimum), so `scaleOG = height / nativeTop`, where
+//    `nativeTop` is the library's highest point above its canonical
+//    origin. The floor lift is reported as `occlusalReductionShortfallMm`.
 //  - **`scaleBuccoLingual`** = `scaleMesialDistal`. The case constrains M-D
 //    (neighbours) and O-G (antagonist) but nothing constrains bucco-lingual
 //    depth, so B-L reuses the M-D factor, preserving the library tooth's own
@@ -99,6 +110,8 @@ import {
   type Mat4,
 } from '../register/transform.ts';
 import { computeMarginLoopFrame } from '../margin/band.ts';
+import { buildBvh } from '../bvh/build.ts';
+import { raycast } from '../bvh/raycast.ts';
 
 /** A library tooth's canonical local frame — structurally the tooth-library
  * `CanonicalFrame` (origin + three unit, mutually-orthogonal, right-handed
@@ -149,6 +162,49 @@ export interface AnatomyPlacementInput {
   /** Flat xyz positions of the antagonist / opposing arch (world space), or
    * `null` if none is assigned — triggers the documented O-G fallback. */
   readonly antagonistPositions: Float64Array | null;
+  /** ADR-027: the neighbours' occlusal level as the O-G datum when the
+   * antagonist does not set the height. Pass it only when both neighbour
+   * position arrays are case captures (`neighbour/extractNeighbourRegion`).
+   * Absent ⇒ the uniform fallback, bit for bit as before. */
+  readonly neighbourOcclusalDatum?: NeighbourOcclusalDatum;
+}
+
+/** One captured neighbour's window (`NeighbourRegionResult`): what the
+ * truncation test needs, plus how many leading vertices are scan surface
+ * (the closure duplicates every captured vertex behind it). */
+export interface NeighbourWindow {
+  readonly seedMm: Vec3;
+  readonly radiusMm: number;
+  readonly windowBoundaryBandMm: number;
+  readonly realVertexCount: number;
+}
+
+/** ADR-027 Decisions 1–2. The floor is the intaglio's highest point above
+ * the origin along `og` plus the profile's occlusal minimum wall: the lowest
+ * top that keeps the crown a solid around the die. */
+export interface NeighbourOcclusalDatum {
+  readonly mesial: NeighbourWindow;
+  readonly distal: NeighbourWindow;
+  /** Flat xyz positions of the intaglio (the crown's inner surface). */
+  readonly intaglioPositions: Float64Array;
+  /** `profile.occlusalMinWallThicknessMm` (clinical, from the profile). */
+  readonly occlusalMinWallThicknessMm: number;
+}
+
+/** Which datum set the O-G height (journaled with the placement). */
+export interface OcclusoGingivalDatumReport {
+  readonly source: 'antagonist' | 'neighbours' | 'uniform';
+  /** Why a supplied neighbour datum was not used (uniform fallback). */
+  readonly reason?: 'neighbourPeakTruncated' | 'levelNotAbove';
+  /** The neighbours' interpolated level above the origin; `null` unless the
+   * datum was used. */
+  readonly neighbourLevelMm: number | null;
+  /** The intaglio floor above the origin; `null` without a datum. */
+  readonly floorHeightMm: number | null;
+  /** How far the floor lifted the crown's top above the neighbours' level:
+   * the preparation is too tall for its neighbours by this much. 0 unless
+   * the floor lifted it. */
+  readonly occlusalReductionShortfallMm: number;
 }
 
 /** Measured quantities the solve produced — reported/journaled by the caller
@@ -162,6 +218,8 @@ export interface AnatomyPlacementMeasurements {
   readonly usedProximalGap: boolean;
   readonly antagonistUsed: boolean;
   readonly occlusoGingivalReoriented: boolean;
+  /** ADR-027: the O-G datum and its outcome. */
+  readonly occlusoGingivalDatum: OcclusoGingivalDatumReport;
 }
 
 export interface AnatomyPlacementSolution {
@@ -389,8 +447,61 @@ export function solveAnatomyPlacement(input: AnatomyPlacementInput): AnatomyPlac
 
   const scaleMesialDistal = targetMdWidth / nativeMdWidth;
   const scaleBuccoLingual = scaleMesialDistal;
-  const scaleOcclusoGingival =
+  let scaleOcclusoGingival =
     targetOgHeightMm !== null ? targetOgHeightMm / nativeOgHeight : scaleMesialDistal;
+
+  // ADR-027: the neighbours' occlusal level when the antagonist did not set
+  // the height.
+  const datum = input.neighbourOcclusalDatum;
+  if (datum !== undefined) validateNeighbourDatum(datum, input);
+  let occlusoGingivalDatum: OcclusoGingivalDatumReport = {
+    source: antagonistUsed ? 'antagonist' : 'uniform',
+    neighbourLevelMm: null,
+    floorHeightMm: null,
+    occlusalReductionShortfallMm: 0,
+  };
+  if (datum !== undefined && !antagonistUsed) {
+    const pm = occlusalPeak(input.mesialNeighborPositions, datum.mesial.realVertexCount, originMm, og);
+    const pd = occlusalPeak(input.distalNeighborPositions, datum.distal.realVertexCount, originMm, og);
+    if (peakTruncated(pm, datum.mesial) || peakTruncated(pd, datum.distal)) {
+      occlusoGingivalDatum = { ...occlusoGingivalDatum, reason: 'neighbourPeakTruncated' };
+    } else {
+      const hm = dot(sub(pm, originMm), og);
+      const hd = dot(sub(pd, originMm), og);
+      const um = dot(sub(pm, originMm), md);
+      const ud = dot(sub(pd, originMm), md);
+      // The line through the two peaks at the site (u = 0), its parameter
+      // clamped to [0, 1]: never above the higher peak or below the lower.
+      const du = ud - um;
+      const t = Math.abs(du) > PLACEMENT_MIN_EXTENT_MM ? Math.min(1, Math.max(0, -um / du)) : 0.5;
+      const level = hm + (hd - hm) * t;
+      if (!(level > PLACEMENT_MIN_EXTENT_MM)) {
+        occlusoGingivalDatum = { ...occlusoGingivalDatum, reason: 'levelNotAbove' };
+      } else {
+        const nativeTop = nativeOg.max - dot(canonicalFrame.origin, canonicalFrame.occlusoGingival);
+        if (!(nativeTop > PLACEMENT_MIN_EXTENT_MM)) {
+          throw new DegeneratePlacementError('library mesh has no extent above its canonical origin');
+        }
+        const floorScale = intaglioFloorScale(
+          libraryMesh,
+          canonicalFrame,
+          { originMm, mesialDistal: md, buccoLingual: bl, occlusoGingival: og, scaleMesialDistal, scaleBuccoLingual, scaleOcclusoGingival: 1 },
+          datum.intaglioPositions,
+          datum.occlusalMinWallThicknessMm,
+        );
+        const floorHeightMm = floorScale * nativeTop;
+        const heightMm = Math.max(level, floorHeightMm);
+        scaleOcclusoGingival = heightMm / nativeTop;
+        targetOgHeightMm = heightMm;
+        occlusoGingivalDatum = {
+          source: 'neighbours',
+          neighbourLevelMm: level,
+          floorHeightMm,
+          occlusalReductionShortfallMm: heightMm - level,
+        };
+      }
+    }
+  }
 
   return {
     frame: {
@@ -410,8 +521,106 @@ export function solveAnatomyPlacement(input: AnatomyPlacementInput): AnatomyPlac
       usedProximalGap,
       antagonistUsed,
       occlusoGingivalReoriented,
+      occlusoGingivalDatum,
     },
   };
+}
+
+/**
+ * ADR-027 Decision 2: the smallest O-G scale at which the crown's outer
+ * surface lies at least `minWallMm` above every intaglio point, measured
+ * along `og`. The O-G scale is linear about the origin, so the placed
+ * surface's height over a lateral position is `s · H₁` (H₁ = its height at
+ * scale 1), and the floor is `max over intaglio points q of (h(q) + t) / H₁(q)`.
+ * H₁ is the topmost hit of a ray cast down `−og` through q's lateral
+ * position. A point whose ray misses the library (outside its footprint)
+ * constrains nothing: the O-G scale cannot cover it.
+ *
+ * @errorBound EXACT (Float64 ray–triangle intersection on the placed mesh).
+ * The floor is a necessary condition along the axis, not a wall thickness:
+ * on a slope the normal thickness is smaller, and the minimum-wall gate
+ * measures it.
+ */
+function intaglioFloorScale(
+  libraryMesh: IndexedMesh,
+  canonicalFrame: CanonicalFrameAxes,
+  unitFrame: PlacementFrame,
+  intaglioPositions: Float64Array,
+  minWallMm: number,
+): number {
+  const placed = placeMesh(libraryMesh, buildPlacementTransform(unitFrame, canonicalFrame));
+  const bvh = buildBvh(placed);
+  const og = unitFrame.occlusoGingival;
+  const origin = unitFrame.originMm;
+  const o0 = dot(origin, og);
+  // Cast from above the placed mesh's top and the highest intaglio point.
+  const start = Math.max(projectionExtent(placed.positions, og).max, projectionExtent(intaglioPositions, og).max) - o0 + 1;
+  const down = scaleVec(og, -1);
+  let floor = 0;
+  for (let i = 0; i < intaglioPositions.length; i += 3) {
+    const q: Vec3 = [intaglioPositions[i]!, intaglioPositions[i + 1]!, intaglioPositions[i + 2]!];
+    const h = dot(q, og) - o0;
+    const need = h + minWallMm;
+    if (!(need > 0)) continue;
+    const from = add(q, scaleVec(og, start - h));
+    const hit = raycast(placed, bvh, from, down);
+    if (hit === null) continue;
+    const h1 = dot([hit.point[0], hit.point[1], hit.point[2]], og) - o0;
+    if (!(h1 > PLACEMENT_MIN_EXTENT_MM)) continue;
+    const s = need / h1;
+    if (s > floor) floor = s;
+  }
+  return floor;
+}
+
+/** The real vertex (index < `realVertexCount`) with the largest height
+ * `(p − origin)·og`; the lowest index wins an exact tie. */
+function occlusalPeak(positions: Float64Array, realVertexCount: number, origin: Vec3, og: Vec3): Vec3 {
+  let best = 0;
+  let bestH = -Infinity;
+  for (let v = 0; v < realVertexCount; v++) {
+    const h =
+      (positions[v * 3]! - origin[0]) * og[0] +
+      (positions[v * 3 + 1]! - origin[1]) * og[1] +
+      (positions[v * 3 + 2]! - origin[2]) * og[2];
+    if (h > bestH) {
+      bestH = h;
+      best = v;
+    }
+  }
+  return [positions[best * 3]!, positions[best * 3 + 1]!, positions[best * 3 + 2]!];
+}
+
+/** ADR-027: within `windowBoundaryBandMm` of the capture ball's sphere the
+ * peak may be the ball's cut, not the tooth's top. */
+function peakTruncated(peak: Vec3, w: NeighbourWindow): boolean {
+  return norm(sub(peak, w.seedMm)) > w.radiusMm - w.windowBoundaryBandMm;
+}
+
+function validateNeighbourDatum(d: NeighbourOcclusalDatum, input: AnatomyPlacementInput): void {
+  const finite = (x: number): boolean => Number.isFinite(x);
+  if (!(finite(d.occlusalMinWallThicknessMm) && d.occlusalMinWallThicknessMm >= 0)) {
+    throw new RangeError(`anatomy/placement: neighbourOcclusalDatum.occlusalMinWallThicknessMm must be finite and ≥ 0 (got ${d.occlusalMinWallThicknessMm})`);
+  }
+  const ip = d.intaglioPositions;
+  if (ip.length === 0 || ip.length % 3 !== 0 || !ip.every(finite)) {
+    throw new RangeError('anatomy/placement: neighbourOcclusalDatum.intaglioPositions must be a non-empty, finite xyz array');
+  }
+  for (const [side, w, positions] of [
+    ['mesial', d.mesial, input.mesialNeighborPositions],
+    ['distal', d.distal, input.distalNeighborPositions],
+  ] as const) {
+    const where = `anatomy/placement: neighbourOcclusalDatum.${side}`;
+    if (!w.seedMm.every(finite)) throw new RangeError(`${where}.seedMm must be finite`);
+    if (!(finite(w.radiusMm) && w.radiusMm > 0)) throw new RangeError(`${where}.radiusMm must be finite and > 0 (got ${w.radiusMm})`);
+    if (!(finite(w.windowBoundaryBandMm) && w.windowBoundaryBandMm >= 0)) {
+      throw new RangeError(`${where}.windowBoundaryBandMm must be finite and ≥ 0 (got ${w.windowBoundaryBandMm})`);
+    }
+    const vertexCount = positions.length / 3;
+    if (!Number.isInteger(w.realVertexCount) || w.realVertexCount < 1 || w.realVertexCount > vertexCount) {
+      throw new RangeError(`${where}.realVertexCount ${w.realVertexCount} is outside [1, ${vertexCount}]`);
+    }
+  }
 }
 
 /** Centroid of antagonist vertices within `lateralRadiusMm` of the `og` axis

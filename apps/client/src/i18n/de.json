@@ -504,6 +504,19 @@
     "anatomyReadout": "Skalierung MD {{md}} · BL {{bl}} · OG {{og}}",
     "anatomyProximalGap": "Approximalspalt genutzt",
     "anatomyAntagonist": "Antagonist genutzt",
+    "anatomyHeightDatum": {
+      "antagonist": "Höhenbezug: der Antagonist",
+      "neighbours": "Höhenbezug: das okklusale Niveau der Nachbarn, {{level}} mm über dem Rand",
+      "uniform": "Höhenbezug: keiner, daher bleiben die Proportionen des Bibliothekszahns erhalten ({{reason}})",
+      "reason": {
+        "neighbourPeakTruncated": "die Spitze eines Nachbarn kann außerhalb seines Erfassungsfensters liegen",
+        "levelNotAbove": "das Niveau der Nachbarn liegt nicht über dem Rand",
+        "neighbourNotCaptured": "beide Nachbarn erfassen, um die Höhe festzulegen",
+        "antagonistNotOverSite": "der Antagonist hat keine Fläche über der Stelle, und es gibt keinen Nachbarbezug",
+        "none": "kein Antagonist und kein Nachbarbezug"
+      }
+    },
+    "occlusalShortfall": "Unzureichende okklusale Reduktion: Die Präparation ist {{shortfall}} mm höher als das okklusale Niveau der Nachbarn. Die Kronenspitze wurde um diesen Betrag angehoben, damit die minimale okklusale Wandstärke über dem Intaglio erhalten bleibt. Präparation reduzieren.",
     "anatomyCervicalFit": "Zervikale Anpassung: Residuum {{residual}} µm (Grenze {{bound}} µm) · Emergenz {{offset}} µm außerhalb des Randes · Ring um bis zu {{moved}} µm verschoben · Ring {{ring}} Punkte ({{added}} ergänzt, um dem Rand zu folgen)",
     "morphTitle": "4 · Morphing (Kontakte)",
     "morphRun": "Morphing ausführen",

@@ -504,6 +504,19 @@
     "anatomyReadout": "Scale MD {{md}} · BL {{bl}} · OG {{og}}",
     "anatomyProximalGap": "Proximal gap used",
     "anatomyAntagonist": "Antagonist used",
+    "anatomyHeightDatum": {
+      "antagonist": "Height datum: the antagonist",
+      "neighbours": "Height datum: the neighbours' occlusal level, {{level}} mm above the margin",
+      "uniform": "Height datum: none, so the library tooth's proportions are kept ({{reason}})",
+      "reason": {
+        "neighbourPeakTruncated": "a neighbour's top may lie outside its capture window",
+        "levelNotAbove": "the neighbours' level is not above the margin",
+        "neighbourNotCaptured": "capture both neighbours to set the height",
+        "antagonistNotOverSite": "the antagonist has no surface over the site, and there is no neighbour datum",
+        "none": "no antagonist and no neighbour datum"
+      }
+    },
+    "occlusalShortfall": "Insufficient occlusal reduction: the preparation is {{shortfall}} mm too tall for the neighbours' occlusal level. The crown's top was raised by that much to keep the minimum occlusal wall over the intaglio. Reduce the preparation.",
     "anatomyCervicalFit": "Cervical fit: residual {{residual}} µm (bound {{bound}} µm) · emergence {{offset}} µm outside the margin · ring moved up to {{moved}} µm · ring {{ring}} vertices ({{added}} added to follow the margin)",
     "morphTitle": "4 · Morphing (contacts)",
     "morphRun": "Run morph",

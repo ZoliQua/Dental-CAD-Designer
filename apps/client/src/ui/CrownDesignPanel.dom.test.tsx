@@ -127,6 +127,10 @@ describe('CrownDesignPanel — browser-lane critical path (real WorkerPool, synt
     expect(historyNames()).toContain('crown-anatomy');
     // ADR-022: the auto-place neighbours are synthetic boxes — disclosed.
     expect(screen.getByTestId('crown-neighbours-placeholder')).toBeTruthy();
+    // ADR-027: this case's antagonist is not over the site and its neighbours
+    // are stand-ins, so there is no height datum, and the panel says why.
+    expect(screen.getByTestId('crown-anatomy-height-datum').textContent).toContain('the antagonist has no surface over the site');
+    expect(screen.queryByTestId('crown-anatomy-occlusal-shortfall')).toBeNull();
 
     // Stage 3 — morph.
     await user.click(screen.getByTestId('crown-morph-run'));

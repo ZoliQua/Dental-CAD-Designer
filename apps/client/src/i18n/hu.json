@@ -504,6 +504,19 @@
     "anatomyReadout": "Méret MD {{md}} · BL {{bl}} · OG {{og}}",
     "anatomyProximalGap": "Approximális rés felhasználva",
     "anatomyAntagonist": "Antagonista felhasználva",
+    "anatomyHeightDatum": {
+      "antagonist": "Magassági viszonyítás: az antagonista",
+      "neighbours": "Magassági viszonyítás: a szomszédok okkluzális szintje, {{level}} mm-rel a margó fölött",
+      "uniform": "Magassági viszonyítás: nincs, ezért a könyvtári fog arányai maradnak ({{reason}})",
+      "reason": {
+        "neighbourPeakTruncated": "egy szomszéd teteje a befogási ablakon kívül eshet",
+        "levelNotAbove": "a szomszédok szintje nincs a margó fölött",
+        "neighbourNotCaptured": "a magassághoz fogja be mindkét szomszédot",
+        "antagonistNotOverSite": "az antagonistának nincs felülete a fog fölött, és nincs szomszéd-viszonyítás",
+        "none": "nincs antagonista és szomszéd-viszonyítás"
+      }
+    },
+    "occlusalShortfall": "Elégtelen okkluzális redukció: a preparálás {{shortfall}} mm-rel magasabb a szomszédok okkluzális szintjénél. A korona tetejét ennyivel megemeltük, hogy az intaglio fölött megmaradjon a minimális okkluzális fal. Csökkentse a preparálást.",
     "anatomyCervicalFit": "Cervikális illesztés: reziduum {{residual}} µm (korlát {{bound}} µm) · emergencia {{offset}} µm-rel a margón kívül · a gyűrű legfeljebb {{moved}} µm-t mozdult · gyűrű {{ring}} csúcs ({{added}} hozzáadva a margó követéséhez)",
     "morphTitle": "4 · Morfing (kontaktok)",
     "morphRun": "Morfing futtatása",

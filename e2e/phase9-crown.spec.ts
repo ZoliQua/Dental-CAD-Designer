@@ -212,6 +212,17 @@ test.describe.serial('Phase 9 — a crown on the real arch-case-01 with captured
     console.log(`[phase9-crown] fit ${((fitOp.params['errorBoundMm'] as number) * 1000).toFixed(1)} µm, ring ${String(fitOp.params['templateRingVertexCount'])} → ${String(fitOp.params['ringVertexCount'])}`);
     expect(fitOp.params['ringSplitToleranceMm']).toBe(0.025);
     expect(fitOp.params['errorBoundMm'] as number).toBeLessThanOrEqual(0.025);
+    // ADR-027: both neighbours are case captures and there is no antagonist,
+    // so the neighbours' occlusal level is offered as the height datum. In
+    // this placement (measured 2026-11-16, kernel 0.44.0) a neighbour's
+    // highest captured point lies within its capture ball's border band, so
+    // it may be the window's cut, not the tooth's top. The placement keeps
+    // the library proportions and says why: never a height from a cut.
+    const datum = anatomyOp.params['occlusoGingivalDatum'] as { source: string; reason?: string; occlusalReductionShortfallMm: number };
+    console.log(`[phase9-crown] height datum ${JSON.stringify(datum)}`);
+    expect(datum).toMatchObject({ source: 'uniform', reason: 'neighbourPeakTruncated', occlusalReductionShortfallMm: 0 });
+    await expect(page.getByTestId('crown-anatomy-height-datum')).toContainText('outside its capture window');
+    await expect(page.getByTestId('crown-anatomy-occlusal-shortfall')).toHaveCount(0);
 
     await page.getByTestId('crown-morph-run').click();
     await expect(page.getByTestId('crown-morph-readout')).toBeVisible({ timeout: 300_000 });

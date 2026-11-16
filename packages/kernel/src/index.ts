@@ -442,8 +442,19 @@
  * `maxRingRefineLevels` (default 3); it returns the refined ring. A fit that
  * met the bound unrefined is byte-identical: every golden geometry +
  * journal-replay pin byte-identical. See docs/CHANGELOG-kernel.md's
- * `[0.40.0]` entry. */
-export const KERNEL_VERSION = '0.43.0';
+ * `[0.40.0]` entry.
+ *
+ * 0.41.0–0.43.0 (Phase 13, ADR-026): verified contact targets, the ring split
+ * tolerance, and the azimuth-paired margin seam. See their changelog entries.
+ *
+ * 0.44.0 (Phase 14 Task 1, ADR-027 Decisions 1–2): `solveAnatomyPlacement`
+ * takes an opt-in `neighbourOcclusalDatum`. With no antagonist, the O-G scale
+ * puts the library tooth's top at the captured neighbours' interpolated
+ * occlusal level, lifted to the intaglio floor (every intaglio point covered
+ * by the occlusal minimum along the axis), and reports the lift. Without the
+ * datum every path is unchanged. See docs/CHANGELOG-kernel.md's `[0.44.0]`
+ * entry. */
+export const KERNEL_VERSION = '0.44.0';
 
 export type { IndexedMesh } from './mesh/types.ts';
 export { detSin, detCos, detAtan, detAtan2, detAsin, detAcos, detExp, detPow } from './math/detMath.ts';
@@ -826,6 +837,9 @@ export {
   type AnatomyPlacementInput,
   type AnatomyPlacementMeasurements,
   type AnatomyPlacementSolution,
+  type NeighbourWindow,
+  type NeighbourOcclusalDatum,
+  type OcclusoGingivalDatumReport,
   type MorphContactKind,
   type MorphContactInput,
   type MorphOptions,

@@ -95,8 +95,24 @@ export interface AnatomySummary {
    * (the fit's @errorBound) against the bound it was accepted under; `null`
    * for the built-in template (never fitted). */
   cervicalFit: CervicalFitSummary | null;
+  /** ADR-027: which datum set the crown's height, and how far the intaglio
+   * floor lifted it above the neighbours' level. Absent on summaries built
+   * before Phase 14. */
+  heightDatum?: HeightDatumSummary;
   /** `true` after a manual gizmo transform, `false` after auto-place. */
   manual: boolean;
+}
+
+/** Mirrors the kernel's `OcclusoGingivalDatumReport` (ADR-027), plus the
+ * engine's reasons for a uniform height: `neighbourNotCaptured` (a side is a
+ * stand-in) and `antagonistNotOverSite` (an antagonist the placement found
+ * no surface of over the site). */
+export interface HeightDatumSummary {
+  source: 'antagonist' | 'neighbours' | 'uniform';
+  reason?: 'neighbourPeakTruncated' | 'levelNotAbove' | 'neighbourNotCaptured' | 'antagonistNotOverSite';
+  neighbourLevelMm: number | null;
+  floorHeightMm: number | null;
+  occlusalReductionShortfallMm: number;
 }
 
 export interface CervicalFitSummary {

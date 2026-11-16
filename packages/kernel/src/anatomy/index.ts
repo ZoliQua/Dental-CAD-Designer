@@ -19,6 +19,9 @@ export {
   type AnatomyPlacementInput,
   type AnatomyPlacementMeasurements,
   type AnatomyPlacementSolution,
+  type NeighbourWindow,
+  type NeighbourOcclusalDatum,
+  type OcclusoGingivalDatumReport,
 } from './placement.ts';
 
 export {

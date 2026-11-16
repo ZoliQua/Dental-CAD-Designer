@@ -169,8 +169,16 @@ class FakePool {
       }
       case 'innerSurface':
         return { ...tetra(2), stats: STATS, errorBoundMm: 0.005, flatZoneErrorBoundMm: 0.005, patchTriangleCount: 4, skirtTriangleCount: 2, marginVertexCount: 64, marginalGapMm: 0.02, cementGapMm: 0.05, spacerStartMm: 0.8, blendWidthMm: 0.3, pitchMm: 0.1 };
-      case 'placeAnatomy':
-        return { transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], ...tetra(3), originMm: [0, 0, 0], mesialDistal: [1, 0, 0], buccoLingual: [0, 1, 0], occlusoGingival: [0, 0, 1], scaleMesialDistal: 1.1, scaleBuccoLingual: 1.0, scaleOcclusoGingival: 0.9, nativeMesialDistalWidthMm: 2, nativeOcclusoGingivalHeightMm: 4, targetMesialDistalWidthMm: 2.2, targetOcclusoGingivalHeightMm: 3.6, usedProximalGap: true, antagonistUsed: true, occlusoGingivalReoriented: false };
+      case 'placeAnatomy': {
+        // ADR-027: with the neighbour datum, the fake reports a 0.4 mm floor lift.
+        const withDatum = (payload as { neighbourOcclusalDatum?: unknown }).neighbourOcclusalDatum !== undefined;
+        return {
+          transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], ...tetra(3), originMm: [0, 0, 0], mesialDistal: [1, 0, 0], buccoLingual: [0, 1, 0], occlusoGingival: [0, 0, 1], scaleMesialDistal: 1.1, scaleBuccoLingual: 1.0, scaleOcclusoGingival: 0.9, nativeMesialDistalWidthMm: 2, nativeOcclusoGingivalHeightMm: 4, targetMesialDistalWidthMm: 2.2, targetOcclusoGingivalHeightMm: 3.6, usedProximalGap: true, antagonistUsed: !withDatum, occlusoGingivalReoriented: false,
+          occlusoGingivalDatum: withDatum
+            ? { source: 'neighbours', neighbourLevelMm: 3, floorHeightMm: 3.4, occlusalReductionShortfallMm: 0.4 }
+            : { source: 'antagonist', neighbourLevelMm: null, floorHeightMm: null, occlusalReductionShortfallMm: 0 },
+        };
+      }
       case 'morphAnatomy':
       case 'resolveMorph': {
         if (job === 'resolveMorph' && this.failResolveMorph) {
@@ -643,6 +651,51 @@ describe('crownDesign controller — neighbour + antagonist capture (Phase 9 Tas
     expect(useCrownStore.getState().morph!.contacts.find((c) => c.kind === 'proximalMesial')!.targetOnSyntheticSurface).toBe(true);
     const mesial = crownDesignEngine.exportQcContext(restorationId)!.contacts.find((c) => c.kind === 'proximalMesial')!;
     expect(mesial.targetOnSyntheticSurface).toBe(true);
+  });
+
+  it("ADR-027: both sides captured, no antagonist: the placement gets the neighbours' datum; its report is journaled and shown", async () => {
+    addScan('upper-arch', 'upperJaw');
+    crownDesignEngine.start(restorationId);
+    await crownDesignEngine.captureNeighbour('mesial', [-3, 0, 1]);
+    await crownDesignEngine.captureNeighbour('distal', [3, 0, 1]);
+    await placeWithMorph();
+    const place = [...fake.calls].reverse().find((c) => c.job === 'placeAnatomy')!.payload as {
+      neighbourOcclusalDatum?: {
+        mesial: { seedMm: number[]; radiusMm: number; windowBoundaryBandMm: number; realVertexCount: number };
+        distal: { seedMm: number[] };
+        intaglioPositions: Float64Array;
+        occlusalMinWallThicknessMm: number;
+      };
+    };
+    const d = place.neighbourOcclusalDatum!;
+    // The window from the journaled capture (seedOnSurface, radius, band);
+    // the closure doubles the vertices, so half are scan (tetra: 4 → 2).
+    expect(d.mesial).toEqual({ seedMm: [-3, 0, 1], radiusMm: 6, windowBoundaryBandMm: 0.25, realVertexCount: 2 });
+    expect(d.distal.seedMm).toEqual([3, 0, 1]);
+    expect(d.intaglioPositions[0]).toBe(2); // the intaglio (tetra(2))
+    expect(d.occlusalMinWallThicknessMm).toBe(0.5); // the standard profile
+    expect(lastOp('crown-anatomy')!.params.occlusoGingivalDatum).toEqual({
+      source: 'neighbours',
+      neighbourLevelMm: 3,
+      floorHeightMm: 3.4,
+      occlusalReductionShortfallMm: 0.4,
+    });
+    expect(useCrownStore.getState().anatomy!.heightDatum).toEqual({
+      source: 'neighbours',
+      neighbourLevelMm: 3,
+      floorHeightMm: 3.4,
+      occlusalReductionShortfallMm: 0.4,
+    });
+  });
+
+  it('ADR-027: a stand-in side passes no datum, journals nothing new, and shows "capture both neighbours"', async () => {
+    addScan('upper-arch', 'upperJaw');
+    crownDesignEngine.start(restorationId);
+    await crownDesignEngine.captureNeighbour('distal', [3, 0, 1]);
+    await placeWithMorph();
+    const place = [...fake.calls].reverse().find((c) => c.job === 'placeAnatomy')!.payload as object;
+    expect(place).not.toHaveProperty('neighbourOcclusalDatum');
+    expect(lastOp('crown-anatomy')!.params).not.toHaveProperty('occlusoGingivalDatum');
   });
 
   it('one side captured: the other stays a placeholder "not yet captured"', async () => {

@@ -59,6 +59,57 @@ flag — investigate, don't regenerate").
    see that script's module doc), review the diff, then commit the refreshed
    file together with the `KERNEL_VERSION` bump and this changelog entry.
 
+## [0.44.0] — Phase 14 Task 1: crown height from the neighbours' occlusal level
+
+**A deliberate, opt-in placement change (ADR-027 Decisions 1–2). The crown
+lanes whose neighbours are case captures, with no antagonist, move: the
+open-arch built-in, library premolar and library incisor lanes'
+`anatomyPlacement`, `morphState` and `finalMesh` pins. Every lane without
+the datum is BYTE-IDENTICAL in geometry, verified at `0.43.0` with the new
+code. Advanced by their version string only: the P4 standin crown, cavity
+inlay/onlay and synthetic-bridge `*-qc` pins, `kernel-ops.json` and the
+server traceability golden.**
+
+- **The defect.** With no antagonist, `solveAnatomyPlacement` scaled the
+  occluso-gingival axis by the mesio-distal scale, which keeps the library
+  tooth's proportions but has no height datum.
+  - On real `arch-case-01` tooth 11 the crown's top stood 11.68 mm above
+    the margin. The scan's own teeth are 5.6–5.7 mm, so the crown was 6.05 mm
+    from the nearest scan surface.
+  - On the synthetic open-arch case the premolar stood about 10 mm above its
+    neighbours. Every gate passed, because no gate measures height against
+    the neighbours.
+- **The datum** (`neighbourOcclusalDatum`, passed by the engine only when
+  both proximal sides are case captures and there is no antagonist):
+  - Each side's peak is its highest real (scan) vertex along `og`. A peak
+    within the capture ball's border band of its sphere may be a cut, so it
+    falls back to uniform with `neighbourPeakTruncated`.
+  - The level is the line through the two peaks at the site (clamped). The
+    library tooth's top is placed there: `scaleOG = height / nativeTop`.
+- **The floor.** The top is lifted to the lowest O-G scale at which every
+  intaglio point lies at least `occlusalMinWallThicknessMm` below the
+  crown's outer surface along `og`. The O-G scale is linear about the
+  origin, so this is `max (h + t) / H₁`, with `H₁` the topmost downward
+  ray hit at scale 1. The lift is reported as
+  `occlusalReductionShortfallMm` and shown in the panel.
+  - A first, apex-only floor (the intaglio's top + t) was measured and
+    rejected. It let the die pierce the premolar's central fossa and the
+    incisor's incisal third (687 and 1159 self-intersecting face pairs).
+- **Measured (2026-11-16):**
+  - The open-arch fixture's die (5.5 mm) is taller than its neighbours'
+    level (4.98 mm). The floor lifts the built-in crown by 1.07 mm, the
+    premolar by 4.48 mm and the incisor by 7.13 mm.
+  - Verdicts:
+    - the built-in lane is unchanged;
+    - the incisor's wall fails as before;
+    - the premolar now fails the minimum wall by 5 µm (495 µm normal wall on
+      one occlusal slope). Covering along the axis is not a normal
+      thickness.
+  - A new consistent lane (3.5 mm prep between 9.0 mm neighbours) places the
+    crown at the neighbours' level (7.48 mm, floor 6.33 mm, no lift). Every
+    gate passes except the contact, which lands on the capture's synthetic
+    closure (Task 2).
+
 ## [0.43.0] — Phase 13 Task 3: the margin seam pairs the rims by azimuth
 
 **A deliberate geometry fix in the shell's margin seam. Every crown shell

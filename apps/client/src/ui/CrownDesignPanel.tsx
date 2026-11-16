@@ -409,6 +409,22 @@ function AnatomyStage({ busy }: { busy: boolean }) {
               })}
             </p>
           )}
+          {anatomy.heightDatum && (
+            <p className="crown-stage__readout" data-testid="crown-anatomy-height-datum">
+              {anatomy.heightDatum.source === 'neighbours'
+                ? t('crown.anatomyHeightDatum.neighbours', { level: (anatomy.heightDatum.neighbourLevelMm ?? 0).toFixed(2) })
+                : anatomy.heightDatum.source === 'antagonist'
+                  ? t('crown.anatomyHeightDatum.antagonist')
+                  : t('crown.anatomyHeightDatum.uniform', {
+                      reason: t(`crown.anatomyHeightDatum.reason.${anatomy.heightDatum.reason ?? 'none'}`),
+                    })}
+            </p>
+          )}
+          {anatomy.heightDatum && anatomy.heightDatum.occlusalReductionShortfallMm > 0 && (
+            <p className="crown-stage__warning" role="alert" data-testid="crown-anatomy-occlusal-shortfall">
+              {t('crown.occlusalShortfall', { shortfall: anatomy.heightDatum.occlusalReductionShortfallMm.toFixed(2) })}
+            </p>
+          )}
           {anatomy.anatomySource && <AnatomySourceNote source={anatomy.anatomySource} />}
           {anatomy.neighbourProvenance !== 'case' && (
             <StandInDisclosure

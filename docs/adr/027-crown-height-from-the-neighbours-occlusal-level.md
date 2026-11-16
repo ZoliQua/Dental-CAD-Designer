@@ -91,18 +91,27 @@ does not truncate them. That is a property of this capture, not a guarantee.
 
 ### 2. The crown covers the intaglio, and the shortfall is reported
 
-- The datum carries a floor: the intaglio's highest point above the origin
-  plus the profile's `occlusalMinWallThicknessMm`.
+- The datum carries the intaglio and the profile's
+  `occlusalMinWallThicknessMm` (t).
+- **The floor** is the lowest O-G scale at which every intaglio point q
+  lies at least t below the crown's outer surface, along `og`.
+  - The O-G scale is linear about the origin, so the placed surface over a
+    lateral position is `s · H₁`, where H₁ is its height at scale 1. That
+    gives `s_floor = max over q of (h(q) + t) / H₁(q)`.
+  - H₁ is the topmost hit of a ray cast down `−og` through q's lateral
+    position. A point whose ray misses the library constrains nothing.
 - If the level is below the floor, the crown's top is placed at the floor.
-  The difference is reported as `occlusalReductionShortfallMm` (the
-  preparation is too tall for its neighbours by this much), journaled with
-  the placement, and shown as a warning in the crown panel.
-- The floor is necessary, not sufficient: it lifts the crown's top, not
-  every point of it. The minimum-wall gate still measures the crown, and no
-  gate changes.
-- The floor is not a clinical choice of height. It is the minimum that
-  makes the crown a solid around the die. The clinical message is the
-  shortfall.
+  The difference is reported as `occlusalReductionShortfallMm`, journaled
+  with the placement, and shown as a warning in the crown panel. It is how
+  far the crown stands above its neighbours to cover the preparation: the
+  occlusal reduction is insufficient for this anatomy.
+- The floor holds along the axis, not normal to the surface. On a slope the
+  normal wall is thinner, and the minimum-wall gate measures it. No gate
+  changes.
+- **Rejected on measurement:** an apex-only floor (the intaglio's top plus
+  t). It let the die pierce the premolar's central fossa and the incisor's
+  incisal third, with 687 and 1159 self-intersecting face pairs (Phase 14
+  Task 1).
 
 ### 3. The proximal contact vertex lies in a profile height band
 

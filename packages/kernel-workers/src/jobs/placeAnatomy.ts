@@ -28,6 +28,8 @@ import {
   type PlacementFrame,
   type Vec3,
   type Mat4,
+  type NeighbourOcclusalDatum,
+  type OcclusoGingivalDatumReport,
 } from '@dqcad/kernel';
 import { JobCancelledError, type JobContext } from './context.ts';
 
@@ -48,6 +50,9 @@ export interface PlaceAnatomyPayload {
   mesialNeighborPositions: Float64Array;
   distalNeighborPositions: Float64Array;
   antagonistPositions: Float64Array | null;
+  /** ADR-027: the neighbours' occlusal level as the O-G datum (both
+   * neighbours are case captures, no antagonist). Absent ⇒ unchanged. */
+  neighbourOcclusalDatum?: NeighbourOcclusalDatum;
   /** Named landmark points (asset space) — only needed when a manual handle
    * override references one. */
   landmarks?: Readonly<Record<string, Vec3>>;
@@ -76,6 +81,8 @@ export interface PlaceAnatomyResult {
   usedProximalGap: boolean;
   antagonistUsed: boolean;
   occlusoGingivalReoriented: boolean;
+  /** ADR-027: which datum set the O-G height, and the floor's shortfall. */
+  occlusoGingivalDatum: OcclusoGingivalDatumReport;
 }
 
 function rebuildLoop(flat: Float64Array): Vec3[] {
@@ -110,6 +117,7 @@ export const placeAnatomyJob = async (payload: PlaceAnatomyPayload, ctx: JobCont
     mesialNeighborPositions: payload.mesialNeighborPositions,
     distalNeighborPositions: payload.distalNeighborPositions,
     antagonistPositions: payload.antagonistPositions,
+    ...(payload.neighbourOcclusalDatum !== undefined ? { neighbourOcclusalDatum: payload.neighbourOcclusalDatum } : {}),
   });
 
   let frame: PlacementFrame = solution.frame;
@@ -146,5 +154,6 @@ export const placeAnatomyJob = async (payload: PlaceAnatomyPayload, ctx: JobCont
     usedProximalGap: solution.measurements.usedProximalGap,
     antagonistUsed: solution.measurements.antagonistUsed,
     occlusoGingivalReoriented: solution.measurements.occlusoGingivalReoriented,
+    occlusoGingivalDatum: solution.measurements.occlusoGingivalDatum,
   };
 };

@@ -71,6 +71,31 @@ describe('placeAnatomyJob', () => {
     expect(r.scaleOcclusoGingival).toBeCloseTo(r.scaleMesialDistal, 12);
   });
 
+  it("ADR-027: passes the neighbours' occlusal datum through and returns its report", async () => {
+    // Neighbour tops at z = 3 (both boxes), so the level is 3 above the
+    // origin (z = 0); the library's top (4) lands at 3 ⇒ scaleOG = 0.75.
+    const window = (seedMm: Vec3) => ({ seedMm, radiusMm: 6, windowBoundaryBandMm: 0.5, realVertexCount: 8 });
+    const r = await placeAnatomyJob(
+      basePayload({
+        antagonistPositions: null,
+        neighbourOcclusalDatum: {
+          mesial: window([-4, -1, 3]),
+          distal: window([2, -1, 3]),
+          // Intaglio top at z = 3 (the origin is z = 0) + 0.5 occlusal minimum ⇒ floor 3.5.
+          intaglioPositions: new Float64Array([0, 0, 3, 0.5, 0, 2]),
+          occlusalMinWallThicknessMm: 0.5,
+        },
+      }),
+      NOOP_CTX,
+    );
+    expect(r.occlusoGingivalDatum.source).toBe('neighbours');
+    expect(r.occlusoGingivalDatum.neighbourLevelMm!).toBeCloseTo(3, 12);
+    expect(r.occlusoGingivalDatum.occlusalReductionShortfallMm).toBeCloseTo(0.5, 12);
+    expect(r.scaleOcclusoGingival).toBeCloseTo(3.5 / 4, 12);
+    const absent = await placeAnatomyJob(basePayload({ antagonistPositions: null }), NOOP_CTX);
+    expect(absent.occlusoGingivalDatum).toEqual({ source: 'uniform', neighbourLevelMm: null, floorHeightMm: null, occlusalReductionShortfallMm: 0 });
+  });
+
   it('is deterministic (byte-identical transform + placed positions across runs)', async () => {
     const a = await placeAnatomyJob(basePayload(), NOOP_CTX);
     const b = await placeAnatomyJob(basePayload(), NOOP_CTX);

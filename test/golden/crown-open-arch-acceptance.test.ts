@@ -16,10 +16,11 @@
 //     library template, journaled);
 //   - the fitted LIBRARY template on premolar 15 (Task 5 — the default when
 //     the server's library is reachable; a premolar site per the Task 4
-//     decision: the round die is a premolar-shaped preparation). Here EVERY
-//     crown gate passes on case geometry (phase acceptance 1): the template
-//     is fitted to the margin (crown-cervical-fit), the morph holds the
-//     fitted ring, and the shell trims along it.
+//     decision: the round die is a premolar-shaped preparation). Until
+//     kernel 0.43.0 every crown gate passed here (phase acceptance 1),
+//     with the crown 10 mm above its neighbours (Phase 14, below): the
+//     template is fitted to the margin (crown-cervical-fit), the morph
+//     holds the fitted ring, and the shell trims along it.
 //
 // Asserted for the built-in lane:
 //   1. the QC verdict, measured on case geometry (no stand-in): seven of the
@@ -52,6 +53,14 @@
 //
 // Phase 11 Task 4 adds a third pinned lane: the fitted library INCISOR 11
 // (asset 1.3.0) on the same open-arch case, with its measured verdict.
+//
+// Phase 14 Task 1 (ADR-027): with no antagonist the crown's height comes
+// from the captured neighbours' occlusal level, lifted to cover the
+// intaglio. This fixture's die is taller than its neighbours, so every lane
+// reports the lift (asserted), and the premolar's occlusal wall now fails
+// by 5 µm. A fourth pinned lane, a consistent arch (a short preparation
+// between full-height neighbours), places the crown at the neighbours'
+// level with no lift.
 //
 // It lives in test/ because it needs the client engine and the kernel's test
 // fixtures together (the bridge-case-acceptance precedent).
@@ -98,7 +107,7 @@ const LIBRARY_TOOTH = 15 as FdiTooth;
 /** The intaglio pitch (a journaled parameter): coarser than the clinical
  * 20 µm to keep the golden in minutes — the bridge-case golden's pitch. */
 const PITCH_MM = 0.06;
-const EXPECTED_KERNEL_VERSION = '0.43.0';
+const EXPECTED_KERNEL_VERSION = '0.44.0';
 const EXPECTED_MANIFOLD_VERSION = '3.5.1';
 const PRINT = process.env['PRINT_CROWN_OPEN_ARCH_PINS'] === '1';
 const RUN_REAL = process.env['RUN_CROWN_REAL_DIE'] === '1';
@@ -125,6 +134,8 @@ interface Pin {
   libraryStages: Record<string, string>;
   /** The fitted library incisor 11 lane (Phase 11 Task 4). */
   incisorStages: Record<string, string>;
+  /** The consistent-arch premolar lane (Phase 14 Task 1). */
+  consistentStages: Record<string, string>;
 }
 const PIN_PATH = join(repoRoot, 'test-fixtures', 'golden', 'crown-open-arch.json');
 const PIN = PRINT ? null : (JSON.parse(readFileSync(PIN_PATH, 'utf8')) as Pin);
@@ -182,6 +193,19 @@ const arch = openArchPrepCase();
 const scan = viaStl(arch.scan);
 /** The confirmed margin as the imported (Float32) scan holds it. */
 const marginLoop: Vec3[] = arch.marginLoop.map((p): Vec3 => [Math.fround(p[0]), Math.fround(p[1]), Math.fround(p[2])]);
+/** Phase 14 Task 1: a short preparation between full-height neighbours. */
+const consistentArch = openArchPrepCase({ topZMm: 4.0, neighbours: { centreMm: 8.4, radiusMm: 3.5, heightMm: 9.0 } });
+const consistentScan = viaStl(consistentArch.scan);
+const CONSISTENT = {
+  input: {
+    mesh: consistentScan,
+    margin: consistentArch.marginLoop.map((p): Vec3 => [Math.fround(p[0]), Math.fround(p[1]), Math.fround(p[2])]),
+    axis: consistentArch.insertionAxis,
+    name: 'open-arch-consistent-15.stl',
+  },
+  scan: consistentScan,
+  neighbours: consistentArch.params.neighbours!,
+};
 
 /** The server's tooth library, as `GET /api/tooth-library/:fdi` and
  * `GET /api/meshes/:hash` serve it (the starter set, current version). */
@@ -259,22 +283,40 @@ function opOf(name: string) {
 async function designCrown(
   template: 'builtin' | 'library' = 'builtin',
   tooth: FdiTooth = TOOTH,
+  c: { input: CaseInput; scan: IndexedMesh; neighbours: { centreMm: number; heightMm: number } } = {
+    input: { mesh: scan, margin: marginLoop, axis: arch.insertionAxis, name: 'open-arch-prep-11.stl' },
+    scan,
+    neighbours: arch.params.neighbours!,
+  },
 ): Promise<{ restorationId: string; scanMeshId: string; report: QcReport; stages: Record<string, string> }> {
-  const ids = await setupCase(tooth);
-  const n = arch.params.neighbours!;
+  const ids = await setupCase(tooth, c.input);
+  const n = c.neighbours;
   if (template === 'library') crownDesignEngine.__setToothLibraryFetchForTests(libraryFetch);
   crownDesignEngine.start(ids.restorationId);
   if (template === 'builtin') crownDesignEngine.setUseLibraryAnatomy(false);
   await crownDesignEngine.runPrepDie();
   await crownDesignEngine.runInnerSurface({ pitchMm: PITCH_MM });
-  await crownDesignEngine.captureNeighbour('mesial', pickOn(scan, [-n.centreMm, 0, n.heightMm]));
-  await crownDesignEngine.captureNeighbour('distal', pickOn(scan, [n.centreMm, 0, n.heightMm]));
+  await crownDesignEngine.captureNeighbour('mesial', pickOn(c.scan, [-n.centreMm, 0, n.heightMm]));
+  await crownDesignEngine.captureNeighbour('distal', pickOn(c.scan, [n.centreMm, 0, n.heightMm]));
   await crownDesignEngine.placeAnatomyAuto();
   await crownDesignEngine.runMorph();
   await crownDesignEngine.constructShell();
   await crownDesignEngine.runQc();
   const r = restorationOf(ids.restorationId);
   return { ...ids, report: r.qc!, stages: { ...(r.stages as Record<string, string>) } };
+}
+
+/** ADR-027: the placement's journaled height datum. */
+interface HeightDatum {
+  source: string;
+  neighbourLevelMm: number | null;
+  floorHeightMm: number | null;
+  occlusalReductionShortfallMm: number;
+}
+function heightDatum(): HeightDatum {
+  const d = opOf('crown-anatomy').params['occlusoGingivalDatum'] as HeightDatum;
+  console.log(`[crown-open-arch] height datum ${JSON.stringify(d)}`);
+  return d;
 }
 
 function table(report: QcReport): string {
@@ -334,6 +376,13 @@ describe('Phase 10 Task 3 — the crown on an open scan (built-in template)', ()
     expect(wall.value!).toBeGreaterThan(0.1);
     expect(wall.value!).toBeLessThan(wall.threshold!);
     expect(report.passed).toBe(false);
+    // ADR-027: the crown's height comes from the captured neighbours. This
+    // fixture's die (5.5 mm above its margin) is taller than its neighbours'
+    // level (4.98 mm), so the floor lifts the top (measured 2026-11-16).
+    const d = heightDatum();
+    expect(d.source).toBe('neighbours');
+    expect(d.neighbourLevelMm!).toBeCloseTo(4.978306, 5);
+    expect(d.occlusalReductionShortfallMm).toBeCloseTo(1.071028, 5);
 
     // 2. The die: closed synthetically, certified, journaled.
     const dieOp = opOf(CROWN_DIE_EXTRACT_OP);
@@ -392,7 +441,16 @@ describe('Phase 10 Task 3 — the crown on an open scan (built-in template)', ()
 });
 
 describe('Phase 10 Task 5 — the crown on an open scan, fitted library template (premolar 15)', () => {
-  it('EVERY crown gate passes on case geometry; the fit and the ring-held morph and trim are journaled; the hashes are pinned', async () => {
+  // The measured verdict (2026-11-16, kernel 0.44.0, ADR-027). Until 0.43.0
+  // every gate passed here, but with the crown's top 10 mm above the
+  // neighbours' (the uniform scale, with no height datum). The crown now
+  // stands on the neighbours' level, lifted to cover the intaglio: this die
+  // (5.5 mm, a flat dome Ø 3.8 mm) sits under the premolar's central fossa,
+  // so the cusps rise 4.48 mm above the neighbours' level (the reported
+  // shortfall). Covering along the axis leaves a 495 µm normal wall on one
+  // occlusal slope, against 500 µm: the minimum wall fails by 5 µm. No gate
+  // is weakened. The all-gates lane is the consistent arch (Phase 14, below).
+  it('seven gates pass on case geometry; the crown covers the intaglio above the neighbours\' level, the shortfall reported; the occlusal wall fails by 5 µm', async () => {
     const { report, stages } = await designCrown('library', LIBRARY_TOOTH);
     const fitOp = opOf('crown-cervical-fit');
     console.log(
@@ -400,14 +458,21 @@ describe('Phase 10 Task 5 — the crown on an open scan, fitted library template
         `emergence ${String(fitOp.params['emergenceOffsetMm'])} mm, ring ${String(fitOp.params['ringVertexCount'])} verts\n${table(report)}`,
     );
 
-    // 1. Phase acceptance 1: every crown gate passes, measured on case
-    // geometry (no stand-in input).
+    // 1. The verdict, measured on case geometry (no stand-in input).
     expect(report.gates.map((g) => g.gate)).toEqual(GATES);
     for (const g of report.gates) {
       expect(g.inputProvenance, g.gate).toBeUndefined();
+      if (g.gate === 'minWallThickness') continue;
       expect(g.passed, `${g.gate}: ${g.message}`).toBe(true);
     }
-    expect(report.passed).toBe(true);
+    const wall = report.gates.find((g) => g.gate === 'minWallThickness')!;
+    expect(wall.passed, wall.message).toBe(false);
+    expect(wall.value!).toBeGreaterThan(0.49);
+    expect(wall.value!).toBeLessThan(wall.threshold!);
+    const d = heightDatum();
+    expect(d.source).toBe('neighbours');
+    expect(d.neighbourLevelMm!).toBeCloseTo(4.978306, 5);
+    expect(d.occlusalReductionShortfallMm).toBeCloseTo(4.477864, 5);
 
     // 2. The template: the verified library premolar, fitted within the bound.
     const anatomy = opOf('crown-anatomy');
@@ -427,8 +492,42 @@ describe('Phase 10 Task 5 — the crown on an open scan, fitted library template
   }, 1_800_000);
 });
 
+describe('Phase 14 Task 1 — a consistent arch: the library premolar on the neighbours\' level (ADR-027)', () => {
+  // The same open-arch case with a short preparation (die top 4.0 + 1.0 dome,
+  // 3.5 mm above the margin) between full-height neighbours (9.0 mm above
+  // the gingiva, 7.48 mm above the margin): the intaglio floor (6.33 mm)
+  // lies below the neighbours' level, so the crown's top is AT the level and
+  // nothing is lifted. The measured verdict (2026-11-16, kernel 0.44.0):
+  // every gate but the contact passes. The contact fails on SYNTHETIC
+  // SURFACE for both sides: the dome-shaped neighbours are widest at the
+  // gingiva, below the capture's cervical cut, and the contact vertex is the
+  // crown's globally nearest one there (ADR-027 Decision 3 is Task 2).
+  it('the crown\'s top is at the neighbours\' level, no shortfall; every gate but the contact passes; the hashes are pinned', async () => {
+    const { report, stages } = await designCrown('library', LIBRARY_TOOTH, CONSISTENT);
+    console.log(`[crown-open-arch consistent] \n${table(report)}`);
+    expect(report.gates.map((g) => g.gate)).toEqual(GATES);
+    for (const g of report.gates) {
+      expect(g.inputProvenance, g.gate).toBeUndefined();
+      if (g.gate === 'contact') continue;
+      expect(g.passed, `${g.gate}: ${g.message}`).toBe(true);
+    }
+    const contact = report.gates.find((g) => g.gate === 'contact')!;
+    expect(contact.passed).toBe(false);
+    expect(contact.message).toMatch(/SYNTHETIC SURFACE: contact\(s\) \[proximalMesial, proximalDistal\]/);
+    const d = heightDatum();
+    expect(d.source).toBe('neighbours');
+    expect(d.neighbourLevelMm!).toBeCloseTo(7.484941, 5);
+    expect(d.floorHeightMm!).toBeLessThan(d.neighbourLevelMm!);
+    expect(d.occlusalReductionShortfallMm).toBe(0);
+
+    if (PIN) expect(stages).toEqual(PIN.consistentStages);
+    else console.log(`[crown-open-arch][consistent-pins] ${JSON.stringify(stages)}`);
+  }, 1_800_000);
+});
+
 describe('Phase 11 Task 4 — the crown on an open scan, fitted library INCISOR 11 (asset 1.3.0)', () => {
-  // The measured verdict (2026-11-08). The 1.3.0 incisor is placed and
+  // The measured verdict (2026-11-08; the wall and the datum re-measured
+  // 2026-11-16 under ADR-027). The 1.3.0 incisor is placed and
   // fitted (residual 5.3 µm), and seven gates pass on case geometry: no
   // self-intersection, the margin and seating clean, both contacts
   // reached. The minimum wall fails (343 µm axial, 416 µm occlusal against
@@ -453,6 +552,12 @@ describe('Phase 11 Task 4 — the crown on an open scan, fitted library INCISOR 
     expect(wall.passed, wall.message).toBe(false);
     expect(wall.value!).toBeGreaterThan(0.1);
     expect(wall.value!).toBeLessThan(wall.threshold!);
+    // ADR-027 (2026-11-16): the round die lies inside the incisor's thin
+    // incisal third, so covering it lifts the incisal edge 7.13 mm above the
+    // neighbours' level.
+    const d = heightDatum();
+    expect(d.source).toBe('neighbours');
+    expect(d.occlusalReductionShortfallMm).toBeCloseTo(7.128683, 5);
 
     const anatomy = opOf('crown-anatomy');
     expect(anatomy.params['anatomySource']).toMatchObject({ origin: 'library', fdi: 11, version: '1.3.0' });
@@ -508,6 +613,20 @@ describe.skipIf(!RUN_REAL)('Phase 12 Task 3 — REAL arch-case-01 tooth 11: the 
     expect(source).toMatchObject({ origin: 'library', fdi: 11, version: '1.3.0' });
     expect(fitOp!.params['errorBoundMm'] as number).toBeLessThanOrEqual(fitOp!.params['maxResidualMm'] as number);
 
+    // ADR-027 (measured 2026-11-16, kernel 0.44.0): the neighbours' level at
+    // the site is 4.54 mm above the margin. The intaglio follows the
+    // unprepared tooth, so covering it lifts the crown's top to 8.93 mm (it
+    // stood at 11.68 mm under the uniform scale). The 4.40 mm lift is the
+    // unprepared tooth's true message: insufficient occlusal reduction.
+    const datum = opOf('crown-anatomy').params['occlusoGingivalDatum'] as {
+      source: string;
+      neighbourLevelMm: number;
+      occlusalReductionShortfallMm: number;
+    };
+    console.log(`[CROWN-REAL #11 library] height datum ${JSON.stringify(datum)}`);
+    expect(datum.source).toBe('neighbours');
+    expect(datum.neighbourLevelMm).toBeCloseTo(4.535057, 5);
+    expect(datum.occlusalReductionShortfallMm).toBeCloseTo(4.397774, 5);
     await crownDesignEngine.runMorph();
     console.log(
       `[CROWN-REAL #11 library] morph contacts ${JSON.stringify(

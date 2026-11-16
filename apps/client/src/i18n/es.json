@@ -504,6 +504,19 @@
     "anatomyReadout": "Escala MD {{md}} · BL {{bl}} · OG {{og}}",
     "anatomyProximalGap": "Espacio proximal usado",
     "anatomyAntagonist": "Antagonista usado",
+    "anatomyHeightDatum": {
+      "antagonist": "Referencia de altura: el antagonista",
+      "neighbours": "Referencia de altura: el nivel oclusal de los vecinos, {{level}} mm por encima del margen",
+      "uniform": "Referencia de altura: ninguna, así que se conservan las proporciones del diente de biblioteca ({{reason}})",
+      "reason": {
+        "neighbourPeakTruncated": "la cima de un vecino puede quedar fuera de su ventana de captura",
+        "levelNotAbove": "el nivel de los vecinos no está por encima del margen",
+        "neighbourNotCaptured": "capture ambos vecinos para fijar la altura",
+        "antagonistNotOverSite": "el antagonista no tiene superficie sobre el sitio y no hay referencia de vecinos",
+        "none": "sin antagonista ni referencia de vecinos"
+      }
+    },
+    "occlusalShortfall": "Reducción oclusal insuficiente: la preparación es {{shortfall}} mm más alta que el nivel oclusal de los vecinos. La cima de la corona se elevó esa cantidad para mantener la pared oclusal mínima sobre el intradós. Reduzca la preparación.",
     "anatomyCervicalFit": "Ajuste cervical: residuo {{residual}} µm (límite {{bound}} µm) · emergencia {{offset}} µm fuera del margen · anillo desplazado hasta {{moved}} µm · anillo de {{ring}} vértices ({{added}} añadidos para seguir el margen)",
     "morphTitle": "4 · Morphing (contactos)",
     "morphRun": "Ejecutar morphing",

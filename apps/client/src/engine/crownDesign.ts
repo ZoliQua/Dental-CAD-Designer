@@ -59,6 +59,10 @@ import {
   type Vec3,
 } from '@dqcad/shared-types';
 import { caseStore } from './caseStore';
+
+/** ADR-027's placement datum, typed through the worker payload (the engine
+ * may not import the kernel). */
+type NeighbourOcclusalDatumPayload = NonNullable<JobPayloadMap['placeAnatomy']['neighbourOcclusalDatum']>;
 import { resolveFullMaterialProfile, resolveProfileVersion } from './materialProfile';
 import {
   type CrownStage,
@@ -89,6 +93,7 @@ import {
   type CaptureState,
   type CaptureSummary,
   type CervicalFitSummary,
+  type HeightDatumSummary,
   type CrownStageGateSnapshot,
   type MorphStrengthsUi,
   type PrepDieSummary,
@@ -1176,7 +1181,9 @@ class CrownDesignEngine {
     const manual = input.manualOverride !== undefined;
     this.publish({ busyStage: 'anatomy', progress: 0, error: null, errorStage: null });
     try {
+      const heightDatum = this.neighbourOcclusalDatum(session, input);
       const result = await this.pool().run('placeAnatomy', {
+        ...(heightDatum.datum !== null ? { neighbourOcclusalDatum: heightDatum.datum } : {}),
         canonicalFrame: input.library.canonicalFrame,
         libraryPositions: input.library.positions,
         libraryIndices: input.library.indices,
@@ -1246,6 +1253,9 @@ class CrownDesignEngine {
           usedProximalGap: result.usedProximalGap,
           antagonistUsed: result.antagonistUsed,
           neighbourProvenance: input.neighbourProvenance ?? 'case',
+          // ADR-027: journaled only when the neighbour datum was supplied, so
+          // a placement without one journals exactly as before.
+          ...(heightDatum.datum !== null ? { occlusoGingivalDatum: result.occlusoGingivalDatum } : {}),
           ...(input.neighbourSides ? { neighbourSides: input.neighbourSides } : {}),
           ...(input.anatomySource ? { anatomySource: input.anatomySource } : {}),
           override: input.manualOverride ?? null,
@@ -1314,6 +1324,14 @@ class CrownDesignEngine {
           neighbourProvenance: input.neighbourProvenance ?? 'case',
           anatomySource: input.anatomySource ?? null,
           cervicalFit,
+          heightDatum: ((): HeightDatumSummary => {
+            if (result.antagonistUsed || result.occlusoGingivalDatum.reason !== undefined) return { ...result.occlusoGingivalDatum };
+            // The engine's own reasons for a uniform height: an antagonist
+            // that is not over the site, or a stand-in neighbour.
+            if (input.antagonist) return { ...result.occlusoGingivalDatum, reason: 'antagonistNotOverSite' };
+            if (heightDatum.reason !== null) return { ...result.occlusoGingivalDatum, reason: heightDatum.reason };
+            return { ...result.occlusoGingivalDatum };
+          })(),
           manual,
         },
         morph: null,
@@ -1324,6 +1342,49 @@ class CrownDesignEngine {
       this.failStage('anatomy', error);
       throw error;
     }
+  }
+
+  /**
+   * ADR-027 Decision 1: the neighbours' occlusal level is the height datum
+   * when there is no antagonist and both proximal sides are case captures
+   * (a stand-in box has no anatomical top). The floor is the intaglio's top
+   * plus the profile's occlusal minimum wall, computed by the kernel.
+   */
+  private neighbourOcclusalDatum(
+    session: Session,
+    input: AnatomyPlacementInput,
+  ): { datum: NeighbourOcclusalDatumPayload | null; reason: 'neighbourNotCaptured' | null } {
+    if (input.antagonist) return { datum: null, reason: null };
+    const mesial = session.captures.mesial;
+    const distal = session.captures.distal;
+    const sides = input.neighbourSides;
+    const bothCase = sides ? sides.mesial.provenance === 'case' && sides.distal.provenance === 'case' : false;
+    if (!mesial || !distal || !bothCase || !session.inner) return { datum: null, reason: 'neighbourNotCaptured' };
+    const window = (c: CapturedNeighbour): NeighbourOcclusalDatumPayload['mesial'] => {
+      const seed = c.params['seedOnSurface'];
+      const radius = c.params['radiusMm'];
+      if (!Array.isArray(seed) || seed.length !== 3 || typeof radius !== 'number') {
+        throw new TypeError(`crown: the ${c.side} capture's journaled window has no seedOnSurface/radiusMm`);
+      }
+      return {
+        seedMm: [Number(seed[0]), Number(seed[1]), Number(seed[2])],
+        radiusMm: radius,
+        windowBoundaryBandMm: c.windowBoundaryBandMm,
+        // The closure duplicates every captured vertex behind it
+        // (`extractNeighbourRegion`'s closeRegion): the first half is scan.
+        realVertexCount: c.positions.length / 6,
+      };
+    };
+    const profile = resolveFullMaterialProfile(caseStore.getDocument());
+    return {
+      datum: {
+        mesial: window(mesial),
+        distal: window(distal),
+        intaglioPositions: session.inner.positions,
+        occlusalMinWallThicknessMm: profile.occlusalMinWallThicknessMm,
+      },
+      reason: null,
+    };
   }
 
   // ---- stage 3: morph ---------------------------------------------------
