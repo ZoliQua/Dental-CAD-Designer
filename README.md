@@ -4,6 +4,8 @@
 
 🇭🇺 *Magyar nyelvű leírás: [README.hu.md](README.hu.md)*
 
+**License:** [Apache 2.0](LICENSE) · **Author:** Zoltán Dul · **Technical documentation:** [docs/TECHNICAL.md](docs/TECHNICAL.md) · **Cite:** [CITATION.cff](CITATION.cff)
+
 Part of the DQ ecosystem; runs standalone and is designed to be later integrated as a module alongside React-Odontogram-Modul and React-Dental-CBCT-Viewer.
 
 > **Guiding principle: accuracy over speed.** Every geometric result must be clinically trustworthy. A long computation with a progress bar is acceptable; a silently wrong margin line is not.
@@ -51,7 +53,17 @@ independent export re-validation with the same kernel
 | `packages/io/` | STL/PLY parsers/writers — pure TS |
 | `packages/cad-pipeline/` | Restoration stages + QC gates |
 | `packages/clinical-profiles/` | Versioned material profiles (JSON, schema-checked) |
+| `packages/tooth-library/` | Procedurally generated tooth anatomy (versioned assets) |
+| `packages/traceability/` | QC traceability document (JSON schema + HTML) |
 | `packages/shared-types/` | CaseDocument, Operation, QcReport |
+
+## Documentation
+
+- [**Technical documentation**](docs/TECHNICAL.md): the kernel, the crown, inlay/onlay and bridge pipelines, the offsets and their error bounds, how pontics and connectors are validated, every QC gate, the server re-validation, and what is and is not proven.
+- [`PLAN.md`](./PLAN.md): phases, acceptance criteria and the clinical data model.
+- [`docs/adr/`](docs/adr/): architecture decision records.
+- [`docs/demos/`](docs/demos/): measured acceptance evidence and open items for each phase.
+- [`docs/CHANGELOG-kernel.md`](docs/CHANGELOG-kernel.md): every kernel version and the numerical change it made.
 
 ## Getting started
 
@@ -138,6 +150,30 @@ All planned phases are complete; the application is MVP feature-complete and bet
 
 UI languages: English, Hungarian, German, Spanish. Dark/light theme via CSS custom properties. Tooth numbering uses the FDI scheme (11–48).
 
+## License and attribution
+
+DQ Dental CAD is open source under the [Apache License 2.0](LICENSE). Copyright 2026 Zoltán Dul.
+
+You may use, modify and redistribute it, including in closed-source and commercial products, and you may sell restorations designed with it. In return:
+
+- keep the [LICENSE](LICENSE) and [NOTICE](NOTICE) files with any copy or derived work;
+- mark the files you changed;
+- credit the project as **"DQ Dental CAD by Zoltán Dul"** with a link to this repository. Do not use the author's name to endorse your product without permission.
+
+To cite the software in a publication, use [CITATION.cff](CITATION.cff) (GitHub shows it under "Cite this repository").
+
+Third-party dependencies and their licenses are listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). The anonymized clinical scans in `test-fixtures/real-scans/` are test data for this repository only and are not covered by the Apache license (see [NOTICE](NOTICE)).
+
+## Contributing
+
+Issues and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). Contributions are accepted under the Apache License 2.0.
+
 ## Disclaimer
 
-This software is under active development and is not a certified medical device. Outputs must be reviewed by a qualified dental professional before clinical or manufacturing use.
+This software is under active development and is **not a certified medical device** (EU MDR 2017/745, FDA or any other authority). Its results are proven on synthetic fixtures and measured on a small set of real scans (see [Validation status](docs/TECHNICAL.md#9-validation-status-what-is-and-is-not-proven)).
+
+It is provided "as is", without warranty of any kind (Apache License 2.0, sections 7–8). Anyone who uses it clinically or for manufacturing is responsible for:
+
+- validating it for that use;
+- any regulatory obligations that follow;
+- having every output reviewed by a qualified dental professional.

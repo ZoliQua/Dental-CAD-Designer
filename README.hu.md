@@ -4,11 +4,13 @@
 
 🇬🇧 *English description: [README.md](README.md)*
 
+**Licenc:** [Apache 2.0](LICENSE) · **Szerző:** Dul Zoltán · **Technikai dokumentáció (angol):** [docs/TECHNICAL.md](docs/TECHNICAL.md) · **Hivatkozás:** [CITATION.cff](CITATION.cff)
+
 A DQ ökoszisztéma része; önállóan fut, és úgy készül, hogy később modulként integrálható legyen a React-Odontogram-Modul és a React-Dental-CBCT-Viewer mellé.
 
 > **Vezérelv: pontosság a sebesség előtt.** Minden geometriai eredménynek klinikailag megbízhatónak kell lennie. Egy hosszú számítás folyamatjelzővel elfogadható; egy csendben hibás preparációs határvonal nem.
 
-> **Állapot: MVP-szinten funkcionálisan kész és béta-kész.** A [`PLAN.md`](./PLAN.md) összes tervezett fázisa (0–8) elkészült — a teljes út a szken importjától a restaurátum megtervezésén és a QC-n át a gyártási átadásig, plusz egy megszilárdító fázis. A repóban minden eredmény **fixture-alapon bizonyított**: az átvétel szintetikus, zárt alakú fixture-ökön van igazolva. A valós intraorális szkeneken való certifikáció és egy technikus-béta a nyitott, folyamatban lévő tételek. Ez nem minősített orvostechnikai eszköz (lásd [Jogi nyilatkozat](#jogi-nyilatkozat)).
+> **Állapot: MVP-szinten funkcionálisan kész és béta-kész.** A [`PLAN.md`](./PLAN.md) összes eredetileg tervezett fázisa (0–8) elkészült, az MVP utáni 9–14. fázissal együtt — a teljes út a szken importjától a restaurátum megtervezésén és a QC-n át a gyártási átadásig, plusz egy megszilárdító fázis. A repóban minden eredmény **fixture-alapon bizonyított**: az átvétel szintetikus, zárt alakú fixture-ökön van igazolva. A valós intraorális szkeneken való certifikáció és egy technikus-béta a nyitott, folyamatban lévő tételek. Ez nem minősített orvostechnikai eszköz (lásd [Jogi nyilatkozat](#jogi-nyilatkozat)).
 
 ## Funkciók
 
@@ -51,7 +53,17 @@ független export-újravalidálás ugyanazzal a kernellel
 | `packages/io/` | STL/PLY parserek/kiírók — tiszta TS |
 | `packages/cad-pipeline/` | Restaurátum-tervezési lépések + QC-kapuk |
 | `packages/clinical-profiles/` | Verziózott anyagprofilok (JSON, sémaellenőrzött) |
+| `packages/tooth-library/` | Programmal generált fog-anatómia (verziózott assetek) |
+| `packages/traceability/` | QC nyomonkövetési dokumentum (JSON-séma + HTML) |
 | `packages/shared-types/` | CaseDocument, Operation, QcReport |
+
+## Dokumentáció
+
+- [**Technikai dokumentáció**](docs/TECHNICAL.md) (angol): a kernel, a korona-, inlay/onlay- és hídfolyamat, az offsetek és hibakorlátaik, a pontikok és konnektorok validálása, minden QC-kapu, a szerveroldali újravalidálás, és hogy mi bizonyított és mi nem.
+- [`PLAN.md`](./PLAN.md): fázisok, átvételi kritériumok, klinikai adatmodell.
+- [`docs/adr/`](docs/adr/): architekturális döntések.
+- [`docs/demos/`](docs/demos/): fázisonként a mért átvételi eredmények és a nyitott tételek.
+- [`docs/CHANGELOG-kernel.md`](docs/CHANGELOG-kernel.md): minden kernelverzió és az általa okozott numerikus változás.
 
 ## Első lépések
 
@@ -124,8 +136,13 @@ Az összes tervezett fázis elkészült; az alkalmazás MVP-szinten funkcionáli
 | 7 | Export és gyártási átadás (M7 „Átadás") | ✅ kész |
 | 8 | Csiszolás és megszilárdítás | ✅ kész |
 | 9 | Tervezés az eset valódi geometriáján (M9 „Case-true", [ADR-022](docs/adr/022-design-inputs-from-the-case-geometry-provenance.md)) | ✅ kész — nyitott tételek: [docs/demos/phase-9.md](docs/demos/phase-9.md) |
+| 10 | A korona a valódi szkenen (M10, [ADR-023](docs/adr/023-closed-prep-die-from-an-open-scan-and-cervical-fit.md)) | ✅ kész — nyitott tételek: [docs/demos/phase-10.md](docs/demos/phase-10.md) |
+| 11 | A könyvtári sablon valódi margókon (M11, [ADR-024](docs/adr/024-fold-free-emergence-outline-and-axis-tie-break.md)) | ✅ kész — nyitott tételek: [docs/demos/phase-11.md](docs/demos/phase-11.md) |
+| 12 | A könyvtári sablon illesztése valódi margóra (M12, [ADR-025](docs/adr/025-continuous-outline-height-and-adaptive-cervical-ring.md)) | ✅ kész — nyitott tételek: [docs/demos/phase-12.md](docs/demos/phase-12.md) |
+| 13 | Ellenőrzött kontaktok és illesztési tartalék a valódi koronán (M13, [ADR-026](docs/adr/026-verified-contact-targets-and-ring-split-tolerance.md)) | ✅ kész — nyitott tételek: [docs/demos/phase-13.md](docs/demos/phase-13.md) |
+| 14 | A korona magassága a szomszédokból, a kontakt a klinikai sávjában (M14, [ADR-027](docs/adr/027-crown-height-from-the-neighbours-occlusal-level.md)) | ✅ kész — nyitott tételek: [docs/demos/phase-14.md](docs/demos/phase-14.md) |
 
-**Az MVP óta:** élő többanyagos anyagválasztó (cirkónia / e.max), valódi geometriai önátmetszés QC-kapu (a korábbi manifold-topológiai proxy helyett — kernel 0.27.0), és csak kliens módú statikus webes telepítés. A 9. fázis 1. feladata ([ADR-022](docs/adr/022-design-inputs-from-the-case-geometry-provenance.md)) óta a QC-bemenetek jelölik a származásukat. A helyettesítő bemeneteket a felület jelzi, és az ezeken mért QC-kapu tudomásulvételig nem mehet át. A 3. feladat (kernel 0.28.0) óta a korona és az inlay szomszédjai oldalanként egy kattintással rögzíthetők az eset saját ívszkenjéből. Megerősítés után a szemközti ívszken a korona antagonistája lehet. A proximális kontakt kaput így a páciens geometriáján mérjük. Az onlay lefedési síkja továbbra is jelzett helyettesítő. A 4. feladat óta a felület megmutatja a fog fogkönyvtári anatómiáját: ellenőrzötten, a forrás megjelölésével. A beépített sablon helyett kiválasztható, de amíg nincs a margóhoz illesztve, kísérleti. Az 5. feladat (kernel 0.29.0) óta a fogatlan gerinc csúcsvonalát az íny-szkenből illesztjük. A 6. feladat (kernel 0.30.0) óta a híd az esetből épül: a preparált szkenből, a megerősített szélekből, a közös tengelyből és az íny-szkenből. A rögzített demonstrációs híd ettől kezdve explicit demó mód, amelynek QC-je mindig zártan elbukik, így soha nem exportálható. A 7. feladat (kernel 0.31.0) a valódi felületen végigfutó e2e-kkel zárja a fázist, és javítja a közel egysíkú lapokon jelentett hamis önmetszéseket. Nyitott, teljes ívszkenen a korona továbbra is az intagliónál áll meg; ez nyomon követett tétel.
+**Az MVP óta:** élő többanyagos anyagválasztó (cirkónia / e.max), valódi geometriai önátmetszés QC-kapu (a korábbi manifold-topológiai proxy helyett — kernel 0.27.0), és csak kliens módú statikus webes telepítés. A 9. fázis 1. feladata ([ADR-022](docs/adr/022-design-inputs-from-the-case-geometry-provenance.md)) óta a QC-bemenetek jelölik a származásukat. A helyettesítő bemeneteket a felület jelzi, és az ezeken mért QC-kapu tudomásulvételig nem mehet át. A 3. feladat (kernel 0.28.0) óta a korona és az inlay szomszédjai oldalanként egy kattintással rögzíthetők az eset saját ívszkenjéből. Megerősítés után a szemközti ívszken a korona antagonistája lehet. A proximális kontakt kaput így a páciens geometriáján mérjük. Az onlay lefedési síkja továbbra is jelzett helyettesítő. A 4. feladat óta a felület megmutatja a fog fogkönyvtári anatómiáját: ellenőrzötten, a forrás megjelölésével. A beépített sablon helyett kiválasztható, de amíg nincs a margóhoz illesztve, kísérleti. Az 5. feladat (kernel 0.29.0) óta a fogatlan gerinc csúcsvonalát az íny-szkenből illesztjük. A 6. feladat (kernel 0.30.0) óta a híd az esetből épül: a preparált szkenből, a megerősített szélekből, a közös tengelyből és az íny-szkenből. A rögzített demonstrációs híd ettől kezdve explicit demó mód, amelynek QC-je mindig zártan elbukik, így soha nem exportálható. A 7. feladat (kernel 0.31.0) a valódi felületen végigfutó e2e-kkel zárja a fázist, és javítja a közel egysíkú lapokon jelentett hamis önmetszéseket. A 10–14. fázis (kernel 0.32–0.45) óta a korona a teljes, nyitott ívszkenen is végigtervezhető: a szkenből zárt, tanúsított csonk készül, a könyvtári sablon 50 µm-en belül illeszkedik a valódi margóra, minden kontakt célpontja a szomszéd valódi felületén ellenőrzött, antagonista nélkül pedig a korona magasságát a szomszédok okkluzális szintje adja. A részletek a [technikai dokumentációban](docs/TECHNICAL.md) és a fázisonkénti demókban vannak.
 
 **Nyitott, folyamatban lévő tételek:** certifikáció valós intraorális szkeneken (retrakciós-fonalas korona, kavitás, többpilléres híd), egy 2–3 fős technikus-béta, és többfelhasználós hitelesítés (bármilyen hosztolt backend előfeltétele).
 
@@ -133,6 +150,30 @@ Az összes tervezett fázis elkészült; az alkalmazás MVP-szinten funkcionáli
 
 UI-nyelvek: angol, magyar, német, spanyol. Sötét/világos téma CSS custom property-kkel. A fogszámozás az FDI-sémát követi (11–48).
 
+## Licenc és hivatkozás
+
+A DQ Dental CAD nyílt forráskódú, az [Apache License 2.0](LICENSE) alatt. Copyright 2026 Dul Zoltán.
+
+Szabadon használható, módosítható és továbbadható, zárt forrású és kereskedelmi termékben is, és a vele tervezett restaurátumok is értékesíthetők. Cserébe:
+
+- a [LICENSE](LICENSE) és a [NOTICE](NOTICE) fájlt meg kell tartani minden másolatban és származékos műben;
+- a módosított fájlokat jelölni kell;
+- a projektet **„DQ Dental CAD by Zoltán Dul”** néven, a repóra mutató hivatkozással kell feltüntetni. A szerző neve engedély nélkül nem használható egy termék ajánlására.
+
+Publikációban a [CITATION.cff](CITATION.cff) alapján lehet hivatkozni (a GitHubon: „Cite this repository”).
+
+A külső függőségek és licenceik a [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) fájlban vannak. A `test-fixtures/real-scans/` anonimizált klinikai szkenjei csak ennek a repónak a tesztadatai, rájuk az Apache-licenc nem terjed ki (lásd [NOTICE](NOTICE)).
+
+## Közreműködés
+
+Hibajelentést és pull requestet szívesen fogadunk, lásd [CONTRIBUTING.md](CONTRIBUTING.md). A hozzájárulások az Apache License 2.0 alatt kerülnek be.
+
 ## Jogi nyilatkozat
 
-Ez a szoftver aktív fejlesztés alatt áll, és nem minősített orvostechnikai eszköz. A kimeneteket klinikai vagy gyártási felhasználás előtt képzett fogászati szakembernek kell ellenőriznie.
+Ez a szoftver aktív fejlesztés alatt áll, és **nem minősített orvostechnikai eszköz** (sem az EU MDR 2017/745, sem az FDA, sem más hatóság szerint). Eredményei szintetikus fixture-ökön bizonyítottak, és néhány valódi szkenen mértek (lásd [a validáció állapotát](docs/TECHNICAL.md#9-validation-status-what-is-and-is-not-proven)).
+
+„Ahogy van” alapon, mindenféle garancia nélkül adjuk közre (Apache License 2.0, 7–8. pont). Aki klinikai vagy gyártási célra használja, ő felel azért, hogy:
+
+- erre a célra validálja;
+- teljesítse az ebből fakadó szabályozási kötelezettségeket;
+- minden kimenetet képzett fogászati szakember ellenőrizzen.
