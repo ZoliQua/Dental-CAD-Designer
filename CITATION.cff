@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "DQ Dental CAD (Dental-CAD-Designer)"
+abstract: >-
+  Standalone dental CAD web application for viewing intraoral scans
+  (STL/PLY) and designing crowns, inlays/onlays and bridges, built on a
+  deterministic Float64 TypeScript geometry kernel with QC gates that block
+  export and independent server-side re-validation.
+type: software
+authors:
+  - family-names: Dul
+    given-names: Zoltán
+repository-code: "https://github.com/ZoliQua/Dental-CAD-Designer"
+license: Apache-2.0
+keywords:
+  - dental CAD
+  - crown
+  - bridge
+  - inlay
+  - onlay
+  - geometry kernel
+  - STL

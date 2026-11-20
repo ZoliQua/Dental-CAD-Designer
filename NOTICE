@@ -1,0 +1,26 @@
+DQ Dental CAD (Dental-CAD-Designer)
+Copyright 2026 Zoltán Dul
+
+This product includes software developed by Zoltán Dul
+(https://github.com/ZoliQua/Dental-CAD-Designer).
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Attribution: if you use, modify or redistribute this software, or build a
+product or a publication on it, please keep this NOTICE file and credit
+"DQ Dental CAD by Zoltán Dul" with a link to the repository above. A citation
+entry is provided in CITATION.cff.
+
+Not a medical device: this software is not certified as a medical device
+(EU MDR 2017/745, FDA or otherwise). Any clinical or manufacturing use is the
+sole responsibility of the user, who must validate the output for that use.
+See the Disclaimer section of README.md.
+
+Scan data: the files under test-fixtures/real-scans/ are anonymized
+clinical intraoral scans. They are included solely to test and reproduce
+this project's results, and are not licensed under the Apache License 2.0
+for any other use. Do not redistribute them outside a copy of this
+repository.
+
+Third-party components are listed with their licenses in
+THIRD-PARTY-NOTICES.md.

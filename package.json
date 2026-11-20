@@ -2,6 +2,8 @@
   "name": "dq-dental-cad",
   "private": true,
   "version": "0.0.0",
+  "license": "Apache-2.0",
+  "author": "Zoltán Dul",
   "type": "module",
   "workspaces": [
     "apps/*",
